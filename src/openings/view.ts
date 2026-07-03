@@ -5453,7 +5453,7 @@ function clearSamplePreviewTimer(): void {
 function renderSamplePreviewBoard(fen: string): VNode {
   const config = {
     fen,
-    orientation: 'white' as const,
+    orientation: boardOrientation(),
     coordinates: false,
     viewOnly: true,
     movable: { free: false },

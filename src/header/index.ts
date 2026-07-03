@@ -23,7 +23,8 @@ import {
   pauseBulkReview, resumeBulkReview, cancelBulkReview,
   getQueueSummary, formatReviewDuration,
   getReviewQueueItems, moveReviewQueueGame, removeReviewQueueGame,
-  queueNextReviewRunBatch, dismissReviewRunNotice,
+  dismissReviewRunNotice,
+  getReviewRunSummary, retryReviewRunFailedGames,
   isReviewEngineFailed, isReviewEngineInitializing,
   getCurrentFailedReviewStatus, skipCurrentFailedReviewGame,
   isLeaderTab, isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
@@ -704,9 +705,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const summary = getQueueSummary();
   const lifecycleState = summary.lifecycleState;
   const completionNotice = lifecycleState === 'batch-complete' || lifecycleState === 'no-more-eligible-games';
+  const breakerPaused = lifecycleState === 'breaker-paused';
   const staleNotice = summary.stale || lifecycleState === 'stale';
   const storageFailureNotice = summary.storageHealth !== 'ok';
-  const active  = running || paused || completionNotice || storageFailureNotice;
+  const active  = running || paused || completionNotice || storageFailureNotice || breakerPaused;
 
   // Surface engine init failure as an explicit error state even when no game
   // is actively running (so the queue never shows a perpetual spinner).
@@ -749,6 +751,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   if (!active) return null;
   const lastProgress = summary ? formatReviewDuration(summary.lastProgressSeconds) : null;
   const failedStatus = getCurrentFailedReviewStatus();
+  const runSummary = getReviewRunSummary();
   const interruptedAfterReload = summary?.pauseReason === 'reload';
   const isQueueOwner = isLeaderTab();
   const ownerUnavailable = isReviewOwnerUnavailableForTakeover();
@@ -763,7 +766,9 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const positionProgress = formatReviewPositionProgress(summary.positionsAnalyzed, summary.totalPositions);
   const activeProgressLabel = positionProgress ?? `${summary.done}/${summary.total} games`;
   const positionProgressRemaining = Math.max(0, summary.totalPositions - summary.positionsAnalyzed);
-  const reviewTriggerLabel = failedStatus
+  const reviewTriggerLabel = breakerPaused
+    ? `Review paused · ${runSummary?.failed.length ?? 0} failed in a row`
+    : failedStatus
     ? positionProgress
       ? `Failed (${failedStatus.attempts}) · ${positionProgress}`
       : `Failed (${failedStatus.attempts})`
@@ -782,7 +787,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     : summary
         ? `Reviewing ${activeProgressLabel}`
         : 'Reviewing…';
-  const reviewTriggerTitle = failedStatus
+  const reviewTriggerTitle = breakerPaused
+    ? (runSummary?.breakerTrippedReason === 'engine-init-failure'
+        ? 'Review paused: the background engine failed to initialize'
+        : 'Review paused: 3 consecutive game failures')
+    : failedStatus
     ? 'Current review failed and is retrying'
     : storageFailure
       ? 'Review storage write failed - resume may be unavailable'
@@ -796,11 +805,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       ? 'No matching games left to review'
     : 'Bulk Review settings';
   const progressIconState: 'active' | 'still' =
-    running && !paused && !staleNotice && !failedStatus && !storageFailure ? 'active' : 'still';
+    running && !paused && !staleNotice && !failedStatus && !storageFailure && !breakerPaused ? 'active' : 'still';
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
-      class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice },
+      class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice || breakerPaused },
       attrs: { title: reviewTriggerTitle },
       on: { click: () => {
         if (ownerUnavailable) takeOverUnavailableReviewOwner();
@@ -837,16 +846,33 @@ function renderReviewMenu(redraw: () => void): VNode | null {
               `No review progress for ${lastProgress ?? 'a while'}. You can pause, cancel, or take over if the owner is unavailable.`)
           : null,
         lifecycleState === 'batch-complete'
-          ? h('div.review-menu__label', 'Batch complete. Queue the next matching games when you are ready.')
+          ? h('div.review-menu__label', 'Batch complete. Dismiss this notice, or Cancel to stop the run.')
           : null,
         lifecycleState === 'no-more-eligible-games'
           ? h('div.review-menu__label', 'No more matching games are available for this review run.')
+          : null,
+        breakerPaused
+          ? h('div.review-menu__label.review-menu__label--error',
+              runSummary?.breakerTrippedReason === 'engine-init-failure'
+                ? 'Review paused: the background engine failed to initialize. Reload to retry.'
+                : 'Review paused: 3 consecutive game failures. Investigate before retrying — this usually means a systemic problem, not one bad game.')
           : null,
         failedStatus
           ? h('div.review-menu__label.review-menu__label--error',
               failedStatus.retrying
                 ? `Failed (${failedStatus.attempts}) - retrying`
                 : `Failed (${failedStatus.attempts})`)
+          : null,
+        (breakerPaused || completionNotice) && runSummary && (runSummary.failed.length > 0 || runSummary.skipped.length > 0)
+          ? h('div.review-menu__section-title', 'Run summary')
+          : null,
+        (breakerPaused || completionNotice) && runSummary && runSummary.failed.length > 0
+          ? h('div.review-menu__label',
+              `Failed: ${runSummary.failed.map(item => item.label).join(', ')}`)
+          : null,
+        (breakerPaused || completionNotice) && runSummary && runSummary.skipped.length > 0
+          ? h('div.review-menu__label',
+              `Skipped: ${runSummary.skipped.map(item => item.label).join(', ')}`)
           : null,
         storageFailure
           ? h('div.review-menu__label.review-menu__label--error',
@@ -879,11 +905,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
               ].filter(Boolean).join(' · '))
           : null,
         h('div.review-menu__row', [
-          lifecycleState === 'batch-complete'
+          (breakerPaused || completionNotice) && runSummary && runSummary.failed.length > 0
             ? h('button.review-menu__btn', {
-                attrs: { type: 'button', title: 'Queue the next matching batch from this run' },
-                on: { click: () => { void queueNextReviewRunBatch().finally(redraw); } },
-              }, 'Queue next batch')
+                attrs: { type: 'button', title: 'Re-queue only the failed games and resume the run' },
+                on: { click: () => { retryReviewRunFailedGames(); redraw(); } },
+              }, 'Retry failed')
             : null,
           completionNotice
             ? h('button.review-menu__btn', {
@@ -919,7 +945,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         ]),
         h('label.review-menu__toggle.review-menu__toggle--inline', {
           attrs: {
-            title: 'Persistently retry and auto-resume this active batch. Queue next batch remains manual.',
+            title: 'Persistently retry and auto-resume this active game. The run continues automatically through your selection.',
           },
         }, [
           h('span', 'Auto retry'),

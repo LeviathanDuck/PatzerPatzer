@@ -2,6 +2,21 @@ import { parsePgnHeader, type ImportedGame } from '../import/types';
 
 export const BULK_REVIEW_TARGET_BATCH_SIZE = 25;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const REVIEW_RUN_HYGIENE_CADENCE = 10;
+
 export type ReviewRunSourceMode = 'selected-games' | 'visible-list';
 
 export type ReviewRunLifecycleState =
@@ -14,7 +29,21 @@ export type ReviewRunLifecycleState =
   | 'batch-complete'
   | 'no-more-eligible-games'
   | 'stale'
-  | 'canceled';
+  | 'canceled'
+  | 'breaker-paused';
+
+
+
+
+
+
+
+
+
+export const REVIEW_RUN_BREAKER_FAILURE_THRESHOLD = 3;
+
+/** What tripped the circuit breaker — drives the header's banner copy. */
+export type ReviewRunBreakerReason = 'consecutive-failures' | 'engine-init-failure';
 
 export interface ReviewRunTimeControlContext {
   speeds: string[];
@@ -44,6 +73,16 @@ export interface ReviewRunManifest {
   failedAttempts: ReviewRunFailedAttempt[];
   skippedGameIds: string[];
   lifecycleState: ReviewRunLifecycleState;
+
+
+
+
+
+
+
+  consecutiveFailureCount: number;
+  /** Set when the breaker trips; cleared by `withReviewRunBreakerCleared` ("Retry failed"). */
+  breakerTrippedReason: ReviewRunBreakerReason | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -83,7 +122,7 @@ export interface ReviewRunHydrationResult {
 export interface ReviewRunStaleInput {
   running: boolean;
   paused: boolean;
-  pauseReason: 'user' | 'hidden' | 'reload' | null;
+  pauseReason: 'user' | 'hidden' | 'reload' | 'breaker' | null;
   lifecycleState: ReviewRunLifecycleState | null;
   retryingFailedGame: boolean;
   lastProgressSeconds: number | null;
@@ -238,6 +277,8 @@ export function createReviewRunManifest(params: {
     failedAttempts:     [],
     skippedGameIds:     [],
     lifecycleState:     'running',
+    consecutiveFailureCount: 0,
+    breakerTrippedReason:    null,
     createdAt:          now,
     updatedAt:          now,
   };
@@ -247,6 +288,9 @@ export function normalizeReviewRunManifest(manifest: ReviewRunManifest): ReviewR
   return {
     ...manifest,
     autoRetryEnabled: manifest.autoRetryEnabled === true,
+
+    consecutiveFailureCount: manifest.consecutiveFailureCount ?? 0,
+    breakerTrippedReason:    manifest.breakerTrippedReason ?? null,
   };
 }
 
@@ -365,7 +409,98 @@ export function withReviewRunGameComplete(
       : [...manifest.completedGameIds, gameId],
     failedAttempts: manifest.failedAttempts.filter(attempt => attempt.gameId !== gameId),
     skippedGameIds: manifest.skippedGameIds.filter(id => id !== gameId),
+
+
+    consecutiveFailureCount: 0,
     updatedAt: now,
+  };
+}
+
+
+
+
+
+
+
+export function withReviewRunGameFailureRecorded(
+  manifest: ReviewRunManifest,
+  now = Date.now(),
+): ReviewRunManifest {
+  return {
+    ...manifest,
+    consecutiveFailureCount: manifest.consecutiveFailureCount + 1,
+    updatedAt: now,
+  };
+}
+
+
+
+
+
+
+
+export function reviewRunCircuitBreakerShouldTrip(
+  manifest: Pick<ReviewRunManifest, 'consecutiveFailureCount'>,
+  threshold: number = REVIEW_RUN_BREAKER_FAILURE_THRESHOLD,
+): boolean {
+  return manifest.consecutiveFailureCount >= threshold;
+}
+
+/** Trip the breaker into the loud paused state. Idempotent for the same reason. */
+export function withReviewRunBreakerTripped(
+  manifest: ReviewRunManifest,
+  reason: ReviewRunBreakerReason,
+  now = Date.now(),
+): ReviewRunManifest {
+  if (manifest.lifecycleState === 'breaker-paused' && manifest.breakerTrippedReason === reason) return manifest;
+  return {
+    ...manifest,
+    lifecycleState: 'breaker-paused',
+    breakerTrippedReason: reason,
+    updatedAt: now,
+  };
+}
+
+/** Clear the breaker (the "Retry failed" action) — resumes as a normal running state. */
+export function withReviewRunBreakerCleared(
+  manifest: ReviewRunManifest,
+  now = Date.now(),
+): ReviewRunManifest {
+  if (manifest.lifecycleState !== 'breaker-paused' && manifest.breakerTrippedReason === null && manifest.consecutiveFailureCount === 0) {
+    return manifest;
+  }
+  return {
+    ...manifest,
+    lifecycleState: 'running',
+    breakerTrippedReason: null,
+    consecutiveFailureCount: 0,
+    updatedAt: now,
+  };
+}
+
+
+
+
+
+
+export interface ReviewRunSummary {
+  completedGameIds: string[];
+  skippedGameIds: string[];
+  failedGameIds: string[];
+  completedCount: number;
+  skippedCount: number;
+  failedCount: number;
+}
+
+export function reviewRunSummaryFromManifest(manifest: ReviewRunManifest): ReviewRunSummary {
+  const failedGameIds = manifest.failedAttempts.map(attempt => attempt.gameId);
+  return {
+    completedGameIds: [...manifest.completedGameIds],
+    skippedGameIds: [...manifest.skippedGameIds],
+    failedGameIds,
+    completedCount: manifest.completedGameIds.length,
+    skippedCount: manifest.skippedGameIds.length,
+    failedCount: failedGameIds.length,
   };
 }
 
@@ -515,10 +650,12 @@ export function isReviewRunStale(input: ReviewRunStaleInput): boolean {
     input.paused
     || input.pauseReason === 'hidden'
     || input.pauseReason === 'reload'
+    || input.pauseReason === 'breaker'
     || input.lifecycleState === 'user-paused'
     || input.lifecycleState === 'hidden-suspended'
     || input.lifecycleState === 'interrupted-after-reload'
     || input.lifecycleState === 'retrying-failed-game'
+    || input.lifecycleState === 'breaker-paused'
     || input.retryingFailedGame;
   return input.running
     && !staleExcludedState
@@ -538,6 +675,20 @@ export function reviewSearchIdentityMatches(
     && expected.fen === current.fen
     && expected.nodePath === current.nodePath
     && expected.parentPath === current.parentPath;
+}
+
+
+
+
+
+
+
+
+export function isReviewRunHygieneCadenceBoundary(
+  completedCount: number,
+  cadence: number = REVIEW_RUN_HYGIENE_CADENCE,
+): boolean {
+  return cadence > 0 && completedCount > 0 && completedCount % cadence === 0;
 }
 
 export function selectNextReviewRunBatch(params: {

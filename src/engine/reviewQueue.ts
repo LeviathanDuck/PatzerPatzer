@@ -32,6 +32,7 @@ import {
   createReviewRunManifest,
   createReviewSearchOwner,
   hydrateReviewRunFailureCounts,
+  isReviewRunHygieneCadenceBoundary,
   isReviewRunStale,
   normalizeReviewRunManifest,
   reviewGamesInNewestFirstOrder,
@@ -45,7 +46,10 @@ import {
   searchOwnerRegisterGo,
   searchOwnerReset,
   selectNextReviewRunBatch,
+  reviewRunCircuitBreakerShouldTrip,
+  reviewRunSummaryFromManifest,
   type ReviewSearchDescriptor,
+  type ReviewRunBreakerReason,
   type ReviewRunLifecycleState,
   type ReviewRunManifest,
   type ReviewRunNextBatchSelection,
@@ -54,8 +58,11 @@ import {
   type ReviewRunSourceContext,
   type ReviewRunTimeControlContext,
   withReviewRunActiveBatchGameMoved,
+  withReviewRunBreakerCleared,
+  withReviewRunBreakerTripped,
   withReviewRunGameComplete,
   withReviewRunGameFailed,
+  withReviewRunGameFailureRecorded,
   withReviewRunGameSkippedFromActiveBatch,
   withReviewRunGameSkipped,
   withReviewRunAutoRetryEnabled,
@@ -771,7 +778,8 @@ type ReviewChannelMessage =
   | { type: 'move-queue-game'; tabId: string; gameId: string; direction: 'up' | 'down' }
   | { type: 'remove-queue-game'; tabId: string; gameId: string }
   | { type: 'reset-errored'; tabId: string; gameId: string }
-  | { type: 'skip-failed'; tabId: string; gameId: string };
+  | { type: 'skip-failed'; tabId: string; gameId: string }
+  | { type: 'retry-failed'; tabId: string };
 
 function diagnosticErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message || error.name || 'Error';
@@ -1085,6 +1093,8 @@ function initLeaderElection(): void {
           resetErroredGame(msg.gameId);
         } else if (msg.type === 'skip-failed' && isCurrentLeader && msg.gameId) {
           skipFailedReviewGame(msg.gameId);
+        } else if (msg.type === 'retry-failed' && isCurrentLeader) {
+          retryReviewRunFailedGames();
         }
       } catch (error) {
         recordReviewChannelError('review-channel-receive-error', error);
@@ -1234,7 +1244,7 @@ function enqueueObserverManifestOnly(games: ImportedGame[], depth: number): void
 let queue:      ReviewQueueEntry[] = [];
 let activeIndex = -1;
 let queuePaused = false;
-export type ReviewPauseReason = 'user' | 'hidden' | 'reload';
+export type ReviewPauseReason = 'user' | 'hidden' | 'reload' | 'breaker';
 let queuePauseReason: ReviewPauseReason | null = null;
 let hiddenSuspendedOwnerTabId: string | null = null;
 let activeReviewRun: ReviewRunManifest | null = null;
@@ -1474,6 +1484,53 @@ function markActiveReviewRunGameFailed(gameId: string, attempts: number, lastFai
   activeReviewRun = withReviewRunGameFailed(activeReviewRun, gameId, attempts, lastFailedAt);
   markReviewQueueProgress();
   persistActiveReviewRun();
+}
+
+
+
+
+
+
+
+
+
+
+
+/** Halt the queue the same way a user Pause does, but tagged as a breaker pause. */
+function haltReviewQueueForBreaker(): void {
+  clearFailedGameRetryTimer();
+  queuePaused = true;
+  queuePauseReason = 'breaker';
+  hiddenSuspendedOwnerTabId = null;
+  syncReviewAutoRetryWakeLock();
+}
+
+/**
+ * Bump the consecutive-failure counter for one game-failure event and trip the breaker
+ * if it crosses the threshold. Must be called AFTER `scheduleFailedGameRetry` has already
+ * recorded the durable failed-attempt entry for this game (so the failed id still shows
+ * up in the end-of-run summary even when this call trips the breaker and cancels the
+ * retry timer that call just armed).
+ */
+function recordReviewRunGameFailureForBreaker(): void {
+  if (!activeReviewRun) return;
+  activeReviewRun = withReviewRunGameFailureRecorded(activeReviewRun);
+  if (reviewRunCircuitBreakerShouldTrip(activeReviewRun)) {
+    activeReviewRun = withReviewRunBreakerTripped(activeReviewRun, 'consecutive-failures');
+    haltReviewQueueForBreaker();
+  }
+  persistActiveReviewRun();
+  notifyReviewQueueStateChanged();
+}
+
+/** Trip the breaker immediately on any review-engine init failure, bypassing the counter. */
+function tripReviewRunBreakerForEngineInit(): void {
+  if (activeReviewRun) {
+    activeReviewRun = withReviewRunBreakerTripped(activeReviewRun, 'engine-init-failure');
+    persistActiveReviewRun();
+  }
+  haltReviewQueueForBreaker();
+  notifyReviewQueueStateChanged();
 }
 
 function markActiveReviewRunGameSkipped(gameId: string): void {
@@ -2195,7 +2252,12 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   if (entry) {
     entry.status = 'error';
     persistManifestEntry(entry);
+    // Record the durable failed-attempt entry and (if the breaker isn't already
+    // tripped) arm the backoff retry timer first, THEN bump the breaker's
+    // consecutive-failure counter — so a trip here still leaves this game's id in
+    // the durable failed list, even though it cancels the timer just armed.
     scheduleFailedGameRetry(entry);
+    recordReviewRunGameFailureForBreaker();
     recordReviewGameErrored(entry, error, lastPositionIndex, true);
   }
 
@@ -2476,6 +2538,9 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     preemptTreeEvalLease('review-engine-init-failed');
     // Demote every entry still in `analyzing` so they don't appear stuck.
     _failAnalyzingEntries();
+
+
+    tripReviewRunBreakerForEngineInit();
     notifyReviewQueueStateChanged();
   }
 }
@@ -2869,6 +2934,20 @@ export function applyReviewDepthToActiveQueue(
 
 // --- Finish a single game ---
 
+
+
+
+
+
+
+
+
+
+function runReviewRunHygieneCadence(manifest: ReviewRunManifest): void {
+
+  void manifest;
+}
+
 function finishEntry(entry: ReviewQueueEntry): void {
   void finishEntryAfterDurableSave(entry);
 }
@@ -2903,6 +2982,9 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     entry.status = 'complete';
     markReviewQueueProgress();
     markActiveReviewRunGameComplete(entry.game.id);
+    if (activeReviewRun && isReviewRunHygieneCadenceBoundary(activeReviewRun.completedGameIds.length)) {
+      runReviewRunHygieneCadence(activeReviewRun);
+    }
     clearFailedGameState(entry.game.id, entry.depth);
     recordReviewGameComplete(entry);
     captureMemorySnapshot('post-review');
@@ -3041,9 +3123,10 @@ function advanceQueue(): void {
   if (nextIndex < 0) {
     activeIndex = -1;
     resetReviewBatchElapsed();
-    setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
-    syncReviewAutoRetryWakeLock();
-    notifyReviewQueueStateChanged();
+
+
+
+    void autoContinueReviewRun();
     return;
   }
 
@@ -3055,6 +3138,52 @@ function advanceQueue(): void {
   entry.status = 'analyzing';
   persistManifestEntry(entry);
   void startEntryBatch(entry);
+}
+
+// Opaque wrapper (not a `m.lifecycleState === 'canceled'` inline check) so
+// TypeScript's control-flow narrowing does not treat a second call as
+// statically impossible after an earlier one — `activeReviewRun` is a mutable
+// module-level binding that can legitimately change value across an `await`,
+// which plain narrowing can't see through.
+function reviewRunIsCanceled(manifest: ReviewRunManifest | null): boolean {
+  return manifest !== null && manifest.lifecycleState === 'canceled';
+}
+
+
+
+
+
+
+
+
+
+
+async function autoContinueReviewRun(): Promise<void> {
+  if (!activeReviewRun) {
+    setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
+    syncReviewAutoRetryWakeLock();
+    notifyReviewQueueStateChanged();
+    return;
+  }
+  // Nothing to continue if Pause/Cancel already landed — let that state stand.
+  if (queuePaused || reviewRunIsCanceled(activeReviewRun)) return;
+
+  const runId = activeReviewRun.runId;
+  const result = await queueNextReviewRunBatch(_libraryGames);
+  if (result === 'queued' || result === 'no-more-eligible-games') {
+    // 'queued' already resumed advanceQueue() via enqueueBulkReviewAsLeader;
+    // 'no-more-eligible-games' already set its own terminal state. Either way
+    // queueNextReviewRunBatch() owns the resulting state/notification.
+    return;
+  }
+  // result === 'no-run': only reachable here if Pause/Cancel/a new run raced
+  // with the async lookup above. Don't clobber whatever state that left.
+  if (queuePaused || !activeReviewRun || activeReviewRun.runId !== runId || reviewRunIsCanceled(activeReviewRun)) {
+    return;
+  }
+  setActiveReviewRunState('no-more-eligible-games');
+  syncReviewAutoRetryWakeLock();
+  notifyReviewQueueStateChanged();
 }
 
 // --- Public API ---
@@ -3715,6 +3844,17 @@ export async function queueNextReviewRunBatch(
   if (!manifest) return 'no-run';
   activeReviewRun = manifest;
   const selection = await getNextReviewRunBatchSelection(games);
+
+
+
+  if (
+    !activeReviewRun
+    || activeReviewRun.runId !== manifest.runId
+    || activeReviewRun.lifecycleState === 'canceled'
+    || queuePaused
+  ) {
+    return 'no-run';
+  }
   if (!selection) return 'no-run';
   if (selection.batchGames.length === 0) {
     setActiveReviewRunState('no-more-eligible-games');
@@ -3970,6 +4110,61 @@ export function getQueueSummary(): QueueSummary {
   };
 }
 
+/** Resolve a game's "White vs Black" label from the queue, then the last-known library snapshot. */
+function labelForReviewRunGameId(gameId: string): string {
+  const queued = queue.find(e => e.game.id === gameId);
+  if (queued) return reviewQueueEntryLabel(queued);
+  const libraryGame = _libraryGames.find(g => g.id === gameId);
+  if (libraryGame) return `${libraryGame.white ?? 'White'} vs ${libraryGame.black ?? 'Black'}`;
+  return gameId;
+}
+
+export interface ReviewRunSummaryFailedItem {
+  gameId: string;
+  label: string;
+  attempts: number;
+  lastFailedAt: number;
+}
+
+export interface ReviewRunSummaryItem {
+  gameId: string;
+  label: string;
+}
+
+
+
+
+
+
+
+
+export interface ReviewRunSummaryView {
+  lifecycleState: ReviewRunLifecycleState;
+  breakerPaused: boolean;
+  breakerTrippedReason: ReviewRunBreakerReason | null;
+  completed: ReviewRunSummaryItem[];
+  skipped: ReviewRunSummaryItem[];
+  failed: ReviewRunSummaryFailedItem[];
+}
+
+export function getReviewRunSummary(): ReviewRunSummaryView | null {
+  if (!activeReviewRun) return null;
+  const summary = reviewRunSummaryFromManifest(activeReviewRun);
+  return {
+    lifecycleState: activeReviewRun.lifecycleState,
+    breakerPaused: activeReviewRun.lifecycleState === 'breaker-paused',
+    breakerTrippedReason: activeReviewRun.breakerTrippedReason,
+    completed: summary.completedGameIds.map(gameId => ({ gameId, label: labelForReviewRunGameId(gameId) })),
+    skipped: summary.skippedGameIds.map(gameId => ({ gameId, label: labelForReviewRunGameId(gameId) })),
+    failed: activeReviewRun.failedAttempts.map(attempt => ({
+      gameId:       attempt.gameId,
+      label:        labelForReviewRunGameId(attempt.gameId),
+      attempts:     attempt.attempts,
+      lastFailedAt: attempt.lastFailedAt,
+    })),
+  };
+}
+
 /** Format a duration in seconds as a short "Xm Ys" / "Xs" string for review status display. */
 export function formatReviewDuration(secondsValue: number | null): string | null {
   if (secondsValue === null || !Number.isFinite(secondsValue)) return null;
@@ -4005,6 +4200,61 @@ export function resetErroredGame(gameId: string): void {
   // If the active index pointed past the removed entry, adjust it.
   if (activeIndex > idx) activeIndex--;
   void clearReviewQueueManifestEntry(gameId);
+  notifyReviewQueueStateChanged();
+}
+
+
+
+
+
+
+
+
+
+export function retryReviewRunFailedGames(): void {
+  if (!isCurrentLeader) {
+    postReviewChannelMessage({ type: 'retry-failed', tabId });
+    return;
+  }
+  if (!activeReviewRun || activeReviewRun.failedAttempts.length === 0) return;
+
+  const failedGameIds = activeReviewRun.failedAttempts.map(attempt => attempt.gameId);
+  const reviewDepth = activeReviewRun.reviewDepth;
+  const sourceContext: ReviewRunSourceContext = {
+    sourceMode:         activeReviewRun.sourceMode,
+    sourceGameIds:      activeReviewRun.sourceGameIds,
+    timeControlContext: activeReviewRun.timeControlContext,
+    orderingContext:    activeReviewRun.orderingContext,
+    activeBatchIds:     activeReviewRun.activeBatchIds,
+  };
+  activeReviewRun = withReviewRunBreakerCleared(activeReviewRun);
+  persistActiveReviewRun();
+  queuePaused = false;
+  queuePauseReason = null;
+
+  const missingGames: ImportedGame[] = [];
+  for (const gameId of failedGameIds) {
+    const entry = queue.find(e => e.game.id === gameId && e.status === 'error');
+    if (entry) {
+      scheduleFailedGameRetry(entry, { incrementAttempts: false });
+      continue;
+    }
+    // Evicted (e.g. across a reload) — clear the stale manifest remnant, then
+    // rebuild the entry fresh from the library game record below.
+    resetErroredGame(gameId);
+    const game = _libraryGames.find(g => g.id === gameId);
+    if (game) missingGames.push(game);
+  }
+
+  if (missingGames.length > 0) {
+    enqueueBulkReview(missingGames, reviewDepth, sourceContext);
+  } else if (activeIndex < 0 && !reviewEngineFailed) {
+    advanceQueue();
+  }
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
+    void initReviewEngine('/stockfish-web');
+  }
+  syncReviewAutoRetryWakeLock();
   notifyReviewQueueStateChanged();
 }
 
