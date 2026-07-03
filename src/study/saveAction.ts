@@ -240,13 +240,21 @@ function isHumanReadableName(name: string): boolean {
  * Always includes 'orp' and 'as-white'/'as-black'.
  * Adds 'collection:<name>' when the collection has a human-readable name.
  */
-function buildOrpTags(trainAs: 'white' | 'black', collection: ResearchCollection | null): string[] {
+function buildOrpTags(
+  trainAs: 'white' | 'black',
+  collection: ResearchCollection | null,
+  extraTags: readonly string[] = [],
+): string[] {
   const tags: string[] = [
     trainAs === 'white' ? 'as-white' : 'as-black',
     'orp',
   ];
   if (collection && isHumanReadableName(collection.name)) {
     tags.push('collection:' + collection.name);
+  }
+  for (const tag of extraTags) {
+    const trimmed = tag.trim();
+    if (trimmed && !tags.includes(trimmed)) tags.push(trimmed);
   }
   return tags;
 }
@@ -257,6 +265,33 @@ function buildOrpTags(trainAs: 'white' | 'black', collection: ResearchCollection
 export interface OrpSaveResult {
   studyItem: StudyItem;
   sequence: TrainableSequence;
+}
+
+export interface RepertoireOrpSaveResult extends OrpSaveResult {
+  alreadyExisted: boolean;
+}
+
+export interface RepertoireOrpLineSaveInput {
+  ucis: string[];
+  sans: string[];
+  trainAs: 'white' | 'black';
+  sourceName: string;
+  title?: string;
+}
+
+interface OrpSaveOptions {
+  title?: string;
+  extraTags?: readonly string[];
+  mergeExistingTags?: boolean;
+}
+
+function mergeUniqueTags(existing: readonly string[], next: readonly string[]): string[] {
+  const merged: string[] = [];
+  for (const tag of [...existing, ...next]) {
+    const trimmed = tag.trim();
+    if (trimmed && !merged.includes(trimmed)) merged.push(trimmed);
+  }
+  return merged;
 }
 
 /**
@@ -284,6 +319,7 @@ export async function saveOrpLineToLibrary(
   collection: ResearchCollection | null,
   openingName?: string,
   openingEco?: string,
+  options: OrpSaveOptions = {},
 ): Promise<OrpSaveResult | null> {
   // Guard: line too short to drill.
   if (ucis.length < 3) {
@@ -305,7 +341,9 @@ export async function saveOrpLineToLibrary(
   // Derive display title per contract §2c priority order.
   const sanMoves = sans.slice(0, 4).join(' ');
   let title: string;
-  if (openingName) {
+  if (options.title) {
+    title = options.title;
+  } else if (openingName) {
     title = openingName;
   } else if (collection && isHumanReadableName(collection.name)) {
     title = `${collection.name} — ${sanMoves}`;
@@ -319,9 +357,13 @@ export async function saveOrpLineToLibrary(
   let studyCreatedAt = now;
   let seqCreatedAt   = now;
   let seqStatus: 'active' | 'paused' = 'active';
+  let existingStudy: StudyItem | null = null;
   try {
     const existing = await getStudy(studyItemId);
-    if (existing) studyCreatedAt = existing.createdAt;
+    if (existing) {
+      existingStudy = existing;
+      studyCreatedAt = existing.createdAt;
+    }
   } catch (e) {
     recordOrpLoadFail(e);
     console.warn('[saveAction] ORP: getStudy lookup failed on upsert, using now for createdAt', e);
@@ -339,6 +381,7 @@ export async function saveOrpLineToLibrary(
 
   // Build the PGN from the UCI moves for the StudyItem.pgn field.
   const pgn = uciMovesToPgn(ucis, title);
+  const tags = buildOrpTags(trainAs, collection, options.extraTags);
 
   // Build StudyItem (source: 'openings').
   const studyItem: StudyItem = {
@@ -346,7 +389,7 @@ export async function saveOrpLineToLibrary(
     pgn,
     title,
     source:    'openings',
-    tags:      buildOrpTags(trainAs, collection),
+    tags:      options.mergeExistingTags && existingStudy ? mergeUniqueTags(existingStudy.tags, tags) : tags,
     folders:   [],
     favorite:  false,
     createdAt: studyCreatedAt,
@@ -389,6 +432,28 @@ export async function saveOrpLineToLibrary(
   }
 
   return { studyItem, sequence };
+}
+
+export async function saveRepertoireLineToOrpLibrary(
+  input: RepertoireOrpLineSaveInput,
+): Promise<RepertoireOrpSaveResult | null> {
+  const sequenceId = deriveOrpSequenceId(input.trainAs, input.ucis);
+  const alreadyExisted = Boolean(await getPracticeLine(sequenceId));
+  const result = await saveOrpLineToLibrary(
+    input.ucis,
+    input.sans,
+    input.trainAs,
+    null,
+    input.title ?? input.sourceName,
+    undefined,
+    {
+      title: input.title ?? input.sourceName,
+      extraTags: ['repertoire', `source:${input.sourceName}`],
+      mergeExistingTags: true,
+    },
+  );
+  if (!result) return null;
+  return { ...result, alreadyExisted };
 }
 
 /**

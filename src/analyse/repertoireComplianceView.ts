@@ -11,7 +11,9 @@ import { computeRepertoireMatchRecord } from '../repertoire/scan';
 import { repertoireScanSourceVersion } from '../repertoire/scanRun';
 import { getCurrentRepertoireMatchRecord, saveRepertoireMatchRecords } from '../repertoire/sourceDb';
 import { repertoireDivergenceCategoryLabel } from '../repertoire/report';
+import { resolveRepertoireOrpLine } from '../repertoire/orp';
 import { repertoireSourceSideBadge } from '../repertoire/explorerViewModel';
+import { saveRepertoireLineToOrpLibrary } from '../study/saveAction';
 
 export interface AnalysisRepertoireComplianceRow {
   source: RepertoireSource;
@@ -69,6 +71,9 @@ let loadState: LoadState = {
   error: null,
 };
 let loadGeneration = 0;
+const orpSavingRows = new Set<string>();
+const orpFeedback = new Map<string, string>();
+const orpFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function enabledSourcesWithIndex(sources: readonly RepertoireSource[]): Array<{ source: RepertoireSource; sourceIndex: number }> {
   return sources
@@ -309,6 +314,64 @@ function missedMoveLabel(record: RepertoireMatchRecord): string {
   return record.missedSan ?? record.missedUci ?? '?';
 }
 
+function analysisOrpKey(row: AnalysisRepertoireComplianceRow): string {
+  return `${row.source.id}:${row.record.key}`;
+}
+
+function setAnalysisOrpFeedback(key: string, message: string, redraw: () => void): void {
+  orpFeedback.set(key, message);
+  const existingTimer = orpFeedbackTimers.get(key);
+  if (existingTimer) clearTimeout(existingTimer);
+  const timer = setTimeout(() => {
+    orpFeedback.delete(key);
+    orpFeedbackTimers.delete(key);
+    redraw();
+  }, 1800);
+  orpFeedbackTimers.set(key, timer);
+}
+
+function analysisOrpUnavailableReason(row: AnalysisRepertoireComplianceRow): string | null {
+  if (!row.record.missedUci) return 'No repertoire move is available for this row.';
+  return null;
+}
+
+function saveAnalysisRepertoireLineToOrp(
+  row: AnalysisRepertoireComplianceRow,
+  input: RenderAnalysisRepertoireComplianceInput,
+): void {
+  const key = analysisOrpKey(row);
+  if (orpSavingRows.has(key)) return;
+  orpSavingRows.add(key);
+  input.redraw();
+  void Promise.resolve().then(async () => {
+    const line = resolveRepertoireOrpLine({
+      source: row.source,
+      trainAs: row.record.ownerColor,
+      linePrefix: row.record.linePrefix ?? [],
+      missedUci: row.record.missedUci,
+      missedSan: row.record.missedSan ?? null,
+    });
+    if (!line) return 'Could not resolve the full source line for ORP.';
+    if (line.ucis.length < 3) return 'Line too short to practice.';
+    const result = await saveRepertoireLineToOrpLibrary({
+      ucis: line.ucis,
+      sans: line.sans,
+      trainAs: line.trainAs,
+      sourceName: line.sourceName,
+      title: line.label,
+    });
+    return result?.alreadyExisted ? 'Already in practice' : result ? 'Saved to Library!' : 'Save failed - invalid moves';
+  }).then(message => {
+    setAnalysisOrpFeedback(key, message, input.redraw);
+  }).catch(error => {
+    const message = error instanceof Error && error.message ? `Save failed - ${error.message}` : 'Save failed';
+    setAnalysisOrpFeedback(key, message, input.redraw);
+  }).finally(() => {
+    orpSavingRows.delete(key);
+    input.redraw();
+  });
+}
+
 function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAnalysisRepertoireComplianceInput): VNode | null {
   const record = row.record;
   if (record.status !== 'diverged' || record.category === null) return null;
@@ -337,17 +400,42 @@ function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAna
         },
       };
 
-  return h('button.analysis-repertoire__divergence.repertoire__line-summary', data, [
-    h('span.repertoire__line-main', [
-      h('span.repertoire__line-text', [
-        h('span.repertoire__line-prefix', `${moveLabel(record.firstDivergencePly)}: played `),
-        h('span.repertoire__line-highlight', playedMoveLabel(record)),
-        h('span.repertoire__line-expected', ` - repertoire ${missedMoveLabel(record)}`),
+  const orpReason = analysisOrpUnavailableReason(row);
+  const orpKey = analysisOrpKey(row);
+  const saving = orpSavingRows.has(orpKey);
+  const feedback = orpFeedback.get(orpKey) ?? null;
+  const orpTitle = orpReason ?? `Send ${row.source.name} line to Opening Repetition Practice`;
+
+  return h('div.analysis-repertoire__divergence-wrap', [
+    h('button.analysis-repertoire__divergence.repertoire__line-summary', data, [
+      h('span.repertoire__line-main', [
+        h('span.repertoire__line-text', [
+          h('span.repertoire__line-prefix', `${moveLabel(record.firstDivergencePly)}: played `),
+          h('span.repertoire__line-highlight', playedMoveLabel(record)),
+          h('span.repertoire__line-expected', ` - repertoire ${missedMoveLabel(record)}`),
+        ]),
+      ]),
+      h('span.repertoire__line-metrics', [
+        h('span.repertoire__category-badge', categoryLabel),
+        h('span.analysis-repertoire__jump', 'Jump'),
       ]),
     ]),
-    h('span.repertoire__line-metrics', [
-      h('span.repertoire__category-badge', categoryLabel),
-      h('span.analysis-repertoire__jump', 'Jump'),
+    h('div.repertoire__line-actions.analysis-repertoire__orp-actions', [
+      h('button.study-btn.repertoire__line-action', {
+        attrs: {
+          type: 'button',
+          title: orpTitle,
+          'aria-label': orpTitle,
+          disabled: Boolean(orpReason) || saving,
+        },
+        on: {
+          click: () => {
+            if (orpReason || saving) return;
+            saveAnalysisRepertoireLineToOrp(row, input);
+          },
+        },
+      }, saving ? 'Saving...' : 'Send to ORP'),
+      feedback ? h('span.openings__save-feedback.repertoire__line-feedback', feedback) : null,
     ]),
   ]);
 }

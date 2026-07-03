@@ -52,9 +52,11 @@ import {
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
+import { saveRepertoireLineToOrpLibrary } from './saveAction';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { StudyItem } from './types';
 import type { RepertoireLinePrefixMove, RepertoireSide, RepertoireSource } from '../repertoire';
+import { resolveRepertoireReportGroupOrpLine } from '../repertoire/orp';
 
 // --- Source label helpers ---
 
@@ -109,6 +111,9 @@ let _editingRepertoireSourceValue = '';
 const _expandedRepertoireReportRows = new Set<string>();
 type RepertoireReportMode = 'divergences' | 'study-next';
 let _repertoireReportMode: RepertoireReportMode = 'divergences';
+const _repertoireOrpSavingRows = new Set<string>();
+const _repertoireOrpFeedback = new Map<string, string>();
+const _repertoireOrpFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 
 
@@ -730,6 +735,18 @@ function openRepertoireReportGroupOnBoard(group: RepertoireComplianceReportGroup
   redraw();
 }
 
+function setRepertoireOrpFeedback(key: string, message: string, redraw: () => void): void {
+  _repertoireOrpFeedback.set(key, message);
+  const existingTimer = _repertoireOrpFeedbackTimers.get(key);
+  if (existingTimer) clearTimeout(existingTimer);
+  const timer = setTimeout(() => {
+    _repertoireOrpFeedback.delete(key);
+    _repertoireOrpFeedbackTimers.delete(key);
+    redraw();
+  }, 1800);
+  _repertoireOrpFeedbackTimers.set(key, timer);
+}
+
 function renderStudyNextFormula(group: RepertoireComplianceReportGroup): VNode {
   const label = `seen ${group.seenCount.toLocaleString()} x lost ${group.lostCount.toLocaleString()}`;
   return h('span.repertoire__study-next-formula', {
@@ -799,7 +816,10 @@ function renderRepertoireStudyNextActions(group: RepertoireComplianceReportGroup
   const openTitle = source
     ? `Open ${group.sourceName} at the repertoire prefix before this divergence`
     : `Source ${group.sourceName} is not available`;
-  const orpTitle = 'Send to ORP is not wired yet; internal update owns record creation.';
+  const orpUnavailableReason = repertoireOrpUnavailableReason(group, source);
+  const saving = _repertoireOrpSavingRows.has(group.key);
+  const orpTitle = orpUnavailableReason ?? `Send ${group.sourceName} line to Opening Repetition Practice`;
+  const feedback = _repertoireOrpFeedback.get(group.key) ?? null;
   return h('div.repertoire__line-actions', [
     h('button.study-btn.repertoire__line-action', {
       attrs: {
@@ -815,10 +835,58 @@ function renderRepertoireStudyNextActions(group: RepertoireComplianceReportGroup
         type: 'button',
         title: orpTitle,
         'aria-label': orpTitle,
-        disabled: true,
+        disabled: Boolean(orpUnavailableReason) || saving,
       },
-    }, 'Send to ORP'),
+      on: {
+        click: () => {
+          if (!source || orpUnavailableReason || saving) return;
+          saveRepertoireReportGroupToOrp(group, source, redraw);
+        },
+      },
+    }, saving ? 'Saving...' : 'Send to ORP'),
+    feedback ? h('span.openings__save-feedback.repertoire__line-feedback', feedback) : null,
   ]);
+}
+
+function repertoireOrpUnavailableReason(
+  group: RepertoireComplianceReportGroup,
+  source: RepertoireSource | null,
+): string | null {
+  if (!source) return `Source ${group.sourceName} is not available`;
+  if (group.ownerColor === 'mixed') return 'This aggregate row mixes White and Black owner games, so send each color separately.';
+  if (!group.missedUci) return 'No repertoire move is available for this row.';
+  return null;
+}
+
+function saveRepertoireReportGroupToOrp(
+  group: RepertoireComplianceReportGroup,
+  source: RepertoireSource,
+  redraw: () => void,
+): void {
+  if (_repertoireOrpSavingRows.has(group.key)) return;
+  _repertoireOrpSavingRows.add(group.key);
+  redraw();
+  void Promise.resolve().then(async () => {
+    const line = resolveRepertoireReportGroupOrpLine(group, source);
+    if (!line) return 'Could not resolve the full source line for ORP.';
+    if (line.ucis.length < 3) return 'Line too short to practice.';
+    const result = await saveRepertoireLineToOrpLibrary({
+      ucis: line.ucis,
+      sans: line.sans,
+      trainAs: line.trainAs,
+      sourceName: line.sourceName,
+      title: line.label,
+    });
+    return result?.alreadyExisted ? 'Already in practice' : result ? 'Saved to Library!' : 'Save failed - invalid moves';
+  }).then(message => {
+    setRepertoireOrpFeedback(group.key, message, redraw);
+  }).catch(error => {
+    const message = error instanceof Error && error.message ? `Save failed - ${error.message}` : 'Save failed';
+    setRepertoireOrpFeedback(group.key, message, redraw);
+  }).finally(() => {
+    _repertoireOrpSavingRows.delete(group.key);
+    redraw();
+  });
 }
 
 function renderRepertoireReportRow(

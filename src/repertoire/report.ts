@@ -45,6 +45,7 @@ export interface RepertoireComplianceReportGroup {
   sourceName: string;
   sourceSide: RepertoireSide;
   sourceAccentIndex: number;
+  ownerColor: 'white' | 'black' | 'mixed';
   category: Exclude<RepertoireDivergenceCategory, null>;
   categoryLabel: string;
   firstDivergencePly: number | null;
@@ -360,6 +361,7 @@ export function buildRepertoireComplianceReport(
     };
 
     if (existing) {
+      if (existing.ownerColor !== record.ownerColor) existing.ownerColor = 'mixed';
       existing.seenCount += 1;
       if (outcome === 'loss') existing.lostCount += 1;
       existing.nonLossCount = existing.seenCount - existing.lostCount;
@@ -378,6 +380,7 @@ export function buildRepertoireComplianceReport(
       sourceName: identity.name,
       sourceSide: identity.side,
       sourceAccentIndex: identity.accentIndex,
+      ownerColor: record.ownerColor,
       category,
       categoryLabel,
       firstDivergencePly: record.firstDivergencePly,
