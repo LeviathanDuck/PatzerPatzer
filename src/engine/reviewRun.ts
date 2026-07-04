@@ -433,6 +433,31 @@ export function firstReviewRunBatch<T>(items: readonly T[]): T[] {
   return items.slice(0, BULK_REVIEW_TARGET_BATCH_SIZE);
 }
 
+export interface ReviewRunSourceUiItem {
+  gameId: string;
+  sourceIndex: number;
+  waveIndex: number;
+}
+
+export function reviewRunWaveIndexForSourceIndex(
+  sourceIndex: number,
+  targetBatchSize = BULK_REVIEW_TARGET_BATCH_SIZE,
+): number {
+  const safeBatchSize = Math.max(1, Math.floor(targetBatchSize));
+  return Math.floor(Math.max(0, sourceIndex) / safeBatchSize);
+}
+
+export function reviewRunSourceUiItems(
+  sourceGameIds: readonly string[],
+  targetBatchSize = BULK_REVIEW_TARGET_BATCH_SIZE,
+): ReviewRunSourceUiItem[] {
+  return sourceGameIds.map((gameId, sourceIndex) => ({
+    gameId,
+    sourceIndex,
+    waveIndex: reviewRunWaveIndexForSourceIndex(sourceIndex, targetBatchSize),
+  }));
+}
+
 export function timeControlContextForGames(games: readonly ImportedGame[]): ReviewRunTimeControlContext {
   const speeds: string[] = [];
   const seen = new Set<string>();

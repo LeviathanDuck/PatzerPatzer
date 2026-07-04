@@ -10,6 +10,7 @@ import type { SyncResult } from './client';
 import {
   drainDurableVersionedOutbox,
   runVersionedPreWriteGate,
+  type VersionedOutboxDrainBatchProgress,
   type VersionedWriteBatchRequest,
   type VersionedWriteBatchResponse,
 } from './versionDrain';
@@ -40,6 +41,28 @@ import {
 import { shouldRunFullVersionedPull } from './versionRecovery';
 import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
 import { applySettingsLive, collectSettingKeysFromSyncItems } from './settingsLiveApply';
+import { getSessionId } from '../diagnostics';
+import {
+  addRemoteSyncIssue,
+  beginRemoteSyncOperation,
+  clearRemoteSyncIssue,
+  completeRemoteSyncOperation,
+  createRemoteSyncProgressStore,
+  deriveRemoteSyncProgressSnapshot,
+  failRemoteSyncOperation,
+  restoreRemoteSyncProgressOperations,
+  seedRemoteSyncProgressStoreFromPersisted,
+  serializeRemoteSyncProgressStore,
+  updateRemoteSyncOperation,
+  type AddRemoteSyncIssueInput,
+  type BeginRemoteSyncOperationOptions,
+  type RemoteSyncIssueReason,
+  type RemoteSyncOperationKind,
+  type RemoteSyncProgressSnapshot,
+  type RemoteSyncProgressStore,
+  type FailRemoteSyncOperationOptions,
+  type UpdateRemoteSyncOperationOptions,
+} from './progress';
 
 const API_BASE = '/api/patzer-sync';
 const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
@@ -60,6 +83,10 @@ export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
 export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
 export const REMOTE_SYNC_APPLIED_EVENT = 'chesspatzer:remoteSync-remote-sync-applied';
 export const REMOTE_SYNC_ACTIVITY_EVENT = 'chesspatzer:remoteSync-sync-activity-changed';
+export const REMOTE_SYNC_PROGRESS_EVENT = 'chesspatzer:remoteSync-sync-progress-changed';
+const SYNC_PROGRESS_SESSION_KEY = 'chesspatzer.remoteSync.syncProgressDenominators.v1';
+/** Mirrors CR-10 / the live engine UI throttle (src/engine/ctrl.ts): >=200ms between emits, trailing state always flushed. */
+const SYNC_PROGRESS_THROTTLE_MS = 200;
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
 const ITEM_DELETED_AT_PREFIX = 'chesspatzer.remoteSync.itemDeletedAt.';
@@ -73,6 +100,18 @@ const BACKUP_FORMAT = 'patzer-sync-backup';
 
 export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
+
+export type {
+  RemoteSyncIssue,
+  RemoteSyncIssueReason,
+  RemoteSyncOperationKind,
+  RemoteSyncOperationSummary,
+  RemoteSyncProgressIdentity,
+  RemoteSyncProgressIdentityBlock,
+  RemoteSyncProgressSeverity,
+  RemoteSyncProgressSnapshot,
+  RemoteSyncProgressState,
+} from './progress';
 
 export interface RemoteSyncDeleteKey {
   store: RemoteSyncStoreName;
@@ -557,10 +596,12 @@ function clearRemoteSyncCloudStateStale(): void {
 
 function requireRemoteSyncFullPull(): void {
   localStorage.setItem(FULL_PULL_REQUIRED_KEY, '1');
+  safeAddProgressIssue({ reason: 'full-pull-required' });
 }
 
 function clearRemoteSyncFullPullRequirement(): void {
   localStorage.removeItem(FULL_PULL_REQUIRED_KEY);
+  safeClearProgressIssue('full-pull-required');
 }
 
 export function getRemoteSyncDeviceTag(): string {
@@ -1104,6 +1145,258 @@ async function withRemoteSyncActivity<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
+
+
+
+
+
+
+
+let remoteSyncProgressStore: RemoteSyncProgressStore = createRemoteSyncProgressStore();
+
+function shortIdSuffix(value: string, length = 8): string {
+  const trimmed = value.trim();
+  return trimmed.length <= length ? trimmed : trimmed.slice(-length);
+}
+
+function currentRemoteSyncProgressIdentity() {
+  return {
+    identityLabel: storedServerIdentityLabel(),
+    deviceTag: getRemoteSyncDeviceTag(),
+    clientIdShort: shortIdSuffix(casClientId()),
+    sessionIdShort: shortIdSuffix(getSessionId()),
+  };
+}
+
+
+
+
+
+
+
+export function getRemoteSyncProgressSnapshot(): RemoteSyncProgressSnapshot {
+  return deriveRemoteSyncProgressSnapshot(remoteSyncProgressStore, currentRemoteSyncProgressIdentity());
+}
+
+let syncProgressEmitTimer: ReturnType<typeof setTimeout> | null = null;
+let syncProgressLastEmitAt = 0;
+
+function flushRemoteSyncProgressEmit(): void {
+  syncProgressEmitTimer = null;
+  syncProgressLastEmitAt = Date.now();
+  window.dispatchEvent(new CustomEvent(REMOTE_SYNC_PROGRESS_EVENT, {
+    detail: getRemoteSyncProgressSnapshot(),
+  }));
+}
+
+/** Throttles progress-change emission to >=200ms between dispatches, always flushing the trailing state. */
+function scheduleRemoteSyncProgressEmit(): void {
+  const elapsed = Date.now() - syncProgressLastEmitAt;
+  if (elapsed >= SYNC_PROGRESS_THROTTLE_MS && syncProgressEmitTimer === null) {
+    flushRemoteSyncProgressEmit();
+    return;
+  }
+  if (syncProgressEmitTimer !== null) return;
+  const wait = Math.max(0, SYNC_PROGRESS_THROTTLE_MS - elapsed);
+  syncProgressEmitTimer = window.setTimeout(flushRemoteSyncProgressEmit, wait);
+}
+
+function persistRemoteSyncProgressDenominators(): void {
+  try {
+    sessionStorage.setItem(SYNC_PROGRESS_SESSION_KEY, serializeRemoteSyncProgressStore(remoteSyncProgressStore));
+  } catch {
+    // Denominator persistence is a reload convenience only; it must never block sync.
+  }
+}
+
+function loadPersistedRemoteSyncProgressDenominators(): void {
+  try {
+    const raw = sessionStorage.getItem(SYNC_PROGRESS_SESSION_KEY);
+    const persisted = restoreRemoteSyncProgressOperations(raw);
+    if (persisted.length === 0) return;
+    remoteSyncProgressStore = seedRemoteSyncProgressStoreFromPersisted(remoteSyncProgressStore, persisted);
+  } catch {
+    // Denominator restore is a reload convenience only; it must never block sync.
+  }
+}
+
+if (typeof sessionStorage !== 'undefined') loadPersistedRemoteSyncProgressDenominators();
+
+/** Begins tracking a new sync operation. Returns the opId to pass to update/complete/fail. */
+export function beginRemoteSyncProgressOperation(
+  kind: RemoteSyncOperationKind,
+  options?: BeginRemoteSyncOperationOptions,
+): string {
+  const { store, opId } = beginRemoteSyncOperation(remoteSyncProgressStore, kind, options);
+  remoteSyncProgressStore = store;
+  if (typeof options?.total === 'number') persistRemoteSyncProgressDenominators();
+  scheduleRemoteSyncProgressEmit();
+  return opId;
+}
+
+/** Updates an in-flight sync operation (progress, phase label, or merged counts). */
+export function updateRemoteSyncProgressOperation(
+  opId: string,
+  updates: UpdateRemoteSyncOperationOptions,
+): void {
+  remoteSyncProgressStore = updateRemoteSyncOperation(remoteSyncProgressStore, opId, updates);
+  persistRemoteSyncProgressDenominators();
+  scheduleRemoteSyncProgressEmit();
+}
+
+/** Marks a sync operation as finished successfully. */
+export function completeRemoteSyncProgressOperation(opId: string): void {
+  remoteSyncProgressStore = completeRemoteSyncOperation(remoteSyncProgressStore, opId);
+  persistRemoteSyncProgressDenominators();
+  scheduleRemoteSyncProgressEmit();
+}
+
+/** Ends a sync operation unsuccessfully, optionally recording a reason-coded issue. */
+export function failRemoteSyncProgressOperation(
+  opId: string,
+  options?: FailRemoteSyncOperationOptions,
+): void {
+  remoteSyncProgressStore = failRemoteSyncOperation(remoteSyncProgressStore, opId, options);
+  persistRemoteSyncProgressDenominators();
+  scheduleRemoteSyncProgressEmit();
+}
+
+/** Adds (or replaces) the active issue for a reason code, independent of any specific operation. */
+export function addRemoteSyncProgressIssue(issue: AddRemoteSyncIssueInput): void {
+  remoteSyncProgressStore = addRemoteSyncIssue(remoteSyncProgressStore, issue);
+  scheduleRemoteSyncProgressEmit();
+}
+
+/** Clears the active issue for a reason code, if any. */
+export function clearRemoteSyncProgressIssue(reason: RemoteSyncIssueReason): void {
+  remoteSyncProgressStore = clearRemoteSyncIssue(remoteSyncProgressStore, reason);
+  scheduleRemoteSyncProgressEmit();
+}
+
+
+
+
+
+function safeBeginProgress(
+  kind: RemoteSyncOperationKind,
+  options?: BeginRemoteSyncOperationOptions,
+): string {
+  try {
+    return beginRemoteSyncProgressOperation(kind, options);
+  } catch {
+    return '';
+  }
+}
+
+function safeUpdateProgress(opId: string, updates: UpdateRemoteSyncOperationOptions): void {
+  if (!opId) return;
+  try {
+    updateRemoteSyncProgressOperation(opId, updates);
+  } catch {
+    // Progress reporting must never break the sync path.
+  }
+}
+
+function safeCompleteProgress(opId: string): void {
+  if (!opId) return;
+  try {
+    completeRemoteSyncProgressOperation(opId);
+  } catch {
+    // Progress reporting must never break the sync path.
+  }
+}
+
+function safeFailProgress(opId: string, options?: FailRemoteSyncOperationOptions): void {
+  if (!opId) return;
+  try {
+    failRemoteSyncProgressOperation(opId, options);
+  } catch {
+    // Progress reporting must never break the sync path.
+  }
+}
+
+function safeAddProgressIssue(issue: AddRemoteSyncIssueInput): void {
+  try {
+    addRemoteSyncProgressIssue(issue);
+  } catch {
+    // Progress reporting must never break the sync path.
+  }
+}
+
+function safeClearProgressIssue(reason: RemoteSyncIssueReason): void {
+  try {
+    clearRemoteSyncProgressIssue(reason);
+  } catch {
+    // Progress reporting must never break the sync path.
+  }
+}
+
+function skipIssueCounts(counts: Record<string, number>): Record<string, number> {
+  const keys = [
+    'skipped',
+    'skippedUnknownStore',
+    'skippedMissingPayload',
+    'skippedMergeFailed',
+    'skippedInvalidPayload',
+    'skippedNormalizeFailed',
+    'skippedApplyFailed',
+    'skippedMalformedJson',
+  ];
+  const picked: Record<string, number> = {};
+  for (const key of keys) {
+    const value = counts[key];
+    if (typeof value === 'number' && value > 0) picked[key] = value;
+  }
+  return picked;
+}
+
+
+
+
+
+function markVersionedPullUnsafeSkipped(counts: Record<string, number>): void {
+  requireRemoteSyncFullPull();
+  markRemoteSyncCloudStateStale();
+  safeAddProgressIssue({ reason: 'unsafe-skips', counts: skipIssueCounts(counts) });
+}
+
+function clearVersionedPullUnsafeSkipped(): void {
+  clearRemoteSyncFullPullRequirement();
+  clearRemoteSyncCloudStateStale();
+  safeClearProgressIssue('unsafe-skips');
+}
+
+
+
+
+
+
+
+export async function refreshRemoteSyncProgressSnapshot(): Promise<RemoteSyncProgressSnapshot> {
+  try {
+    const durableEntries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+    durableOutboxCountCache = durableEntries.length;
+  } catch {
+    // Best-effort refresh; keep whatever durable outbox count is already cached.
+  }
+
+  const identity = storedServerIdentityLabel();
+  const needsFullPull = isRemoteSyncFullPullRequired()
+    || (identity !== null && readRemoteSyncVersionMetadata(localStorage, identity).needsFullPull);
+  remoteSyncProgressStore = needsFullPull
+    ? addRemoteSyncIssue(remoteSyncProgressStore, { reason: 'full-pull-required' })
+    : clearRemoteSyncIssue(remoteSyncProgressStore, 'full-pull-required');
+
+
+
+
+
+  await scanRemoteSyncUntrackedLocalItems();
+
+  scheduleRemoteSyncProgressEmit();
+  return getRemoteSyncProgressSnapshot();
+}
+
 function specForPersistenceOperation(operation: RemoteSyncPersistenceOperation): IdbStoreSpec | undefined {
   const directStore = IDB_SPECS_BY_STORE.get(operation.storeName as RemoteSyncStoreName);
   if (directStore && directStore.dbName === operation.dbName) return directStore;
@@ -1386,6 +1679,19 @@ function readAllFromStore(db: IDBDatabase, storeName: string): Promise<IdbRecord
   });
 }
 
+/** Cheap key-only read: uses IDBObjectStore.getAllKeys() instead of a full cursor-over-values
+ * scan. Only valid for stores whose IDB primary key already equals the sync itemKey (see
+ * readLocalStoreItemKeys below for which keyModes qualify). */
+function readAllKeysFromStore(db: IDBDatabase, storeName: string): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve([]);
+    const tx = db.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAllKeys();
+    req.onsuccess = () => resolve((req.result as IDBValidKey[]).map(key => String(key)));
+    req.onerror = () => reject(req.error);
+  });
+}
+
 function readRecordByItemKey(db: IDBDatabase, spec: IdbStoreSpec, itemKey: string): Promise<unknown | undefined> {
   return new Promise((resolve, reject) => {
     if (!db.objectStoreNames.contains(spec.objectStore)) return resolve(undefined);
@@ -1534,6 +1840,19 @@ function isForbiddenSettingKey(key: string): boolean {
 function isAllowedSettingKey(key: string): boolean {
   if (isForbiddenSettingKey(key)) return false;
   return SETTINGS_KEYS.has(key) || SETTINGS_PREFIXES.some(prefix => key.startsWith(prefix));
+}
+
+
+
+
+
+function readLocalSettingsItemKeys(): string[] {
+  const keys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && isAllowedSettingKey(key) && localStorage.getItem(key) !== null) keys.push(key);
+  }
+  return keys;
 }
 
 function readLocalSettingsItems(): RemoteSyncItem[] {
@@ -2328,9 +2647,26 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
     normalized.push(entry);
   }
   if (normalized.length === 0) return;
-  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItemsBatch(normalized).catch(error => {
+  const queueOpId = safeBeginProgress('queueing', { total: normalized.length });
+  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItemsBatch(normalized).then(() => {
+    safeCompleteProgress(queueOpId);
+    safeClearProgressIssue('durable-enqueue-failed');
+
+
+
+
+    invalidateRemoteSyncUntrackedScanCache();
+    void scanRemoteSyncUntrackedLocalItems();
+  }).catch(error => {
     const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entries.';
     recordRemoteSyncLog('flush', 'error', message);
+    // BUG-2026-07-04-003: a durable-outbox write failure here previously vanished silently
+    // (only a debug log entry, no user-visible signal). This issue must never go unraised again.
+    safeFailProgress(queueOpId, {
+      reason: 'durable-enqueue-failed',
+      message,
+      counts: { failedItems: normalized.length },
+    });
   }));
   for (const entry of normalized) {
     if (isDeletedItem(entry)) rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt);
@@ -2697,13 +3033,11 @@ async function applyVersionedRevalidationPull(
     emitRemoteSyncApplied(counts, latestUpdatedAt);
   }
   if (!canAdvancePullVersionMetadata(counts)) {
-    requireRemoteSyncFullPull();
-    markRemoteSyncCloudStateStale();
+    markVersionedPullUnsafeSkipped(counts);
     return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
   }
   const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
-  clearRemoteSyncFullPullRequirement();
-  clearRemoteSyncCloudStateStale();
+  clearVersionedPullUnsafeSkipped();
   return { ok: true, latestVersion };
 }
 
@@ -2718,7 +3052,9 @@ async function revalidateBeforeVersionedDrain(cursor: number): Promise<{ ok: boo
   return applyVersionedRevalidationPull(result, generation);
 }
 
-async function drainVersionedRemoteSyncOutbox(): Promise<Record<string, number>> {
+async function drainVersionedRemoteSyncOutbox(
+  progressOptions: { onBatchProgress?: (progress: VersionedOutboxDrainBatchProgress) => void } = {},
+): Promise<Record<string, number>> {
   await ensureServerGenerationLoaded();
   const migrated = await migrateLegacyOutboxToVersioned();
   await waitForPendingVersionedOutboxWrites();
@@ -2733,6 +3069,7 @@ async function drainVersionedRemoteSyncOutbox(): Promise<Record<string, number>>
       identity: storedServerIdentity(),
       clientId: casClientId(),
       sendBatch: sendVersionedWriteBatch,
+      ...(progressOptions.onBatchProgress ? { onBatchProgress: progressOptions.onBatchProgress } : {}),
       acceptedAdapter: {
         applyAccepted: async accepted => {
           if (accepted.store !== 'accounts') return;
@@ -2892,6 +3229,188 @@ async function readLocalStoreItems(spec: IdbStoreSpec): Promise<RemoteSyncItem[]
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function readLocalStoreItemKeys(spec: IdbStoreSpec): Promise<string[]> {
+  const db = await openIdb(spec.dbName, spec.dbVersion);
+  try {
+    if (spec.keyMode === 'scan') {
+      const records = await readAllFromStore(db, spec.objectStore);
+      return records.flatMap(record => {
+        const key = spec.keyForRecord(record.value, record.primaryKey);
+        return key ? [key] : [];
+      });
+    }
+    return await readAllKeysFromStore(db, spec.objectStore);
+  } finally {
+    db.close();
+  }
+}
+
+
+
+
+
+
+export async function readLocalRemoteSyncItemKeysByStore(): Promise<Partial<Record<RemoteSyncStoreName, string[]>>> {
+  const entries = await Promise.all(IDB_STORE_SPECS.map(async spec => [spec.store, await readLocalStoreItemKeys(spec)] as const));
+  const result: Partial<Record<RemoteSyncStoreName, string[]>> = Object.fromEntries(entries);
+  result.settings = readLocalSettingsItemKeys();
+  return result;
+}
+
+export interface RemoteSyncUntrackedScanCounts {
+  totalUntracked: number;
+  byStore: Partial<Record<RemoteSyncStoreName, number>>;
+  scannedAt: number;
+}
+
+async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrackedScanCounts> {
+  const identity = storedServerIdentity();
+  const keysByStore = await readLocalRemoteSyncItemKeysByStore();
+  const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+  const pendingKeys = new Set(
+    (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
+      .map(entry => `${entry.store}::${entry.itemKey}`),
+  );
+  const byStore: Partial<Record<RemoteSyncStoreName, number>> = {};
+  let totalUntracked = 0;
+  for (const [store, keys] of Object.entries(keysByStore) as [RemoteSyncStoreName, string[]][]) {
+    let untrackedForStore = 0;
+    for (const itemKey of keys) {
+      if (resolveVersion(store, itemKey) !== null) continue;
+      if (pendingKeys.has(`${store}::${itemKey}`)) continue;
+      untrackedForStore += 1;
+    }
+    if (untrackedForStore > 0) byStore[store] = untrackedForStore;
+    totalUntracked += untrackedForStore;
+  }
+  return { totalUntracked, byStore, scannedAt: Date.now() };
+}
+
+/** Debounce/coalesce for the expensive (IDB-touching) half of the scan: at most one real scan per
+ * UNTRACKED_SCAN_DEBOUNCE_MS, and concurrent callers within that window share a single in-flight
+ * promise rather than each starting their own IDB pass. Severity/issue decisions (see
+ * applyUntrackedScanIssue) are always recomputed fresh from whatever counts this returns, so the
+ * debounce only ever affects scan *cost*, never the correctness of a given caller's
+ * postCleanCycle escalation decision. */
+const UNTRACKED_SCAN_DEBOUNCE_MS = 5_000;
+let untrackedScanCache: RemoteSyncUntrackedScanCounts | null = null;
+let untrackedScanInFlight: Promise<RemoteSyncUntrackedScanCounts> | null = null;
+
+/** Drops the cached scan result so the next call performs a fresh scan regardless of the debounce
+ * window. Used right before a rescan that must reflect a just-completed state change (a reconcile
+ * that just queued items, or a batch enqueue that just changed outbox membership). */
+export function invalidateRemoteSyncUntrackedScanCache(): void {
+  untrackedScanCache = null;
+}
+
+function getRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrackedScanCounts> {
+  if (untrackedScanInFlight) return untrackedScanInFlight;
+  const cached = untrackedScanCache;
+  if (cached && Date.now() - cached.scannedAt < UNTRACKED_SCAN_DEBOUNCE_MS) return Promise.resolve(cached);
+  const opId = safeBeginProgress('checking', { phase: 'Scanning local library for untracked items…' });
+  const run = computeRemoteSyncUntrackedScanCounts()
+    .then(result => {
+      untrackedScanCache = result;
+      safeCompleteProgress(opId);
+      return result;
+    })
+    .catch(error => {
+      safeFailProgress(opId);
+      throw error;
+    })
+    .finally(() => {
+      untrackedScanInFlight = null;
+    });
+  untrackedScanInFlight = run;
+  return run;
+}
+
+function formatUntrackedStoreSummary(byStore: Partial<Record<RemoteSyncStoreName, number>>): string {
+  return Object.entries(byStore)
+    .map(([store, count]) => `${store}: ${count}`)
+    .join(', ');
+}
+
+
+
+
+
+
+
+
+function applyUntrackedScanIssue(counts: RemoteSyncUntrackedScanCounts, postCleanCycle: boolean): void {
+  if (counts.totalUntracked <= 0) {
+    safeClearProgressIssue('untracked-local-items');
+    return;
+  }
+  const severity: 'warning' | 'error' = postCleanCycle ? 'error' : 'warning';
+  const storeSummary = formatUntrackedStoreSummary(counts.byStore);
+  const message = postCleanCycle
+    ? `Local data (${storeSummary}) is still not queued for sync after a clean pull and push. Use "Queue local library for sync".`
+    : `Local data not yet queued for sync (${storeSummary}). Use "Queue local library for sync".`;
+  safeAddProgressIssue({
+    reason: 'untracked-local-items',
+    message,
+    counts: { totalUntracked: counts.totalUntracked, ...(counts.byStore as Record<string, number>) },
+    severity,
+  });
+}
+
+export interface RemoteSyncUntrackedScanOptions {
+  /** True only when this scan runs immediately after a completed pull+flush cycle: sync ran
+   * cleanly end-to-end and any untracked items found now represent real stranded data, not an
+   * import/timing window. See applyUntrackedScanIssue for the taxonomy this drives. */
+  postCleanCycle?: boolean;
+}
+
+/** Public scan entry point: resolves the (possibly cached/coalesced) untracked-item counts and
+ * applies the resulting issue state. Never throws — detection must never break a real sync flow. */
+export async function scanRemoteSyncUntrackedLocalItems(
+  options: RemoteSyncUntrackedScanOptions = {},
+): Promise<RemoteSyncUntrackedScanCounts | null> {
+  try {
+    const counts = await getRemoteSyncUntrackedScanCounts();
+    applyUntrackedScanIssue(counts, options.postCleanCycle === true);
+    return counts;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not scan local sync data for untracked items.';
+    recordRemoteSyncLog('reconcile', 'error', `Untracked-item scan failed: ${message}`);
+    return null;
+  }
+}
+
+export async function readRemoteSyncUntrackedScanCountsForTest(): Promise<RemoteSyncUntrackedScanCounts> {
+  return getRemoteSyncUntrackedScanCounts();
+}
+
 export async function readLocalRemoteSyncItems(): Promise<RemoteSyncItem[]> {
   const groups = await Promise.all(IDB_STORE_SPECS.map(readLocalStoreItems));
   return [...groups.flat(), ...readLocalSettingsItems()];
@@ -2934,23 +3453,47 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
   }
 }
 
+interface RemoteSyncApplyProgress {
+  done: number;
+  total: number;
+  counts: Record<string, number>;
+}
+
+
+
+const APPLY_PROGRESS_REPORT_EVERY = 25;
+
 export async function applyRemoteSyncItems(
   items: unknown[],
-  options: { generation?: number } = {},
+  options: { generation?: number; onProgress?: (progress: RemoteSyncApplyProgress) => void } = {},
 ): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   let analysisChanged = false;
+  const total = items.length;
+  const reportProgress = (done: number): void => {
+    if (!options.onProgress) return;
+    if (done < total && done % APPLY_PROGRESS_REPORT_EVERY !== 0) return;
+    try {
+      options.onProgress({ done, total, counts: { ...counts } });
+    } catch {
+      // Progress reporting must never interrupt the pull apply loop.
+    }
+  };
   applyingRemoteSync = true;
   try {
+    let index = 0;
     for (const raw of items) {
+      index += 1;
       if (options.generation !== undefined && (syncGeneration !== options.generation || !hasRemoteSyncToken())) {
         counts.cancelled = (counts.cancelled ?? 0) + 1;
+        reportProgress(index);
         break;
       }
       const item = normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true });
       if (!item) {
         counts.skipped = (counts.skipped ?? 0) + 1;
         counts.skippedNormalizeFailed = (counts.skippedNormalizeFailed ?? 0) + 1;
+        reportProgress(index);
         continue;
       }
 
@@ -2970,6 +3513,7 @@ export async function applyRemoteSyncItems(
         const message = error instanceof Error ? error.message : 'Could not apply sync item.';
         recordRemoteSyncLog('pull', 'error', `Skipped ${item.store}/${item.itemKey}: ${message}`);
       }
+      reportProgress(index);
     }
   } finally {
     applyingRemoteSync = false;
@@ -3056,11 +3600,24 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   }
 
   return withRemoteSyncActivity(async () => {
+    const opId = safeBeginProgress('pushing', { total: queued });
     try {
-      const counts = await drainVersionedRemoteSyncOutbox();
+      const counts = await drainVersionedRemoteSyncOutbox({
+        onBatchProgress: progress => safeUpdateProgress(opId, {
+          done: Math.max(0, Math.min(queued, queued - progress.remaining)),
+          counts: {
+            accepted: progress.accepted,
+            conflicts: progress.conflicts,
+            rejected: progress.rejected,
+            backedOff: progress.backedOff,
+          },
+        }),
+      });
       durableOutboxCountCache = counts.queued ?? 0;
       setRemoteSyncLastSyncedAt(Date.now());
       recordRemoteSyncLog('flush', 'success', 'Queued CAS changes flushed.', counts);
+      safeCompleteProgress(opId);
+      safeClearProgressIssue('push-failed');
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
@@ -3069,6 +3626,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
       durableOutboxCountCache = remainingVersioned.length;
       const counts = { queued: remainingLegacy + remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
+      safeFailProgress(opId, { reason: 'push-failed', message, counts: { queuedRemaining: counts.queued } });
       return { success: false, error: message, counts };
     }
   });
@@ -3102,6 +3660,18 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
       const counts = { ...(flush.counts ?? {}) };
       mergeCounts(counts, pullCounts);
       recordRemoteSyncLog('push', 'success', 'Database pulled, then queued CAS changes flushed.', counts);
+
+
+
+
+
+
+
+
+      if (!options.skipFreshPull) {
+        invalidateRemoteSyncUntrackedScanCache();
+        await scanRemoteSyncUntrackedLocalItems({ postCleanCycle: true });
+      }
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync push failed.';
@@ -3130,6 +3700,7 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
   }
 
   return withRemoteSyncActivity(async () => {
+    const opId = safeBeginProgress('reconciling', { phase: 'Scanning local library…' });
     try {
       const localItems = await readLocalRemoteSyncItems();
       const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
@@ -3161,12 +3732,28 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
       for (const item of untracked) {
         counts[`queued:${item.store}`] = (counts[`queued:${item.store}`] ?? 0) + 1;
       }
+      safeUpdateProgress(opId, {
+        total: localItems.length,
+        done: localItems.length,
+        phase: 'Classifying local items…',
+        counts: { scannedLocal: localItems.length, alreadyTracked, alreadyQueued, queuedForSync: untracked.length },
+      });
       if (untracked.length > 0) {
+
+
+        safeCompleteProgress(opId);
         enqueueRemoteSyncItemsBatch(untracked);
         await waitForPendingVersionedOutboxWrites();
       }
       recordRemoteSyncLog('reconcile', 'success', 'Local items missing from the token database queued for sync.', counts);
-      if (untracked.length === 0) return { success: true, counts };
+      if (untracked.length === 0) {
+        safeCompleteProgress(opId);
+
+
+        invalidateRemoteSyncUntrackedScanCache();
+        await scanRemoteSyncUntrackedLocalItems();
+        return { success: true, counts };
+      }
 
       const flush = await flushRemoteSyncOutbox();
       if (!flush.success) {
@@ -3177,10 +3764,18 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
         };
       }
       mergeCounts(counts, flush.counts);
+
+
+
+
+
+      invalidateRemoteSyncUntrackedScanCache();
+      await scanRemoteSyncUntrackedLocalItems();
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not queue the local library for sync.';
       recordRemoteSyncLog('reconcile', 'error', message);
+      safeFailProgress(opId, { message });
       return { success: false, error: message };
     }
   });
@@ -3189,36 +3784,46 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): Promise<SyncResult> {
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
   return withRemoteSyncActivity(async () => {
+    let opId = '';
     try {
+      opId = safeBeginProgress('pulling', { phase: 'Fetching from server…' });
       await ensureServerGenerationLoaded();
       const generation = syncGeneration;
       const plan = planRemoteSyncPull(options);
       const result = await remoteSyncFetch<PullResponse>(plan.path);
       if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
       setRemoteSyncLastCheckedAt();
-      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { cancelled: 1 } };
+      if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+        safeCompleteProgress(opId);
+        return { success: true, counts: { cancelled: 1 } };
+      }
 
       const items = plan.mode === 'cursor'
         ? versionOrderedRawItems(result.items ?? [])
         : result.items ?? [];
-      const counts = await applyRemoteSyncItems(items, { generation });
+      safeUpdateProgress(opId, { total: items.length, done: 0, phase: 'Applying pulled changes…' });
+      const counts = await applyRemoteSyncItems(items, {
+        generation,
+        onProgress: progress => safeUpdateProgress(opId, { done: progress.done, counts: progress.counts }),
+      });
       let versionMetadataAdvanced = plan.mode !== 'cursor';
       if ((result.skippedMalformedJson ?? 0) > 0) {
         counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
         recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
       }
-      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
+      if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+        safeCompleteProgress(opId);
+        return { success: true, counts };
+      }
       if (plan.mode === 'cursor') {
         if (canAdvancePullVersionMetadata(counts)) {
           const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
           counts.latestVersion = latestVersion;
           if (plan.forcedFullPull) counts.fullVersionPull = 1;
-          clearRemoteSyncFullPullRequirement();
-          clearRemoteSyncCloudStateStale();
+          clearVersionedPullUnsafeSkipped();
           versionMetadataAdvanced = true;
         } else {
-          requireRemoteSyncFullPull();
-          markRemoteSyncCloudStateStale();
+          markVersionedPullUnsafeSkipped(counts);
           counts.versionMetadataDeferred = 1;
         }
       }
@@ -3226,6 +3831,7 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
       if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
       applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
       emitRemoteSyncApplied(counts, latestUpdatedAt);
+      safeCompleteProgress(opId);
 
       if (options.flushAfter && !(plan.mode === 'cursor' && (plan.forcedFullPull || !versionMetadataAdvanced))) {
         const flush = await flushRemoteSyncOutbox();
@@ -3247,6 +3853,7 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
       recordRemoteSyncLog('pull', 'error', message);
+      safeFailProgress(opId, { message });
       return { success: false, error: message };
     }
   });

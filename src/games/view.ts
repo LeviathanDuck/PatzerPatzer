@@ -11,9 +11,10 @@ import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
 import {
   enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
+  getReviewQueueItems,
   isGameErrored, formatReviewDuration, getFailedReviewStatus, skipFailedReviewGame, isLeaderTab,
   getReviewCrashContext, subscribeReviewQueueState,
-  type QueueSummary,
+  type QueueSummary, type ReviewQueueItemView,
 } from '../engine/reviewQueue';
 import {
   reviewRunStartFromContext,
@@ -388,8 +389,28 @@ type ReviewRowLifecycleLabel = {
   modifier: 'active' | 'queued' | 'paused' | 'warning';
 };
 
-function reviewRowLifecycleLabel(summary: QueueSummary | null, gameId: string): ReviewRowLifecycleLabel | null {
-  if (!summary || !summary.activeBatchGameIds.includes(gameId)) return null;
+const REVIEW_RUN_WAVE_CLASS_COUNT = 6;
+
+function reviewQueueItemProgressPercent(item: ReviewQueueItemView): number {
+  if (item.status === 'complete') return 100;
+  if (item.total <= 0) return 0;
+  return Math.round((Math.min(Math.max(0, item.done), item.total) / item.total) * 100);
+}
+
+function reviewRunWaveClasses(item: ReviewQueueItemView | undefined): Record<string, boolean> {
+  if (!item) return {};
+  return {
+    'review-run-member': true,
+    [`review-run-wave--${item.waveIndex % REVIEW_RUN_WAVE_CLASS_COUNT}`]: true,
+  };
+}
+
+function reviewRowLifecycleLabel(
+  summary: QueueSummary | null,
+  gameId: string,
+  item: ReviewQueueItemView | undefined,
+): ReviewRowLifecycleLabel | null {
+  if (!summary || !item) return null;
   const current = summary.currentGameId === gameId;
   if (current && summary.stale) {
     const age = formatReviewDuration(summary.lastProgressSeconds);
@@ -411,7 +432,13 @@ function reviewRowLifecycleLabel(summary: QueueSummary | null, gameId: string): 
   if (current) {
     return { label: 'Reviewing', title: 'Current review game', modifier: 'active' };
   }
-  return { label: 'Queued', title: 'Queued in the current review batch', modifier: 'queued' };
+  const progress = reviewQueueItemProgressPercent(item);
+  const waveLabel = `Wave ${item.waveIndex + 1}`;
+  return {
+    label:    `${progress}%`,
+    title:    item.isFuture ? `Queued for Bulk Review ${waveLabel}` : `Queued in the current Bulk Review ${waveLabel}`,
+    modifier: 'queued',
+  };
 }
 
 function renderReviewLifecyclePill(label: ReviewRowLifecycleLabel): VNode {
@@ -1271,6 +1298,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     || queueSummaryCandidate.lifecycleState === 'stale'
     ? queueSummaryCandidate
     : null;
+  const queueItemsByGameId = new Map(getReviewQueueItems().map(item => [item.gameId, item]));
   const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
     h('button.games-view__page-btn', {
       attrs: { type: 'button', disabled: gameListPage === 0 },
@@ -1324,12 +1352,14 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const isAnalyzed      = isReviewedGame(deps, game.id);
           const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
           const srcUrl          = deps.gameSourceUrl(game);
+          const queueItem       = queueItemsByGameId.get(game.id);
           const progress        = getReviewProgress(game.id);
+          const queueProgress   = queueItem ? reviewQueueItemProgressPercent(queueItem) : undefined;
           const isErrored       = isGameErrored(game.id);
           const failedStatus    = getFailedReviewStatus(game.id);
           const isAnalyzing     = !isErrored && progress !== undefined && progress < 100;
-          const isPending       = !isErrored && progress !== undefined && !isAnalyzing && !isAnalyzed;
-          const lifecycleLabel  = reviewRowLifecycleLabel(queueSummary, game.id);
+          const isPending       = !isErrored && !isAnalyzed && queueItem !== undefined && !isAnalyzing;
+          const lifecycleLabel  = reviewRowLifecycleLabel(queueSummary, game.id, queueItem);
           const lifecyclePill   = lifecycleLabel ? renderReviewLifecyclePill(lifecycleLabel) : null;
 
           // Accuracy for this game (available once analyzed).
@@ -1361,12 +1391,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 h('span.--failed-label', failedStatus ? `Failed (${failedStatus.attempts})` : 'Failed'),
                 h('span.--skip-label', 'Skip'),
               ])
-            : isAnalyzing && lifecycleLabel?.modifier === 'warning'
+            : isAnalyzing && lifecycleLabel && lifecycleLabel.modifier !== 'active' && lifecycleLabel.modifier !== 'queued'
             ? lifecyclePill
             : isAnalyzing
             ? h('span.game-list__row-progress', `${progress}%`)
             : isPending
-              ? lifecyclePill ?? h('span.game-list__row-progress.--queued', 'Queued')
+              ? lifecyclePill ?? h('span.game-list__row-progress.--queued', `${queueProgress ?? 0}%`)
               : isAnalyzed
                 ? (userAcc !== null && userAcc !== undefined
                     ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
@@ -1407,7 +1437,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                       }},
                     }, 'Review');
 
-          return h('li', [
+          return h('li', {
+            class: reviewRunWaveClasses(queueItem),
+          }, [
             h('button.game-list__row', {
               class: {
                 active:    game.id === deps.selectedGameId,
@@ -1646,6 +1678,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     || tableQueueSummaryCandidate.lifecycleState === 'stale'
     ? tableQueueSummaryCandidate
     : null;
+  const tableQueueItemsByGameId = new Map(getReviewQueueItems().map(item => [item.gameId, item]));
 
   // Table
   const table = h('div.games-view__table-wrap', [
@@ -1707,11 +1740,14 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             }
 
             // Review status cell
+            const queueItem       = !isAnalyzed ? tableQueueItemsByGameId.get(game.id) : undefined;
             const reviewProgress  = !isAnalyzed ? getReviewProgress(game.id) : undefined;
+            const queueProgress   = queueItem ? reviewQueueItemProgressPercent(queueItem) : undefined;
             const isReviewErrored = !isAnalyzed && isGameErrored(game.id);
             const failedStatus    = !isAnalyzed ? getFailedReviewStatus(game.id) : undefined;
             const isAnalyzing     = !isReviewErrored && reviewProgress !== undefined && reviewProgress < 100;
-            const lifecycleLabel  = !isAnalyzed ? reviewRowLifecycleLabel(tableQueueSummary, game.id) : null;
+            const isPending       = !isReviewErrored && !isAnalyzed && queueItem !== undefined && !isAnalyzing;
+            const lifecycleLabel  = !isAnalyzed ? reviewRowLifecycleLabel(tableQueueSummary, game.id, queueItem) : null;
             const lifecyclePill   = lifecycleLabel ? renderGamesReviewLifecyclePill(lifecycleLabel) : null;
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
@@ -1737,11 +1773,16 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                     h('span.--skip-label', 'Skip'),
                   ]),
                 ])
-              : isAnalyzing && lifecycleLabel?.modifier === 'warning'
+              : isAnalyzing && lifecycleLabel && lifecycleLabel.modifier !== 'active' && lifecycleLabel.modifier !== 'queued'
               ? h('td.games-view__review-cell', [lifecyclePill])
               : isAnalyzing
               ? h('td.games-view__review-cell', [
                   h('span.games-view__analyzing-progress', { attrs: { title: 'Reviewing…' } }, `${reviewProgress}%`),
+                ])
+              : isPending
+              ? h('td.games-view__review-cell', [
+                  lifecyclePill
+                    ?? h('span.games-view__review-lifecycle.--queued', { attrs: { title: 'Queued for Bulk Review' } }, `${queueProgress ?? 0}%`),
                 ])
               : h('td.games-view__review-cell', [
                   lifecyclePill
@@ -1793,6 +1834,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               class: {
                 active:   game.id === deps.selectedGameId,
                 selected: selectedGameIds.has(game.id),
+                ...reviewRunWaveClasses(queueItem),
               },
               on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => {
                 selectAnalysisGame(game, deps);

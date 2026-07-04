@@ -36,6 +36,7 @@ import {
   REVIEW_RUN_HYGIENE_CADENCE,
   reviewGamesInNewestFirstOrder,
   reviewSearchIdentityMatches,
+  reviewRunSourceUiItems,
   sampleReviewRunProgressByVisibility,
   searchOwnerConsumeBestmove,
   searchOwnerDescriptorIsActive,
@@ -4296,27 +4297,90 @@ export interface ReviewQueueItemView {
   done:        number;
   total:       number;
   isActive:    boolean;
+  isFuture:    boolean;
+  waveIndex:   number;
   canMoveUp:   boolean;
   canMoveDown: boolean;
   canRemove:   boolean;
 }
 
+function reviewQueueItemViewFromEntry(
+  entry: ReviewQueueEntry,
+  active: ReviewQueueEntry | undefined,
+  waveIndex: number,
+): ReviewQueueItemView {
+  const total = Math.max(0, entry.total);
+  return {
+    gameId:      entry.game.id,
+    label:       reviewQueueEntryLabel(entry),
+    status:      entry.status,
+    depth:       entry.depth,
+    done:        Math.min(Math.max(0, entry.done), total),
+    total,
+    isActive:    entry === active || entry.status === 'analyzing',
+    isFuture:    false,
+    waveIndex,
+    canMoveUp:   canMoveReviewQueueEntry(entry, 'up'),
+    canMoveDown: canMoveReviewQueueEntry(entry, 'down'),
+    canRemove:   entry !== active && isReviewQueueEntryActionable(entry),
+  };
+}
+
 export function getReviewQueueItems(): ReviewQueueItemView[] {
   const active = activeQueueEntry();
-  return sortByActiveBatchOrder(queue, entry => entry.game.id)
-    .filter(entry => entry.status !== 'complete')
-    .map(entry => ({
-      gameId:      entry.game.id,
-      label:       reviewQueueEntryLabel(entry),
-      status:      entry.status,
-      depth:       entry.depth,
-      done:        Math.min(Math.max(0, entry.done), Math.max(0, entry.total)),
-      total:       Math.max(0, entry.total),
-      isActive:    entry === active || entry.status === 'analyzing',
-      canMoveUp:   canMoveReviewQueueEntry(entry, 'up'),
-      canMoveDown: canMoveReviewQueueEntry(entry, 'down'),
-      canRemove:   entry !== active && isReviewQueueEntryActionable(entry),
-    }));
+  if (!activeReviewRun) {
+    return sortByActiveBatchOrder(queue, entry => entry.game.id)
+      .filter(entry => entry.status !== 'complete')
+      .map(entry => reviewQueueItemViewFromEntry(entry, active, 0));
+  }
+
+  const queuedByGameId = new Map(queue.map(entry => [entry.game.id, entry]));
+  const libraryByGameId = new Map(_libraryGames.map(game => [game.id, game]));
+  const completedIds = new Set(activeReviewRun.completedGameIds);
+  const skippedIds = new Set(activeReviewRun.skippedGameIds);
+  const failedIds = new Set(activeReviewRun.failedAttempts.map(attempt => attempt.gameId));
+  const items: ReviewQueueItemView[] = [];
+  const seen = new Set<string>();
+
+  for (const sourceItem of reviewRunSourceUiItems(activeReviewRun.sourceGameIds)) {
+    const gameId = sourceItem.gameId;
+    if (completedIds.has(gameId) || skippedIds.has(gameId) || _analyzedGameIds.has(gameId)) continue;
+
+    const queued = queuedByGameId.get(gameId);
+    if (queued) {
+      if (queued.status !== 'complete') {
+        items.push(reviewQueueItemViewFromEntry(queued, active, sourceItem.waveIndex));
+        seen.add(gameId);
+      }
+      continue;
+    }
+
+    const game = libraryByGameId.get(gameId);
+    if (!game) continue;
+    seen.add(gameId);
+    const total = Math.max(0, estimatePlyCountFromPgn(game.pgn));
+    items.push({
+      gameId,
+      label:       `${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
+      status:      failedIds.has(gameId) ? 'error' : 'pending',
+      depth:       activeReviewRun.reviewDepth,
+      done:        0,
+      total,
+      isActive:    false,
+      isFuture:    true,
+      waveIndex:   sourceItem.waveIndex,
+      canMoveUp:   false,
+      canMoveDown: false,
+      canRemove:   false,
+    });
+  }
+
+  for (const entry of sortByActiveBatchOrder(queue, entry => entry.game.id)) {
+    if (entry.status === 'complete' || seen.has(entry.game.id)) continue;
+    items.push(reviewQueueItemViewFromEntry(entry, active, 0));
+  }
+
+  return items;
 }
 
 export function moveReviewQueueGame(gameId: string, direction: 'up' | 'down'): void {

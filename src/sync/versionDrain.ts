@@ -78,6 +78,25 @@ export interface VersionedOutboxDrainOptions {
   now?: number;
   jitterMs?: number;
   batchSize?: number;
+
+
+
+
+
+
+
+  onBatchProgress?(progress: VersionedOutboxDrainBatchProgress): void;
+}
+
+export interface VersionedOutboxDrainBatchProgress {
+  /** Fixed for the whole drain call: the count of entries due at the start (the operation total). */
+  attempted: number;
+  accepted: number;
+  conflicts: number;
+  rejected: number;
+  backedOff: number;
+  /** Durable outbox queue size measured immediately after this batch was processed. */
+  remaining: number;
 }
 
 export interface VersionedAcceptedWriteAdapter {
@@ -201,6 +220,22 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
   }
 
   const counts: Record<string, number> = { attempted: due.length };
+  const reportBatchProgress = async (): Promise<void> => {
+    if (!options.onBatchProgress) return;
+    try {
+      const remaining = (await readDurableVersionedOutbox(options.outboxStorage)).length;
+      options.onBatchProgress({
+        attempted: counts.attempted ?? 0,
+        accepted: counts.accepted ?? 0,
+        conflicts: counts.conflicts ?? 0,
+        rejected: counts.rejected ?? 0,
+        backedOff: counts.backedOff ?? 0,
+        remaining,
+      });
+    } catch {
+      // Progress reporting must never interrupt the drain.
+    }
+  };
   for (const batch of chunks(due, batchSize)) {
     const opIds = batch.map(entry => entry.opId);
     await markDurableVersionedOutboxAttemptStarted(options.outboxStorage, opIds, { now });
@@ -221,6 +256,7 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
       mergeCounts(counts, 'failed', batch.length);
       mergeCounts(counts, 'queued', batch.length);
       mergeCounts(counts, 'backedOff', batch.length);
+      await reportBatchProgress();
       return { success: false, error: message, counts };
     }
 
@@ -313,6 +349,7 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
       mergeCounts(counts, 'queued', failedOpIds.length);
       mergeCounts(counts, 'backedOff', failedOpIds.length);
     }
+    await reportBatchProgress();
   }
 
   const queued = (await readDurableVersionedOutbox(options.outboxStorage)).length;

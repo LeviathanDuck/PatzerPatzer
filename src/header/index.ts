@@ -45,18 +45,24 @@ import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
 import {
-  REMOTE_SYNC_ACTIVITY_EVENT,
-  REMOTE_SYNC_LOG_EVENT,
+  REMOTE_SYNC_PROGRESS_EVENT,
   clearRemoteSyncToken,
+  getRemoteSyncOutboxCount,
   getRemoteSyncIdentitySnapshot,
+  getRemoteSyncProgressSnapshot,
   getRemoteSyncToken,
   hasRemoteSyncToken,
-  isRemoteSyncActive,
   logoutRemoteSync as stopAndClearRemoteSync,
+  queueLocalLibraryForRemoteSync,
+  refreshRemoteSyncProgressSnapshot,
   setRemoteSyncToken,
   startRemoteSyncAutoSync,
   testRemoteSyncConnection,
+  type RemoteSyncOperationKind,
+  type RemoteSyncOperationSummary,
+  type RemoteSyncProgressSnapshot,
 } from '../sync/remoteSync';
+import type { RemoteSyncIssue } from '../sync/progress';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import { writeHashRoute, type Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -160,7 +166,6 @@ export function openRetroModal(redraw: () => void): void {
 // --- Auth state ---
 const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
-const REMOTE_SYNC_LOADING_SRC = '/images/loading-icons/loading.gif';
 const REMOTE_SYNC_WARNING_ICON = '⚠';
 const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
 const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
@@ -174,9 +179,7 @@ let loginModalError = '';
 let remoteSyncActive = false;
 let remoteSyncChecked = false;
 let remoteSyncChecking = false;
-let remoteSyncBusy = isRemoteSyncActive();
 let remoteSyncTokenListenerAttached = false;
-let remoteSyncActivityListenerAttached = false;
 let remoteSyncLoginInput = '';
 let remoteSyncLoginBusy = false;
 let remoteSyncLoginError = '';
@@ -230,19 +233,6 @@ function ensureRemoteSyncTokenListener(redraw: () => void): void {
   window.addEventListener(REMOTE_SYNC_TOKEN_EVENT, resetFromStorage);
   window.addEventListener('storage', event => {
     if (event.key === REMOTE_SYNC_TOKEN_KEY) resetFromStorage();
-  });
-}
-
-function ensureRemoteSyncActivityListener(redraw: () => void): void {
-  if (remoteSyncActivityListenerAttached) return;
-  remoteSyncActivityListenerAttached = true;
-  window.addEventListener(REMOTE_SYNC_ACTIVITY_EVENT, () => {
-    remoteSyncBusy = isRemoteSyncActive();
-    redraw();
-  });
-  window.addEventListener(REMOTE_SYNC_LOG_EVENT, () => {
-    remoteSyncBusy = isRemoteSyncActive();
-    redraw();
   });
 }
 
@@ -341,18 +331,6 @@ function ensureHeaderAuth(redraw: () => void): void {
   });
 }
 
-function renderRemoteSyncIndicator(): VNode | null {
-  if (!remoteSyncBusy) return null;
-  return h('img.header__sync-loading', {
-    attrs: {
-      src: REMOTE_SYNC_LOADING_SRC,
-      alt: '',
-      'aria-hidden': 'true',
-      title: 'Sync in progress',
-    },
-  });
-}
-
 function renderRemoteSyncWarningIcon(className: string, title: string): VNode {
   return h(`span.${className}`, {
     attrs: {
@@ -361,19 +339,6 @@ function renderRemoteSyncWarningIcon(className: string, title: string): VNode {
       'aria-label': title,
     },
   }, REMOTE_SYNC_WARNING_ICON);
-}
-
-function renderRemoteSyncStatusCluster(): VNode | null {
-  const snapshot = getRemoteSyncIdentitySnapshot();
-  const warning = snapshot.freshnessWarning
-    ? renderRemoteSyncWarningIcon('header__sync-warning', snapshot.freshnessTitle)
-    : null;
-  const spinner = renderRemoteSyncIndicator();
-  if (!warning && !spinner) return null;
-  return h('span.header__sync-status', [
-    warning,
-    spinner,
-  ]);
 }
 
 function renderUserArea(redraw: () => void): VNode | null {
@@ -385,7 +350,6 @@ function renderUserArea(redraw: () => void): VNode | null {
         attrs: { type: 'button', title: 'Logout' },
         on: { click: () => logoutRemoteSync(redraw) },
       }, 'Logout'),
-      renderRemoteSyncStatusCluster(),
     ]);
   }
   return h('div.header__user.header__user--login', [
@@ -399,7 +363,6 @@ function renderUserArea(redraw: () => void): VNode | null {
         redraw();
       } },
     }, 'Login'),
-    renderRemoteSyncStatusCluster(),
   ]);
 }
 
@@ -665,9 +628,20 @@ function formatReviewQueueStatus(status: 'pending' | 'analyzing' | 'complete' | 
   return 'Waiting';
 }
 
-function formatReviewQueueProgress(done: number, total: number): string | null {
-  if (total <= 0) return null;
-  return `${Math.min(Math.max(0, done), total)}/${total} positions`;
+const REVIEW_RUN_WAVE_CLASS_COUNT = 6;
+
+function reviewRunWaveClasses(waveIndex: number): Record<string, boolean> {
+  return {
+    'review-run-member': true,
+    [`review-run-wave--${waveIndex % REVIEW_RUN_WAVE_CLASS_COUNT}`]: true,
+  };
+}
+
+function formatReviewQueueProgress(done: number, total: number): string {
+  if (total <= 0) return '0%';
+  const clampedDone = Math.min(Math.max(0, done), total);
+  const percent = Math.round((clampedDone / total) * 100);
+  return `${percent}% · ${clampedDone}/${total} positions`;
 }
 
 function renderReviewQueueSection(redraw: () => void): VNode {
@@ -679,7 +653,13 @@ function renderReviewQueueSection(redraw: () => void): VNode {
       : h('div.review-menu__queue-list', items.map(item => {
           const progress = formatReviewQueueProgress(item.done, item.total);
           const statusLabel = formatReviewQueueStatus(item.status, item.isActive);
-          return h('div.review-menu__queue-item', { key: item.gameId }, [
+          return h('div.review-menu__queue-item', {
+            key: item.gameId,
+            class: {
+              ...reviewRunWaveClasses(item.waveIndex),
+              'review-menu__queue-item--future': item.isFuture,
+            },
+          }, [
             h('div.review-menu__queue-main', [
               h('span.review-menu__queue-status', {
                 class: {
@@ -1095,6 +1075,263 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         )),
       ]),
 
+    ]) : null,
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+let showSyncProgressMenu = false;
+let syncProgressListenerAttached = false;
+let syncProgressCheckBusy = false;
+let syncProgressCheckMessage = '';
+let syncProgressQueueBusy = false;
+let syncProgressQueueMessage = '';
+let syncDiagnosticsCopyMessage = '';
+
+const SYNC_PROGRESS_OP_LABELS: Record<RemoteSyncOperationKind, string> = {
+  checking: 'Checking',
+  pulling: 'Pulling',
+  pushing: 'Pushing',
+  queueing: 'Queueing',
+  reconciling: 'Reconciling',
+};
+
+function ensureSyncProgressListener(redraw: () => void): void {
+  if (syncProgressListenerAttached) return;
+  syncProgressListenerAttached = true;
+  window.addEventListener(REMOTE_SYNC_PROGRESS_EVENT, () => redraw());
+}
+
+function formatSyncCount(value: number): string {
+  return value.toLocaleString();
+}
+
+function formatSyncCountsInline(counts: Record<string, number>): string {
+  return Object.entries(counts).map(([key, value]) => `${key} ${formatSyncCount(value)}`).join(' · ');
+}
+
+/** Compact trigger label. Overrides the snapshot's generic idle-warning label
+ * ('Attention needed') with the spec'd 'Sync stale', and upgrades an active
+ * operation with a known denominator to a live 'Syncing done/total' counter. */
+function formatSyncTriggerLabel(snapshot: RemoteSyncProgressSnapshot): string {
+  if (snapshot.severity === 'error') return 'Sync Error';
+  if (snapshot.severity === 'warning') return 'Sync stale';
+  if (snapshot.severity === 'active') {
+    const driving = snapshot.operations.find(op => op.kind === snapshot.state);
+    if (driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0) {
+      return `Syncing ${formatSyncCount(driving.done)}/${formatSyncCount(driving.total)}`;
+    }
+    return snapshot.label;
+  }
+  return snapshot.label;
+}
+
+function renderSyncOperationRow(op: RemoteSyncOperationSummary): VNode {
+  const progress = typeof op.total === 'number' && typeof op.done === 'number' && op.total > 0
+    ? `${formatSyncCount(op.done)}/${formatSyncCount(op.total)}`
+    : null;
+  const countsText = formatSyncCountsInline(op.counts);
+  return h('div.sync-menu__op', { key: op.opId }, [
+    h('div.sync-menu__op-header', [
+      h('span.sync-menu__op-label', SYNC_PROGRESS_OP_LABELS[op.kind]),
+      progress ? h('span.sync-menu__op-progress', progress) : null,
+    ]),
+    op.phase ? h('div.sync-menu__label', op.phase) : null,
+    countsText ? h('div.sync-menu__label', countsText) : null,
+  ]);
+}
+
+function renderSyncIssueRow(issue: RemoteSyncIssue): VNode {
+
+
+  const severity = issue.severity;
+  const countsText = issue.counts ? formatSyncCountsInline(issue.counts) : '';
+  return h('div.sync-menu__label', {
+    class: {
+      'sync-menu__label--warning': severity === 'warning',
+      'sync-menu__label--error': severity === 'error',
+    },
+  }, countsText ? `${issue.message} (${countsText})` : issue.message);
+}
+
+function buildSyncProgressDiagnosticsText(snapshot: RemoteSyncProgressSnapshot): string {
+  const identity = snapshot.identity;
+  const lines = [
+    buildReleaseIdentityCopyText(),
+    '',
+    'Sync progress:',
+    `State: ${snapshot.state} (${snapshot.severity})`,
+    `Label: ${snapshot.label}`,
+    snapshot.title ? `Detail: ${snapshot.title}` : null,
+    `Session: ${identity.identityLabel ?? 'Logged out'} · ${identity.deviceTag} · session ${identity.sessionIdShort} · client ${identity.clientIdShort}`,
+    identity.scopeNote,
+    `Queued for sync (durable outbox): ${getRemoteSyncOutboxCount()}`,
+    ...snapshot.operations.map(op => {
+      const progress = typeof op.total === 'number' ? ` ${op.done ?? 0}/${op.total}` : '';
+      const counts = Object.entries(op.counts).map(([key, value]) => `${key}=${value}`).join(', ');
+      return `Operation ${op.kind}${progress}${op.phase ? ` (${op.phase})` : ''}${counts ? ` [${counts}]` : ''}`;
+    }),
+    ...snapshot.issues.map(issue => {
+      const counts = issue.counts
+        ? Object.entries(issue.counts).map(([key, value]) => `${key}=${value}`).join(', ')
+        : '';
+      return `Issue ${issue.reason}: ${issue.message}${counts ? ` [${counts}]` : ''}`;
+    }),
+  ].filter((line): line is string => line !== null);
+  return lines.join('\n');
+}
+
+function copySyncProgressDiagnostics(redraw: () => void): void {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    syncDiagnosticsCopyMessage = 'Copy failed.';
+    redraw();
+    return;
+  }
+  syncDiagnosticsCopyMessage = 'Copying...';
+  redraw();
+  const text = buildSyncProgressDiagnosticsText(getRemoteSyncProgressSnapshot());
+  navigator.clipboard.writeText(text).then(() => {
+    syncDiagnosticsCopyMessage = 'Copied.';
+    redraw();
+  }, () => {
+    syncDiagnosticsCopyMessage = 'Copy failed.';
+    redraw();
+  });
+}
+
+function runSyncProgressCheck(redraw: () => void): void {
+  if (syncProgressCheckBusy) return;
+  syncProgressCheckBusy = true;
+  syncProgressCheckMessage = 'Checking…';
+  redraw();
+  refreshRemoteSyncProgressSnapshot().then(snapshot => {
+    syncProgressCheckBusy = false;
+    syncProgressCheckMessage = snapshot.severity === 'error'
+      ? `Sync check found an issue: ${snapshot.title}`
+      : 'Sync check complete.';
+    redraw();
+  }).catch((error: unknown) => {
+    syncProgressCheckBusy = false;
+    syncProgressCheckMessage = error instanceof Error ? error.message : 'Sync check failed.';
+    redraw();
+  });
+}
+
+function runQueueLocalLibrary(redraw: () => void): void {
+  if (syncProgressQueueBusy) return;
+  syncProgressQueueBusy = true;
+  syncProgressQueueMessage = 'Scanning local library…';
+  redraw();
+  queueLocalLibraryForRemoteSync().then(result => {
+    syncProgressQueueBusy = false;
+    syncProgressQueueMessage = result.success
+      ? `Local library queued${result.counts ? ` (${formatSyncCountsInline(result.counts)})` : ''}.`
+      : `Error: ${result.error}`;
+    redraw();
+  }).catch((error: unknown) => {
+    syncProgressQueueBusy = false;
+    syncProgressQueueMessage = error instanceof Error ? error.message : 'Could not queue the local library.';
+    redraw();
+  });
+}
+
+function renderSyncProgressMenu(redraw: () => void): VNode | null {
+  const snapshot = getRemoteSyncProgressSnapshot();
+
+
+
+  if (snapshot.severity === 'ok') return null;
+
+  const canQueueLocalLibrary = snapshot.issues.some(issue => issue.reason === 'untracked-local-items');
+
+  return h('div.sync-menu', [
+    h('button.sync-menu__trigger', {
+      class: {
+        active: showSyncProgressMenu,
+        'sync-severity--active': snapshot.severity === 'active',
+        'sync-severity--warning': snapshot.severity === 'warning',
+        'sync-severity--error': snapshot.severity === 'error',
+      },
+      attrs: { type: 'button', title: snapshot.title },
+      on: { click: () => {
+        const opening = !showSyncProgressMenu;
+        showSyncProgressMenu = opening;
+        redraw();
+
+
+
+        if (opening) refreshRemoteSyncProgressSnapshot().then(() => redraw()).catch(() => redraw());
+      } },
+    }, [
+      snapshot.severity === 'active' ? h('span.sync-menu__trigger-dot', { attrs: { 'aria-hidden': 'true' } }) : null,
+      h('span.sync-menu__trigger-label', formatSyncTriggerLabel(snapshot)),
+    ]),
+
+    showSyncProgressMenu ? h('div.sync-menu__backdrop', {
+      on: { click: () => { showSyncProgressMenu = false; redraw(); } },
+    }) : null,
+
+    showSyncProgressMenu ? h('div.sync-menu__dropdown', [
+      h('div.sync-menu__panel-header', [
+        h('div.sync-menu__panel-title', 'Sync Status'),
+        h('button.sync-menu__panel-close', {
+          attrs: { type: 'button', title: 'Close sync status menu', 'aria-label': 'Close sync status menu' },
+          on: { click: () => { showSyncProgressMenu = false; redraw(); } },
+        }, 'x'),
+      ]),
+
+      h('div.sync-menu__section', [
+        h('div.sync-menu__identity-line',
+          `${snapshot.identity.identityLabel ?? 'Logged out'} · ${snapshot.identity.deviceTag} · session ${snapshot.identity.sessionIdShort} · client ${snapshot.identity.clientIdShort}`),
+        h('div.sync-menu__label', snapshot.identity.scopeNote),
+      ]),
+
+      snapshot.operations.length > 0 ? h('div.sync-menu__section', [
+        h('div.sync-menu__section-title', 'Active'),
+        ...snapshot.operations.map(renderSyncOperationRow),
+      ]) : null,
+
+      h('div.sync-menu__section', [
+        h('div.sync-menu__label', `Queued for sync: ${formatSyncCount(getRemoteSyncOutboxCount())}`),
+      ]),
+
+      snapshot.issues.length > 0 ? h('div.sync-menu__section', [
+        h('div.sync-menu__section-title', 'Issues'),
+        ...snapshot.issues.map(renderSyncIssueRow),
+      ]) : null,
+
+      h('div.sync-menu__section', [
+        h('div.sync-menu__row', [
+          h('button.sync-menu__btn', {
+            attrs: { type: 'button', title: 'Open the full Sync Dashboard' },
+            on: { click: () => { showSyncProgressMenu = false; redraw(); writeHashRoute('#/sync'); } },
+          }, 'Open Sync Dashboard'),
+          h('button.sync-menu__btn', {
+            attrs: { type: 'button', disabled: syncProgressCheckBusy, title: 'Re-check sync readiness with the server' },
+            on: { click: () => runSyncProgressCheck(redraw) },
+          }, syncProgressCheckBusy ? 'Checking…' : 'Run sync check'),
+          h('button.sync-menu__btn', {
+            attrs: { type: 'button', title: 'Copy sync diagnostics (counts and identifiers only, no tokens)' },
+            on: { click: () => copySyncProgressDiagnostics(redraw) },
+          }, 'Copy diagnostics'),
+          canQueueLocalLibrary ? h('button.sync-menu__btn', {
+            attrs: { type: 'button', disabled: syncProgressQueueBusy, title: 'Queue local items the server has no recorded version for' },
+            on: { click: () => runQueueLocalLibrary(redraw) },
+          }, syncProgressQueueBusy ? 'Queueing…' : 'Queue local library for sync') : null,
+        ]),
+        syncProgressCheckMessage ? h('div.sync-menu__label', syncProgressCheckMessage) : null,
+        syncProgressQueueMessage ? h('div.sync-menu__label', syncProgressQueueMessage) : null,
+        syncDiagnosticsCopyMessage ? h('div.sync-menu__label', syncDiagnosticsCopyMessage) : null,
+      ]),
     ]) : null,
   ]);
 }
@@ -2231,8 +2468,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
   ensureHeaderAuth(redraw);
   ensureLoginModalListener(redraw);
   ensureRemoteSyncTokenListener(redraw);
-  ensureRemoteSyncActivityListener(redraw);
   ensureRemoteSyncAuth(redraw);
+  ensureSyncProgressListener(redraw);
   if (!categorySyncInit) {
     categorySyncInit = true;
     syncImportCategory(redraw);
@@ -2476,6 +2713,7 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     renderNav(route, deps.navHrefOverrides ?? {}),
     renderReviewMenu(redraw),
+    renderSyncProgressMenu(redraw),
     renderUserArea(redraw),
     renderGlobalMenu(deps),
     showLoginModal     ? renderLoginModal(redraw)     : null,
