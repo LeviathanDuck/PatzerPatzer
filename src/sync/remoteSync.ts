@@ -3070,6 +3070,19 @@ async function drainVersionedRemoteSyncOutbox(
       clientId: casClientId(),
       sendBatch: sendVersionedWriteBatch,
       ...(progressOptions.onBatchProgress ? { onBatchProgress: progressOptions.onBatchProgress } : {}),
+      onPermanentRejection: (entries, rejections) => {
+        const detail = entries
+          .slice(0, 10)
+          .map((entry, index) => `${entry.store}/${entry.itemKey} (${rejections[index]?.code ?? 'unknown'})`)
+          .join(', ');
+        const suffix = entries.length > 10 ? `, and ${entries.length - 10} more` : '';
+        recordRemoteSyncLog(
+          'flush',
+          'error',
+          `Permanently removed ${entries.length} queued write(s) from the sync outbox: ${detail}${suffix}. Local data is preserved; use Queue local library for sync to re-queue after the cause is fixed.`,
+        );
+        durableOutboxCountCache = null;
+      },
       acceptedAdapter: {
         applyAccepted: async accepted => {
           if (accepted.store !== 'accounts') return;

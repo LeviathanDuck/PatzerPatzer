@@ -191,6 +191,23 @@ function patzer_cas_base_matches($baseVersion, $existingRow): bool {
     return $currentVersion === $baseVersion;
 }
 
+function patzer_cas_row_rejection(array $item, Throwable $error): array {
+    $sqlState = null;
+    $errno = null;
+    if ($error instanceof PDOException) {
+        $info = $error->errorInfo ?? null;
+        $sqlState = is_array($info) && isset($info[0]) ? (string) $info[0] : (is_string($error->getCode()) ? $error->getCode() : null);
+        $errno = is_array($info) && isset($info[1]) ? (int) $info[1] : null;
+    }
+    if ($sqlState === '40001' || $errno === 1213 || $errno === 1205) {
+        return patzer_cas_rejected($item, 'server-busy', 'Row write hit database contention; retry.', true);
+    }
+    if ($sqlState === '22001' || $sqlState === '22007' || $errno === 1406 || $errno === 1366) {
+        return patzer_cas_rejected($item, 'invalid-payload', 'Row payload was rejected by the database.', false);
+    }
+    return patzer_cas_rejected($item, 'server-error', 'Row write failed on the server; retry.', true);
+}
+
 function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): never {
     $lockMetaStmt = $pdo->prepare(
         'SELECT sync_version_next
@@ -226,9 +243,11 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
     $rejected = [];
     $latestVersion = 0;
 
-    $pdo->beginTransaction();
-    try {
-        foreach ($items as $rawItem) {
+    // Each row commits in its own transaction so one failing row rejects only itself instead
+    // of rolling back the whole batch as a blanket 500, and so the per-user meta row lock is
+    // held per item (milliseconds) rather than for the entire batch — concurrent pushers from
+    // a second browser no longer time out against a long-lived batch lock.
+    foreach ($items as $rawItem) {
             if (!is_array($rawItem)) {
                 $rejected[] = [
                     'opId' => '',
@@ -277,56 +296,68 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
                 $payload = $payloadResult['payload'];
             }
 
-            patzer_sync_meta($pdo, $config['user_key']);
-            $lockMetaStmt->execute([$config['user_key']]);
-            $metaRow = $lockMetaStmt->fetch();
-            $lockMetaStmt->closeCursor();
-            $nextVersion = isset($metaRow['sync_version_next']) ? max(1, (int) $metaRow['sync_version_next']) : 1;
+            try {
+                $pdo->beginTransaction();
+                patzer_sync_meta($pdo, $config['user_key']);
+                $lockMetaStmt->execute([$config['user_key']]);
+                $metaRow = $lockMetaStmt->fetch();
+                $lockMetaStmt->closeCursor();
+                $nextVersion = isset($metaRow['sync_version_next']) ? max(1, (int) $metaRow['sync_version_next']) : 1;
 
-            $readRowStmt->execute([$config['user_key'], $store, $itemKey]);
-            $existingRow = $readRowStmt->fetch();
-            $readRowStmt->closeCursor();
-            if (!patzer_cas_base_matches($base['baseVersion'], $existingRow)) {
-                $current = is_array($existingRow) ? patzer_cas_versioned_item_from_row($existingRow) : null;
-                if (is_array($current)) $latestVersion = max($latestVersion, (int) $current['version']);
-                $conflict = [
-                    'opId' => $opId,
-                    'store' => $store,
-                    'itemKey' => $itemKey,
-                    'expectedBaseVersion' => $base['baseVersion'],
-                ];
-                if (is_array($current)) $conflict['current'] = $current;
-                $conflicts[] = $conflict;
-                continue;
-            }
+                $readRowStmt->execute([$config['user_key'], $store, $itemKey]);
+                $existingRow = $readRowStmt->fetch();
+                $readRowStmt->closeCursor();
+                if (!patzer_cas_base_matches($base['baseVersion'], $existingRow)) {
+                    $pdo->commit();
+                    $current = is_array($existingRow) ? patzer_cas_versioned_item_from_row($existingRow) : null;
+                    if (is_array($current)) $latestVersion = max($latestVersion, (int) $current['version']);
+                    $conflict = [
+                        'opId' => $opId,
+                        'store' => $store,
+                        'itemKey' => $itemKey,
+                        'expectedBaseVersion' => $base['baseVersion'],
+                    ];
+                    if (is_array($current)) $conflict['current'] = $current;
+                    $conflicts[] = $conflict;
+                    continue;
+                }
 
-            if ($store === 'accounts' && $operation === 'upsert' && is_array($existingRow) && $existingRow['deleted_at_ms'] === null) {
-                $existingPayload = json_decode((string) $existingRow['payload_json'], true);
-                if (is_array($existingPayload) && is_array($payload)) {
-                    $payload = patzer_merge_account_payload($existingPayload, $payload, $itemKey);
-                    $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES);
-                    if (!is_string($payloadJson)) {
-                        $rejected[] = patzer_cas_rejected($rawItem, 'invalid-payload', 'Merged account payload could not be encoded.');
-                        continue;
+                if ($store === 'accounts' && $operation === 'upsert' && is_array($existingRow) && $existingRow['deleted_at_ms'] === null) {
+                    $existingPayload = json_decode((string) $existingRow['payload_json'], true);
+                    if (is_array($existingPayload) && is_array($payload)) {
+                        $payload = patzer_merge_account_payload($existingPayload, $payload, $itemKey);
+                        $payloadJson = json_encode($payload, JSON_UNESCAPED_SLASHES);
+                        if (!is_string($payloadJson)) {
+                            $pdo->rollBack();
+                            $rejected[] = patzer_cas_rejected($rawItem, 'invalid-payload', 'Merged account payload could not be encoded.');
+                            continue;
+                        }
                     }
                 }
-            }
 
-            $updatedAt = is_numeric($rawItem['clientUpdatedAt'] ?? null)
-                ? max(0, (int) $rawItem['clientUpdatedAt'])
-                : patzer_now_ms();
-            if ($updatedAt <= 0) $updatedAt = patzer_now_ms();
-            $deletedAt = $operation === 'delete' ? $updatedAt : null;
-            $writeRowStmt->execute([
-                ':user_key' => $config['user_key'],
-                ':store_name' => $store,
-                ':item_key' => $itemKey,
-                ':version' => $nextVersion,
-                ':payload_json' => $payloadJson,
-                ':updated_at_ms' => $updatedAt,
-                ':deleted_at_ms' => $deletedAt,
-            ]);
-            $advanceMetaStmt->execute([$nextVersion + 1, $config['user_key']]);
+                $updatedAt = is_numeric($rawItem['clientUpdatedAt'] ?? null)
+                    ? max(0, (int) $rawItem['clientUpdatedAt'])
+                    : patzer_now_ms();
+                if ($updatedAt <= 0) $updatedAt = patzer_now_ms();
+                $deletedAt = $operation === 'delete' ? $updatedAt : null;
+                $writeRowStmt->execute([
+                    ':user_key' => $config['user_key'],
+                    ':store_name' => $store,
+                    ':item_key' => $itemKey,
+                    ':version' => $nextVersion,
+                    ':payload_json' => $payloadJson,
+                    ':updated_at_ms' => $updatedAt,
+                    ':deleted_at_ms' => $deletedAt,
+                ]);
+                $advanceMetaStmt->execute([$nextVersion + 1, $config['user_key']]);
+                $pdo->commit();
+            } catch (Throwable $error) {
+                $lockMetaStmt->closeCursor();
+                $readRowStmt->closeCursor();
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                $rejected[] = patzer_cas_row_rejection($rawItem, $error);
+                continue;
+            }
 
             $item = [
                 'store' => $store,
@@ -345,13 +376,6 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
                 'item' => $item,
             ];
             $latestVersion = max($latestVersion, $nextVersion);
-        }
-        $pdo->commit();
-    } catch (Throwable $error) {
-        $lockMetaStmt->closeCursor();
-        $readRowStmt->closeCursor();
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        patzer_json(500, ['ok' => false, 'error' => 'Versioned sync push failed.']);
     }
 
     $meta = patzer_sync_meta($pdo, $config['user_key']);

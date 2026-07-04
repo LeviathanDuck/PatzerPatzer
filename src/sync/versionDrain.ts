@@ -86,6 +86,15 @@ export interface VersionedOutboxDrainOptions {
 
 
   onBatchProgress?(progress: VersionedOutboxDrainBatchProgress): void;
+  /**
+   * Called when entries are permanently removed without server acceptance: explicit
+   * non-retryable server rejects and attempt-cap quarantines. Local IDB data is untouched, so
+   * the reconcile/untracked-scan path can re-queue these items after the cause is fixed
+   * (BUG-2026-07-04-005). Errors thrown by the callback are caught and ignored.
+   */
+  onPermanentRejection?(entries: DurableRetryOutboxEntry[], rejections: VersionedRejectedItem[]): void | Promise<void>;
+  /** Entries reaching this attemptCount are quarantined instead of retried forever. */
+  maxAttempts?: number;
 }
 
 export interface VersionedOutboxDrainBatchProgress {
@@ -147,6 +156,23 @@ export interface VersionedPreWriteGateResult {
 }
 
 const DEFAULT_BATCH_SIZE = 100;
+// Twelve attempts walks the full backoff schedule several times (over an hour of retries).
+// Beyond that a failure is treated as deterministic and the entry is quarantined rather than
+// re-pushed forever (BUG-2026-07-04-005).
+const DEFAULT_MAX_DRAIN_ATTEMPTS = 12;
+
+async function notifyPermanentRejection(
+  options: VersionedOutboxDrainOptions,
+  entries: DurableRetryOutboxEntry[],
+  rejections: VersionedRejectedItem[],
+): Promise<void> {
+  if (!options.onPermanentRejection || entries.length === 0) return;
+  try {
+    await options.onPermanentRejection(entries, rejections);
+  } catch {
+    // Permanent-rejection reporting must never interrupt the drain.
+  }
+}
 
 function normalizeNow(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
@@ -213,13 +239,31 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
 export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {
   const now = normalizeNow(options.now);
   const batchSize = Math.max(1, Math.floor(options.batchSize ?? DEFAULT_BATCH_SIZE));
-  const due = await dueDurableVersionedOutboxEntries(options.outboxStorage, now);
+  const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? DEFAULT_MAX_DRAIN_ATTEMPTS));
+  const counts: Record<string, number> = {};
+
+  let due = await dueDurableVersionedOutboxEntries(options.outboxStorage, now);
+  const capped = due.filter(entry => entry.attemptCount >= maxAttempts);
+  if (capped.length > 0) {
+    await removeDurableVersionedOutboxEntries(options.outboxStorage, capped.map(entry => entry.opId));
+    mergeCounts(counts, 'quarantined', capped.length);
+    await notifyPermanentRejection(options, capped, capped.map(entry => ({
+      opId: entry.opId,
+      store: entry.store,
+      itemKey: entry.itemKey,
+      code: 'attempt-cap',
+      retryable: false,
+      message: `Removed from the sync outbox after ${entry.attemptCount} failed attempts.`,
+    })));
+    due = due.filter(entry => entry.attemptCount < maxAttempts);
+  }
   if (due.length === 0) {
     const queued = (await readDurableVersionedOutbox(options.outboxStorage)).length;
-    return { success: true, counts: queued > 0 ? { queued } : {} };
+    if (queued > 0) counts.queued = queued;
+    return { success: true, counts };
   }
 
-  const counts: Record<string, number> = { attempted: due.length };
+  counts.attempted = due.length;
   const reportBatchProgress = async (): Promise<void> => {
     if (!options.onBatchProgress) return;
     try {
@@ -263,8 +307,13 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
     const acceptedByOpId = new Map(response.accepted.map(item => [item.opId, item]));
     const conflictsByOpId = new Map(response.conflicts.map(item => [item.opId, item]));
     const retryableRejected = new Set(response.rejected.filter(item => item.retryable).map(item => item.opId));
+    const nonRetryableRejected = new Map(
+      response.rejected.filter(item => !item.retryable && item.opId).map(item => [item.opId, item]),
+    );
     const durableOpIds: string[] = [];
     const failedOpIds: string[] = [];
+    const droppedEntries: DurableRetryOutboxEntry[] = [];
+    const droppedRejections: VersionedRejectedItem[] = [];
 
     for (const entry of batch) {
       const accepted = acceptedByOpId.get(entry.opId);
@@ -335,12 +384,27 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
         mergeCounts(counts, 'rejectedRetryable');
         continue;
       }
-      mergeCounts(counts, 'rejected');
+      const rejection = nonRetryableRejected.get(entry.opId);
+      if (rejection) {
+        // Explicit permanent server reject: remove so it cannot re-push every flush forever;
+        // local IDB data is preserved and recoverable through the reconcile path.
+        droppedEntries.push(entry);
+        droppedRejections.push(rejection);
+        mergeCounts(counts, 'rejectedDropped');
+        continue;
+      }
+      // Op absent from the response entirely: never drop silently — back off and retry.
+      failedOpIds.push(entry.opId);
+      mergeCounts(counts, 'unacknowledged');
     }
 
-    if (durableOpIds.length > 0) {
-      await removeDurableVersionedOutboxEntries(options.outboxStorage, durableOpIds);
+    if (durableOpIds.length > 0 || droppedEntries.length > 0) {
+      await removeDurableVersionedOutboxEntries(options.outboxStorage, [
+        ...durableOpIds,
+        ...droppedEntries.map(entry => entry.opId),
+      ]);
     }
+    await notifyPermanentRejection(options, droppedEntries, droppedRejections);
     if (failedOpIds.length > 0) {
       await recordDurableVersionedOutboxFailure(options.outboxStorage, failedOpIds, 'Versioned write result was not durable.', {
         now,
