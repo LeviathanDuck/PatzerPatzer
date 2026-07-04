@@ -152,6 +152,43 @@ export function getRemoteSyncItemVersion(
   return state.itemVersions[itemVersionKey(store, itemKey)] ?? null;
 }
 
+export interface RemoteSyncItemVersionRecord {
+  store: string;
+  itemKey: string;
+  version: number;
+}
+
+
+
+
+
+
+
+export function recordRemoteSyncItemVersions(
+  storage: RemoteSyncVersionStorage,
+  identity: string,
+  records: readonly RemoteSyncItemVersionRecord[],
+  latestVersion = 0
+): number {
+  if (!validVersion(latestVersion)) throw new Error('latestVersion must be a non-negative integer.');
+  for (const record of records) {
+    if (!validVersion(record.version)) throw new Error('item version must be a non-negative integer.');
+  }
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  const itemVersions = state.needsFullPull ? {} : { ...state.itemVersions };
+  let latest = Math.max(state.needsFullPull ? 0 : state.latestVersion, latestVersion);
+  for (const record of records) {
+    itemVersions[itemVersionKey(record.store, record.itemKey)] = record.version;
+    latest = Math.max(latest, record.version);
+  }
+  writeRemoteSyncVersionMetadata(storage, {
+    identity: state.identity,
+    latestVersion: latest,
+    itemVersions,
+  });
+  return latest;
+}
+
 // Bulk lookup: parses the metadata blob once and returns a resolver, so batch
 // enqueues avoid re-reading/re-parsing storage for every item.
 export function createRemoteSyncItemVersionResolver(

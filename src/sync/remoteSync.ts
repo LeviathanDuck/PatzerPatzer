@@ -18,8 +18,8 @@ import {
   createRemoteSyncItemVersionResolver,
   getRemoteSyncItemVersion,
   readRemoteSyncVersionMetadata,
-  recordRemoteSyncItemVersion,
-  setRemoteSyncLatestVersion,
+  recordRemoteSyncItemVersions,
+  type RemoteSyncItemVersionRecord,
 } from './versionMetadata';
 import {
   defaultDurableVersionedOutboxStorage,
@@ -2948,9 +2948,12 @@ async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Pro
 }
 
 function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown): number {
-  let latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
+  const latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
     ? Math.floor(latestVersion)
     : 0;
+  // One metadata write for the whole pull: rewriting the blob per row froze the page at
+  // pull completion once the library passed 10k rows (BUG-2026-07-04-006).
+  const records: RemoteSyncItemVersionRecord[] = [];
   for (const raw of items) {
     const item = objectValue(raw);
     const store = typeof item?.store === 'string' ? item.store as RemoteSyncStoreName : null;
@@ -2959,11 +2962,9 @@ function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion:
       ? Math.floor(item.version)
       : null;
     if (!store || !itemKey || version === null) continue;
-    recordRemoteSyncItemVersion(localStorage, storedServerIdentity(), store, itemKey, version);
-    latest = Math.max(latest, version);
+    records.push({ store, itemKey, version });
   }
-  setRemoteSyncLatestVersion(localStorage, storedServerIdentity(), latest);
-  return latest;
+  return recordRemoteSyncItemVersions(localStorage, storedServerIdentity(), records, latest);
 }
 
 function rawVersionedPullSortKey(raw: unknown): { version: number; store: string; itemKey: string } {
