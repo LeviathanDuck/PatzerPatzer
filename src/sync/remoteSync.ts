@@ -50,6 +50,7 @@ const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
 const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
 const SERVER_GENERATION_KEY = 'chesspatzer.remoteSync.syncGeneration';
 const SERVER_IDENTITY_KEY = 'chesspatzer.remoteSync.syncIdentity';
+const SERVER_LATEST_VERSION_KEY_PREFIX = 'chesspatzer.remoteSync.lastObservedServerVersion';
 const FULL_PULL_REQUIRED_KEY = 'chesspatzer.remoteSync.fullPullRequired';
 const CLOUD_STATE_STALE_KEY = 'chesspatzer.remoteSync.cloudStateStale';
 const CAS_CLIENT_ID_KEY = 'chesspatzer.remoteSync.casClientId';
@@ -111,11 +112,21 @@ export interface RemoteSyncLogEntry {
   counts?: Record<string, number>;
 }
 
+export type RemoteSyncFreshnessState = 'fresh' | 'stale' | 'unknown';
+
 export interface RemoteSyncIdentitySnapshot {
   hasToken: boolean;
   identityLabel: string | null;
   lastSyncedAt: string | null;
   lastCheckedAt: string | null;
+  freshnessState: RemoteSyncFreshnessState;
+  freshnessWarning: boolean;
+  freshnessLabel: string;
+  freshnessTitle: string;
+  localVersion: number | null;
+  serverVersion: number | null;
+  fullPullRequired: boolean;
+  cloudStateStale: boolean;
 }
 
 interface PullResponse {
@@ -186,6 +197,7 @@ interface StatusResponse {
   items?: number;
   tombstones?: number;
   latestUpdatedAt?: number;
+  latestVersion?: number;
   stores?: Record<string, StatusStoreSummary>;
   syncGeneration?: number;
   generationReason?: string;
@@ -377,13 +389,142 @@ function storedServerIdentityLabel(): string | null {
   return localStorage.getItem(SERVER_IDENTITY_KEY)?.trim() || null;
 }
 
+function observedServerVersionKey(identity: string): string {
+  return `${SERVER_LATEST_VERSION_KEY_PREFIX}.${encodeURIComponent(identity)}`;
+}
+
+function validSyncVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value) && value >= 0;
+}
+
+function normalizeSyncVersion(value: unknown): number | null {
+  if (validSyncVersion(value)) return value;
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return Math.floor(value);
+  return null;
+}
+
+function rememberObservedServerLatestVersion(latestVersion: unknown): void {
+  const version = normalizeSyncVersion(latestVersion);
+  if (version === null) return;
+  const identity = storedServerIdentityLabel();
+  if (!identity) return;
+  localStorage.setItem(observedServerVersionKey(identity), String(version));
+}
+
+function getObservedServerLatestVersion(identity: string): number | null {
+  const raw = localStorage.getItem(observedServerVersionKey(identity));
+  if (raw === null) return null;
+  const parsed = Number(raw);
+  return validSyncVersion(parsed) ? parsed : null;
+}
+
+function clearObservedServerLatestVersions(): void {
+  const prefix = `${SERVER_LATEST_VERSION_KEY_PREFIX}.`;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) keysToRemove.push(key);
+  }
+  for (const key of keysToRemove) localStorage.removeItem(key);
+}
+
+function syncFreshnessSnapshot(
+  hasToken: boolean,
+  identityLabel: string | null,
+): Pick<
+  RemoteSyncIdentitySnapshot,
+  | 'freshnessState'
+  | 'freshnessWarning'
+  | 'freshnessLabel'
+  | 'freshnessTitle'
+  | 'localVersion'
+  | 'serverVersion'
+  | 'fullPullRequired'
+  | 'cloudStateStale'
+> {
+  const fullPullRequired = isRemoteSyncFullPullRequired();
+  const cloudStateStale = isRemoteSyncCloudStateStale();
+  if (!hasToken) {
+    return {
+      freshnessState: 'unknown',
+      freshnessWarning: false,
+      freshnessLabel: 'Logged out',
+      freshnessTitle: 'Sync is logged out.',
+      localVersion: null,
+      serverVersion: null,
+      fullPullRequired,
+      cloudStateStale,
+    };
+  }
+  if (!identityLabel) {
+    return {
+      freshnessState: 'unknown',
+      freshnessWarning: false,
+      freshnessLabel: 'Freshness pending',
+      freshnessTitle: 'Waiting for the server to confirm this token identity.',
+      localVersion: null,
+      serverVersion: null,
+      fullPullRequired,
+      cloudStateStale,
+    };
+  }
+
+  const metadata = readRemoteSyncVersionMetadata(localStorage, identityLabel);
+  const localVersion = metadata.needsFullPull ? null : metadata.latestVersion;
+  const serverVersion = getObservedServerLatestVersion(identityLabel);
+  const stale = (label: string, title: string) => ({
+    freshnessState: 'stale' as const,
+    freshnessWarning: true,
+    freshnessLabel: label,
+    freshnessTitle: title,
+    localVersion,
+    serverVersion,
+    fullPullRequired,
+    cloudStateStale,
+  });
+
+  if (fullPullRequired) return stale('Sync may be stale', 'Full pull required before local data is current.');
+  if (cloudStateStale) return stale('Sync may be stale', 'Local sync state needs a fresh pull from the server.');
+  if (metadata.needsFullPull) return stale('Sync may be stale', 'Local sync cursor is missing; pull the token database before trusting local data.');
+  if (serverVersion !== null && localVersion !== null && serverVersion > localVersion) {
+    return stale('Sync may be stale', 'Server has newer sync data than this browser.');
+  }
+  if (getRemoteSyncLastCheckedAt() && !getRemoteSyncLastSyncedAt()) {
+    return stale('Sync may be stale', 'No completed sync has been recorded after the last database check.');
+  }
+  if (serverVersion !== null && localVersion !== null && localVersion >= serverVersion) {
+    return {
+      freshnessState: 'fresh',
+      freshnessWarning: false,
+      freshnessLabel: 'Up to date',
+      freshnessTitle: 'This browser is current as of the last server check.',
+      localVersion,
+      serverVersion,
+      fullPullRequired,
+      cloudStateStale,
+    };
+  }
+  return {
+    freshnessState: 'unknown',
+    freshnessWarning: false,
+    freshnessLabel: 'Freshness pending',
+    freshnessTitle: 'No server freshness comparison is available yet.',
+    localVersion,
+    serverVersion,
+    fullPullRequired,
+    cloudStateStale,
+  };
+}
+
 export function getRemoteSyncIdentitySnapshot(): RemoteSyncIdentitySnapshot {
   const hasToken = hasRemoteSyncToken();
+  const identityLabel = hasToken ? storedServerIdentityLabel() : null;
   return {
     hasToken,
-    identityLabel: hasToken ? storedServerIdentityLabel() : null,
+    identityLabel,
     lastSyncedAt: getRemoteSyncLastSyncedAt(),
     lastCheckedAt: getRemoteSyncLastCheckedAt(),
+    ...syncFreshnessSnapshot(hasToken, identityLabel),
   };
 }
 
@@ -391,6 +532,7 @@ function clearServerGeneration(): void {
   localStorage.removeItem(SERVER_GENERATION_KEY);
   localStorage.removeItem(`${SERVER_GENERATION_KEY}.reason`);
   localStorage.removeItem(SERVER_IDENTITY_KEY);
+  clearObservedServerLatestVersions();
   localStorage.removeItem(CLOUD_STATE_STALE_KEY);
 }
 
@@ -419,10 +561,19 @@ function clearRemoteSyncFullPullRequirement(): void {
 }
 
 export function getRemoteSyncDeviceTag(): string {
-  const stored = localStorage.getItem(DEVICE_TAG_KEY)?.trim();
+  let stored = '';
+  try {
+    stored = localStorage.getItem(DEVICE_TAG_KEY)?.trim() ?? '';
+  } catch {
+    stored = '';
+  }
   if (stored) return stored;
   const tag = defaultDeviceTag();
-  localStorage.setItem(DEVICE_TAG_KEY, tag);
+  try {
+    localStorage.setItem(DEVICE_TAG_KEY, tag);
+  } catch {
+    // Device labels are convenience metadata and must never block sync.
+  }
   return tag;
 }
 
@@ -860,6 +1011,7 @@ const SETTINGS_KEYS = new Set([
   'boardSoundEnabled',
   'boardSoundVolume',
   'patzer.openings.boardSoundEnabled',
+  'patzer.openings.targetColors.v1',
   'puzzleAutoNext',
   'patzer.games.accountFilter.v1',
   'analyse.explorer.enabled',
@@ -974,6 +1126,60 @@ function itemDeletedAtKey(store: RemoteSyncStoreName, itemKey: string): string {
   return `${ITEM_DELETED_AT_PREFIX}${store}.${itemKey}`;
 }
 
+function localStorageValueChars(key: string): number {
+  try {
+    return localStorage.getItem(key)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+function localStorageKeyCount(): number {
+  try {
+    return localStorage.length;
+  } catch {
+    return 0;
+  }
+}
+
+function storageErrorName(error: unknown): string {
+  return error instanceof Error && error.name ? error.name : 'StorageError';
+}
+
+function legacyStorageFailureCounts(key: string, value: string): Record<string, number> {
+  return {
+    localStorageKeys: localStorageKeyCount(),
+    storageKeyChars: key.length,
+    valueChars: value.length,
+    legacyOutboxChars: localStorageValueChars(OUTBOX_KEY),
+  };
+}
+
+function recordLegacySyncStorageFailure(label: string, key: string, value: string, error: unknown): void {
+  recordRemoteSyncLog(
+    'flush',
+    'error',
+    `Legacy RemoteSync ${label} localStorage update failed (${storageErrorName(error)}); durable CAS outbox remains authoritative.`,
+    legacyStorageFailureCounts(key, value),
+  );
+}
+
+function setLegacySyncStorageItem(key: string, value: string, label: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    recordLegacySyncStorageFailure(label, key, value, error);
+  }
+}
+
+function removeLegacySyncStorageItem(key: string, label: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    recordLegacySyncStorageFailure(label, key, '', error);
+  }
+}
+
 function rememberedItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string): number {
   const raw = localStorage.getItem(itemUpdatedAtKey(store, itemKey));
   const value = raw ? Number.parseInt(raw, 10) : 0;
@@ -987,17 +1193,21 @@ function rememberedItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): n
 }
 
 function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
-  localStorage.setItem(itemUpdatedAtKey(store, itemKey), String(Math.max(0, Math.floor(updatedAt))));
+  setLegacySyncStorageItem(
+    itemUpdatedAtKey(store, itemKey),
+    String(Math.max(0, Math.floor(updatedAt))),
+    'item updated-at marker',
+  );
 }
 
 function rememberItemDeletedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
   const value = String(Math.max(0, Math.floor(updatedAt)));
-  localStorage.setItem(itemDeletedAtKey(store, itemKey), value);
-  localStorage.setItem(itemUpdatedAtKey(store, itemKey), value);
+  setLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), value, 'item deleted-at marker');
+  setLegacySyncStorageItem(itemUpdatedAtKey(store, itemKey), value, 'item updated-at marker');
 }
 
 function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): void {
-  localStorage.removeItem(itemDeletedAtKey(store, itemKey));
+  removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
 }
 
 function pendingOutboxItem(store: RemoteSyncStoreName, itemKey: string): RemoteSyncItem | undefined {
@@ -1661,6 +1871,7 @@ async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOve
   const body = await readJsonResponse<ApiErrorBody & T>(res);
   rememberServerGeneration(body.syncGeneration, body.generationReason);
   rememberServerIdentity(body.authIdentity, body.userKey);
+  rememberObservedServerLatestVersion((body as { latestVersion?: unknown }).latestVersion);
   if (!res.ok) {
     const ep = endpointClass(path);
     logSyncFailure({
@@ -1896,10 +2107,10 @@ function readOutbox(): RemoteSyncItem[] {
 function writeOutboxSnapshot(items: RemoteSyncItem[], preservedInvalid: unknown[] = []): void {
   const next = [...preservedInvalid, ...items];
   if (next.length === 0) {
-    localStorage.removeItem(OUTBOX_KEY);
+    removeLegacySyncStorageItem(OUTBOX_KEY, 'outbox snapshot');
     return;
   }
-  localStorage.setItem(OUTBOX_KEY, JSON.stringify(next));
+  setLegacySyncStorageItem(OUTBOX_KEY, JSON.stringify(next), 'outbox snapshot');
 }
 
 function writeOutbox(items: RemoteSyncItem[]): void {
@@ -1993,18 +2204,20 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (applyingRemoteSync) return;
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
+  if (!isDeletedItem(normalized)) {
+    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) return;
+  }
+  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
+    const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
+    recordRemoteSyncLog('flush', 'error', message);
+  }));
   if (isDeletedItem(normalized)) rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
   else {
-    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) return;
     rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
     clearItemDeletedAt(normalized.store, normalized.itemKey);
   }
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
-  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
-    const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
-    recordRemoteSyncLog('flush', 'error', message);
-  }));
   scheduleRemoteSyncFlush();
 }
 
@@ -2669,12 +2882,14 @@ export async function validateRemoteSyncToken(token: string): Promise<SyncResult
     if (!value) return { success: false, error: 'Enter the admin sync token first.' };
     const status = await remoteSyncFetch<StatusResponse>('status.php', {}, value);
     if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
+    setRemoteSyncLastCheckedAt();
     const result = {
       success: true,
       counts: {
         items: status.items ?? 0,
         tombstones: status.tombstones ?? 0,
         latestUpdatedAt: status.latestUpdatedAt ?? 0,
+        latestVersion: status.latestVersion ?? 0,
         syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
       },
     };
@@ -2698,12 +2913,14 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
     try {
       const status = await remoteSyncFetch<StatusResponse>('status.php');
       if (!status.ok) return { success: false, error: status.error || 'Remote sync status failed.' };
+      setRemoteSyncLastCheckedAt();
       const result = {
         success: true,
         counts: {
           items: status.items ?? 0,
           tombstones: status.tombstones ?? 0,
           latestUpdatedAt: status.latestUpdatedAt ?? 0,
+          latestVersion: status.latestVersion ?? 0,
           syncGeneration: status.syncGeneration ?? storedServerGeneration() ?? 0,
         },
       };

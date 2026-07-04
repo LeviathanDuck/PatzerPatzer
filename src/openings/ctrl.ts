@@ -49,6 +49,16 @@ import {
 import { getDeviceMetadata } from '../diagnostics/session';
 import { contextFromRootAndMoves, type EnginePositionContext } from '../engine/positionContext';
 import { opponentsTreeUrlScopesMatch } from './routeOrchestration';
+import {
+  DEFAULT_OPENINGS_TREE_COLOR,
+  normalizeOpeningsTreeColor,
+  openingsTargetColorKey,
+  readOpeningsTargetColor,
+  resolveOpeningsRouteColor,
+  resolveOpeningsSessionColor,
+  writeOpeningsTargetColor,
+  type OpeningsTreeColor,
+} from './color';
 
 export type OpeningsPage = 'library' | 'loading' | 'session';
 
@@ -95,6 +105,7 @@ export interface OpeningsRoutePathRestoreResult {
 
 export interface OpenCollectionOptions {
   initialPath?: string[];
+  color?: OpeningsTreeColor;
   onInitialPathResolved?: (result: OpeningsRoutePathRestoreResult) => void;
 }
 
@@ -167,14 +178,12 @@ export function invalidateImportedSpeeds(accountId: string): void {
 
 /**
  * Set the color filter state without rebuilding the active tree.
- * For use immediately before opening a new session: openCollection reads
- * _colorFilter for its initial build, so triggering setColorFilter's rebuild
- * here would race a stale collection's build against the new session's.
+ * For route/import preload paths that need to stage side-only state before
+ * openCollection receives the same color through OpenCollectionOptions.
  */
-export function presetColorFilter(color: 'white' | 'black' | 'both'): void {
-  _colorFilter = color;
-  if (color === 'white') _boardOrientation = 'white';
-  else if (color === 'black') _boardOrientation = 'black';
+export function presetColorFilter(color: OpeningsTreeColor): void {
+  _colorFilter = normalizeOpeningsTreeColor(color);
+  _boardOrientation = _colorFilter;
 }
 
 export function sampleGamesSortMode(): SampleGamesSortMode {
@@ -201,10 +210,15 @@ export function setSampleGamesResultFilter(filter: SampleGamesResultFilter, redr
  * that is never saved to the collections store. An aborted signal after the
  * games load cancels the open (the user backed out while loading).
  */
-export async function openAccountResearch(account: ChessAccount, redraw: () => void, signal?: AbortSignal): Promise<void> {
+export async function openAccountResearch(
+  account: ChessAccount,
+  redraw: () => void,
+  signal?: AbortSignal,
+  options: OpenCollectionOptions = {},
+): Promise<void> {
   const records = await loadGamesByAccountFromIdb(account.id);
   if (signal?.aborted) return;
-  openCollection(createAccountResearchCollection(account, records), redraw);
+  openCollection(createAccountResearchCollection(account, records), redraw, options);
 }
 
 // --- Import workflow state ---
@@ -214,7 +228,7 @@ let _importStep: ImportStep = 'idle';
 let _isFetching = false;
 let _importSource: ResearchSource = 'chesscom';
 let _importUsername = '';
-let _importColor: 'white' | 'black' | 'both' = 'both';
+let _importColor: OpeningsTreeColor = DEFAULT_OPENINGS_TREE_COLOR;
 
 
 let _importCategory: AccountCategory = 'opponent';
@@ -273,6 +287,34 @@ function sessionUrlTargetFor(collection: ResearchCollection): OpponentsUrlTarget
     return { kind: 'account', id: collection.id.slice(accountPrefix.length) };
   }
   return { kind: 'collection', id: collection.id };
+}
+
+function targetColorKeyForCollection(collection: ResearchCollection): string {
+  const target = sessionUrlTargetFor(collection);
+  return openingsTargetColorKey(target.kind, target.id);
+}
+
+export function targetColorKeyForUrlTarget(target: OpponentsUrlTarget | undefined): string | null {
+  return target ? openingsTargetColorKey(target.kind, target.id) : null;
+}
+
+export function resolveOpeningsTargetColor(target: OpponentsUrlTarget | undefined): OpeningsTreeColor {
+  const targetKey = targetColorKeyForUrlTarget(target);
+  if (_activeCollection && targetColorKeyForCollection(_activeCollection) === targetKey) return _colorFilter;
+  return readOpeningsTargetColor(targetKey, DEFAULT_OPENINGS_TREE_COLOR);
+}
+
+export function resolveOpeningsRouteStateColor(
+  state: OpponentsTreeUrlState,
+  colorExplicit: boolean,
+): OpeningsTreeColor {
+  if (!colorExplicit) return resolveOpeningsTargetColor(state.target);
+  return resolveOpeningsRouteColor(state.color, colorExplicit, targetColorKeyForUrlTarget(state.target));
+}
+
+function persistActiveTargetColor(): void {
+  if (!_activeCollection) return;
+  writeOpeningsTargetColor(targetColorKeyForCollection(_activeCollection), _colorFilter);
 }
 
 function normalizedUrlSpeeds(speeds: ReadonlySet<string>): OpponentsUrlSpeed[] {
@@ -370,13 +412,13 @@ export async function renameCollection(id: string, newName: string, redraw: () =
 export function importStep(): ImportStep { return _importStep; }
 export function importSource(): ResearchSource { return _importSource; }
 export function importUsername(): string { return _importUsername; }
-export function importColor(): 'white' | 'black' | 'both' { return _importColor; }
+export function importColor(): OpeningsTreeColor { return _importColor; }
 export function importError(): string | null { return _importError; }
 
 export function setImportStep(step: ImportStep): void { _importStep = step; }
 export function setImportSource(source: ResearchSource): void { _importSource = source; }
 export function setImportUsername(username: string): void { _importUsername = username; }
-export function setImportColor(color: 'white' | 'black' | 'both'): void { _importColor = color; }
+export function setImportColor(color: OpeningsTreeColor): void { _importColor = normalizeOpeningsTreeColor(color); }
 export function importCategory(): AccountCategory { return _importCategory; }
 export function setImportCategory(category: AccountCategory): void { _importCategory = category; }
 export function setImportError(err: string | null): void { _importError = err; }
@@ -427,7 +469,7 @@ export function resetImport(): void {
   _isFetching = false;
   _importStep = 'idle';
   _importUsername = '';
-  _importColor = 'both';
+  _importColor = DEFAULT_OPENINGS_TREE_COLOR;
   _importCategory = 'opponent';
   _importError = null;
   _importProgress = 0;
@@ -472,7 +514,7 @@ let _sessionPath: string[] = []; // list of UCI moves from root
 let _sessionNode: OpeningTreeNode | null = null;
 let _boardOrientation: 'white' | 'black' = 'white';
 
-let _colorFilter: 'white' | 'black' | 'both' = 'white';
+let _colorFilter: OpeningsTreeColor = DEFAULT_OPENINGS_TREE_COLOR;
 let _speedFilter = new Set<string>(); // empty = all speeds
 let _recencyMode: 'recent' | 'all-time' = 'all-time';
 let _sessionDateRange: string | null = null;
@@ -650,7 +692,7 @@ export function flipBoard(): void {
   notifySessionStateChanged();
 }
 export function openingTree(): OpeningTreeNode | null { return _openingTree; }
-export function colorFilter(): 'white' | 'black' | 'both' { return _colorFilter; }
+export function colorFilter(): OpeningsTreeColor { return _colorFilter; }
 export function speedFilter(): ReadonlySet<string> { return _speedFilter; }
 export function treeEvalThoroughness(): TreeEvalThoroughness { return _treeEvalThoroughness; }
 
@@ -759,22 +801,22 @@ export function presetSpeedFilter(speeds: Set<string>): void {
  *  Mirrors the openCollection() async chunked pattern so the board flips
  *  immediately while the new tree streams in incrementally.
  */
-export function setColorFilter(color: 'white' | 'black' | 'both', redraw: () => void): void {
-  _colorFilter = color;
+export function setColorFilter(color: OpeningsTreeColor, redraw: () => void): void {
+  _colorFilter = normalizeOpeningsTreeColor(color);
 
   // Flip board orientation immediately — first visible feedback.
-  if (color === 'white') _boardOrientation = 'white';
-  else if (color === 'black') _boardOrientation = 'black';
+  _boardOrientation = _colorFilter;
+  persistActiveTargetColor();
 
   if (!_activeCollection) { redraw(); return; }
 
   const target = _activeCollection.target?.toLowerCase() ?? '';
   let games = _activeCollection.games;
-  if (color !== 'both' && target) {
+  if (target) {
     games = games.filter(g => {
       const isWhite = g.white?.toLowerCase() === target;
       const isBlack = g.black?.toLowerCase() === target;
-      return color === 'white' ? isWhite : isBlack;
+      return _colorFilter === 'white' ? isWhite : isBlack;
     });
   }
   if (_speedFilter.size > 0) {
@@ -1201,12 +1243,14 @@ function navigateToClosestPath(moves: string[], persist: boolean): OpeningsRoute
 /** Open a saved research collection: show the board immediately, build tree in background. */
 export function openCollection(collection: ResearchCollection, redraw: () => void, options: OpenCollectionOptions = {}): void {
   const sameCollection = _activeCollection?.id === collection.id;
+  const nextColor = options.color
+    ? normalizeOpeningsTreeColor(options.color)
+    : readOpeningsTargetColor(targetColorKeyForCollection(collection), DEFAULT_OPENINGS_TREE_COLOR);
+  _colorFilter = nextColor;
+  _boardOrientation = nextColor;
+  if (options.color) writeOpeningsTargetColor(targetColorKeyForCollection(collection), nextColor);
   _activeTool = 'opening-tree';
   _activeCollection = collection;
-
-  // Set orientation before entering session
-  if (_colorFilter === 'white') _boardOrientation = 'white';
-  else if (_colorFilter === 'black') _boardOrientation = 'black';
 
   // Keep an existing tree visible only for same-collection rebuilds, mirroring
   // setColorFilter(). Different collection opens must not show the previous
@@ -1229,7 +1273,7 @@ export function openCollection(collection: ResearchCollection, redraw: () => voi
   // Filter games by color
   const target = collection.target?.toLowerCase() ?? '';
   let games = collection.games;
-  if (_colorFilter !== 'both' && target) {
+  if (target) {
     games = games.filter(g => {
       const isWhite = g.white?.toLowerCase() === target;
       const isBlack = g.black?.toLowerCase() === target;
@@ -1400,6 +1444,7 @@ function persistSession(): void {
         collectionId: _activeCollection.id,
         path: [..._sessionPath],
         orientation: _boardOrientation,
+        color: _colorFilter,
         activeTool: _activeTool,
         savedAt: Date.now(),
       });
@@ -1678,9 +1723,7 @@ export function getPrepReportViewModel(): PrepReportViewModel | null {
   if (!_prepReportCache) {
     const summary = getCollectionSummary()!; // safe: checked above
     const report  = computePrepReport(_activeGames, _activeCollection.target, summary);
-    // For line analysis, 'both' falls back to 'white' perspective as the base pass.
-    // The Prep Report view can layer color-specific filtering on top if needed.
-    const colorPerspective = _colorFilter === 'both' ? 'white' : _colorFilter;
+    const colorPerspective = _colorFilter;
     const lines = computePrepReportLines(ensureFullOpeningTreeSnapshot(), colorPerspective, 8);
     _prepReportCache = { summary, report, lines };
   }
@@ -1857,7 +1900,8 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
     if (session && _currentPage === 'library' && shouldResumeSession) {
       const col = _collections.find(c => c.id === session.collectionId);
       if (col) {
-        openCollection(col, redraw); // resets _activeTool to 'opening-tree'
+        const restoredColor = resolveOpeningsSessionColor(session.color, targetColorKeyForCollection(col));
+        openCollection(col, redraw, { color: restoredColor }); // resets _activeTool to 'opening-tree'
         if (session.path.length > 0) navigateToPath(session.path);
         if (session.orientation) _boardOrientation = session.orientation;
         // Restore active tool — fall back to 'opening-tree' if missing or invalid.

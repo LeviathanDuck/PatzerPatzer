@@ -290,6 +290,7 @@ export function reviewedAccuracyForGame(
 type GamesResultFilter = 'win' | 'loss' | 'draw';
 type GamesSortField    = 'date' | 'result' | 'opponent' | 'timeClass';
 type ReviewIssueFilter = 'all' | 'failed-skipped';
+type GameListReviewFilter = '' | 'reviewed' | 'not-reviewed';
 
 let gamesFilterResults:  Set<GamesResultFilter> = new Set(); // empty = all
 let gamesFilterSpeeds:   Set<string>            = new Set(); // empty = all
@@ -312,6 +313,7 @@ let gameListSearch = '';
 let gameListFilterResults: Set<'win' | 'loss' | 'draw'> = new Set();
 let gameListFilterSpeeds:  Set<string>                   = new Set();
 let gameListFilterColor:   '' | 'white' | 'black'        = '';
+let gameListFilterReview:  GameListReviewFilter          = '';
 let gameListPage = 0;
 let gameListPageSize: GameListPageSize = loadGameListPageSize();
 
@@ -632,6 +634,7 @@ export function resetGamesViewRouteStateForTests(): void {
   gameListFilterResults = new Set();
   gameListFilterSpeeds = new Set();
   gameListFilterColor = '';
+  gameListFilterReview = '';
   gameListPage = 0;
   accountFilterState = loadAccountFilterState();
   selectedGameIds = new Set();
@@ -658,6 +661,7 @@ export function getGamesViewRouteSnapshotForTests(): {
     results: ('win' | 'loss' | 'draw')[];
     speeds: string[];
     color: '' | 'white' | 'black';
+    review: GameListReviewFilter;
     pageIndex: number;
   };
 } {
@@ -683,6 +687,7 @@ export function getGamesViewRouteSnapshotForTests(): {
       results: [...gameListFilterResults],
       speeds: [...gameListFilterSpeeds],
       color: gameListFilterColor,
+      review: gameListFilterReview,
       pageIndex: gameListPage,
     },
   };
@@ -1063,7 +1068,7 @@ function selectAnalysisGame(game: ImportedGame, deps: GamesViewDeps): void {
 export function renderGameList(deps: GamesViewDeps): VNode {
   if (deps.importedGames.length === 0) return h('div');
 
-  // Apply filters: account lens → opponent search → result → time class
+  // Apply filters: account lens -> opponent search -> result -> time class -> color -> review state
   const lensGames = accountLensGames(deps);
   const q = gameListSearch.trim().toLowerCase();
   let visible: ImportedGame[] = q
@@ -1089,10 +1094,17 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     visible = visible.filter(g => deps.getUserColor(g) === gameListFilterColor);
   }
 
+  if (gameListFilterReview) {
+    visible = visible.filter(g => {
+      const reviewed = isReviewedGame(deps, g.id);
+      return gameListFilterReview === 'reviewed' ? reviewed : !reviewed;
+    });
+  }
+
   visible.sort((a, b) => compareByPlayedDate(a, b, 'desc'));
 
   const anyFilter = q.length > 0 || gameListFilterResults.size > 0 ||
-    gameListFilterSpeeds.size > 0 || gameListFilterColor !== '';
+    gameListFilterSpeeds.size > 0 || gameListFilterColor !== '' || gameListFilterReview !== '';
 
   const totalPages = Math.max(1, Math.ceil(visible.length / gameListPageSize));
   if (gameListPage >= totalPages) gameListPage = totalPages - 1;
@@ -1129,11 +1141,18 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     deps.redraw();
   };
 
+  const toggleReview = (review: Exclude<GameListReviewFilter, ''>) => {
+    gameListFilterReview = gameListFilterReview === review ? '' : review;
+    resetGameListPage();
+    deps.redraw();
+  };
+
   const clearAll = () => {
     gameListSearch = '';
     gameListFilterResults = new Set();
     gameListFilterSpeeds = new Set();
     gameListFilterColor = '';
+    gameListFilterReview = '';
     resetGameListPage();
     deps.redraw();
   };
@@ -1147,6 +1166,24 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; resetGameListPage(); deps.redraw(); } },
     }),
     h('div.game-list__filter-pills', [
+      h('button.games-view__pill.--review-filter', {
+        class: { active: gameListFilterReview === 'reviewed' },
+        attrs: {
+          type: 'button',
+          title: 'Show reviewed games',
+          'aria-pressed': String(gameListFilterReview === 'reviewed'),
+        },
+        on: { click: () => toggleReview('reviewed') },
+      }, 'Reviewed'),
+      h('button.games-view__pill.--review-filter', {
+        class: { active: gameListFilterReview === 'not-reviewed' },
+        attrs: {
+          type: 'button',
+          title: 'Show games without a completed review',
+          'aria-pressed': String(gameListFilterReview === 'not-reviewed'),
+        },
+        on: { click: () => toggleReview('not-reviewed') },
+      }, 'Not reviewed'),
       ...(['win', 'loss', 'draw'] as const).map(r =>
         h('button.games-view__pill', {
           class: { active: gameListFilterResults.has(r) },

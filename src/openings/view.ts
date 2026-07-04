@@ -700,7 +700,7 @@ function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode
 }
 
 function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: () => void, account?: ChessAccount): VNode {
-  // Pre-load keeps color implicit; Build starts from the White player perspective.
+  // Pre-load keeps color implicit; Build starts from the target's saved side or White.
   const speeds = speedFilter();
   const toggleSpeed = (value: string): void => {
     let next: Set<string>;
@@ -763,7 +763,7 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
     account ? renderPreLoadSyncArea(account, redraw) : null,
     h('button.openings__preload-build', {
       attrs: { type: 'button' },
-      on: { click: (e: Event) => { e.stopPropagation(); presetColorFilter('white'); void onBuild(); } },
+      on: { click: (e: Event) => { e.stopPropagation(); void onBuild(); } },
     }, 'Build tree'),
   ]);
 }
@@ -1672,7 +1672,7 @@ function renderDetailsStep(redraw: () => void): VNode {
   sections.push(h('div.header__panel-divider'));
   sections.push(h('div.header__panel-section', [
     h('div.header__panel-label', 'Perspective'),
-    h('div.header__panel-row', (['white', 'black', 'both'] as const).map(c =>
+    h('div.header__panel-row', (['white', 'black'] as const).map(c =>
       h('button.header__pill', {
         class: { active: color === c },
         on: { click: () => { setImportColor(c); redraw(); } },
@@ -2154,8 +2154,7 @@ function renderPrepReportTool(redraw: () => void): VNode {
   const lPct = (summary.overall.losses / total * 100).toFixed(0);
 
   // Likely lines (recency-weighted)
-  const cf = colorFilter();
-  const colorPerspective: 'white' | 'black' = cf === 'both' ? 'white' : cf;
+  const colorPerspective = colorFilter();
   const likelyModule = computeLikelyLineModule(openingTree(), colorPerspective, 8, 8, recencyMode());
 
   // Weakness module
@@ -3300,14 +3299,7 @@ function renderPlayerStrip(
 
   // Is the target player on this side?
   let label: string;
-  if (filter === 'white') {
-    label = stripColor === 'white' ? target : 'Imported Game Opponents';
-  } else if (filter === 'black') {
-    label = stripColor === 'black' ? target : 'Imported Game Opponents';
-  } else {
-    // 'both' — show target on bottom, opponents on top
-    label = position === 'bottom' ? target : 'Imported Game Opponents';
-  }
+  label = stripColor === filter ? target : 'Imported Game Opponents';
 
   const animLabel = isFetching() && position === 'bottom' && _animGame ? _animGame.label : null;
 
@@ -4182,7 +4174,7 @@ function renderSpeedFilter(redraw: () => void): VNode {
   const counts = new Map<string, number>();
   if (collection) {
     let games = collection.games;
-    if (color !== 'both' && target) {
+    if (target) {
       games = games.filter(g => {
         const isWhite = g.white?.toLowerCase() === target;
         const isBlack = g.black?.toLowerCase() === target;

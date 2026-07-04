@@ -6,6 +6,7 @@
  */
 
 import type { ResearchCollection, ResearchGame, PersistedOpeningsTool, SavedVariation } from './types';
+import type { OpeningsTreeColor } from './color';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
 
@@ -113,6 +114,8 @@ export interface StoredOpeningsSession {
   path: string[];
   /** Board orientation. */
   orientation: 'white' | 'black';
+
+  color?: OpeningsTreeColor | 'both';
   /**
    * Active tool at time of save. Optional for backward compatibility with
    * records written before this field existed. Legacy 'repertoire' values

@@ -48,6 +48,7 @@ export const SETTINGS_LIVE_APPLY_GROUPS: readonly SettingsLiveApplyGroup[] = Obj
       'boardSoundEnabled',
       'boardSoundVolume',
       'patzer.openings.boardSoundEnabled',
+      'patzer.openings.targetColors.v1',
     ],
     prefixes: ['boardFilter.'],
     handlerId: 'board-cosmetics.reload-recommended',

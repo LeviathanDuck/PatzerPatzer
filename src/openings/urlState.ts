@@ -1,8 +1,9 @@
 import { normalizeOpeningsTool } from './types';
 import type { OpeningsTool } from './types';
+import { DEFAULT_OPENINGS_TREE_COLOR, normalizeOpeningsTreeColor, type OpeningsTreeColor } from './color';
 
 export type OpponentsUrlTargetKind = 'account' | 'collection';
-export type OpponentsUrlColor = 'white' | 'black' | 'both';
+export type OpponentsUrlColor = OpeningsTreeColor;
 export type OpponentsUrlOrientation = 'white' | 'black';
 export type OpponentsUrlSpeed = 'ultrabullet' | 'bullet' | 'blitz' | 'rapid' | 'classical';
 export type OpponentsUrlRange = 'last-week' | 'last-month' | 'last-3months' | 'last-6months';
@@ -32,11 +33,12 @@ export interface OpponentsTreeUrlStateParseResult {
   state: OpponentsTreeUrlState;
   invalidParams: OpponentsUrlStateInvalidParam[];
   ignoredParams: string[];
+  colorExplicit: boolean;
 }
 
 const DEFAULT_STATE: OpponentsTreeUrlState = {
   tool:        'opening-tree',
-  color:       'white',
+  color:       DEFAULT_OPENINGS_TREE_COLOR,
   speeds:      [],
   range:       null,
   orientation: 'white',
@@ -45,7 +47,7 @@ const DEFAULT_STATE: OpponentsTreeUrlState = {
 
 const KNOWN_PARAMS = new Set(['target', 'tool', 'color', 'speeds', 'range', 'orientation', 'line']);
 const TARGET_KINDS = new Set<OpponentsUrlTargetKind>(['account', 'collection']);
-const COLORS = new Set<OpponentsUrlColor>(['white', 'black', 'both']);
+const COLORS = new Set(['white', 'black', 'both']);
 const SPEEDS: readonly OpponentsUrlSpeed[] = ['ultrabullet', 'bullet', 'blitz', 'rapid', 'classical'];
 const SPEED_SET = new Set<OpponentsUrlSpeed>(SPEEDS);
 const RANGES = new Set<OpponentsUrlRange>(['last-week', 'last-month', 'last-3months', 'last-6months']);
@@ -114,9 +116,10 @@ export function parseOpponentsTreeUrlState(input: string): OpponentsTreeUrlState
   }
 
   const color = params.get('color');
+  const colorExplicit = color !== null;
   if (color !== null) {
     const normalized = color.toLowerCase();
-    if (COLORS.has(normalized as OpponentsUrlColor)) state.color = normalized as OpponentsUrlColor;
+    if (COLORS.has(normalized)) state.color = normalizeOpeningsTreeColor(normalized);
     else invalidParams.push(invalid('color', color, DEFAULT_STATE.color));
   }
 
@@ -149,7 +152,7 @@ export function parseOpponentsTreeUrlState(input: string): OpponentsTreeUrlState
     else invalidParams.push(invalid('line', line, 'root'));
   }
 
-  return { state, invalidParams, ignoredParams };
+  return { state, invalidParams, ignoredParams, colorExplicit };
 }
 
 function encodeStateValue(value: string): string {
@@ -165,7 +168,8 @@ export function serializeOpponentsTreeUrlState(state: Partial<OpponentsTreeUrlSt
 
   if (state.target) appendParam(params, 'target', `${state.target.kind}:${state.target.id}`);
   if (state.tool && state.tool !== DEFAULT_STATE.tool) appendParam(params, 'tool', state.tool);
-  if (state.color && state.color !== DEFAULT_STATE.color) appendParam(params, 'color', state.color);
+  const color = state.color ? normalizeOpeningsTreeColor(state.color) : undefined;
+  if (color && color !== DEFAULT_STATE.color) appendParam(params, 'color', color);
   if (state.speeds && state.speeds.length > 0) {
     const speeds = uniqueNormalizedSpeeds(state.speeds.join(','));
     if (speeds && speeds.length > 0) appendParam(params, 'speeds', speeds.join(','));

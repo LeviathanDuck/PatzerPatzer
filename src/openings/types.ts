@@ -97,7 +97,7 @@ export interface ResearchCollection {
   source: ResearchSource;
   /** Username or label that was researched. */
   target: string;
-  /** Color perspective: which side is the research subject playing? */
+  /** Saved/import metadata. Active Opening Tree sessions normalize this to White or Black. */
   perspective: 'white' | 'black' | 'both';
   /** Games in this collection. */
   games: ResearchGame[];

@@ -44,6 +44,7 @@ const SETTINGS_KEYS = new Set([
   'boardSoundEnabled',
   'boardSoundVolume',
   'patzer.openings.boardSoundEnabled',
+  'patzer.openings.targetColors.v1',
   'puzzleAutoNext',
   'patzer.games.accountFilter.v1',
   'analyse.explorer.enabled',

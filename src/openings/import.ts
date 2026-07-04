@@ -377,7 +377,7 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       await recordAccountSync(account.id, null, null);
       if (abort.signal.aborted) return; // cancelled during writes — cancelImport cleaned up
       presetColorFilter(color);
-      await openAccountResearch(account, redraw, abort.signal);
+      await openAccountResearch(account, redraw, abort.signal, { color });
       if (abort.signal.aborted) return;
       setImportAbort(null);
       setIsFetching(false);
@@ -422,7 +422,7 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
     setLastCreatedCollection(collection);
     setImportAbort(null);
     setIsFetching(false);
-    openCollection(collection, redraw);
+    openCollection(collection, redraw, { color });
   } catch (err) {
     if ((err as DOMException)?.name === 'AbortError') return; // user cancelled — cancelImport() already cleaned up
     setIsFetching(false);

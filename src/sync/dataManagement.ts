@@ -157,6 +157,7 @@ const SETTINGS_GROUPS: SettingsResetGroup[] = [
       'boardSoundEnabled',
       'boardSoundVolume',
       'patzer.openings.boardSoundEnabled',
+      'patzer.openings.targetColors.v1',
       'chessBoardAnimationSpeed',
       'puzzleBoardAnimationSpeed',
     ],

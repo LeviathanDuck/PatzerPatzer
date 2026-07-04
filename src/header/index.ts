@@ -161,6 +161,7 @@ export function openRetroModal(redraw: () => void): void {
 const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
 const REMOTE_SYNC_LOADING_SRC = '/images/loading-icons/loading.gif';
+const REMOTE_SYNC_WARNING_ICON = '⚠';
 const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
 const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
 
@@ -352,6 +353,29 @@ function renderRemoteSyncIndicator(): VNode | null {
   });
 }
 
+function renderRemoteSyncWarningIcon(className: string, title: string): VNode {
+  return h(`span.${className}`, {
+    attrs: {
+      title,
+      role: 'img',
+      'aria-label': title,
+    },
+  }, REMOTE_SYNC_WARNING_ICON);
+}
+
+function renderRemoteSyncStatusCluster(): VNode | null {
+  const snapshot = getRemoteSyncIdentitySnapshot();
+  const warning = snapshot.freshnessWarning
+    ? renderRemoteSyncWarningIcon('header__sync-warning', snapshot.freshnessTitle)
+    : null;
+  const spinner = renderRemoteSyncIndicator();
+  if (!warning && !spinner) return null;
+  return h('span.header__sync-status', [
+    warning,
+    spinner,
+  ]);
+}
+
 function renderUserArea(redraw: () => void): VNode | null {
   if (remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken())) {
     return h('div.header__user', {
@@ -361,7 +385,7 @@ function renderUserArea(redraw: () => void): VNode | null {
         attrs: { type: 'button', title: 'Logout' },
         on: { click: () => logoutRemoteSync(redraw) },
       }, 'Logout'),
-      renderRemoteSyncIndicator(),
+      renderRemoteSyncStatusCluster(),
     ]);
   }
   return h('div.header__user.header__user--login', [
@@ -375,7 +399,7 @@ function renderUserArea(redraw: () => void): VNode | null {
         redraw();
       } },
     }, 'Login'),
-    renderRemoteSyncIndicator(),
+    renderRemoteSyncStatusCluster(),
   ]);
 }
 
@@ -1540,12 +1564,26 @@ function syncIdentityDisplayLabel(): string {
   return snapshot.identityLabel ?? 'Token active, identity pending';
 }
 
-function syncLastSuccessLabel(): string {
-  const timestamp = formatMenuTimestamp(getRemoteSyncIdentitySnapshot().lastSyncedAt);
+function syncLastSuccessLabel(snapshot = getRemoteSyncIdentitySnapshot()): string {
+  const timestamp = formatMenuTimestamp(snapshot.lastSyncedAt);
   return timestamp ? `Last successful sync: ${timestamp}` : 'No successful sync recorded';
 }
 
+function renderSyncFreshnessValue(): VNode {
+  const snapshot = getRemoteSyncIdentitySnapshot();
+  return h('span.global-menu__sync-value', {
+    class: { 'global-menu__sync-value--warning': snapshot.freshnessWarning },
+    attrs: { title: snapshot.freshnessTitle },
+  }, [
+    snapshot.freshnessWarning
+      ? renderRemoteSyncWarningIcon('global-menu__sync-warning-icon', snapshot.freshnessTitle)
+      : null,
+    h('span', snapshot.freshnessLabel),
+  ]);
+}
+
 function renderSyncIdentityFooter(): VNode {
+  const snapshot = getRemoteSyncIdentitySnapshot();
   return h('div.global-menu__sync-identity', [
     h('span.global-menu__sync-row', [
       h('span.global-menu__sync-label', 'Sync identity'),
@@ -1553,7 +1591,11 @@ function renderSyncIdentityFooter(): VNode {
     ]),
     h('span.global-menu__sync-row', [
       h('span.global-menu__sync-label', 'Sync status'),
-      h('span.global-menu__sync-value', syncLastSuccessLabel()),
+      renderSyncFreshnessValue(),
+    ]),
+    h('span.global-menu__sync-row', [
+      h('span.global-menu__sync-label', 'Last sync'),
+      h('span.global-menu__sync-value', syncLastSuccessLabel(snapshot)),
     ]),
   ]);
 }
@@ -1571,6 +1613,9 @@ function buildReleaseIdentityCopyText(): string {
     identity.deployedAt ? `Deployed: ${identity.deployedAt}` : null,
     identity.builtAt ? `Built: ${identity.builtAt}` : null,
     `Sync identity: ${syncIdentityDisplayLabel()}`,
+    `Sync freshness: ${syncSnapshot.freshnessLabel} (${syncSnapshot.freshnessState})`,
+    syncSnapshot.localVersion !== null ? `Local sync version: ${syncSnapshot.localVersion}` : null,
+    syncSnapshot.serverVersion !== null ? `Server sync version: ${syncSnapshot.serverVersion}` : null,
     syncSnapshot.lastSyncedAt
       ? `Last successful sync: ${formatMenuTimestamp(syncSnapshot.lastSyncedAt)}`
       : 'Last successful sync: No successful sync recorded',
