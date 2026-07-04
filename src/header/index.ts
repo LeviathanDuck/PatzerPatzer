@@ -1119,20 +1119,58 @@ function formatSyncCountsInline(counts: Record<string, number>): string {
   return Object.entries(counts).map(([key, value]) => `${key} ${formatSyncCount(value)}`).join(' · ');
 }
 
-/** Compact trigger label. Overrides the snapshot's generic idle-warning label
- * ('Attention needed') with the spec'd 'Sync stale', and upgrades an active
- * operation with a known denominator to a live 'Syncing done/total' counter. */
-function formatSyncTriggerLabel(snapshot: RemoteSyncProgressSnapshot): string {
-  if (snapshot.severity === 'error') return 'Sync Error';
-  if (snapshot.severity === 'warning') return 'Sync stale';
+// --- Trigger hysteresis: the header shows a calm, coarse state, never per-event churn. ---
+// Activity must be continuously present for SHOW_DELAY before the spinner appears (review-driven
+// micro-syncs of a couple seconds never surface), and once shown it stays for MIN_VISIBLE so
+// back-to-back operations do not flicker. Itemized per-operation detail lives only in the
+// dropdown.
+const SYNC_BUSY_SHOW_DELAY_MS = 2000;
+const SYNC_BUSY_MIN_VISIBLE_MS = 2500;
+let syncActivitySince: number | null = null;
+let syncBusyVisibleUntil = 0;
+let syncBusyRedrawTimer: number | null = null;
+
+function scheduleSyncTriggerRedraw(redraw: () => void, delayMs: number): void {
+  if (syncBusyRedrawTimer !== null) return;
+  syncBusyRedrawTimer = window.setTimeout(() => {
+    syncBusyRedrawTimer = null;
+    redraw();
+  }, Math.max(50, delayMs));
+}
+
+function syncBusyIndicatorVisible(snapshot: RemoteSyncProgressSnapshot, redraw: () => void): boolean {
+  const now = Date.now();
   if (snapshot.severity === 'active') {
-    const driving = snapshot.operations.find(op => op.kind === snapshot.state);
-    if (driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0) {
-      return `Syncing ${formatSyncCount(driving.done)}/${formatSyncCount(driving.total)}`;
+    if (syncActivitySince === null) syncActivitySince = now;
+    const elapsed = now - syncActivitySince;
+    if (elapsed >= SYNC_BUSY_SHOW_DELAY_MS) {
+      syncBusyVisibleUntil = now + SYNC_BUSY_MIN_VISIBLE_MS;
+      return true;
     }
-    return snapshot.label;
+    scheduleSyncTriggerRedraw(redraw, SYNC_BUSY_SHOW_DELAY_MS - elapsed);
+    return now < syncBusyVisibleUntil;
   }
-  return snapshot.label;
+  syncActivitySince = null;
+  if (now < syncBusyVisibleUntil) {
+    scheduleSyncTriggerRedraw(redraw, syncBusyVisibleUntil - now);
+    return true;
+  }
+  return false;
+}
+
+/** Coarse busy label: stable "Syncing", plus a percentage that only moves in 5% steps when a
+ * large determinate operation is running — the trigger text must not tick per event. */
+function formatSyncBusyLabel(snapshot: RemoteSyncProgressSnapshot): string {
+  const driving = snapshot.operations.find(op =>
+    op.kind === snapshot.state && typeof op.total === 'number' && typeof op.done === 'number' && op.total >= 100,
+  ) ?? snapshot.operations.find(op =>
+    typeof op.total === 'number' && typeof op.done === 'number' && op.total >= 100,
+  );
+  if (driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0) {
+    const pct = Math.min(100, Math.floor((driving.done / driving.total) * 20) * 5);
+    return `Syncing · ${pct}%`;
+  }
+  return 'Syncing';
 }
 
 function renderSyncOperationRow(op: RemoteSyncOperationSummary): VNode {
@@ -1246,18 +1284,32 @@ function runQueueLocalLibrary(redraw: () => void): void {
 
 function renderSyncProgressMenu(redraw: () => void): VNode | null {
   const snapshot = getRemoteSyncProgressSnapshot();
+  const busyVisible = snapshot.severity === 'active' && syncBusyIndicatorVisible(snapshot, redraw);
 
-
-
-  if (snapshot.severity === 'ok') return null;
+  // Header stays quiet unless something deserves attention: errors and warnings show
+  // immediately; routine activity only surfaces as a spinner once it has run past the
+  // hysteresis window; short review-driven micro-syncs never appear at all. The menu never
+  // vanishes while the user has it open, even if everything completes underneath it.
+  const showTrigger = snapshot.severity === 'error'
+    || snapshot.severity === 'warning'
+    || busyVisible
+    || showSyncProgressMenu;
+  if (!showTrigger) {
+    if (snapshot.severity !== 'active') syncActivitySince = null;
+    return null;
+  }
 
   const canQueueLocalLibrary = snapshot.issues.some(issue => issue.reason === 'untracked-local-items');
+  const triggerLabel = snapshot.severity === 'error' ? 'Sync Error'
+    : snapshot.severity === 'warning' ? 'Sync stale'
+    : busyVisible ? formatSyncBusyLabel(snapshot)
+    : 'Synced';
 
   return h('div.sync-menu', [
     h('button.sync-menu__trigger', {
       class: {
         active: showSyncProgressMenu,
-        'sync-severity--active': snapshot.severity === 'active',
+        'sync-severity--active': busyVisible,
         'sync-severity--warning': snapshot.severity === 'warning',
         'sync-severity--error': snapshot.severity === 'error',
       },
@@ -1272,8 +1324,10 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
         if (opening) refreshRemoteSyncProgressSnapshot().then(() => redraw()).catch(() => redraw());
       } },
     }, [
-      snapshot.severity === 'active' ? h('span.sync-menu__trigger-dot', { attrs: { 'aria-hidden': 'true' } }) : null,
-      h('span.sync-menu__trigger-label', formatSyncTriggerLabel(snapshot)),
+      busyVisible ? h('img.sync-menu__spinner', {
+        attrs: { src: REVIEW_PROGRESS_LOADING_SRC, alt: '', 'aria-hidden': 'true' },
+      }) : null,
+      h('span.sync-menu__trigger-label', triggerLabel),
     ]),
 
     showSyncProgressMenu ? h('div.sync-menu__backdrop', {
@@ -1298,6 +1352,8 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
       snapshot.operations.length > 0 ? h('div.sync-menu__section', [
         h('div.sync-menu__section-title', 'Active'),
         ...snapshot.operations.map(renderSyncOperationRow),
+      ]) : snapshot.severity === 'ok' ? h('div.sync-menu__section', [
+        h('div.sync-menu__label.sync-menu__label--ok', 'All synced — no pending sync work in this tab.'),
       ]) : null,
 
       h('div.sync-menu__section', [
