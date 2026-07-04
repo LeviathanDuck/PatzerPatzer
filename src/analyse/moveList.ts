@@ -2,11 +2,13 @@
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts
 
 import { h, type VNode } from 'snabbdom';
-import { classifyLoss, type MoveLabel } from '../engine/winchances';
+import { type MoveLabel } from '../engine/winchances';
+import { isDeepenedBeyondReviewStamp, labelForReviewEval } from './deepenedEval';
 import { showReviewLabels } from '../engine/ctrl';
 import { missedMomentConfig } from '../engine/tactics';
 import { pathInit } from '../tree/ops';
 import { nagToGlyph } from '../tree/pgn';
+import type { ReviewEngineMetadata } from '../idb';
 import type { Glyph, TreeNode, TreePath } from '../tree/types';
 
 // True on touch/stylus devices — used to decide which context-menu trigger to attach.
@@ -36,14 +38,14 @@ function buildContextHandlers(
   return handlers;
 }
 
-// Eval lookup: returns { loss, best, mate, label } for a given path, or undefined.
+// Eval lookup: returns review/eval data for a given path, or undefined.
 // Typed structurally so callers don't need to import PositionEval.
-// label is present when analysis was saved and restored from IDB; absent during live analysis.
-type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number; label?: MoveLabel } | undefined;
+type EvalLookup = (path: string) => { loss?: number; best?: string; mate?: number; label?: MoveLabel; depth?: number } | undefined;
 
 export interface MoveListRenderOptions {
   showComments?: boolean;
   renderRawNags?: boolean;
+  reviewEngine?: ReviewEngineMetadata;
 }
 
 function shouldShowReviewAnnotation(
@@ -88,10 +90,9 @@ function renderMoveSpan(
   const cached       = getEval(path);
   const parentCached = getEval(pathInit(path));
 
-  // PGN glyphs take priority; fall back to stored review annotation, then recompute from loss.
-  // Prefer cached.label (hydrated from IDB) over classifyLoss(loss) recomputation so that
-  // a saved-and-restored analysis session shows exactly the labels that were persisted.
-  // Falls back to classifyLoss(loss) for live analysis sessions and older records without label.
+  // PGN glyphs take priority; fall back to review annotation. If a node was live-deepened beyond
+  // the stored review stamp, classify from the current loss so the displayed label matches the
+  // current eval and the delayed persistence path.
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
   const pgnGlyphs: Glyph[] = options?.renderRawNags
     ? (node.nags ?? []).map(nagToGlyph).filter((g): g is Glyph => g !== undefined)
@@ -111,9 +112,12 @@ function renderMoveSpan(
     || (isWhiteMove ? (cached.mate <= 0) : (cached.mate >= 0));
   const isMissedMate = showReviewLabels && !playedBest && moverHadMate && mateWasLost;
 
-  const computedLabel: MoveLabel | null = (showReviewLabels && !playedBest && cached !== undefined && shouldShowReviewAnnotation(userColor, node.ply, userOnly))
-    ? (cached.label ?? (cached.loss !== undefined ? classifyLoss(cached.loss) : null))
-    : null;
+  const computedLabel: MoveLabel | null = labelForReviewEval(
+    cached,
+    playedBest,
+    showReviewLabels && shouldShowReviewAnnotation(userColor, node.ply, userOnly),
+    options?.reviewEngine,
+  );
   const computedSymbol = isMissedMate ? 'M?!'
     : computedLabel === 'blunder'    ? '??'
     : computedLabel === 'mistake'    ? '?'
@@ -124,6 +128,7 @@ function renderMoveSpan(
     ? pgnGlyphs
     : (computedSymbol ? [{ symbol: computedSymbol }] : []);
   const mate   = cached?.mate;
+  const deepened = isDeepenedBeyondReviewStamp(cached, options?.reviewEngine);
 
   // Build children matching Lichess tview2: index? + san + glyph? + eval?
   // Mirrors lichess-org/lila: ui/analyse/src/view/components.ts renderMoveNodes + renderIndex
@@ -138,6 +143,14 @@ function renderMoveSpan(
   }
   // mate === 0 = terminal checkmate position; use KO notation instead of +M0.
   if (mate !== undefined) inner.push(h('eval', mate === 0 ? '#KO!' : `+M${Math.abs(mate)}`));
+  if (deepened) {
+    inner.push(h('deepened', {
+      attrs: {
+        title: `Eval deepened beyond review depth ${options?.reviewEngine?.reviewDepth}`,
+        'aria-label': `Eval deepened beyond review depth ${options?.reviewEngine?.reviewDepth}`,
+      },
+    }, 'D+'));
+  }
 
   const isBookmarked = bookmarkedPaths?.has(path) ?? false;
   const moveVnode = h('move', {
@@ -146,6 +159,7 @@ function renderMoveSpan(
       'context-active': contextMenuPath === path,
       'worst-miss':     worstMissPath !== undefined && path === worstMissPath,
       bookmarked:       isBookmarked,
+      deepened,
     },
     attrs: { p: path },
     on: {
@@ -179,8 +193,9 @@ function renderCommentNodes(node: TreeNode, options: MoveListRenderOptions | und
 }
 
 /**
- * Inline helper: renders a variation line as a flat sequence of moves with
- * embedded move numbers. Used inside column-view interrupt blocks.
+ * Sideline helper: renders a variation line as inline moves until the line
+ * branches again, then emits nested column-view lines instead of parenthetical
+ * inline wrappers.
  * Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts sidelineNodes
  */
 function renderInlineNodes(
@@ -201,8 +216,15 @@ function renderInlineNodes(
   options?:          MoveListRenderOptions,
 ): VNode[] {
   if (nodes.length === 0) return [];
-  const main       = nodes[0]!;
-  const variations = nodes.slice(1);
+  if (nodes.length > 1) {
+    return [
+      h('lines', nodes.map(node => (
+        h('line', renderInlineNodes([node], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options))
+      ))),
+    ];
+  }
+
+  const main = nodes[0]!;
   const mainPath = parentPath + main.id;
   const out: VNode[] = [];
 
@@ -210,14 +232,11 @@ function renderInlineNodes(
   out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
   out.push(...renderCommentNodes(main, options));
 
-  for (const variant of variations) {
-    out.push(h('inline', renderInlineNodes([variant], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options)));
+  if (main.children.length > 1) {
+    out.push(...renderInlineNodes(main.children, mainPath, main, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+  } else {
+    out.push(...renderInlineNodes(main.children, mainPath, main, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
   }
-
-  const hasVariations = variations.length > 0;
-  const firstCont = main.children[0];
-  const contNeedsNum = hasVariations && firstCont !== undefined && firstCont.ply % 2 === 0;
-  out.push(...renderInlineNodes(main.children, mainPath, main, contNeedsNum, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
 
   return out;
 }

@@ -66,6 +66,7 @@ export interface ReviewRunManifest {
   sourceGameIds: string[];
   reviewDepth: number;
   autoRetryEnabled: boolean;
+  unattendedRunEnabled: boolean;
   timeControlContext: ReviewRunTimeControlContext;
   orderingContext: ReviewRunOrderingContext;
   activeBatchIds: string[];
@@ -117,6 +118,78 @@ export interface ReviewRunFailureState {
 export interface ReviewRunHydrationResult {
   manifest: ReviewRunManifest;
   changed: boolean;
+}
+
+export interface ReviewRunProgressSampleAnchor {
+  positionsAnalyzed: number;
+  sampledAt: number;
+}
+
+export interface ReviewRunProgressVisibilitySample {
+  positionsSincePreviousSample: number;
+  elapsedSincePreviousSampleMs: number | null;
+  positionsPerMinute: number | null;
+  anchor: ReviewRunProgressSampleAnchor;
+}
+
+/**
+ * Pure progress-rate sampler for bounded review-run diagnostics. The first
+ * sample establishes the anchor; zero/negative elapsed samples keep the rate
+ * null so callers never emit Infinity or divide by zero.
+ */
+export function sampleReviewRunProgressByVisibility(
+  previous: ReviewRunProgressSampleAnchor | null,
+  positionsAnalyzed: number,
+  sampledAt: number = Date.now(),
+): ReviewRunProgressVisibilitySample {
+  const currentPositions = Math.max(0, positionsAnalyzed);
+  const anchor = {
+    positionsAnalyzed: currentPositions,
+    sampledAt,
+  };
+  if (!previous) {
+    return {
+      positionsSincePreviousSample: 0,
+      elapsedSincePreviousSampleMs: null,
+      positionsPerMinute: null,
+      anchor,
+    };
+  }
+  const elapsedSincePreviousSampleMs = Math.max(0, sampledAt - previous.sampledAt);
+  const positionsSincePreviousSample = Math.max(0, currentPositions - Math.max(0, previous.positionsAnalyzed));
+  return {
+    positionsSincePreviousSample,
+    elapsedSincePreviousSampleMs,
+    positionsPerMinute: elapsedSincePreviousSampleMs > 0
+      ? (positionsSincePreviousSample * 60_000) / elapsedSincePreviousSampleMs
+      : null,
+    anchor,
+  };
+}
+
+export type ReviewRunManifestConsistencyIssueCode =
+  | 'duplicate-source-game-id'
+  | 'duplicate-active-batch-game-id'
+  | 'active-batch-outside-source'
+  | 'duplicate-completed-game-id'
+  | 'completed-outside-source'
+  | 'duplicate-skipped-game-id'
+  | 'skipped-outside-source'
+  | 'skipped-completed-conflict'
+  | 'duplicate-failed-game-id'
+  | 'failed-outside-source'
+  | 'failed-completed-conflict'
+  | 'failed-skipped-conflict';
+
+export interface ReviewRunManifestConsistencyIssue {
+  code: ReviewRunManifestConsistencyIssueCode;
+  gameIds: string[];
+}
+
+export interface ReviewRunManifestConsistencyResult {
+  manifest: ReviewRunManifest;
+  changed: boolean;
+  issues: ReviewRunManifestConsistencyIssue[];
 }
 
 export interface ReviewRunStaleInput {
@@ -258,6 +331,7 @@ export function createReviewRunManifest(params: {
   sourceMode: ReviewRunSourceMode;
   sourceGameIds: string[];
   reviewDepth: number;
+  unattendedRunEnabled?: boolean;
   timeControlContext?: ReviewRunTimeControlContext;
   orderingContext?: ReviewRunOrderingContext;
   activeBatchIds?: string[];
@@ -270,6 +344,7 @@ export function createReviewRunManifest(params: {
     sourceGameIds:      [...params.sourceGameIds],
     reviewDepth:        params.reviewDepth,
     autoRetryEnabled:   false,
+    unattendedRunEnabled: params.unattendedRunEnabled ?? true,
     timeControlContext: params.timeControlContext ?? { speeds: [] },
     orderingContext:    params.orderingContext ?? { sortKey: 'visible', sortDirection: 'desc' },
     activeBatchIds:     [...(params.activeBatchIds ?? [])],
@@ -288,6 +363,7 @@ export function normalizeReviewRunManifest(manifest: ReviewRunManifest): ReviewR
   return {
     ...manifest,
     autoRetryEnabled: manifest.autoRetryEnabled === true,
+    unattendedRunEnabled: manifest.unattendedRunEnabled !== false,
 
     consecutiveFailureCount: manifest.consecutiveFailureCount ?? 0,
     breakerTrippedReason:    manifest.breakerTrippedReason ?? null,
@@ -504,6 +580,154 @@ export function reviewRunSummaryFromManifest(manifest: ReviewRunManifest): Revie
   };
 }
 
+function sameStringArray(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function sameFailedAttempts(a: readonly ReviewRunFailedAttempt[], b: readonly ReviewRunFailedAttempt[]): boolean {
+  return a.length === b.length && a.every((value, index) => {
+    const other = b[index];
+    return !!other
+      && value.gameId === other.gameId
+      && value.attempts === other.attempts
+      && value.lastFailedAt === other.lastFailedAt;
+  });
+}
+
+function dedupeIds(
+  ids: readonly string[],
+  issueCode: ReviewRunManifestConsistencyIssueCode,
+  issues: ReviewRunManifestConsistencyIssue[],
+): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  const duplicates = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) {
+      duplicates.add(id);
+      continue;
+    }
+    seen.add(id);
+    deduped.push(id);
+  }
+  if (duplicates.size > 0) issues.push({ code: issueCode, gameIds: [...duplicates] });
+  return deduped;
+}
+
+function filterIds(
+  ids: readonly string[],
+  issueCode: ReviewRunManifestConsistencyIssueCode,
+  issueIds: Set<string>,
+  predicate: (id: string) => boolean,
+  issues: ReviewRunManifestConsistencyIssue[],
+): string[] {
+  const kept: string[] = [];
+  for (const id of ids) {
+    if (predicate(id)) kept.push(id);
+    else issueIds.add(id);
+  }
+  if (issueIds.size > 0) issues.push({ code: issueCode, gameIds: [...issueIds] });
+  return kept;
+}
+
+
+
+
+
+
+export function verifyReviewRunManifestConsistency(
+  manifest: ReviewRunManifest,
+  now = Date.now(),
+): ReviewRunManifestConsistencyResult {
+  const issues: ReviewRunManifestConsistencyIssue[] = [];
+  const sourceGameIds = dedupeIds(manifest.sourceGameIds, 'duplicate-source-game-id', issues);
+  const sourceIds = new Set(sourceGameIds);
+
+  let activeBatchIds = dedupeIds(manifest.activeBatchIds, 'duplicate-active-batch-game-id', issues);
+  activeBatchIds = filterIds(
+    activeBatchIds,
+    'active-batch-outside-source',
+    new Set(),
+    id => sourceIds.has(id),
+    issues,
+  );
+
+  let completedGameIds = dedupeIds(manifest.completedGameIds, 'duplicate-completed-game-id', issues);
+  completedGameIds = filterIds(
+    completedGameIds,
+    'completed-outside-source',
+    new Set(),
+    id => sourceIds.has(id),
+    issues,
+  );
+  const completedIds = new Set(completedGameIds);
+
+  let skippedGameIds = dedupeIds(manifest.skippedGameIds, 'duplicate-skipped-game-id', issues);
+  skippedGameIds = filterIds(
+    skippedGameIds,
+    'skipped-outside-source',
+    new Set(),
+    id => sourceIds.has(id),
+    issues,
+  );
+  skippedGameIds = filterIds(
+    skippedGameIds,
+    'skipped-completed-conflict',
+    new Set(),
+    id => !completedIds.has(id),
+    issues,
+  );
+  const skippedIds = new Set(skippedGameIds);
+
+  const failedByGameId = new Map<string, ReviewRunFailedAttempt>();
+  const duplicateFailedIds = new Set<string>();
+  const failedOutsideSourceIds = new Set<string>();
+  const failedCompletedIds = new Set<string>();
+  const failedSkippedIds = new Set<string>();
+  for (const attempt of manifest.failedAttempts) {
+    if (!sourceIds.has(attempt.gameId)) {
+      failedOutsideSourceIds.add(attempt.gameId);
+      continue;
+    }
+    if (completedIds.has(attempt.gameId)) {
+      failedCompletedIds.add(attempt.gameId);
+      continue;
+    }
+    if (skippedIds.has(attempt.gameId)) {
+      failedSkippedIds.add(attempt.gameId);
+      continue;
+    }
+    if (failedByGameId.has(attempt.gameId)) duplicateFailedIds.add(attempt.gameId);
+    failedByGameId.set(attempt.gameId, attempt);
+  }
+  if (duplicateFailedIds.size > 0) issues.push({ code: 'duplicate-failed-game-id', gameIds: [...duplicateFailedIds] });
+  if (failedOutsideSourceIds.size > 0) issues.push({ code: 'failed-outside-source', gameIds: [...failedOutsideSourceIds] });
+  if (failedCompletedIds.size > 0) issues.push({ code: 'failed-completed-conflict', gameIds: [...failedCompletedIds] });
+  if (failedSkippedIds.size > 0) issues.push({ code: 'failed-skipped-conflict', gameIds: [...failedSkippedIds] });
+  const failedAttempts = [...failedByGameId.values()];
+
+  const changed = !sameStringArray(sourceGameIds, manifest.sourceGameIds)
+    || !sameStringArray(activeBatchIds, manifest.activeBatchIds)
+    || !sameStringArray(completedGameIds, manifest.completedGameIds)
+    || !sameStringArray(skippedGameIds, manifest.skippedGameIds)
+    || !sameFailedAttempts(failedAttempts, manifest.failedAttempts);
+
+  if (!changed) return { manifest, changed: false, issues };
+  return {
+    manifest: {
+      ...manifest,
+      sourceGameIds,
+      activeBatchIds,
+      completedGameIds,
+      skippedGameIds,
+      failedAttempts,
+      updatedAt: now,
+    },
+    changed: true,
+    issues,
+  };
+}
+
 export function withReviewRunGameFailed(
   manifest: ReviewRunManifest,
   gameId: string,
@@ -547,6 +771,19 @@ export function withReviewRunAutoRetryEnabled(
   return {
     ...manifest,
     autoRetryEnabled: enabled,
+    updatedAt: now,
+  };
+}
+
+export function withReviewRunUnattendedRunEnabled(
+  manifest: ReviewRunManifest,
+  enabled: boolean,
+  now = Date.now(),
+): ReviewRunManifest {
+  if (manifest.unattendedRunEnabled === enabled) return manifest;
+  return {
+    ...manifest,
+    unattendedRunEnabled: enabled,
     updatedAt: now,
   };
 }

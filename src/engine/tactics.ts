@@ -1,6 +1,5 @@
 /**
- * Missed-moment detection — shared logic for foreground (batch.ts) and
- * background (reviewQueue.ts) review pipelines.
+ * Missed-moment detection — shared logic for one-off and background review pipelines.
  *
  * A "missed moment" is a position where a significant winning opportunity was
  * available but not taken.  Three independent categories are detected, each
@@ -251,8 +250,7 @@ export function hasMissedMoments(
 }
 
 // ── Per-game moments store ────────────────────────────────────────────────────
-// Shared by both the foreground (batch.ts) and background (reviewQueue.ts)
-// review pipelines so either path can populate the data that renderMissedBadge
+// Shared by review pipelines so either path can populate the data that renderMissedBadge
 // reads via getMissedMoments().
 
 const _missedMomentsMap: Map<string, MissedMoment[]> = new Map();

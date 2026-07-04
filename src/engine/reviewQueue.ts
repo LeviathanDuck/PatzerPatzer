@@ -6,7 +6,7 @@
 import { StockfishProtocol } from '../ceval/protocol';
 import { record, getSessionId, Severity } from '../diagnostics';
 import { captureMemorySnapshot } from '../diagnostics/performance/deviceSignals';
-import { isEngineSearching } from './ctrl';
+import { isEngineSearching, sharedProtocolBusyState } from './ctrl';
 import { AnalyseCtrl } from '../analyse/ctrl';
 import { evalWinChances } from './winchances';
 import { hasMissedMoments, detectMissedMoments, onMissedMomentConfigChange, getMissedMoments, setMissedMoments, clearMissedMoments, type MissedMoment } from './tactics';
@@ -25,9 +25,7 @@ import { invalidateSummariesCache } from '../stats/ctrl';
 import { pgnToTree } from '../tree/pgn';
 
 
-
-
-import { bulkReviewDepth, bulkReviewMovetime, syncBulkReviewDepthSetting } from './batch';
+import { bulkReviewDepth, bulkReviewMovetime, syncBulkReviewDepthSetting } from './reviewProfiles';
 import {
   createReviewRunManifest,
   createReviewSearchOwner,
@@ -35,8 +33,10 @@ import {
   isReviewRunHygieneCadenceBoundary,
   isReviewRunStale,
   normalizeReviewRunManifest,
+  REVIEW_RUN_HYGIENE_CADENCE,
   reviewGamesInNewestFirstOrder,
   reviewSearchIdentityMatches,
+  sampleReviewRunProgressByVisibility,
   searchOwnerConsumeBestmove,
   searchOwnerDescriptorIsActive,
   searchOwnerHead,
@@ -48,12 +48,15 @@ import {
   selectNextReviewRunBatch,
   reviewRunCircuitBreakerShouldTrip,
   reviewRunSummaryFromManifest,
+  verifyReviewRunManifestConsistency,
   type ReviewSearchDescriptor,
   type ReviewRunBreakerReason,
   type ReviewRunLifecycleState,
   type ReviewRunManifest,
+  type ReviewRunManifestConsistencyIssue,
   type ReviewRunNextBatchSelection,
   type ReviewRunFailureState,
+  type ReviewRunProgressSampleAnchor,
   type ReviewSearchIdentitySnapshot,
   type ReviewRunSourceContext,
   type ReviewRunTimeControlContext,
@@ -66,6 +69,7 @@ import {
   withReviewRunGameSkippedFromActiveBatch,
   withReviewRunGameSkipped,
   withReviewRunAutoRetryEnabled,
+  withReviewRunUnattendedRunEnabled,
 } from './reviewRun';
 import type { ImportedGame } from '../import/types';
 import type { PositionEval } from './ctrl';
@@ -115,11 +119,13 @@ function isTerminalReviewFen(fen: string): boolean {
 
 const REVIEW_ENGINE_THREADS = 1;
 const REVIEW_ENGINE_HASH_MB = 32;
+const REVIEW_ENGINE_DESKTOP_MAX_THREADS = 4;
 
 export const reviewProtocol = new StockfishProtocol({ threads: REVIEW_ENGINE_THREADS, hash: REVIEW_ENGINE_HASH_MB });
 let reviewEngineReady       = false;
 let reviewEngineInitStarted = false;
 let reviewEngineFailed      = false;
+let reviewProtocolThreads   = REVIEW_ENGINE_THREADS;
 const reviewGameStartedAt = new WeakMap<ReviewQueueEntry, number>();
 const reviewEngineReadyWaiters = new Set<(ready: boolean) => void>();
 
@@ -297,13 +303,21 @@ function reviewDiagnosticRole(): ReviewDiagnosticRole {
   return leaderElectionStarted ? 'observer' : 'unknown';
 }
 
-function safeReviewGameId(gameId: string): string {
+function safeReviewStableId(value: string, prefix: string): string {
   let hash = 0x811c9dc5;
-  for (let i = 0; i < gameId.length; i++) {
-    hash ^= gameId.charCodeAt(i);
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);
   }
-  return `game-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  return `${prefix}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function safeReviewGameId(gameId: string): string {
+  return safeReviewStableId(gameId, 'game');
+}
+
+function safeReviewRunId(runId: string): string {
+  return safeReviewStableId(runId, 'run');
 }
 
 function recordReviewGameEnqueued(gameId: string, queuePosition: number): void {
@@ -336,7 +350,7 @@ function recordReviewGameStarted(entry: ReviewQueueEntry): void {
       role: reviewDiagnosticRole(),
       safeGameId: safeReviewGameId(entry.game.id),
       totalPositions: entry.total,
-      engineThreads: REVIEW_ENGINE_THREADS,
+      engineThreads: reviewProtocolThreads,
       engineHash: REVIEW_ENGINE_HASH_MB,
       timestamp,
     },
@@ -734,6 +748,17 @@ interface ReviewBatchItem {
   position:   EnginePositionContext;
 }
 
+export interface AcceptedReviewResult {
+  gameId:     string;
+  nodeId:     string;
+  nodePly:    number;
+  nodePath:   string;
+  parentPath: string;
+  fen:        string;
+  eval:       PositionEval;
+  depth:      number;
+}
+
 
 
 
@@ -773,6 +798,7 @@ type ReviewChannelMessage =
   | { type: 'resume'; tabId: string }
   | { type: 'cancel'; tabId: string }
   | { type: 'auto-retry'; tabId: string; enabled: boolean }
+  | { type: 'unattended-run'; tabId: string; enabled: boolean }
   | { type: 'review-depth'; tabId: string; depth: number }
   | { type: 'data-management-fence'; tabId: string; detail: DataManagementLocalChangeDetail }
   | { type: 'move-queue-game'; tabId: string; gameId: string; direction: 'up' | 'down' }
@@ -1075,6 +1101,8 @@ function initLeaderElection(): void {
           cancelBulkReview();
         } else if (msg.type === 'auto-retry' && isCurrentLeader && typeof msg.enabled === 'boolean') {
           setReviewAutoRetryEnabled(msg.enabled);
+        } else if (msg.type === 'unattended-run' && isCurrentLeader && typeof msg.enabled === 'boolean') {
+          setReviewUnattendedRunEnabled(msg.enabled);
         } else if (msg.type === 'review-depth' && isCurrentLeader && typeof msg.depth === 'number') {
           syncBulkReviewDepthSetting(msg.depth);
           applyReviewDepthToActiveQueue(msg.depth, { source: 'channel' });
@@ -1109,21 +1137,24 @@ function initLeaderElection(): void {
   // resigns leadership for unload/reload, but ordinary backgrounding keeps the
   // same owner so it can resume when visible again.
   document.addEventListener('visibilitychange', () => {
+    if (activeReviewRun && reviewRunProgressState(activeReviewRun) !== 'complete') {
+      recordReviewRunProgressVisibilityDiagnostic(activeReviewRun, 'visibility-change');
+    }
     if (document.visibilityState === 'hidden' && isCurrentLeader) {
-      if (isReviewAutoRetryEnabled()) {
+      if (isReviewUnattendedRunEnabled()) {
         flushReviewCheckpoint();
-        syncReviewAutoRetryWakeLock();
+        syncReviewUnattendedWakeLock();
       } else {
         suspendBulkReviewForHiddenTab();
       }
     } else if (document.visibilityState === 'visible') {
-      syncReviewAutoRetryWakeLock();
+      syncReviewUnattendedWakeLock();
       resumeHiddenSuspendedReviewInThisTab();
-      resumeAutoRetryReviewInThisTab();
+      resumeUnattendedReviewInThisTab();
     }
   });
   window.addEventListener('pagehide', () => {
-    releaseReviewAutoRetryWakeLock();
+    releaseReviewUnattendedWakeLock();
     if (isCurrentLeader) resignLeadership();
   });
 
@@ -1198,10 +1229,26 @@ async function mirrorQueueFromManifest(): Promise<void> {
 // observer tabs (which never receive `resumeReviewQueueFromManifest`'s
 // `games` argument directly) can still resolve game metadata for display.
 let _libraryGames: ImportedGame[] = [];
+let reviewRunLibrarySnapshotProvider: (() => readonly ImportedGame[]) | null = null;
 
 /** Keep the observer-mode game lookup current. Call whenever the library list changes. */
-export function setLibraryGamesForReviewQueue(games: ImportedGame[]): void {
-  _libraryGames = games;
+export function setLibraryGamesForReviewQueue(games: readonly ImportedGame[]): void {
+  _libraryGames = [...games];
+}
+
+/**
+ * Supplies the current imported-game library for the 10-game hygiene boundary.
+ * The queue owns membership through `manifest.sourceGameIds`; this provider only
+ * refreshes lookup metadata for ids already fixed into the run.
+ */
+export function setReviewRunLibrarySnapshotProvider(provider: () => readonly ImportedGame[]): void {
+  reviewRunLibrarySnapshotProvider = provider;
+}
+
+function refreshReviewRunLibrarySnapshot(): readonly ImportedGame[] {
+  const snapshot = reviewRunLibrarySnapshotProvider ? reviewRunLibrarySnapshotProvider() : _libraryGames;
+  setLibraryGamesForReviewQueue(snapshot);
+  return _libraryGames;
 }
 
 
@@ -1248,6 +1295,32 @@ export type ReviewPauseReason = 'user' | 'hidden' | 'reload' | 'breaker';
 let queuePauseReason: ReviewPauseReason | null = null;
 let hiddenSuspendedOwnerTabId: string | null = null;
 let activeReviewRun: ReviewRunManifest | null = null;
+let reviewRunHygieneRunId: string | null = null;
+let reviewRunHygienePositionsSinceBoundary = 0;
+let reviewRunHygienePreviousBoundaryAt: number | null = null;
+let reviewRunVisibilitySampleRunId: string | null = null;
+let reviewRunVisibilitySampleAnchor: ReviewRunProgressSampleAnchor | null = null;
+let reviewRunVisibilityCompletedPositions = 0;
+
+const REVIEW_UNATTENDED_RUN_KEY = 'patzer.review.unattendedRun';
+
+export type ReviewPauseNoticeReason =
+  | 'user-paused'
+  | 'hidden-suspended'
+  | 'browser-stalled'
+  | 'circuit-breaker'
+  | 'engine-init-failure'
+  | 'interrupted-after-reload';
+
+export interface ReviewPauseNotice {
+  reason: ReviewPauseNoticeReason;
+  message: string;
+  active: boolean;
+  recordedAt: number;
+}
+
+let currentReviewPauseNotice: ReviewPauseNotice | null = null;
+let lastReviewPauseNotice: ReviewPauseNotice | null = null;
 
 function activeQueueEntry(): ReviewQueueEntry | undefined {
   return activeIndex >= 0 ? queue[activeIndex] : queue.find(entry => entry.status === 'analyzing');
@@ -1304,44 +1377,106 @@ type ReviewWakeLockNavigator = Navigator & {
   };
 };
 
-let reviewAutoRetryWakeLock: ReviewWakeLockSentinel | null = null;
+let reviewUnattendedWakeLock: ReviewWakeLockSentinel | null = null;
+
+function readPersistedReviewUnattendedRunEnabled(): boolean {
+  try {
+    return localStorage.getItem(REVIEW_UNATTENDED_RUN_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function persistReviewUnattendedRunEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(REVIEW_UNATTENDED_RUN_KEY, enabled ? 'true' : 'false');
+  } catch {
+    // Preference persistence failure must not stop the review queue.
+  }
+}
+
+function markReviewPauseNotice(reason: ReviewPauseNoticeReason, message: string): void {
+  const notice: ReviewPauseNotice = {
+    reason,
+    message,
+    active: true,
+    recordedAt: Date.now(),
+  };
+  currentReviewPauseNotice = notice;
+  lastReviewPauseNotice = notice;
+}
+
+function clearActiveReviewPauseNoticeAfterProgress(): void {
+  if (!currentReviewPauseNotice) return;
+  currentReviewPauseNotice = {
+    ...currentReviewPauseNotice,
+    active: false,
+  };
+  lastReviewPauseNotice = currentReviewPauseNotice;
+}
 
 export function isReviewAutoRetryEnabled(): boolean {
   return activeReviewRun?.autoRetryEnabled === true;
 }
 
-function canHoldReviewAutoRetryWakeLock(): boolean {
-  if (!isCurrentLeader || !isReviewAutoRetryEnabled()) return false;
+export function isReviewUnattendedRunEnabled(): boolean {
+  return activeReviewRun?.unattendedRunEnabled ?? readPersistedReviewUnattendedRunEnabled();
+}
+
+function canHoldReviewUnattendedWakeLock(): boolean {
+  if (!isCurrentLeader || !isReviewUnattendedRunEnabled()) return false;
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
   return !queuePaused && (isBulkRunning() || hasRetryableFailedGame());
 }
 
-function releaseReviewAutoRetryWakeLock(): void {
-  const lock = reviewAutoRetryWakeLock;
+function releaseReviewUnattendedWakeLock(): void {
+  const lock = reviewUnattendedWakeLock;
   if (!lock) return;
-  reviewAutoRetryWakeLock = null;
+  reviewUnattendedWakeLock = null;
   void lock.release().catch(() => {
     // Wake lock is a best-effort browser affordance; denial/release races are not queue failures.
   });
 }
 
-function syncReviewAutoRetryWakeLock(): void {
-  if (!canHoldReviewAutoRetryWakeLock()) {
-    releaseReviewAutoRetryWakeLock();
+function syncReviewUnattendedWakeLock(): void {
+  if (!canHoldReviewUnattendedWakeLock()) {
+    releaseReviewUnattendedWakeLock();
     return;
   }
-  if (reviewAutoRetryWakeLock) return;
+  if (reviewUnattendedWakeLock) return;
   if (typeof navigator === 'undefined') return;
   const wakeLock = (navigator as ReviewWakeLockNavigator).wakeLock;
   if (!wakeLock) return;
   void wakeLock.request('screen').then(lock => {
-    reviewAutoRetryWakeLock = lock;
+    reviewUnattendedWakeLock = lock;
     lock.addEventListener?.('release', () => {
-      if (reviewAutoRetryWakeLock === lock) reviewAutoRetryWakeLock = null;
+      if (reviewUnattendedWakeLock === lock) reviewUnattendedWakeLock = null;
     });
   }).catch(() => {
     // Unsupported, denied, or not visible: keep the review queue running without wake lock.
   });
+}
+
+export function setReviewUnattendedRunEnabled(enabled: boolean): void {
+  persistReviewUnattendedRunEnabled(enabled);
+  if (!isCurrentLeader) {
+    postReviewChannelMessage({ type: 'unattended-run', tabId, enabled });
+    notifyReviewQueueStateChanged();
+    return;
+  }
+  if (activeReviewRun) {
+    activeReviewRun = withReviewRunUnattendedRunEnabled(activeReviewRun, enabled);
+    persistActiveReviewRun();
+  }
+  if (!enabled) {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') suspendBulkReviewForHiddenTab();
+    else syncReviewUnattendedWakeLock();
+  } else {
+    resumeUnattendedReviewInThisTab();
+    syncReviewUnattendedWakeLock();
+  }
+  notifyReviewQueueStateChanged();
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
 }
 
 export function setReviewAutoRetryEnabled(enabled: boolean): void {
@@ -1352,8 +1487,8 @@ export function setReviewAutoRetryEnabled(enabled: boolean): void {
   if (!activeReviewRun) return;
   activeReviewRun = withReviewRunAutoRetryEnabled(activeReviewRun, enabled);
   persistActiveReviewRun();
-  if (enabled) resumeAutoRetryReviewInThisTab();
-  else syncReviewAutoRetryWakeLock();
+  if (enabled) resumeUnattendedReviewInThisTab();
+  else syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
   postReviewChannelMessage({ type: 'manifest-changed', tabId });
 }
@@ -1454,6 +1589,7 @@ function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, so
       sourceMode:         sourceContext?.sourceMode ?? 'visible-list',
       sourceGameIds,
       reviewDepth:        depth,
+      unattendedRunEnabled: readPersistedReviewUnattendedRunEnabled(),
       activeBatchIds,
       ...(sourceContext?.timeControlContext ? { timeControlContext: sourceContext.timeControlContext } : {}),
       ...(sourceContext?.orderingContext ? { orderingContext: sourceContext.orderingContext } : {}),
@@ -1468,6 +1604,7 @@ function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, so
   activeReviewRun.sourceGameIds = [...sourceIds];
   activeReviewRun.activeBatchIds = [...batchIds];
   activeReviewRun.reviewDepth = depth;
+  activeReviewRun.unattendedRunEnabled = readPersistedReviewUnattendedRunEnabled();
   activeReviewRun.lifecycleState = 'running';
   activeReviewRun.updatedAt = Date.now();
   persistActiveReviewRun();
@@ -1476,6 +1613,7 @@ function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, so
 function markActiveReviewRunGameComplete(gameId: string): void {
   if (!activeReviewRun) return;
   activeReviewRun = withReviewRunGameComplete(activeReviewRun, gameId);
+  clearActiveReviewPauseNoticeAfterProgress();
   persistActiveReviewRun();
 }
 
@@ -1502,7 +1640,7 @@ function haltReviewQueueForBreaker(): void {
   queuePaused = true;
   queuePauseReason = 'breaker';
   hiddenSuspendedOwnerTabId = null;
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
 }
 
 /**
@@ -1517,6 +1655,7 @@ function recordReviewRunGameFailureForBreaker(): void {
   activeReviewRun = withReviewRunGameFailureRecorded(activeReviewRun);
   if (reviewRunCircuitBreakerShouldTrip(activeReviewRun)) {
     activeReviewRun = withReviewRunBreakerTripped(activeReviewRun, 'consecutive-failures');
+    markReviewPauseNotice('circuit-breaker', 'The run paused after 3 consecutive game failures.');
     haltReviewQueueForBreaker();
   }
   persistActiveReviewRun();
@@ -1527,6 +1666,7 @@ function recordReviewRunGameFailureForBreaker(): void {
 function tripReviewRunBreakerForEngineInit(): void {
   if (activeReviewRun) {
     activeReviewRun = withReviewRunBreakerTripped(activeReviewRun, 'engine-init-failure');
+    markReviewPauseNotice('engine-init-failure', 'The background engine failed to initialize.');
     persistActiveReviewRun();
   }
   haltReviewQueueForBreaker();
@@ -1661,11 +1801,11 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry, opts: { incrementAttem
     entry.done = entry.cache?.size ?? entry.done;
     persistManifestEntry(entry);
     activeIndex = -1;
-    syncReviewAutoRetryWakeLock();
+    syncReviewUnattendedWakeLock();
     notifyReviewQueueStateChanged();
     advanceQueue();
   }, delay);
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -1934,8 +2074,9 @@ function resetReviewBatchElapsed(): void {
   reviewLastProgressAt = null;
 }
 
-function markReviewQueueProgress(): void {
+function markReviewQueueProgress(clearPausedNotice = false): void {
   reviewLastProgressAt = Date.now();
+  if (clearPausedNotice) clearActiveReviewPauseNoticeAfterProgress();
   if (activeReviewRun?.lifecycleState === 'stale') {
     setActiveReviewRunState('running');
   }
@@ -2166,6 +2307,32 @@ function shouldDeferDispatch(): boolean {
   return isEngineSearching();
 }
 
+function reviewThreadScalingDesktopGate(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return !window.matchMedia('(pointer: coarse)').matches;
+}
+
+function reviewScaledThreadTarget(): number {
+  const cores = navigator.hardwareConcurrency ?? 2;
+  return Math.max(REVIEW_ENGINE_THREADS, Math.min(REVIEW_ENGINE_DESKTOP_MAX_THREADS, cores - 1));
+}
+
+function desiredReviewProtocolThreadsBeforeDispatch(): number {
+  if (!reviewThreadScalingDesktopGate()) return REVIEW_ENGINE_THREADS;
+  if (reviewSearchActive || reviewDispatchBarrierWaiting) return REVIEW_ENGINE_THREADS;
+  if (searchOwnerOutstanding(reviewSearchOwner) !== 0) return REVIEW_ENGINE_THREADS;
+  if (sharedProtocolBusyState().busy) return REVIEW_ENGINE_THREADS;
+  return reviewScaledThreadTarget();
+}
+
+function syncReviewProtocolThreadsBeforeDispatch(): void {
+  const desiredThreads = desiredReviewProtocolThreadsBeforeDispatch();
+  if (desiredThreads === reviewProtocolThreads) return;
+  if (reviewProtocol.setOptionWhenIdle('Threads', desiredThreads)) {
+    reviewProtocolThreads = desiredThreads;
+  }
+}
+
 /** Cancel any pending deferred dispatch — called on pause/cancel so it can't fire afterward. */
 function clearDispatchDefer(): void {
   if (reviewDispatchDeferTimer !== undefined) {
@@ -2361,6 +2528,7 @@ let _redraw:               () => void                                           
 let _setReviewEngineMetadata: (gameId: string, metadata: ReviewEngineMetadata) => void  = () => {};
 
 const reviewQueueStateListeners = new Set<() => void>();
+const acceptedReviewResultListeners = new Set<(result: AcceptedReviewResult) => void>();
 
 /** Subscribe to review queue state changes; returns an unsubscribe cleanup. */
 export function subscribeReviewQueueState(listener: () => void): () => void {
@@ -2368,6 +2536,24 @@ export function subscribeReviewQueueState(listener: () => void): () => void {
   return () => {
     reviewQueueStateListeners.delete(listener);
   };
+}
+
+/** Subscribe to per-position review results after exact-FEN/search-owner acceptance. */
+export function subscribeAcceptedReviewResults(listener: (result: AcceptedReviewResult) => void): () => void {
+  acceptedReviewResultListeners.add(listener);
+  return () => {
+    acceptedReviewResultListeners.delete(listener);
+  };
+}
+
+function notifyAcceptedReviewResult(result: AcceptedReviewResult): void {
+  for (const listener of acceptedReviewResultListeners) {
+    try {
+      listener(result);
+    } catch (error) {
+      console.warn('[review-queue] accepted-result listener failed', error);
+    }
+  }
 }
 
 function notifyReviewQueueStateChanged(): void {
@@ -2810,10 +2996,22 @@ function onReviewBestmove(): void {
     if (entry.serializedNodes && item) {
       entry.serializedNodes[nodePath] = buildAnalysisNodeEntry(item.nodeId, nodePath, item.fen, stored);
     }
+    if (item) {
+      notifyAcceptedReviewResult({
+        gameId: entry.game.id,
+        nodeId: item.nodeId,
+        nodePly,
+        nodePath,
+        parentPath,
+        fen: item.fen,
+        eval: { ...stored },
+        depth: stored.depth ?? reviewActiveDepth,
+      });
+    }
   }
 
   entry.done++;
-  markReviewQueueProgress();
+  markReviewQueueProgress(true);
   reviewItemIndex++;
   reviewCurrentEval = {};
   if (entry.depth !== reviewActiveDepth) {
@@ -2847,6 +3045,7 @@ function sendNextItem(): void {
   reviewDebugLog('[review-batch]', reviewItemIndex + 1, '/', reviewItemQueue.length,
     'nodeId:', item.nodeId, 'path:', item.nodePath, 'ply:', item.nodePly, 'gen:', reviewSearchGeneration);
 
+  syncReviewProtocolThreadsBeforeDispatch();
   beginReviewSearch(item);
 }
 
@@ -2943,9 +3142,198 @@ export function applyReviewDepthToActiveQueue(
 
 
 
-function runReviewRunHygieneCadence(manifest: ReviewRunManifest): void {
+function ensureReviewRunHygieneTracking(manifest: ReviewRunManifest): void {
+  if (reviewRunHygieneRunId === manifest.runId) return;
+  reviewRunHygieneRunId = manifest.runId;
+  reviewRunHygienePositionsSinceBoundary = 0;
+  reviewRunHygienePreviousBoundaryAt = Date.now();
+}
 
-  void manifest;
+function noteReviewRunHygieneGameComplete(manifest: ReviewRunManifest, entry: ReviewQueueEntry): void {
+  ensureReviewRunHygieneTracking(manifest);
+  reviewRunHygienePositionsSinceBoundary += Math.max(0, entry.done);
+  ensureReviewRunVisibilitySampling(manifest);
+  reviewRunVisibilityCompletedPositions += Math.max(0, entry.done);
+}
+
+type ReviewRunProgressDiagnosticReason = 'hygiene-boundary' | 'visibility-change';
+type ReviewRunProgressState = 'active' | 'paused' | 'breaker-paused' | 'complete';
+
+function ensureReviewRunVisibilitySampling(manifest: ReviewRunManifest): void {
+  if (reviewRunVisibilitySampleRunId === manifest.runId) return;
+  reviewRunVisibilitySampleRunId = manifest.runId;
+  reviewRunVisibilitySampleAnchor = null;
+  reviewRunVisibilityCompletedPositions = 0;
+}
+
+function reviewRunVisibilityState(): string {
+  return typeof document !== 'undefined' && typeof document.visibilityState === 'string'
+    ? document.visibilityState
+    : 'visible';
+}
+
+function reviewRunProgressState(manifest: ReviewRunManifest): ReviewRunProgressState {
+  if (manifest.lifecycleState === 'breaker-paused') return 'breaker-paused';
+  if (queuePaused || manifest.lifecycleState === 'user-paused' || manifest.lifecycleState === 'hidden-suspended' || manifest.lifecycleState === 'interrupted-after-reload') {
+    return 'paused';
+  }
+  if (manifest.lifecycleState === 'batch-complete' || manifest.lifecycleState === 'no-more-eligible-games' || manifest.lifecycleState === 'canceled') {
+    return 'complete';
+  }
+  return 'active';
+}
+
+function reviewRunPositionsAnalyzedForVisibilitySample(manifest: ReviewRunManifest): number {
+  ensureReviewRunVisibilitySampling(manifest);
+  const activeEntry = activeQueueEntry();
+  const activePositions = activeEntry && activeEntry.status === 'analyzing'
+    ? Math.max(0, activeEntry.done)
+    : 0;
+  return reviewRunVisibilityCompletedPositions + activePositions;
+}
+
+function reviewRunAutoRetryActive(manifest: ReviewRunManifest, runState: ReviewRunProgressState): boolean {
+  return manifest.autoRetryEnabled === true && runState === 'active';
+}
+
+function reviewRunUnattendedActive(manifest: ReviewRunManifest, runState: ReviewRunProgressState): boolean {
+  return manifest.unattendedRunEnabled !== false && runState === 'active';
+}
+
+function recordReviewRunProgressVisibilityDiagnostic(
+  manifest: ReviewRunManifest | null,
+  reason: ReviewRunProgressDiagnosticReason,
+): void {
+  if (!manifest) return;
+  ensureReviewRunVisibilitySampling(manifest);
+  const runState = reviewRunProgressState(manifest);
+  const sample = sampleReviewRunProgressByVisibility(
+    reviewRunVisibilitySampleAnchor,
+    reviewRunPositionsAnalyzedForVisibilitySample(manifest),
+  );
+  reviewRunVisibilitySampleAnchor = sample.anchor;
+
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-queue',
+    message: 'review-run-progress-visibility-sample',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      eventType: 'review-run-progress-visibility-sample',
+      reason,
+      safeRunId: safeReviewRunId(manifest.runId),
+      visibilityState: reviewRunVisibilityState(),
+      positionsSincePreviousSample: sample.positionsSincePreviousSample,
+      elapsedSincePreviousSampleMs: sample.elapsedSincePreviousSampleMs,
+      positionsPerMinute: sample.positionsPerMinute,
+      autoRetryEnabled: manifest.autoRetryEnabled === true,
+      autoRetryActive: reviewRunAutoRetryActive(manifest, runState),
+      unattendedRunEnabled: manifest.unattendedRunEnabled !== false,
+      unattendedRunActive: reviewRunUnattendedActive(manifest, runState),
+      runState,
+      lifecycleState: manifest.lifecycleState,
+      paused: queuePaused,
+      pauseReason: queuePaused ? queuePauseReason : null,
+      breakerPaused: manifest.lifecycleState === 'breaker-paused',
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function reviewRunConsistencyIssueMetadata(issues: readonly ReviewRunManifestConsistencyIssue[]): Array<{
+  code: string;
+  count: number;
+  safeGameIds: string[];
+}> {
+  return issues.map(issue => ({
+    code: issue.code,
+    count: issue.gameIds.length,
+    safeGameIds: issue.gameIds.slice(0, 8).map(safeReviewGameId),
+  }));
+}
+
+function reviewRunQueueIdsOutsideSource(manifest: ReviewRunManifest): string[] {
+  const sourceIds = new Set(manifest.sourceGameIds);
+  const outsideIds: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of queue) {
+    if (sourceIds.has(entry.game.id) || seen.has(entry.game.id)) continue;
+    seen.add(entry.game.id);
+    outsideIds.push(entry.game.id);
+  }
+  return outsideIds;
+}
+
+function runReviewRunHygieneCadence(manifest: ReviewRunManifest): void {
+  const boundaryStartedAt = Date.now();
+  ensureReviewRunHygieneTracking(manifest);
+
+  const libraryCountBefore = _libraryGames.length;
+  const refreshedLibrary = refreshReviewRunLibrarySnapshot();
+  let boundaryManifest = activeReviewRun?.runId === manifest.runId ? activeReviewRun : manifest;
+
+  const consistency = verifyReviewRunManifestConsistency(boundaryManifest);
+  if (consistency.changed) {
+    boundaryManifest = consistency.manifest;
+    activeReviewRun = boundaryManifest;
+    persistActiveReviewRun();
+  }
+
+  let breakerTrippedAtBoundary = false;
+  if (reviewRunCircuitBreakerShouldTrip(boundaryManifest)) {
+    boundaryManifest = withReviewRunBreakerTripped(boundaryManifest, 'consecutive-failures');
+    activeReviewRun = boundaryManifest;
+    haltReviewQueueForBreaker();
+    persistActiveReviewRun();
+    breakerTrippedAtBoundary = true;
+  }
+
+  const queueOutsideSourceIds = reviewRunQueueIdsOutsideSource(boundaryManifest);
+  const positionsSinceLastBoundary = reviewRunHygienePositionsSinceBoundary;
+  reviewRunHygienePositionsSinceBoundary = 0;
+
+  const now = Date.now();
+  const elapsedSincePreviousBoundaryMs = reviewRunHygienePreviousBoundaryAt === null
+    ? null
+    : Math.max(0, boundaryStartedAt - reviewRunHygienePreviousBoundaryAt);
+  reviewRunHygienePreviousBoundaryAt = now;
+
+  record({
+    kind: 'engine',
+    severity: consistency.issues.length > 0 || queueOutsideSourceIds.length > 0 || breakerTrippedAtBoundary
+      ? Severity.Warn
+      : Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-queue',
+    message: 'review-run-hygiene-boundary',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      safeRunId: safeReviewRunId(boundaryManifest.runId),
+      cadence: REVIEW_RUN_HYGIENE_CADENCE,
+      cadenceIndex: Math.floor(boundaryManifest.completedGameIds.length / REVIEW_RUN_HYGIENE_CADENCE),
+      completedCount: boundaryManifest.completedGameIds.length,
+      boundaryDurationMs: Math.max(0, now - boundaryStartedAt),
+      elapsedSincePreviousBoundaryMs,
+      positionsSinceLastBoundary,
+      consecutiveFailureCount: boundaryManifest.consecutiveFailureCount,
+      breakerTrippedAtBoundary,
+      breakerTrippedReason: boundaryManifest.breakerTrippedReason,
+      manifestRepaired: consistency.changed,
+      consistencyIssues: reviewRunConsistencyIssueMetadata(consistency.issues),
+      queueOutsideSourceCount: queueOutsideSourceIds.length,
+      queueOutsideSourceSafeGameIds: queueOutsideSourceIds.slice(0, 8).map(safeReviewGameId),
+      sourceGameCount: boundaryManifest.sourceGameIds.length,
+      libraryGameCountBefore: libraryCountBefore,
+      libraryGameCountAfter: refreshedLibrary.length,
+    },
+    redactionClass: 'safe',
+  });
+
+  recordReviewRunProgressVisibilityDiagnostic(boundaryManifest, 'hygiene-boundary');
+
+  if (breakerTrippedAtBoundary) notifyReviewQueueStateChanged();
 }
 
 function finishEntry(entry: ReviewQueueEntry): void {
@@ -2980,8 +3368,9 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     if (activeIndex < 0 || queue[activeIndex] !== entry) return;
 
     entry.status = 'complete';
-    markReviewQueueProgress();
+    markReviewQueueProgress(true);
     markActiveReviewRunGameComplete(entry.game.id);
+    if (activeReviewRun) noteReviewRunHygieneGameComplete(activeReviewRun, entry);
     if (activeReviewRun && isReviewRunHygieneCadenceBoundary(activeReviewRun.completedGameIds.length)) {
       runReviewRunHygieneCadence(activeReviewRun);
     }
@@ -3000,10 +3389,8 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     }
     _setReviewEngineMetadata(entry.game.id, reviewEngine);
 
-    // Stats-page parity with the foreground Review path (src/engine/batch.ts
-    // advanceBatch): write the game summary from the entry's own ctrl/cache/
-    // moments before they are evicted below. Skip cleanly when user color is
-    // unresolvable, matching foreground behavior.
+    // Write the game summary from the entry's own ctrl/cache/moments before they are evicted
+    // below. Skip cleanly when user color is unresolvable, matching one-off review behavior.
     if (userColor) {
       const gameSummary = extractGameSummary(
         entry.game,
@@ -3161,7 +3548,7 @@ function reviewRunIsCanceled(manifest: ReviewRunManifest | null): boolean {
 async function autoContinueReviewRun(): Promise<void> {
   if (!activeReviewRun) {
     setActiveReviewRunState(queue.length > 0 ? 'batch-complete' : 'no-more-eligible-games');
-    syncReviewAutoRetryWakeLock();
+    syncReviewUnattendedWakeLock();
     notifyReviewQueueStateChanged();
     return;
   }
@@ -3182,7 +3569,7 @@ async function autoContinueReviewRun(): Promise<void> {
     return;
   }
   setActiveReviewRunState('no-more-eligible-games');
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -3511,7 +3898,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   activeIndex = -1;
   hiddenSuspendedOwnerTabId = null;
   for (const entry of rebuilt) persistManifestEntry(entry);
-  if (isReviewAutoRetryEnabled()) {
+  if (isReviewUnattendedRunEnabled()) {
     queuePaused = false;
     queuePauseReason = null;
     setActiveReviewRunState('running');
@@ -3519,12 +3906,13 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
       void initReviewEngine('/stockfish-web');
     }
     if (!scheduleNextRetryableFailedGame()) advanceQueue();
-    syncReviewAutoRetryWakeLock();
+    syncReviewUnattendedWakeLock();
     notifyReviewQueueStateChanged();
     return;
   }
   queuePaused = true;
   queuePauseReason = 'reload';
+  markReviewPauseNotice('interrupted-after-reload', 'Review was interrupted after reload and needs Resume to continue.');
   setActiveReviewRunState('interrupted-after-reload');
   notifyReviewQueueStateChanged();
 }
@@ -3640,7 +4028,7 @@ export function cancelBulkReview(): void {
   hiddenSuspendedOwnerTabId = null;
   reviewStorageHealth = 'ok';
   setActiveReviewRunState('canceled');
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
   void clearReviewQueueManifest();
   notifyReviewQueueStateChanged();
@@ -3655,6 +4043,7 @@ export function pauseBulkReview(): void {
   queuePaused = true;
   queuePauseReason = 'user';
   hiddenSuspendedOwnerTabId = null;
+  markReviewPauseNotice('user-paused', 'Review was paused by the user.');
   setActiveReviewRunState('user-paused');
   clearWatchdog();
   clearDispatchDefer();
@@ -3675,9 +4064,17 @@ export function pauseBulkReview(): void {
   // most recently analyzed positions sitting in the throttle window unsaved.
   flushReviewCheckpoint();
   // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
   notifyReviewQueueStateChanged();
+}
+
+export function suspendReviewQueueForLfym(gameId: string | null): boolean {
+  const active = activeQueueEntry();
+  if (!gameId || !active || active.game.id !== gameId) return false;
+  if (!isBulkRunning() && !isBulkPaused()) return false;
+  pauseBulkReview();
+  return true;
 }
 
 export function suspendBulkReviewForHiddenTab(): void {
@@ -3686,6 +4083,7 @@ export function suspendBulkReviewForHiddenTab(): void {
   queuePaused = true;
   queuePauseReason = 'hidden';
   hiddenSuspendedOwnerTabId = tabId;
+  markReviewPauseNotice('hidden-suspended', 'Unattended run mode is off, so review suspended while the tab was hidden.');
   setActiveReviewRunState('hidden-suspended');
   clearWatchdog();
   clearDispatchDefer();
@@ -3702,7 +4100,7 @@ export function suspendBulkReviewForHiddenTab(): void {
     invalidateReviewSearchIdentity();
   }
   flushReviewCheckpoint();
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
   notifyReviewQueueStateChanged();
 }
@@ -3732,7 +4130,7 @@ export function resumeBulkReview(): void {
   } else {
     advanceQueue();
   }
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -3749,8 +4147,8 @@ export function resumeHiddenSuspendedReviewInThisTab(): void {
   resumeBulkReview();
 }
 
-export function resumeAutoRetryReviewInThisTab(): void {
-  if (!isCurrentLeader || !isReviewAutoRetryEnabled() || reviewEngineFailed) return;
+export function resumeUnattendedReviewInThisTab(): void {
+  if (!isCurrentLeader || !isReviewUnattendedRunEnabled() || reviewEngineFailed) return;
   if (queuePaused) {
     if (queuePauseReason === 'hidden' || queuePauseReason === 'reload') resumeBulkReview();
     return;
@@ -3772,7 +4170,7 @@ export function resumeAutoRetryReviewInThisTab(): void {
   } else if (activeIndex < 0 && queue.some(candidate => candidate.status === 'pending')) {
     advanceQueue();
   }
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
 
@@ -3980,6 +4378,9 @@ export interface QueueSummary {
   lifecycleState: ReviewRunLifecycleState | null;
   storageHealth: ReviewStorageHealth;
   autoRetryEnabled: boolean;
+  unattendedRunEnabled: boolean;
+  pauseNotice: ReviewPauseNotice | null;
+  lastPauseNotice: ReviewPauseNotice | null;
   elapsedSeconds: number | null;
   lastProgressSeconds: number | null;
   stale: boolean;
@@ -4063,6 +4464,9 @@ export function getQueueSummary(): QueueSummary {
     lastProgressSeconds,
     staleThresholdSeconds: REVIEW_STALE_PROGRESS_MS / 1000,
   });
+  if (stale && currentReviewPauseNotice?.active !== true) {
+    markReviewPauseNotice('browser-stalled', 'No review progress was detected for the stale-progress threshold.');
+  }
   const lifecycleState = stale ? 'stale' : rawLifecycleState;
 
   let remainingPositions = 0;
@@ -4090,6 +4494,9 @@ export function getQueueSummary(): QueueSummary {
     lifecycleState,
     storageHealth: reviewStorageHealth,
     autoRetryEnabled: activeReviewRun?.autoRetryEnabled === true,
+    unattendedRunEnabled: isReviewUnattendedRunEnabled(),
+    pauseNotice: currentReviewPauseNotice,
+    lastPauseNotice: lastReviewPauseNotice,
     elapsedSeconds,
     lastProgressSeconds,
     stale,
@@ -4254,7 +4661,7 @@ export function retryReviewRunFailedGames(): void {
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
-  syncReviewAutoRetryWakeLock();
+  syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
 

@@ -19,7 +19,7 @@ import {
   syncArrow,
 } from '../engine/ctrl';
 import { reviewDotsUserOnly, setReviewDotsUserOnly } from '../board/cosmetics';
-import { analysisComplete, batchAnalyzing } from '../engine/batch';
+import { analysisComplete } from '../engine/reviewStatus';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 
 // --- Action-menu open/close state ---
@@ -198,7 +198,7 @@ export function renderActionMenu(): VNode | null {
   const ctrl     = deps.getCtrl();
   const close    = () => { closeActionMenu(); deps.redraw(); };
   const hasRetro = !!ctrl.retro || !!ctrl.retroChoice;
-  const canLFYM  = analysisComplete && !batchAnalyzing;
+  const canLFYM  = analysisComplete;
 
 
   if (_actionMenuSubView === 'mistake-detection') {

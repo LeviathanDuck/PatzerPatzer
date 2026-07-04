@@ -7,6 +7,7 @@ import {
   playStrengthConfig,
   enterPlayMode,
   setPlayMoveCallback,
+  setPlayMoveRequestPending,
   incrementPendingStopCount,
 } from './ctrl';
 import type { EnginePositionContext } from './positionContext';
@@ -24,6 +25,7 @@ export interface PlayMoveRequest {
  * Does not affect analysis eval state.
  */
 export function requestPlayMove(req: PlayMoveRequest): void {
+  setPlayMoveRequestPending(false);
   if (!engineEnabled || !engineReady) {
     req.onError?.('engine not ready');
     return;
@@ -47,6 +49,7 @@ let _pendingTimer: ReturnType<typeof setTimeout> | null = null;
  */
 export function playMoveWithDelay(req: PlayMoveRequest, baseDelayMs = 400): void {
   if (_pendingTimer !== null) clearTimeout(_pendingTimer);
+  setPlayMoveRequestPending(true);
   const jitter = randomInt(100, 400);
   const levelScale = req.strength.level / 8;
   const delay = Math.round((baseDelayMs + jitter) * levelScale);
@@ -63,6 +66,7 @@ function randomInt(min: number, max: number): number {
  */
 export function cancelPlayMove(): void {
   if (_pendingTimer !== null) { clearTimeout(_pendingTimer); _pendingTimer = null; }
+  setPlayMoveRequestPending(false);
   setPlayMoveCallback(null);
   incrementPendingStopCount();
   protocol.stop();

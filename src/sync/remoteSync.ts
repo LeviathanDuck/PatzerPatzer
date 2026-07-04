@@ -8,13 +8,36 @@
 import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import type { SyncResult } from './client';
 import {
+  drainDurableVersionedOutbox,
+  runVersionedPreWriteGate,
+  type VersionedWriteBatchRequest,
+  type VersionedWriteBatchResponse,
+} from './versionDrain';
+import {
+  getRemoteSyncItemVersion,
+  readRemoteSyncVersionMetadata,
+  recordRemoteSyncItemVersion,
+  setRemoteSyncLatestVersion,
+} from './versionMetadata';
+import {
+  defaultDurableVersionedOutboxStorage,
+  enqueueDurableVersionedOutboxEntry,
+  readDurableVersionedOutbox,
+} from './versionOutbox';
+import {
   REMOTE_SYNC_STORE_NAMES,
   migrateRemoteSyncItem,
   type RemoteSyncItem,
   type RemoteSyncOperation,
   type RemoteSyncStoreName,
 } from './remoteSyncMigrations';
+import {
+  SYNC_ACCOUNT_CURSOR_FIELDS,
+  SYNC_ACCOUNT_PROFILE_FIELDS,
+} from './generatedManifest';
+import { shouldRunFullVersionedPull } from './versionRecovery';
 import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
+import { applySettingsLive, collectSettingKeysFromSyncItems } from './settingsLiveApply';
 
 const API_BASE = '/api/patzer-sync';
 const PUZZLE_DB_NAME = 'patzer-puzzle-v1';
@@ -26,12 +49,14 @@ const OUTBOX_KEY = 'chesspatzer.remoteSync.outbox';
 const DEVICE_TAG_KEY = 'chesspatzer.remoteSync.deviceTag';
 const SYNC_LOG_KEY = 'chesspatzer.remoteSync.syncLog';
 const SERVER_GENERATION_KEY = 'chesspatzer.remoteSync.syncGeneration';
+const SERVER_IDENTITY_KEY = 'chesspatzer.remoteSync.syncIdentity';
 const FULL_PULL_REQUIRED_KEY = 'chesspatzer.remoteSync.fullPullRequired';
+const CLOUD_STATE_STALE_KEY = 'chesspatzer.remoteSync.cloudStateStale';
+const CAS_CLIENT_ID_KEY = 'chesspatzer.remoteSync.casClientId';
 export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
 export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
 export const REMOTE_SYNC_APPLIED_EVENT = 'chesspatzer:remoteSync-remote-sync-applied';
 export const REMOTE_SYNC_ACTIVITY_EVENT = 'chesspatzer:remoteSync-sync-activity-changed';
-const RELOAD_ON_SETTINGS_PULL_KEY = 'chesspatzer.remoteSync.settingsReloadedAt';
 const SETTING_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.settingUpdatedAt.';
 const ITEM_UPDATED_AT_PREFIX = 'chesspatzer.remoteSync.itemUpdatedAt.';
 const ITEM_DELETED_AT_PREFIX = 'chesspatzer.remoteSync.itemDeletedAt.';
@@ -88,17 +113,33 @@ export interface RemoteSyncLogEntry {
 
 interface PullResponse {
   ok?: boolean;
+  code?: string;
   items?: unknown[];
   latestUpdatedAt?: number;
+  latestVersion?: number;
+  syncGeneration?: number;
+  generationReason?: string;
   skippedMalformedJson?: number;
+  fullPullRequired?: boolean;
   error?: string;
 }
+
+interface RemoteSyncPullOptions {
+  since?: number | null;
+  flushAfter?: boolean;
+  logNoop?: boolean;
+}
+
+type RemoteSyncPullPlan =
+  | { mode: 'cursor'; path: string; cursor: number; forcedFullPull: boolean }
+  | { mode: 'since'; path: string; since: number };
 
 interface DataManagementDeleteResponse {
   ok?: boolean;
   items?: unknown[];
   counts?: Record<string, number>;
   latestUpdatedAt?: number;
+  latestVersion?: number;
   syncGeneration?: number;
   generationReason?: string;
   error?: string;
@@ -107,6 +148,8 @@ interface DataManagementDeleteResponse {
 interface ApiErrorBody {
   error?: string;
   code?: string;
+  authIdentity?: string;
+  userKey?: string;
   syncGeneration?: number;
   generationReason?: string;
 }
@@ -131,6 +174,7 @@ interface StatusStoreSummary {
 
 interface StatusResponse {
   ok?: boolean;
+  authIdentity?: string;
   userKey?: string;
   items?: number;
   tombstones?: number;
@@ -309,13 +353,40 @@ function rememberServerGeneration(generation: unknown, reason?: unknown): void {
   }
 }
 
+function rememberServerIdentity(identity: unknown, userKey: unknown): void {
+  const value = typeof identity === 'string' && identity.trim()
+    ? identity.trim()
+    : typeof userKey === 'string' && userKey.trim()
+      ? userKey.trim()
+      : '';
+  if (value) localStorage.setItem(SERVER_IDENTITY_KEY, value);
+}
+
+function storedServerIdentity(): string {
+  return localStorage.getItem(SERVER_IDENTITY_KEY)?.trim() || 'admin-beta';
+}
+
 function clearServerGeneration(): void {
   localStorage.removeItem(SERVER_GENERATION_KEY);
   localStorage.removeItem(`${SERVER_GENERATION_KEY}.reason`);
+  localStorage.removeItem(SERVER_IDENTITY_KEY);
+  localStorage.removeItem(CLOUD_STATE_STALE_KEY);
 }
 
 export function isRemoteSyncFullPullRequired(): boolean {
   return localStorage.getItem(FULL_PULL_REQUIRED_KEY) === '1';
+}
+
+function isRemoteSyncCloudStateStale(): boolean {
+  return localStorage.getItem(CLOUD_STATE_STALE_KEY) === '1';
+}
+
+function markRemoteSyncCloudStateStale(): void {
+  localStorage.setItem(CLOUD_STATE_STALE_KEY, '1');
+}
+
+function clearRemoteSyncCloudStateStale(): void {
+  localStorage.removeItem(CLOUD_STATE_STALE_KEY);
 }
 
 function requireRemoteSyncFullPull(): void {
@@ -422,8 +493,8 @@ function genericUpdatedAt(record: unknown): number {
 
 
 
-const ACCOUNT_PROFILE_FIELDS = ['displayName', 'category', 'section', 'order', 'tags', 'lifetimeBest'] as const;
-const ACCOUNT_CURSOR_FIELDS = ['lastSyncedAt', 'newestGameTimestamp', 'oldestGameTimestamp', 'syncFilterKey'] as const;
+const ACCOUNT_PROFILE_FIELDS = SYNC_ACCOUNT_PROFILE_FIELDS;
+const ACCOUNT_CURSOR_FIELDS = SYNC_ACCOUNT_CURSOR_FIELDS;
 
 function accountProfileUpdatedAt(record: unknown): number {
   return maxTimestamp(
@@ -791,6 +862,7 @@ let flushIntervalTimer: number | null = null;
 let remotePollIntervalTimer: number | null = null;
 let visibilityFlushHandler: (() => void) | null = null;
 let pageShowSyncHandler: (() => void) | null = null;
+let focusSyncHandler: (() => void) | null = null;
 let onlineSyncHandler: (() => void) | null = null;
 let settingsObserverInstalled = false;
 let applyingRemoteSync = false;
@@ -798,6 +870,7 @@ let syncGeneration = 0;
 let skipNextStartupPush = false;
 let activeSyncOperationCount = 0;
 let autoPullInFlight = false;
+let pendingVersionedOutboxEnqueues: Promise<void>[] = [];
 
 interface ActiveDataManagementDelete {
   actionId: string;
@@ -1356,6 +1429,7 @@ function runVisibleAutoPull(): void {
   if (document.visibilityState !== 'visible') return;
   if (autoPullInFlight) return;
   if (activeDataManagementDelete) return;
+  markRemoteSyncCloudStateStale();
   autoPullInFlight = true;
   void pullFromRemoteSync({
     flushAfter: !isRemoteSyncFullPullRequired(),
@@ -1377,8 +1451,10 @@ export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } 
   };
   window.addEventListener('visibilitychange', visibilityFlushHandler);
   pageShowSyncHandler = () => runVisibleAutoPull();
+  focusSyncHandler = () => runVisibleAutoPull();
   onlineSyncHandler = () => runVisibleAutoPull();
   window.addEventListener('pageshow', pageShowSyncHandler);
+  window.addEventListener('focus', focusSyncHandler);
   window.addEventListener('online', onlineSyncHandler);
 
   flushIntervalTimer = window.setInterval(() => {
@@ -1420,6 +1496,10 @@ export function stopRemoteSyncAutoSync(): void {
   if (pageShowSyncHandler) {
     window.removeEventListener('pageshow', pageShowSyncHandler);
     pageShowSyncHandler = null;
+  }
+  if (focusSyncHandler) {
+    window.removeEventListener('focus', focusSyncHandler);
+    focusSyncHandler = null;
   }
   if (onlineSyncHandler) {
     window.removeEventListener('online', onlineSyncHandler);
@@ -1464,13 +1544,6 @@ export function getRemoteSyncLastSyncedAt(): string | null {
 
 export function getRemoteSyncLastCheckedAt(): string | null {
   return localStorage.getItem(LAST_CHECK_KEY);
-}
-
-function getRemoteSyncLastSyncMs(): number | undefined {
-  const value = getRemoteSyncLastSyncedAt();
-  if (!value) return undefined;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : undefined;
 }
 
 function setRemoteSyncLastSyncedAt(updatedAt?: number): void {
@@ -1566,6 +1639,7 @@ async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOve
 
   const body = await readJsonResponse<ApiErrorBody & T>(res);
   rememberServerGeneration(body.syncGeneration, body.generationReason);
+  rememberServerIdentity(body.authIdentity, body.userKey);
   if (!res.ok) {
     const ep = endpointClass(path);
     logSyncFailure({
@@ -1811,6 +1885,51 @@ function writeOutbox(items: RemoteSyncItem[]): void {
   writeOutboxSnapshot(items);
 }
 
+function casClientId(): string {
+  const existing = localStorage.getItem(CAS_CLIENT_ID_KEY)?.trim();
+  if (existing) return existing;
+  const value = `cas-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  localStorage.setItem(CAS_CLIENT_ID_KEY, value);
+  return value;
+}
+
+function queuePendingVersionedOutboxWrite(promise: Promise<void>): void {
+  pendingVersionedOutboxEnqueues.push(promise);
+  void promise.finally(() => {
+    pendingVersionedOutboxEnqueues = pendingVersionedOutboxEnqueues.filter(entry => entry !== promise);
+  });
+}
+
+async function waitForPendingVersionedOutboxWrites(): Promise<void> {
+  while (pendingVersionedOutboxEnqueues.length > 0) {
+    const pending = pendingVersionedOutboxEnqueues;
+    await Promise.allSettled(pending);
+    pendingVersionedOutboxEnqueues = pendingVersionedOutboxEnqueues.filter(entry => !pending.includes(entry));
+  }
+}
+
+async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
+  const deleted = isDeletedItem(item);
+  const payload = deleted ? undefined : item.payload;
+  const baseVersion = getRemoteSyncItemVersion(localStorage, storedServerIdentity(), item.store, item.itemKey);
+  await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
+    store: item.store,
+    itemKey: item.itemKey,
+    operation: deleted ? 'delete' : 'upsert',
+    baseVersion,
+    clientUpdatedAt: item.updatedAt,
+    ...(deleted ? {} : { payload }),
+  });
+}
+
+async function migrateLegacyOutboxToVersioned(): Promise<number> {
+  const snapshot = readOutboxSnapshot({ logInvalid: true });
+  if (snapshot.valid.length === 0) return 0;
+  await Promise.all(snapshot.valid.map(enqueueVersionedOutboxItem));
+  writeOutboxSnapshot([], snapshot.preservedInvalid);
+  return snapshot.valid.length;
+}
+
 function sameOutboxItem(left: RemoteSyncItem, right: RemoteSyncItem): boolean {
   return left.store === right.store
     && left.itemKey === right.itemKey
@@ -1861,6 +1980,10 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   }
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
+    const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
+    recordRemoteSyncLog('flush', 'error', message);
+  }));
   scheduleRemoteSyncFlush();
 }
 
@@ -1964,13 +2087,18 @@ function mergeCounts(target: Record<string, number>, source: Record<string, numb
   }
 }
 
-function reloadAfterSettingsPullIfNeeded(counts: Record<string, number>, latestUpdatedAt: number): boolean {
-  if ((counts.settings ?? 0) + (counts['settings:deleted'] ?? 0) === 0 || latestUpdatedAt <= 0) return false;
-  const marker = String(latestUpdatedAt);
-  if (sessionStorage.getItem(RELOAD_ON_SETTINGS_PULL_KEY) === marker) return false;
-  sessionStorage.setItem(RELOAD_ON_SETTINGS_PULL_KEY, marker);
-  window.location.reload();
-  return true;
+function applySettingsPullLiveIfNeeded(
+  counts: Record<string, number>,
+  latestUpdatedAt: number,
+  items: readonly unknown[],
+): void {
+  if ((counts.settings ?? 0) + (counts['settings:deleted'] ?? 0) === 0) return;
+  const changedKeys = collectSettingKeysFromSyncItems(items);
+  applySettingsLive({
+    source: 'remoteSync-pull',
+    changedKeys,
+    ...(latestUpdatedAt > 0 ? { latestUpdatedAt } : {}),
+  });
 }
 
 function maxItemUpdatedAt(items: RemoteSyncItem[]): number {
@@ -2135,6 +2263,164 @@ async function pushItems(items: RemoteSyncItem[]): Promise<Record<string, number
   return counts;
 }
 
+async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Promise<VersionedWriteBatchResponse> {
+  const result = await postJson<Partial<VersionedWriteBatchResponse> & { ok?: boolean; error?: string }>('push.php', request);
+  if (!result.ok) throw new Error(result.error || 'RemoteSync CAS push failed.');
+  return {
+    ok: true,
+    accepted: Array.isArray(result.accepted) ? result.accepted : [],
+    conflicts: Array.isArray(result.conflicts) ? result.conflicts : [],
+    rejected: Array.isArray(result.rejected) ? result.rejected : [],
+    latestVersion: typeof result.latestVersion === 'number' ? result.latestVersion : 0,
+    syncGeneration: typeof result.syncGeneration === 'number' ? result.syncGeneration : storedServerGeneration() ?? 1,
+    generationReason: typeof result.generationReason === 'string' ? result.generationReason : 'unknown',
+  };
+}
+
+function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown): number {
+  let latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
+    ? Math.floor(latestVersion)
+    : 0;
+  for (const raw of items) {
+    const item = objectValue(raw);
+    const store = typeof item?.store === 'string' ? item.store as RemoteSyncStoreName : null;
+    const itemKey = typeof item?.itemKey === 'string' ? item.itemKey : null;
+    const version = typeof item?.version === 'number' && Number.isFinite(item.version) && item.version >= 0
+      ? Math.floor(item.version)
+      : null;
+    if (!store || !itemKey || version === null) continue;
+    recordRemoteSyncItemVersion(localStorage, storedServerIdentity(), store, itemKey, version);
+    latest = Math.max(latest, version);
+  }
+  setRemoteSyncLatestVersion(localStorage, storedServerIdentity(), latest);
+  return latest;
+}
+
+function rawVersionedPullSortKey(raw: unknown): { version: number; store: string; itemKey: string } {
+  const item = objectValue(raw);
+  const version = typeof item?.version === 'number' && Number.isFinite(item.version) && item.version >= 0
+    ? Math.floor(item.version)
+    : Number.MAX_SAFE_INTEGER;
+  return {
+    version,
+    store: typeof item?.store === 'string' ? item.store : '',
+    itemKey: typeof item?.itemKey === 'string' ? item.itemKey : '',
+  };
+}
+
+function versionOrderedRawItems(items: readonly unknown[]): unknown[] {
+  return [...items].sort((left, right) => {
+    const leftKey = rawVersionedPullSortKey(left);
+    const rightKey = rawVersionedPullSortKey(right);
+    if (leftKey.version !== rightKey.version) return leftKey.version - rightKey.version;
+    if (leftKey.store !== rightKey.store) return leftKey.store.localeCompare(rightKey.store);
+    return leftKey.itemKey.localeCompare(rightKey.itemKey);
+  });
+}
+
+function planRemoteSyncPull(options: RemoteSyncPullOptions): RemoteSyncPullPlan {
+  if (typeof options.since === 'number' && Number.isFinite(options.since)) {
+    const since = Math.max(0, Math.floor(options.since));
+    return { mode: 'since', path: `pull.php?since=${encodeURIComponent(String(since))}`, since };
+  }
+
+  const metadata = readRemoteSyncVersionMetadata(localStorage, storedServerIdentity());
+  const forcedFullPull = isRemoteSyncFullPullRequired() || options.since === null || metadata.needsFullPull;
+  const cursor = forcedFullPull ? 0 : metadata.latestVersion;
+  return {
+    mode: 'cursor',
+    path: `pull.php?cursor=${encodeURIComponent(String(cursor))}`,
+    cursor,
+    forcedFullPull,
+  };
+}
+
+function canAdvancePullVersionMetadata(counts: Record<string, number>): boolean {
+  return (counts.cancelled ?? 0) === 0
+    && (counts.skipped ?? 0) === 0
+    && (counts.skippedMalformedJson ?? 0) === 0;
+}
+
+async function applyVersionedRevalidationPull(
+  result: PullResponse,
+  generation: number,
+): Promise<{ ok: boolean; latestVersion?: number; error?: string }> {
+  if (!result.ok) return { ok: false, error: result.error || 'RemoteSync pre-write revalidation failed.' };
+  const items = result.items ?? [];
+  const counts = await applyRemoteSyncItems(items, { generation });
+  if ((result.skippedMalformedJson ?? 0) > 0) {
+    counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
+    recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
+  }
+  if (syncGeneration !== generation || !hasRemoteSyncToken() || (counts.cancelled ?? 0) > 0) {
+    return { ok: false, error: 'RemoteSync pre-write revalidation was cancelled before cursor metadata advanced.' };
+  }
+  setRemoteSyncLastCheckedAt();
+  const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
+  if (Object.values(counts).some(value => value > 0) || items.length > 0) {
+    if (latestUpdatedAt > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+    applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
+    emitRemoteSyncApplied(counts, latestUpdatedAt);
+  }
+  if (!canAdvancePullVersionMetadata(counts)) {
+    requireRemoteSyncFullPull();
+    markRemoteSyncCloudStateStale();
+    return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
+  }
+  const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
+  clearRemoteSyncFullPullRequirement();
+  clearRemoteSyncCloudStateStale();
+  return { ok: true, latestVersion };
+}
+
+async function revalidateBeforeVersionedDrain(cursor: number): Promise<{ ok: boolean; latestVersion?: number; error?: string }> {
+  const generation = syncGeneration;
+  const result = await remoteSyncFetch<PullResponse>(`pull.php?cursor=${encodeURIComponent(String(cursor))}`);
+  if (!result.ok && shouldRunFullVersionedPull(result)) {
+    recordRemoteSyncLog('pull', 'info', 'Version cursor was too old; running full versioned pull before write drain.');
+    const fullPull = await remoteSyncFetch<PullResponse>('pull.php?cursor=0');
+    return applyVersionedRevalidationPull(fullPull, generation);
+  }
+  return applyVersionedRevalidationPull(result, generation);
+}
+
+async function drainVersionedRemoteSyncOutbox(): Promise<Record<string, number>> {
+  await ensureServerGenerationLoaded();
+  const migrated = await migrateLegacyOutboxToVersioned();
+  await waitForPendingVersionedOutboxWrites();
+  const result = await runVersionedPreWriteGate({
+    versionStorage: localStorage,
+    identity: storedServerIdentity(),
+    cloudStateStale: isRemoteSyncCloudStateStale(),
+    revalidate: async cursor => revalidateBeforeVersionedDrain(cursor),
+    drain: () => drainDurableVersionedOutbox({
+      outboxStorage: defaultDurableVersionedOutboxStorage(),
+      versionStorage: localStorage,
+      identity: storedServerIdentity(),
+      clientId: casClientId(),
+      sendBatch: sendVersionedWriteBatch,
+      acceptedAdapter: {
+        applyAccepted: async accepted => {
+          if (accepted.store !== 'accounts') return;
+          const counts = await applyRemoteSyncItems([accepted], { generation: syncGeneration });
+          emitRemoteSyncApplied(counts, accepted.updatedAt);
+        },
+      },
+      conflictAdapter: {
+        applyCurrent: async current => {
+          const counts = await applyRemoteSyncItems([current], { generation: syncGeneration });
+          applySettingsPullLiveIfNeeded(counts, current.updatedAt, [current]);
+          emitRemoteSyncApplied(counts, current.updatedAt);
+        },
+      },
+    }),
+  });
+  const counts = { ...result.counts };
+  if (migrated > 0) counts.migratedLegacyOutbox = migrated;
+  if (!result.success) throw new Error(result.error || 'RemoteSync CAS outbox drain failed.');
+  return counts;
+}
+
 async function commitDataManagementDeleteKeys(
   actionId: string,
   keys: readonly RemoteSyncDeleteKey[],
@@ -2169,6 +2455,7 @@ async function commitDataManagementDeleteKeys(
       if (tombstones.length !== items.length) {
         throw new Error(`RemoteSync data delete confirmed ${tombstones.length} of ${items.length} requested tombstone${items.length === 1 ? '' : 's'}.`);
       }
+      const latestVersion = rememberVersionedPullMetadata(result.items ?? [], result.latestVersion);
       for (const tombstone of tombstones) rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
       removeOutboxItemsForCommittedDeletes(tombstones);
 
@@ -2180,6 +2467,7 @@ async function commitDataManagementDeleteKeys(
       const counts = {
         ...(result.counts ?? {}),
         tombstonesCommitted: tombstones.length,
+        tombstoneLatestVersion: latestVersion,
       };
       recordRemoteSyncLog('data-management', 'success', 'Data Management delete tombstones committed to the token database.', counts);
       emitRemoteSyncApplied(counts, latestUpdatedAt);
@@ -2410,31 +2698,33 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
 
 export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   const snapshot = readOutboxSnapshot({ logInvalid: true });
-  const outbox = snapshot.valid;
-  if (outbox.length === 0) return { success: true, counts: {} };
-  if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued: outbox.length } };
+  const pendingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+  const queued = snapshot.valid.length + pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
+  if (queued === 0) return { success: true, counts: {} };
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued } };
   if (isRemoteSyncFullPullRequired()) {
     const message = 'Pull the token database before pushing from this browser.';
-    const counts = { queued: outbox.length };
+    const counts = { queued };
     recordRemoteSyncLog('flush', 'error', message, counts);
     return { success: false, error: message, counts };
   }
   if (!hasRemoteSyncToken()) {
-    const counts = { queued: outbox.length };
+    const counts = { queued };
     recordRemoteSyncLog('flush', 'error', 'Enter the admin sync token first.', counts);
     return { success: false, error: 'Enter the admin sync token first.', counts };
   }
 
   return withRemoteSyncActivity(async () => {
     try {
-      const counts = await pushItems(outbox);
-      removeOutboxSnapshotItems(outbox);
-      setRemoteSyncLastSyncedAt(maxItemUpdatedAt(outbox));
-      recordRemoteSyncLog('flush', 'success', 'Queued changes flushed.', counts);
+      const counts = await drainVersionedRemoteSyncOutbox();
+      setRemoteSyncLastSyncedAt(Date.now());
+      recordRemoteSyncLog('flush', 'success', 'Queued CAS changes flushed.', counts);
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
-      const counts = { queued: outbox.length };
+      const remainingLegacy = readOutboxSnapshot({ logInvalid: true }).valid.length;
+      const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+      const counts = { queued: remainingLegacy + remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
       return { success: false, error: message, counts };
     }
@@ -2466,12 +2756,9 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
       }
       const flush = await flushRemoteSyncOutbox();
       if (!flush.success) return flush;
-
-      const items = await readLocalRemoteSyncItems();
-      const counts = await pushItems(items);
+      const counts = { ...(flush.counts ?? {}) };
       mergeCounts(counts, pullCounts);
-      setRemoteSyncLastSyncedAt(maxItemUpdatedAt(items));
-      recordRemoteSyncLog('push', 'success', 'Database pulled, then local cache pushed.', counts);
+      recordRemoteSyncLog('push', 'success', 'Database pulled, then queued CAS changes flushed.', counts);
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync push failed.';
@@ -2481,34 +2768,48 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
   });
 }
 
-export async function pullFromRemoteSync(options: { since?: number | null; flushAfter?: boolean; logNoop?: boolean } = {}): Promise<SyncResult> {
+export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): Promise<SyncResult> {
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
   return withRemoteSyncActivity(async () => {
     try {
       await ensureServerGenerationLoaded();
       const generation = syncGeneration;
-      const fullPullRequired = isRemoteSyncFullPullRequired();
-      const since = fullPullRequired || options.since === null ? undefined : options.since ?? getRemoteSyncLastSyncMs();
-      const path = since !== undefined ? `pull.php?since=${encodeURIComponent(String(since))}` : 'pull.php';
-      const result = await remoteSyncFetch<PullResponse>(path);
+      const plan = planRemoteSyncPull(options);
+      const result = await remoteSyncFetch<PullResponse>(plan.path);
       if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
       setRemoteSyncLastCheckedAt();
       if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { skipped: 1 } };
 
-      const items = result.items ?? [];
+      const items = plan.mode === 'cursor'
+        ? versionOrderedRawItems(result.items ?? [])
+        : result.items ?? [];
       const counts = await applyRemoteSyncItems(items, { generation });
+      let versionMetadataAdvanced = plan.mode !== 'cursor';
       if ((result.skippedMalformedJson ?? 0) > 0) {
         counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
         recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
       }
       if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts };
+      if (plan.mode === 'cursor') {
+        if (canAdvancePullVersionMetadata(counts)) {
+          const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
+          counts.latestVersion = latestVersion;
+          if (plan.forcedFullPull) counts.fullVersionPull = 1;
+          clearRemoteSyncFullPullRequirement();
+          clearRemoteSyncCloudStateStale();
+          versionMetadataAdvanced = true;
+        } else {
+          requireRemoteSyncFullPull();
+          markRemoteSyncCloudStateStale();
+          counts.versionMetadataDeferred = 1;
+        }
+      }
       const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
       if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
-      clearRemoteSyncFullPullRequirement();
-      if (reloadAfterSettingsPullIfNeeded(counts, latestUpdatedAt)) return { success: true, counts };
+      applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
       emitRemoteSyncApplied(counts, latestUpdatedAt);
 
-      if (options.flushAfter && !fullPullRequired) {
+      if (options.flushAfter && !(plan.mode === 'cursor' && (plan.forcedFullPull || !versionMetadataAdvanced))) {
         const flush = await flushRemoteSyncOutbox();
         if (!flush.success) {
           return {

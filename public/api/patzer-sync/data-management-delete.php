@@ -23,22 +23,23 @@ foreach ($items as $item) {
 }
 
 $readStmt = $pdo->prepare(
-    'SELECT updated_at_ms
+    'SELECT updated_at_ms, version
      FROM patzer_sync_items
      WHERE user_key = ? AND `store` = ? AND item_key = ?
      LIMIT 1
      FOR UPDATE'
 );
 $writeStmt = $pdo->prepare(
-    'INSERT INTO patzer_sync_items (user_key, `store`, item_key, payload_json, updated_at_ms, deleted_at_ms)
-     VALUES (:user_key, :store_name, :item_key, NULL, :updated_at_ms, :deleted_at_ms)
+    'INSERT INTO patzer_sync_items (user_key, `store`, item_key, version, payload_json, updated_at_ms, deleted_at_ms)
+     VALUES (:user_key, :store_name, :item_key, :version, NULL, :updated_at_ms, :deleted_at_ms)
      ON DUPLICATE KEY UPDATE
-       payload_json = IF(VALUES(updated_at_ms) >= updated_at_ms, NULL, payload_json),
-       deleted_at_ms = IF(VALUES(updated_at_ms) >= updated_at_ms, VALUES(deleted_at_ms), deleted_at_ms),
-       updated_at_ms = GREATEST(updated_at_ms, VALUES(updated_at_ms))'
+       version = VALUES(version),
+       payload_json = NULL,
+       deleted_at_ms = VALUES(deleted_at_ms),
+       updated_at_ms = VALUES(updated_at_ms)'
 );
 $finalReadStmt = $pdo->prepare(
-    'SELECT updated_at_ms, deleted_at_ms
+    'SELECT updated_at_ms, deleted_at_ms, version
      FROM patzer_sync_items
      WHERE user_key = ? AND `store` = ? AND item_key = ?
      LIMIT 1'
@@ -47,6 +48,7 @@ $finalReadStmt = $pdo->prepare(
 $responseItems = [];
 $counts = ['items' => 0, 'tombstones' => 0];
 $latestUpdatedAt = 0;
+$latestVersion = 0;
 $pdo->beginTransaction();
 try {
     foreach ($deleteKeys as $deleteKey) {
@@ -54,22 +56,28 @@ try {
         $itemKey = $deleteKey['itemKey'];
         $readStmt->execute([$config['user_key'], $store, $itemKey]);
         $existing = $readStmt->fetch();
+        $readStmt->closeCursor();
         $existingUpdatedAt = is_array($existing) ? (int) $existing['updated_at_ms'] : 0;
         $updatedAt = max(patzer_now_ms(), $existingUpdatedAt + 1);
+        $version = patzer_take_next_sync_version($pdo, $config['user_key']);
         $writeStmt->execute([
             ':user_key' => $config['user_key'],
             ':store_name' => $store,
             ':item_key' => $itemKey,
+            ':version' => $version,
             ':updated_at_ms' => $updatedAt,
             ':deleted_at_ms' => $updatedAt,
         ]);
         $finalReadStmt->execute([$config['user_key'], $store, $itemKey]);
         $final = $finalReadStmt->fetch();
+        $finalReadStmt->closeCursor();
         if (!is_array($final) || $final['deleted_at_ms'] === null) continue;
         $finalUpdatedAt = (int) $final['updated_at_ms'];
+        $finalVersion = isset($final['version']) ? (int) $final['version'] : $version;
         $responseItems[] = [
             'store' => $store,
             'itemKey' => $itemKey,
+            'version' => $finalVersion,
             'updatedAt' => $finalUpdatedAt,
             'deleted' => true,
             'operation' => 'delete',
@@ -78,9 +86,12 @@ try {
         $counts['tombstones']++;
         $counts[$store] = ($counts[$store] ?? 0) + 1;
         $latestUpdatedAt = max($latestUpdatedAt, $finalUpdatedAt);
+        $latestVersion = max($latestVersion, $finalVersion);
     }
     $pdo->commit();
 } catch (Throwable $error) {
+    $readStmt->closeCursor();
+    $finalReadStmt->closeCursor();
     $pdo->rollBack();
     patzer_json(500, ['ok' => false, 'error' => 'Data Management delete failed.']);
 }
@@ -90,6 +101,7 @@ patzer_json(200, [
     'items' => $responseItems,
     'counts' => $counts,
     'latestUpdatedAt' => $latestUpdatedAt,
+    'latestVersion' => $latestVersion,
     'syncGeneration' => $meta['syncGeneration'],
     'generationReason' => $meta['generationReason'],
 ]);

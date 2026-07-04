@@ -4,33 +4,11 @@
 
 
 
+import { SYNC_MANIFEST_STORE_NAMES } from './generatedManifest';
+
 export const REMOTE_SYNC_PAYLOAD_SCHEMA_VERSION = 1;
 
-export const REMOTE_SYNC_STORE_NAMES = [
-  'games',
-  'analysis',
-  'game-summaries',
-  'retro-results',
-  'saved-review-puzzles',
-  'studies',
-  'practice-lines',
-  'position-progress',
-  'drill-attempts',
-  'folders',
-  'accounts',
-  'puzzle-definitions',
-  'puzzle-attempts',
-  'puzzle-user-meta',
-  'puzzle-user-perf',
-  'puzzle-rating-history',
-  'opening-collections',
-  'opening-session',
-  'opening-training-variations',
-  'repertoire-sources',
-  'repertoire-match-records',
-  'repertoire-scan-runs',
-  'settings',
-] as const;
+export const REMOTE_SYNC_STORE_NAMES = SYNC_MANIFEST_STORE_NAMES;
 
 export type RemoteSyncStoreName = typeof REMOTE_SYNC_STORE_NAMES[number];
 export type RemoteSyncOperation = 'upsert' | 'delete';

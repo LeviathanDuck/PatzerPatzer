@@ -83,13 +83,14 @@ export function setRepertoireArrowShapeProvider(provider: (() => DrawShape[]) | 
   _repertoireArrowShapeProvider = provider ?? (() => []);
 }
 
-// --- Batch callback hooks (avoids circular import with engine/batch.ts) ---
+// --- Silent LFYM eval hook ---
 
-let _isBatchActive: () => boolean   = () => false;
-let _onBatchBestmove: (() => void) | null = null;
+let silentEvalActive = false;
+let onSilentEvalBestmove: (() => void) | null = null;
 
-export function setIsBatchActive(fn: () => boolean): void   { _isBatchActive = fn; }
-export function setOnBatchBestmove(fn: () => void): void    { _onBatchBestmove = fn; }
+function isSilentEvalActive(): boolean {
+  return silentEvalActive;
+}
 
 // Callback fired when live eval writes an improved result to evalCache.
 // Registered by main.ts to debounce IDB persistence.
@@ -233,6 +234,85 @@ export function setAnalysisDepth(v: number): void    { analysisDepth = v; localS
 export function setSearchTime(v: number): void       { searchTime = v; localStorage.setItem('patzer.searchTime', String(v)); }
 export function setSearchUntilDepth(v: boolean): void { searchUntilDepth = v; localStorage.setItem('patzer.searchUntilDepth', String(v)); }
 export function isEngineSearching(): boolean       { return engineSearchActive; }
+export type SharedProtocolBusyOwner =
+  | 'analysis-live'
+  | 'analysis-threat'
+  | 'play'
+  | 'play-delayed'
+  | 'lfym-visible-eval'
+  | 'lfym-silent-eval'
+  | 'puzzle-post-solve'
+  | 'study-detail'
+  | 'openings-live'
+  | 'unknown';
+
+export interface SharedProtocolBusyState {
+  busy: boolean;
+  owner: SharedProtocolBusyOwner | null;
+  surface: string | null;
+  analyzing: boolean;
+}
+
+let playMoveRequestPending = false;
+
+export function setPlayMoveRequestPending(pending: boolean): void {
+  playMoveRequestPending = pending;
+}
+
+function sharedProtocolOwnerForSurface(surface: string | null): SharedProtocolBusyOwner {
+  if (surface === 'analysis-threat') return 'analysis-threat';
+  if (surface === 'analysis-live') return ctrlRetroFeedbackIsEval() ? 'lfym-visible-eval' : 'analysis-live';
+  if (surface === 'lfym-silent-parent') return 'lfym-silent-eval';
+  if (surface === 'puzzle-engine' || surface === 'puzzle-engine-view') return 'puzzle-post-solve';
+  if (surface === 'study-detail') return 'study-detail';
+  if (surface === 'openings-live') return 'openings-live';
+  if (surface === 'opening-practice-play') return 'play';
+  return surface ? 'unknown' : 'analysis-live';
+}
+
+function ctrlRetroFeedbackIsEval(): boolean {
+  try {
+    return _getCtrl().retro?.feedback() === 'eval';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Minimal read-only busy signal for the shared foreground Stockfish protocol.
+ * This intentionally classifies the current protocol owner from existing local state and the
+ * most recent EnginePositionContext; it is not a general owner registry.
+ */
+export function sharedProtocolBusyState(): SharedProtocolBusyState {
+  if (playMoveRequestPending) {
+    return { busy: true, owner: 'play-delayed', surface: 'opening-practice-play', analyzing: protocol.isAnalyzing() };
+  }
+  if (engineMode === 'play' && (_playMoveCallback !== null || protocol.isAnalyzing())) {
+    return {
+      busy: true,
+      owner: 'play',
+      surface: protocol.currentPositionContext()?.surface ?? 'opening-practice-play',
+      analyzing: protocol.isAnalyzing(),
+    };
+  }
+  if (evalIsThreat) {
+    return { busy: true, owner: 'analysis-threat', surface: 'analysis-threat', analyzing: protocol.isAnalyzing() };
+  }
+
+  const context = protocol.currentPositionContext();
+  const surface = context?.surface ?? null;
+  const owner = sharedProtocolOwnerForSurface(surface);
+  const analyzing = protocol.isAnalyzing() || engineSearchActive;
+
+  if (isSilentEvalActive()) return { busy: true, owner: 'lfym-silent-eval', surface, analyzing };
+
+  if (!analyzing) return { busy: false, owner: null, surface, analyzing: false };
+  return { busy: true, owner, surface, analyzing: true };
+}
+
+export function isSharedProtocolBusy(): boolean {
+  return sharedProtocolBusyState().busy;
+}
 /**
  * Returns 0–1 representing how far the current search has progressed.
  * Uses whichever of depth or elapsed time is further along, so the bar
@@ -316,7 +396,7 @@ export function exitPlayMode(): void {
 export function buildArrowShapes(): DrawShape[] {
   const shapes: DrawShape[] = [];
   const ctrl = _getCtrl();
-  if (_isBatchActive()) return shapes;
+  if (isSilentEvalActive()) return shapes;
 
   // Suppress engine-guidance arrows whenever retrospection is active and the user has not
   // manually revealed guidance for the current candidate.
@@ -712,13 +792,12 @@ function parseEngineLine(line: string): void {
     if (pvIndex === 1) {
       // Path guard: discard info lines for a position we've already navigated away from.
       // Only the threat search is exempt — it always targets the current node.
-      // During batch review the engine works through the mainline sequentially; evalNodePath
-      // will rarely match the user's current navigation path, so skip the guard entirely
-      // while a batch is active — batch items are identified by evalNodePath, not user path.
+      // Silent LFYM eval targets a background parent path and suppresses visible live-eval UI
+      // while still storing by explicit evalNodePath.
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: only allow output through when the active search FEN matches the current
       // override FEN — drops stale output for a superseded override position.
-      if (!evalIsThreat && !_isBatchActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return;
+      if (!evalIsThreat && !isSilentEvalActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return;
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -734,7 +813,7 @@ function parseEngineLine(line: string): void {
       if (best) ev.best = best;
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== undefined && !evalIsThreat) ev.depth = depth;
-      if ((score !== undefined || best) && !_isBatchActive()) {
+      if ((score !== undefined || best) && !isSilentEvalActive()) {
         if (!evalIsThreat) _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
         scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
@@ -756,7 +835,7 @@ function parseEngineLine(line: string): void {
       if (best) pl.best = best;
       if (pvMoves.length > 0) pl.moves = pvMoves;
       currentEval.lines = pendingLines.slice(1).filter(Boolean) as EvalLine[];
-      if (!_isBatchActive()) scheduleLiveEngineUiRefresh();
+      if (!isSilentEvalActive()) scheduleLiveEngineUiRefresh();
     }
   } else if (parts[0] === 'bestmove') {
     cancelLiveEngineUiRefresh();
@@ -780,7 +859,7 @@ function parseEngineLine(line: string): void {
     }
     engineSearchActive = false;
     if (!parts[1] || parts[1] === '(none)') {
-      if (_isBatchActive()) _onBatchBestmove?.();
+      if (isSilentEvalActive()) onSilentEvalBestmove?.();
       else if (pendingEval) evalCurrentPosition();
       return;
     }
@@ -795,7 +874,7 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: additionally reject bestmove if the active search FEN no longer matches
       // the current override FEN (i.e. the override position changed mid-search).
-      if (!_isBatchActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) {
+      if (!isSilentEvalActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) {
 
 
         // Instrument stale bestmove drop for the live engine: record event type, depth, and movetime.
@@ -825,9 +904,8 @@ function parseEngineLine(line: string): void {
       const stored: PositionEval = { ...currentEval };
       pendingLines = [];
       currentEval = stored;
-      if (_isBatchActive()) {
-        // Route to batch for review-eval storage and queue advance.
-        _onBatchBestmove?.();
+      if (isSilentEvalActive()) {
+        onSilentEvalBestmove?.();
       } else {
         // Live eval: if this result is deeper than what's cached, promote it
         // into evalCache so the eval graph and persistence stay up to date.
@@ -837,7 +915,7 @@ function parseEngineLine(line: string): void {
 
 
           if (isDeeperEval(cached, stored)) {
-            // Compute delta and loss — same logic as batch.ts onBatchBestmove.
+            // Compute delta and loss for live eval promotion.
             const parentPath = evalParentPath;
             const parentEval = evalCache.get(parentPath);
             if (parentEval?.cp !== undefined && stored.cp !== undefined) {
@@ -872,8 +950,7 @@ function parseEngineLine(line: string): void {
   }
 }
 
-// readyok callback — batch.ts registers this to handle the pending-batch-on-ready case
-// and the normal eval-on-ready case in a single hook.
+// Optional readyok callback for modules that need to customize engine-ready behavior.
 let _onEngineReady: (() => void) | null = null;
 export function setOnEngineReady(fn: (() => void) | null): void { _onEngineReady = fn; }
 
@@ -888,7 +965,7 @@ protocol.onMessage(line => {
     }
     _redraw();
   } else {
-    if (!_isBatchActive() && (line.startsWith('info') || line.startsWith('bestmove'))) {
+    if (!isSilentEvalActive() && (line.startsWith('info') || line.startsWith('bestmove'))) {
     }
     parseEngineLine(line);
   }
@@ -906,7 +983,7 @@ export function flipFenColor(fen: string): string {
 // --- Threat mode ---
 
 export function evalThreatPosition(): void {
-  if (!engineEnabled || !engineReady || _isBatchActive()) return;
+  if (!engineEnabled || !engineReady || isSilentEvalActive()) return;
   if (engineMode === 'play') return;
   cancelLiveEngineUiRefresh();
   threatEval   = {};
@@ -936,7 +1013,7 @@ export function toggleThreatMode(): void {
 // --- Live eval ---
 
 export function evalCurrentPosition(): void {
-  if (_isBatchActive()) return;
+  if (isSilentEvalActive()) return;
   if (!engineEnabled || !engineReady) return;
   if (engineMode === 'play') return;
   if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
@@ -1072,7 +1149,6 @@ export function setEngineEnabledFlag(on: boolean): void {
   engineEnabled = on;
 }
 
-// Export internal state getters for batch.ts (avoids exporting mutable internals)
 export function getEvalNodePath(): string   { return evalNodePath; }
 export function getEvalNodePly(): number    { return evalNodePly; }
 export function getEvalParentPath(): string { return evalParentPath; }
@@ -1090,11 +1166,10 @@ export function isEngineSearchActive(): boolean { return engineSearchActive; }
  * Evaluate a single FEN position silently (no UI updates, no arrows, no redraws).
  * Stores the result in evalCache at `nodePath` when the engine bestmove arrives.
  *
- * Uses the batch mechanism so all live-eval UI side effects are suppressed.
+ * Uses an explicit silent-eval mode so all live-eval UI side effects are suppressed.
  * Resumes normal live eval after the silent eval completes.
  *
  * Used by retro background eval for candidates missing cp-quality diff data.
- * Adapted from the batch single-item eval pattern in src/engine/batch.ts.
  * Mirrors lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts background eval intent
  * (Lichess fires a silent ceval on the candidate's parent position).
  */
@@ -1106,7 +1181,7 @@ export function evalPositionSilent(
 ): void {
   if (!engineEnabled || !engineReady) return;
   if (engineMode === 'play') return;
-  if (_isBatchActive()) return;
+  if (isSilentEvalActive()) return;
   if (engineSearchActive) return;
 
   // Park the eval-node tracking on the target path so the bestmove path guard
@@ -1116,13 +1191,13 @@ export function evalPositionSilent(
   evalNodePly    = nodePly;
   evalParentPath = parentPath;
 
-  // Activate batch mode so info/bestmove handlers skip all UI side effects.
-  _isBatchActive = () => true;
+  // Activate silent mode so info/bestmove handlers skip visible UI side effects.
+  silentEvalActive = true;
 
-  _onBatchBestmove = () => {
+  onSilentEvalBestmove = () => {
     // Immediately restore normal state so live eval can resume.
-    _isBatchActive    = () => false;
-    _onBatchBestmove  = null;
+    silentEvalActive = false;
+    onSilentEvalBestmove = null;
 
     const stored: PositionEval = { ...currentEval };
     if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {

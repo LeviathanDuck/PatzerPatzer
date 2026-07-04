@@ -81,6 +81,7 @@ export class StockfishProtocol {
   private onLine: LineCallback | undefined;
   private _initStartedAt: number | undefined;
   private _enginePhase: EnginePhase = 'idle';
+  private _positionContext: EnginePositionContext | null = null;
 
   // Device capability snapshot — read once at engine-start for error correlation.
   // navigator.deviceMemory is not universally supported (Chromium-only); cast through
@@ -264,7 +265,29 @@ export class StockfishProtocol {
    * `position fen <initialFen> moves <uci...>`.
    */
   setPositionContext(context: EnginePositionContext): void {
+    this._positionContext = context;
     this.send(uciPositionCommand(context));
+  }
+
+  /** Read-only context for the most recent position sent to this protocol instance. */
+  currentPositionContext(): EnginePositionContext | null {
+    return this._positionContext;
+  }
+
+  /** True only while this protocol instance has an active `go` search outstanding. */
+  isAnalyzing(): boolean {
+    return this._enginePhase === 'analyzing';
+  }
+
+  /**
+   * Set a UCI option only when no search is active.
+   * Mirrors Lichess protocol.swapWork option timing: options are changed before `go`,
+   * never while a search is computing.
+   */
+  setOptionWhenIdle(name: string, value: string | number | boolean): boolean {
+    if (!this.module || this._enginePhase === 'analyzing') return false;
+    this.send(`setoption name ${name} value ${value}`);
+    return true;
   }
 
   /**

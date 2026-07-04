@@ -5,7 +5,6 @@
 
 import type { AnalyseCtrl } from './ctrl';
 import { evalCache, evalCurrentPosition, evalPositionSilent, engineEnabled, toggleEngine } from '../engine/ctrl';
-import { batchAnalyzing, stopBatchAnalysis } from '../engine/batch';
 import { requestRetroBackgroundEval } from './retro';
 import { nodeListAt } from '../tree/ops';
 import { contextFromNodeList, fenOnlyPositionContext } from '../engine/positionContext';
@@ -135,7 +134,6 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
       // LFYM can run from reviewed data even when the visible live engine is off.
       // Make sure the ceval dependency for the 'eval' state is actually available;
       // otherwise the user gets stuck on "evaluating your move" forever.
-      if (batchAnalyzing) stopBatchAnalysis();
       if (!engineEnabled) toggleEngine();
       else evalCurrentPosition();
       retro.onCeval(); // may resolve synchronously if batch eval is already in cache

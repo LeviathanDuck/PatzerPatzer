@@ -30,9 +30,9 @@ import {
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
 import {
-  batchAnalyzing, batchDone, batchQueue,
   reviewDepth, setReviewDepth,
-} from '../engine/batch';
+} from '../engine/reviewProfiles';
+import { getQueueSummary } from '../engine/reviewQueue';
 import { formatScore } from '../analyse/evalView';
 import { orientation } from '../board/index';
 import { addNode } from '../tree/ops';
@@ -84,6 +84,15 @@ export function setRetroVisibleEngineEnabled(v: boolean): void {
   retroVisibleEngineEnabled = v;
 }
 
+function currentReviewQueueDisplay(): { active: boolean; done: number; total: number } {
+  const summary = getQueueSummary();
+  return {
+    active: summary.running && summary.currentGameId !== null,
+    done:   summary.positionsAnalyzed,
+    total:  summary.totalPositions,
+  };
+}
+
 // --- renderCeval ---
 
 /**
@@ -100,6 +109,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
   // Mirrors lichess-org/lila: showCevalPvs: !ctrl.retro?.isSolving() pattern.
   const retroSolving = opts?.retroSolving === true;
   const visibleEngineEnabled = retroHiddenByDefault ? retroVisibleEngineEnabled : engineEnabled;
+  const reviewProgress = currentReviewQueueDisplay();
   const hasEval  = visibleEngineEnabled && !retroSolving && (currentEval.cp !== undefined || currentEval.mate !== undefined);
   const pearlStr = visibleEngineEnabled && !retroSolving && engineEnabled
     ? (hasEval ? formatScore(currentEval) : (engineReady ? '…' : ''))
@@ -108,10 +118,10 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
   const engineLabel = protocol.engineName ?? 'Stockfish 18';
   const statusText  = !visibleEngineEnabled
     ? 'Local analysis'
-    : !engineEnabled || !engineReady
-      ? 'Loading…'
-      : batchAnalyzing
-        ? `Reviewing ${batchDone}/${batchQueue.length}…`
+      : !engineEnabled || !engineReady
+        ? 'Loading…'
+      : reviewProgress.active
+        ? `Reviewing ${reviewProgress.done}/${reviewProgress.total}…`
         : 'Engine on';
 
   // Thin bar along the top of the ceval panel.
@@ -271,6 +281,7 @@ export function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
 
   const fen = _positionOverride?.currentFen ?? _getCtrl().node.fen;
+  const reviewProgress = currentReviewQueueDisplay();
 
   function pvRowForSlot(slotIdx: number): VNode {
     // Slot 0 = primary line (currentEval); slots 1+ = secondary lines (currentEval.lines[i-1])
@@ -286,8 +297,8 @@ export function renderPvBox(): VNode | null {
       if (slotIdx === 0) {
         const statusText = !engineReady
           ? 'Loading engine…'
-          : batchAnalyzing
-            ? `Reviewing ${batchDone}/${batchQueue.length}…`
+          : reviewProgress.active
+            ? `Reviewing ${reviewProgress.done}/${reviewProgress.total}…`
             : '…';
         return h('div.pv.pv--nowrap', [h('span.ceval__info', statusText)]);
       }
@@ -438,6 +449,7 @@ export function renderPvBoard(): VNode | null {
  */
 export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VNode | null {
   if (!showEngineSettings) return null;
+  const reviewProgress = currentReviewQueueDisplay();
   const arrowSettings = opts?.showArrowSettings === true
     ? [
         renderToggleRow('ceval-engine-arrows', 'Engine arrows', showEngineArrows, (v) => {
@@ -463,7 +475,7 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
             setMultiPv(parseInt((e.target as HTMLInputElement).value));
             clearPendingLines();
             // Re-evaluate current position with new MultiPV setting
-            if (engineEnabled && engineReady && !batchAnalyzing) {
+            if (engineEnabled && engineReady && !reviewProgress.active) {
               resetCurrentEval();
               evalCurrentPosition();
             }

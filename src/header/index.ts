@@ -29,11 +29,12 @@ import {
   getCurrentFailedReviewStatus, skipCurrentFailedReviewGame,
   isLeaderTab, isReviewOwnerUnavailableForTakeover, takeOverUnavailableReviewOwner,
   setReviewAutoRetryEnabled,
+  isReviewUnattendedRunEnabled, setReviewUnattendedRunEnabled,
 } from '../engine/reviewQueue';
 import {
   reviewDepth, setReviewDepth,
   bulkReviewDepth, setBulkReviewDepth, bulkReviewMovetime, setBulkReviewMovetime,
-} from '../engine/batch';
+} from '../engine/reviewProfiles';
 import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import {
@@ -697,6 +698,18 @@ function renderReviewQueueSection(redraw: () => void): VNode {
   ]);
 }
 
+function formatReviewPauseReasonLabel(reason: string): string {
+  switch (reason) {
+    case 'user-paused': return 'User paused';
+    case 'hidden-suspended': return 'Hidden tab';
+    case 'browser-stalled': return 'Browser stalled';
+    case 'circuit-breaker': return 'Circuit breaker';
+    case 'engine-init-failure': return 'Engine init failed';
+    case 'interrupted-after-reload': return 'Reload interrupted';
+    default: return 'Paused';
+  }
+}
+
 function renderReviewMenu(redraw: () => void): VNode | null {
   const engineFailed       = isReviewEngineFailed();
   const engineInitializing = isReviewEngineInitializing();
@@ -756,6 +769,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const isQueueOwner = isLeaderTab();
   const ownerUnavailable = isReviewOwnerUnavailableForTakeover();
   const storageFailure = summary.storageHealth !== 'ok';
+  const pauseNotice = summary.pauseNotice;
+  const activePauseNotice = pauseNotice?.active === true ? pauseNotice : null;
+  const lastPauseNotice = summary.lastPauseNotice;
+  const pausedOrStalled = paused || staleNotice || breakerPaused || activePauseNotice !== null;
   const canControlQueue = isQueueOwner && (running || paused);
   const timeControlLabel = summary.timeControlContext?.speeds.length
     ? summary.timeControlContext.speeds.join(', ')
@@ -766,7 +783,9 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const positionProgress = formatReviewPositionProgress(summary.positionsAnalyzed, summary.totalPositions);
   const activeProgressLabel = positionProgress ?? `${summary.done}/${summary.total} games`;
   const positionProgressRemaining = Math.max(0, summary.totalPositions - summary.positionsAnalyzed);
-  const reviewTriggerLabel = breakerPaused
+  const reviewTriggerLabel = pausedOrStalled
+    ? 'Paused'
+    : breakerPaused
     ? `Review paused · ${runSummary?.failed.length ?? 0} failed in a row`
     : failedStatus
     ? positionProgress
@@ -787,7 +806,9 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     : summary
         ? `Reviewing ${activeProgressLabel}`
         : 'Reviewing…';
-  const reviewTriggerTitle = breakerPaused
+  const reviewTriggerTitle = activePauseNotice
+    ? `${formatReviewPauseReasonLabel(activePauseNotice.reason)}: ${activePauseNotice.message}`
+    : breakerPaused
     ? (runSummary?.breakerTrippedReason === 'engine-init-failure'
         ? 'Review paused: the background engine failed to initialize'
         : 'Review paused: 3 consecutive game failures')
@@ -805,11 +826,15 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       ? 'No matching games left to review'
     : 'Bulk Review settings';
   const progressIconState: 'active' | 'still' =
-    running && !paused && !staleNotice && !failedStatus && !storageFailure && !breakerPaused ? 'active' : 'still';
+    running && !pausedOrStalled && !failedStatus && !storageFailure ? 'active' : 'still';
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
-      class: { active: showReviewMenu || active, 'review-menu__trigger--warning': staleNotice || breakerPaused },
+      class: {
+        active: showReviewMenu || active,
+        'review-menu__trigger--warning': staleNotice,
+        'review-menu__trigger--error': pausedOrStalled || storageFailure,
+      },
       attrs: { title: reviewTriggerTitle },
       on: { click: () => {
         if (ownerUnavailable) takeOverUnavailableReviewOwner();
@@ -840,6 +865,14 @@ function renderReviewMenu(redraw: () => void): VNode | null {
           : null,
         interruptedAfterReload
           ? h('div.review-menu__label', 'Review interrupted after reload. Resume to continue.')
+          : null,
+        activePauseNotice
+          ? h('div.review-menu__label.review-menu__label--error',
+              `${formatReviewPauseReasonLabel(activePauseNotice.reason)}: ${activePauseNotice.message}`)
+          : null,
+        !activePauseNotice && lastPauseNotice
+          ? h('div.review-menu__label',
+              `Last pause: ${formatReviewPauseReasonLabel(lastPauseNotice.reason)} · ${lastPauseNotice.message}`)
           : null,
         staleNotice
           ? h('div.review-menu__label.review-menu__label--warning',
@@ -943,6 +976,28 @@ function renderReviewMenu(redraw: () => void): VNode | null {
               }, 'Cancel')
             : null,
         ]),
+        h('label.review-menu__toggle.review-menu__toggle--inline', {
+          attrs: {
+            title: 'Keep background review running when the tab is hidden. Visible tabs are still most reliable; hidden progress depends on browser throttling.',
+          },
+        }, [
+          h('span', 'Unattended run'),
+          h('input', {
+            attrs: { type: 'checkbox' },
+            props: { checked: isReviewUnattendedRunEnabled() },
+            on: {
+              change: (event: Event) => {
+                const input = event.currentTarget as HTMLInputElement;
+                setReviewUnattendedRunEnabled(input.checked);
+                redraw();
+              },
+            },
+          }),
+        ]),
+        h('div.review-menu__label.review-menu__label--warning',
+          isReviewUnattendedRunEnabled()
+            ? 'Unattended is on. Visible tab is reliable; hidden-tab progress is best-effort and browser-dependent.'
+            : 'Unattended is off. Background review suspends while this tab is hidden.'),
         h('label.review-menu__toggle.review-menu__toggle--inline', {
           attrs: {
             title: 'Persistently retry and auto-resume this active game. The run continues automatically through your selection.',

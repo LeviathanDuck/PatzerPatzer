@@ -2,7 +2,13 @@
 // Adapted from lichess-org/lila: ui/analyse/src/view/ and ui/chart/src/acpl.ts
 
 import { h, type VNode } from 'snabbdom';
-import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
+import { evalWinChances, type MoveLabel } from '../engine/winchances';
+import {
+  countDeepenedReviewEvals,
+  deepenedReviewSummaryText,
+  isDeepenedBeyondReviewStamp,
+  labelForReviewEval,
+} from './deepenedEval';
 import type { TreeNode } from '../tree/types';
 import type { ReviewEngineMetadata } from '../idb/index';
 
@@ -17,8 +23,11 @@ interface EvalEntry {
   loss?:  number;
   delta?: number;
   label?: MoveLabel;
+  depth?: number;
 }
 type EvalCache = ReadonlyMap<string, EvalEntry>;
+
+type MoveColor = 'white' | 'black';
 
 // --- Score formatting ---
 // Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts renderEval
@@ -69,51 +78,113 @@ function moveAccuracyFromDiff(diff: number): number {
   return Math.max(0, Math.min(100, raw + 1));
 }
 
+function standardDeviation(values: readonly number[]): number {
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function scoreAsCp(ev: EvalEntry): number | null {
+  if (ev.cp !== undefined) return ev.cp;
+  if (ev.mate !== undefined) {
+    // Lichess gameAccuracy uses Eval.forceAsCp before WinPercent conversion:
+    // mate scores become extreme cp values, then WinPercent clamps them.
+    return ev.mate < 0 ? Number.MIN_SAFE_INTEGER - ev.mate : Number.MAX_SAFE_INTEGER - ev.mate;
+  }
+  return null;
+}
+
+function scoreToWinPercent(ev: EvalEntry): number | null {
+  const cp = scoreAsCp(ev);
+  if (cp === null) return null;
+  const wc = evalWinChances({ cp });
+  return wc === undefined ? null : (wc + 1) / 2 * 100;
+}
+
 /**
- * Aggregate per-move accuracy into a game accuracy figure.
- * Matches lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala gameAccuracy.
- * window = max(2, min(8, floor(n/10)));  weights = stdDev per sliding window, clamped [0.5, 12].
- * Result = (volatility-weighted mean + harmonic mean) / 2, clamped [0, 100].
+ * Aggregate per-move accuracy into a game accuracy figure for one side.
+ * Mirrors lichess-org/lila: modules/analyse/src/main/AccuracyPercent.scala gameAccuracy.
  */
-function aggregateAccuracy(accs: number[]): number | null {
+function aggregateAccuracy(
+  accs: readonly { accuracy: number; color: MoveColor }[],
+  allWinPercents: readonly number[],
+  color: MoveColor,
+): number | null {
+  const colorAccs = accs.filter(acc => acc.color === color);
+  if (colorAccs.length === 0) return null;
+
   const n = accs.length;
-  if (n < 2) return null;
+  const cpCount = Math.max(0, allWinPercents.length - 1);
+  const window = Math.max(2, Math.min(8, Math.floor(cpCount / 10)));
 
-  const window = Math.max(2, Math.min(8, Math.floor(n / 10)));
-
-  // Sliding window std devs — moves.sliding(window) in Lichess produces n-window+1 entries.
+  // Lichess prepends repeated opening windows before the normal sliding windows so the first
+  // moves get volatility weights even when the window is larger than the early prefix.
   const weights: number[] = [];
-  for (let s = 0; s + window <= n; s++) {
-    const slice = accs.slice(s, s + window);
-    const mean = slice.reduce((a, b) => a + b, 0) / slice.length;
-    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / slice.length;
-    weights.push(Math.max(0.5, Math.min(12, Math.sqrt(variance))));
+  const repeatedOpeningWindows = Math.max(0, Math.min(window, allWinPercents.length) - 2);
+  for (let i = 0; i < repeatedOpeningWindows; i++) {
+    const slice = allWinPercents.slice(0, window);
+    weights.push(Math.max(0.5, Math.min(12, standardDeviation(slice))));
+  }
+  for (let s = 0; s + window <= allWinPercents.length; s++) {
+    const slice = allWinPercents.slice(s, s + window);
+    weights.push(Math.max(0.5, Math.min(12, standardDeviation(slice))));
   }
 
-  // Lichess zip truncates to the shorter sequence (n - window + 1 pairs)
-  const pairLen = weights.length;
+  // Lichess zip truncates to the shorter sequence.
   let weightedSum = 0;
   let totalWeight = 0;
-  for (let i = 0; i < pairLen; i++) {
-    weightedSum += accs[i]! * weights[i]!;
-    totalWeight += weights[i]!;
+  const colorWeightedAccs: number[] = [];
+  for (let i = 0; i < accs.length && i < weights.length; i++) {
+    const acc = accs[i]!;
+    if (acc.color !== color) continue;
+    const weight = weights[i]!;
+    weightedSum += acc.accuracy * weight;
+    totalWeight += weight;
+    colorWeightedAccs.push(acc.accuracy);
   }
+  if (colorWeightedAccs.length === 0 || totalWeight <= 0) return null;
   const weightedMean = totalWeight > 0 ? weightedSum / totalWeight : 0;
 
-  // Harmonic mean uses all n moves (Lichess: moves.size / moves.map(1/a).sum)
-  const harmonicMean = n / accs.reduce((acc, a) => acc + 1 / Math.max(a, 0.001), 0);
+  const harmonicMean = colorAccs.length
+    / colorAccs.reduce((acc, a) => acc + 1 / Math.max(a.accuracy, 0.001), 0);
 
   return Math.max(0, Math.min(100, (weightedMean + harmonicMean) / 2));
+}
+
+export function computeLichessStyleGameAccuracy(
+  scores: readonly EvalEntry[],
+  startColor: MoveColor = 'white',
+): { white: number; black: number } | null {
+  const allWinPercents = [{ cp: 15 }, ...scores]
+    .map(scoreToWinPercent)
+    .filter((wp): wp is number => wp !== null);
+  if (allWinPercents.length < 3) return null;
+
+  const accs: { accuracy: number; color: MoveColor }[] = [];
+  for (let i = 0; i + 1 < allWinPercents.length; i++) {
+    const prev = allWinPercents[i]!;
+    const next = allWinPercents[i + 1]!;
+    const whiteTurn = (i % 2 === 0) === (startColor === 'white');
+    const color: MoveColor = whiteTurn ? 'white' : 'black';
+    const before = whiteTurn ? prev : next;
+    const after = whiteTurn ? next : prev;
+    accs.push({ accuracy: moveAccuracyFromDiff(before - after), color });
+  }
+
+  const white = aggregateAccuracy(accs, allWinPercents, 'white');
+  const black = aggregateAccuracy(accs, allWinPercents, 'black');
+  if (white === null || black === null) return null;
+  return { white, black };
 }
 
 export function computeAnalysisSummary(
   mainline:  TreeNode[],
   evalCache: EvalCache,
+  reviewEngine?: ReviewEngineMetadata,
 ): AnalysisSummary | null {
   if (evalCache.size === 0) return null;
 
-  const whiteAccs: number[] = [];
-  const blackAccs: number[] = [];
+  const accuracyScores: EvalEntry[] = [];
   let wBlunders = 0, wMistakes = 0, wInaccuracies = 0;
   let bBlunders = 0, bMistakes = 0, bInaccuracies = 0;
 
@@ -125,38 +196,17 @@ export function computeAnalysisSummary(
 
     const nodeEval   = evalCache.get(path);
     const parentEval = evalCache.get(parentPath);
+    if (nodeEval && scoreAsCp(nodeEval) !== null) accuracyScores.push(nodeEval);
     if (!nodeEval || !parentEval) continue;
 
     const nodeWc   = evalWinChances(nodeEval);
     const parentWc = evalWinChances(parentEval);
     if (nodeWc === undefined || parentWc === undefined) continue;
 
-    // Convert win-chance [-1,1] → win-percent [0,100] (white perspective)
-    const nodeWp   = (nodeWc   + 1) / 2 * 100;
-    const parentWp = (parentWc + 1) / 2 * 100;
-
     const isWhiteMove = node.ply % 2 === 1;
 
-    // diff = mover's advantage before move - mover's advantage after move
-    // White: loses advantage when nodeWp < parentWp → diff = parentWp - nodeWp
-    // Black: loses advantage when nodeWp > parentWp → diff = nodeWp - parentWp
-    // Matches lichess-org/lila: AccuracyPercent.scala color.fold((prev,next),(next,prev))
-    const diff = isWhiteMove ? (parentWp - nodeWp) : (nodeWp - parentWp);
-    const acc  = moveAccuracyFromDiff(diff);
-
-    if (isWhiteMove) {
-      whiteAccs.push(acc);
-    } else {
-      blackAccs.push(acc);
-    }
-
-    // Count move labels using the same best-move-played short-circuit as renderMoveList.
-    // Prefer stored review annotation (hydrated from IDB) over classifyLoss(loss) recomputation.
-    // Falls back to classifyLoss(loss) for live analysis and older records without label.
     const playedBest = node.uci !== undefined && node.uci === parentEval.best;
-    const label = !playedBest
-      ? (nodeEval.label ?? (nodeEval.loss !== undefined ? classifyLoss(nodeEval.loss) : null))
-      : null;
+    const label = labelForReviewEval(nodeEval, playedBest, true, reviewEngine);
     if (isWhiteMove) {
       if (label === 'blunder') wBlunders++;
       else if (label === 'mistake') wMistakes++;
@@ -168,11 +218,14 @@ export function computeAnalysisSummary(
     }
   }
 
-  if (whiteAccs.length === 0 && blackAccs.length === 0) return null;
+  const firstMovePly = mainline[1]?.ply;
+  const startColor: MoveColor = firstMovePly !== undefined && firstMovePly % 2 === 0 ? 'black' : 'white';
+  const accuracy = computeLichessStyleGameAccuracy(accuracyScores, startColor);
+  if (!accuracy && wBlunders === 0 && wMistakes === 0 && wInaccuracies === 0 && bBlunders === 0 && bMistakes === 0 && bInaccuracies === 0) return null;
 
   return {
-    white: { accuracy: aggregateAccuracy(whiteAccs), blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
-    black: { accuracy: aggregateAccuracy(blackAccs), blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies },
+    white: { accuracy: accuracy?.white ?? null, blunders: wBlunders, mistakes: wMistakes, inaccuracies: wInaccuracies },
+    black: { accuracy: accuracy?.black ?? null, blunders: bBlunders, mistakes: bMistakes, inaccuracies: bInaccuracies },
   };
 }
 
@@ -182,12 +235,14 @@ export function renderAnalysisSummary(
   mainline:         TreeNode[],
   whiteName:        string,
   blackName:        string,
+  reviewEngine?:    ReviewEngineMetadata,
 ): VNode {
   // Only show once there's enough eval data to be meaningful
   if (!analysisComplete && evalCache.size < 4) return h('div');
 
-  const summary = computeAnalysisSummary(mainline, evalCache);
+  const summary = computeAnalysisSummary(mainline, evalCache, reviewEngine);
   if (!summary) return h('div');
+  const deepenedCount = countDeepenedReviewEvals(mainline, path => evalCache.get(path), reviewEngine);
 
   function playerCol(name: string, data: PlayerSummary, color: 'white' | 'black'): VNode {
     const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
@@ -205,9 +260,16 @@ export function renderAnalysisSummary(
     ]);
   }
 
-  return h('div.analysis-summary', [
-    playerCol(whiteName, summary.white, 'white'),
-    playerCol(blackName, summary.black, 'black'),
+  return h('div.analysis-summary-wrap', [
+    h('div.analysis-summary', [
+      playerCol(whiteName, summary.white, 'white'),
+      playerCol(blackName, summary.black, 'black'),
+    ]),
+    deepenedCount > 0 && reviewEngine
+      ? h('div.summary__deepened', {
+          attrs: { title: 'Some displayed evals are deeper than the stored review stamp.' },
+        }, deepenedReviewSummaryText(deepenedCount, reviewEngine.reviewDepth))
+      : null,
   ]);
 }
 
@@ -463,7 +525,7 @@ export function renderEvalGraph(
     ]);
   }
 
-  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; }
+  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; deepened: boolean; }
 
   const shouldShowReviewAnnotation = (nodePly: number): boolean => {
     if (!userOnly || userColor === null) return true;
@@ -484,10 +546,8 @@ export function renderEvalGraph(
       : (cached !== undefined ? evalWinChances(cached) : undefined);
     if (wc !== undefined) {
       const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
-      // Prefer stored review annotation (hydrated from IDB) over classifyLoss(loss) recomputation.
-      // cached is defined here (wc !== undefined requires it). Falls back gracefully for live analysis.
       const label = !playedBest && shouldShowReviewAnnotation(node.ply)
-        ? (cached!.label ?? (cached!.loss !== undefined ? classifyLoss(cached!.loss) : null))
+        ? labelForReviewEval(cached, playedBest, true, reviewEngine)
         : null;
       pts.push({
         x: ((i - 1) / (n - 1)) * GRAPH_W,
@@ -495,6 +555,7 @@ export function renderEvalGraph(
         path,
         label,
         hasMate: cached?.mate !== undefined,
+        deepened: isDeepenedBeyondReviewStamp(cached, reviewEngine),
       });
     } else {
       pts.push(null);
@@ -615,8 +676,9 @@ export function renderEvalGraph(
   // (blunder / mistake / inaccuracy). Plain moves get no dot.
   if (!bg) for (const pt of valid) {
     const isCurrent = pt.path === currentPath;
-    if (!isCurrent && !pt.hasMate && !pt.label) continue;
+    if (!isCurrent && !pt.hasMate && !pt.label && !pt.deepened) continue;
     const dotColor = isCurrent         ? '#4a8'
+      : pt.deepened                    ? '#7dd3fc'
       : pt.hasMate                     ? 'hsl(307,80%,70%)'
       : pt.label === 'blunder'         ? 'hsl(0,69%,60%)'
       : pt.label === 'mistake'         ? 'hsl(41,100%,45%)'
@@ -687,6 +749,13 @@ export function renderEvalGraph(
   const reviewEngineLabel = reviewEngine
     ? `${reviewEngine.engineName} · ${reviewEngine.strengthLabel} · depth ${reviewEngine.reviewDepth}`
     : null;
+  const deepenedCount = countDeepenedReviewEvals(mainline, path => evalCache.get(path), reviewEngine);
+  const reviewEngineText = reviewEngineLabel && reviewEngine
+    ? [
+        reviewEngineLabel,
+        deepenedCount > 0 ? deepenedReviewSummaryText(deepenedCount, reviewEngine.reviewDepth) : null,
+      ].filter((part): part is string => part !== null).join(' · ')
+    : null;
 
   return h('div.eval-graph', {
     on: {
@@ -702,7 +771,7 @@ export function renderEvalGraph(
       height: renderedGraphHeight,
       preserveAspectRatio: 'none',
     } }, svgNodes),
-    ...(reviewEngineLabel ? [h('div.eval-graph__review-engine', reviewEngineLabel)] : []),
+    ...(reviewEngineText ? [h('div.eval-graph__review-engine', reviewEngineText)] : []),
     h('div.eval-graph__resize-handle', {
       attrs: {
         title: 'Drag to resize eval graph',

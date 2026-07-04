@@ -45,12 +45,29 @@ try {
     $deleteLive->execute([$config['user_key']]);
 
     $insertLive = $pdo->prepare(
-        'INSERT INTO patzer_sync_items (user_key, `store`, item_key, payload_json, updated_at_ms, deleted_at_ms)
-         SELECT user_key, `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
-         FROM patzer_sync_restore_items
-         WHERE restore_id = ? AND user_key = ?'
+        'INSERT INTO patzer_sync_items (user_key, `store`, item_key, version, payload_json, updated_at_ms, deleted_at_ms)
+         VALUES (:user_key, :store_name, :item_key, :version, :payload_json, :updated_at_ms, :deleted_at_ms)'
     );
-    $insertLive->execute([$restoreId, $config['user_key']]);
+    $nextVersion = 1;
+    foreach ($rows as $row) {
+        $insertLive->execute([
+            ':user_key' => $config['user_key'],
+            ':store_name' => $row['store'],
+            ':item_key' => $row['item_key'],
+            ':version' => $nextVersion,
+            ':payload_json' => $row['payload_json'],
+            ':updated_at_ms' => (int) $row['updated_at_ms'],
+            ':deleted_at_ms' => $row['deleted_at_ms'] === null ? null : (int) $row['deleted_at_ms'],
+        ]);
+        $nextVersion++;
+    }
+
+    $updateVersionMeta = $pdo->prepare(
+        'UPDATE patzer_sync_meta
+         SET sync_version_next = ?
+         WHERE user_key = ?'
+    );
+    $updateVersionMeta->execute([$nextVersion, $config['user_key']]);
 
     $deleteStage = $pdo->prepare('DELETE FROM patzer_sync_restore_items WHERE restore_id = ? AND user_key = ?');
     $deleteStage->execute([$restoreId, $config['user_key']]);
@@ -66,6 +83,8 @@ patzer_json(200, [
     'ok' => true,
     'items' => $actualItems,
     'tombstones' => $actualTombstones,
+    'latestVersion' => max(0, $nextVersion - 1),
+    'syncVersionNext' => $nextVersion,
     'syncGeneration' => $meta['syncGeneration'],
     'generationReason' => $meta['generationReason'],
 ]);

@@ -10,9 +10,9 @@ import {
 } from './client';
 import { shouldSuppressRemoteSyncUpsert } from './remoteSync';
 import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
+import { applySettingsLive } from './settingsLiveApply';
 
 const SETTING_UPDATED_AT_PREFIX = 'patzer.account.settingUpdatedAt.';
-const RELOAD_ON_HYDRATE_KEY = 'patzer.account.settingsReloadedFor';
 const FLUSH_DEBOUNCE_MS = 300;
 
 const SETTINGS_KEYS = new Set([
@@ -203,8 +203,9 @@ function installSettingsObserver(): void {
   };
 }
 
-function applyRemoteSettings(items: AccountSettingSyncItem[]): boolean {
+function applyRemoteSettings(items: AccountSettingSyncItem[]): { changed: boolean; changedKeys: string[] } {
   let changed = false;
+  const changedKeys: string[] = [];
   applyingRemoteSettings = true;
   try {
     withSettingsRemoteApplySuppressed(() => {
@@ -218,6 +219,7 @@ function applyRemoteSettings(items: AccountSettingSyncItem[]): boolean {
           if (currentValue !== null) {
             localStorage.removeItem(item.key);
             changed = true;
+            changedKeys.push(item.key);
           }
           setSettingUpdatedAt(item.key, item.updatedAt);
           continue;
@@ -225,6 +227,7 @@ function applyRemoteSettings(items: AccountSettingSyncItem[]): boolean {
         if (currentValue !== item.value) {
           localStorage.setItem(item.key, item.value);
           changed = true;
+          changedKeys.push(item.key);
         }
         setSettingUpdatedAt(item.key, item.updatedAt);
       }
@@ -232,7 +235,7 @@ function applyRemoteSettings(items: AccountSettingSyncItem[]): boolean {
   } finally {
     applyingRemoteSettings = false;
   }
-  return changed;
+  return { changed, changedKeys };
 }
 
 async function pushLocalSettingsSnapshot(): Promise<void> {
@@ -240,18 +243,6 @@ async function pushLocalSettingsSnapshot(): Promise<void> {
   if (snapshot.length === 0) return;
   const result = await pushAccountSettings(snapshot);
   if (!result.success) console.warn('[settings-sync] Local settings snapshot push failed:', result.error);
-}
-
-function reloadAfterHydrationIfNeeded(identity: string, changed: boolean): void {
-  if (!changed) {
-    if (sessionStorage.getItem(RELOAD_ON_HYDRATE_KEY) === identity) {
-      sessionStorage.removeItem(RELOAD_ON_HYDRATE_KEY);
-    }
-    return;
-  }
-  if (sessionStorage.getItem(RELOAD_ON_HYDRATE_KEY) === identity) return;
-  sessionStorage.setItem(RELOAD_ON_HYDRATE_KEY, identity);
-  window.location.reload();
 }
 
 export async function startAccountSettingsSync(auth: AuthStatus): Promise<void> {
@@ -268,9 +259,12 @@ export async function startAccountSettingsSync(auth: AuthStatus): Promise<void> 
   try {
     const remoteSettings = await pullAccountSettings();
     if (activeIdentityKey !== identity) return;
-    const changed = applyRemoteSettings(remoteSettings);
+    const { changed, changedKeys } = applyRemoteSettings(remoteSettings);
     if (activeIdentityKey !== identity) return;
-    reloadAfterHydrationIfNeeded(identity, changed);
+    applySettingsLive({
+      source: 'account-hydration',
+      changedKeys,
+    });
     if (changed) return;
     await pushLocalSettingsSnapshot();
     if (activeIdentityKey !== identity) return;

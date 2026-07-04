@@ -6,15 +6,11 @@ import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   evalCache,
-  incrementPendingStopCount, stopProtocol, setEngineSearchActive,
   clearEvalCache, resetCurrentEval, syncArrow,
 } from '../engine/ctrl';
-import {
-  batchQueue, batchDone, batchAnalyzing, setBatchAnalyzing,
-  analysisComplete, setBatchState, setAnalysisRunning,
-  reviewDepth, resetBatchState, startBatchWhenReady,
-} from '../engine/batch';
-import { buildAnalysisNodes, saveAnalysisToIdb } from '../idb/index';
+import { reviewDepth } from '../engine/reviewProfiles';
+import { analysisComplete, resetReviewStatusRuntime } from '../engine/reviewStatus';
+import { enqueueAtFront, getQueueSummary, pauseBulkReview } from '../engine/reviewQueue';
 import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
@@ -247,6 +243,29 @@ function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VN
   ]);
 }
 
+function enqueueSelectedGameForReview(): boolean {
+  const selectedGameId = _getSelectedGameId();
+  const game = selectedGameId
+    ? _getImportedGames().find(candidate => candidate.id === selectedGameId)
+    : undefined;
+  if (!game) return false;
+  enqueueAtFront([game], reviewDepth);
+  return true;
+}
+
+function selectedGameReviewProgress(): { active: boolean; done: number; total: number } {
+  const selectedGameId = _getSelectedGameId();
+  const summary = getQueueSummary();
+  if (!selectedGameId || summary.currentGameId !== selectedGameId || !summary.running) {
+    return { active: false, done: 0, total: 0 };
+  }
+  return {
+    active: true,
+    done:   summary.positionsAnalyzed,
+    total:  summary.totalPositions,
+  };
+}
+
 export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   const ctrl           = _getCtrl();
   const selectedGameId = _getSelectedGameId();
@@ -256,14 +275,15 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   // Mirrors the single-action pattern in Lichess analysis controls.
   let reviewLabel: string;
   let reviewTitle: string;
-  const runningProgressLabel = batchAnalyzing
-    ? formatReviewPositionProgress(batchDone, batchQueue.length)
+  const reviewProgress = selectedGameReviewProgress();
+  const runningProgressLabel = reviewProgress.active
+    ? formatReviewPositionProgress(reviewProgress.done, reviewProgress.total)
     : null;
-  if (batchAnalyzing) {
-    reviewLabel = batchQueue.length > 0
-      ? `${Math.min(Math.max(0, batchDone), batchQueue.length)}/${batchQueue.length}`
+  if (reviewProgress.active) {
+    reviewLabel = reviewProgress.total > 0
+      ? `${Math.min(Math.max(0, reviewProgress.done), reviewProgress.total)}/${reviewProgress.total}`
       : 'Reviewing…';
-    reviewTitle = 'Analysis in progress — click to stop';
+    reviewTitle = 'Analysis in progress — click to pause';
   } else if (analysisComplete) {
     reviewLabel = 'Re-analyze';
     reviewTitle = 'Clear previous analysis and run again';
@@ -273,16 +293,8 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   }
 
   const reviewClick = () => {
-    if (batchAnalyzing) {
-      // Stop in-progress review cleanly — preserve partial evalCache.
-      incrementPendingStopCount();
-      stopProtocol();
-      setEngineSearchActive(false);
-      setBatchAnalyzing(false);
-      setBatchState('idle');
-      setAnalysisRunning(false);
-      if (selectedGameId) void saveAnalysisToIdb('partial', selectedGameId, buildAnalysisNodes(_getCtrl().mainline, p => evalCache.get(p)), reviewDepth);
-      syncArrow();
+    if (reviewProgress.active) {
+      pauseBulkReview();
       _redraw();
       return;
     }
@@ -290,22 +302,25 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
       // Re-analyze: clear persisted data and batch state.
       if (selectedGameId) _clearGameAnalysis(selectedGameId);
       clearPuzzleCandidates();
-      resetBatchState();
+      resetReviewStatusRuntime();
       syncArrow();
     }
-    // Always clear the eval cache before starting a batch review.
+    // Always clear the eval cache before starting a review.
     // The live analysis engine may have populated it at shallow depth; those
     // values would be reused as-is (skipped in the batch queue), causing the
     // accuracy formula to operate on noisy low-depth evals and inflate scores.
     clearEvalCache();
     resetCurrentEval();
-    startBatchWhenReady();
+    if (!enqueueSelectedGameForReview()) {
+      console.warn('[review-button] no selected imported game available for priority review enqueue');
+    }
+    _redraw();
   };
 
   // Status line: shown only while analysis is running so the user understands
   // the compact count in the button and how many positions have been analyzed.
   // Mirrors the inline completion indicator in Lichess retro mode controls.
-  const statusLine = batchAnalyzing && runningProgressLabel
+  const statusLine = reviewProgress.active && runningProgressLabel
     ? h('div.analyse-review-controls__status', [
         renderReviewProgressLabel(runningProgressLabel, 'active'),
       ])
@@ -313,7 +328,7 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
 
 
 
-  const hintText = !batchAnalyzing && !analysisComplete && hasGame
+  const hintText = !reviewProgress.active && !analysisComplete && hasGame
     ? h('span.analyse-review-controls__hint', 'Stockfish finds your mistakes and blunders')
     : null;
 
@@ -322,7 +337,7 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
       h('button.btn-review', {
         class: {
           'btn-review--complete': analysisComplete,
-          'btn-review--primary':  !batchAnalyzing && !analysisComplete && hasGame,
+          'btn-review--primary':  !reviewProgress.active && !analysisComplete && hasGame,
         },
         attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick },

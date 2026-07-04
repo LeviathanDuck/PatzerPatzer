@@ -21,6 +21,7 @@ import {
   visibleListReviewRunContext,
   type ReviewRunSourceContext,
 } from '../engine/reviewRun';
+import type { ReviewedGameStatus } from '../engine/reviewedStatusDerivation';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
 import { getMissedMoments, type MissedMoment } from '../engine/tactics';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
@@ -248,6 +249,7 @@ export interface GamesViewDeps {
   /** Registered chess accounts, for the account lens switcher. */
   accounts:              ChessAccount[];
   selectedGameId:        string | null;
+  reviewedStatusIndex:   ReadonlyMap<string, ReviewedGameStatus>;
   analyzedGameIds:       Set<string>;
   missedTacticGameIds:   Set<string>;
   analyzedGameAccuracy:  Map<string, { white: number | null; black: number | null }>;
@@ -258,12 +260,27 @@ export interface GamesViewDeps {
   renderCompactGameRow:  (game: ImportedGame, analyzed: boolean, missed: boolean, accuracy?: { user: number | null; opp: number | null }) => (VNode | null)[];
   /** Set selectedGameId + call loadGame (used for click-to-load in the game list). */
   selectGame:            (game: ImportedGame) => void;
-  /** selectGame + navigate to analysis + startBatchWhenReady (used for Review button). */
+  /** selectGame + navigate to analysis + enqueue priority review (used for Review button). */
   reviewGame:            (game: ImportedGame) => void;
   /** Run batch analysis on an ordered list of games sequentially. */
   reviewAllGames:        (games: ImportedGame[], sourceContext?: ReviewRunSourceContext) => void;
   routeQuery?:            string;
   redraw:                () => void;
+}
+
+export function reviewedStatusForGame(deps: GamesViewDeps, gameId: string): ReviewedGameStatus | undefined {
+  return deps.reviewedStatusIndex.get(gameId);
+}
+
+export function isReviewedGame(deps: GamesViewDeps, gameId: string): boolean {
+  return reviewedStatusForGame(deps, gameId)?.reviewed === true || deps.analyzedGameIds.has(gameId);
+}
+
+export function reviewedAccuracyForGame(
+  deps: GamesViewDeps,
+  gameId: string,
+): { white: number | null; black: number | null } | undefined {
+  return reviewedStatusForGame(deps, gameId)?.accuracy ?? deps.analyzedGameAccuracy.get(gameId);
 }
 
 // ---------------------------------------------------------------------------
@@ -1267,7 +1284,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     visible.length === 0
       ? h('div.game-list__no-results', 'No games match.')
       : h('ul', pageGames.map(game => {
-          const isAnalyzed      = deps.analyzedGameIds.has(game.id);
+          const isAnalyzed      = isReviewedGame(deps, game.id);
           const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
           const srcUrl          = deps.gameSourceUrl(game);
           const progress        = getReviewProgress(game.id);
@@ -1279,7 +1296,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const lifecyclePill   = lifecycleLabel ? renderReviewLifecyclePill(lifecycleLabel) : null;
 
           // Accuracy for this game (available once analyzed).
-          const rawAcc    = deps.analyzedGameAccuracy.get(game.id);
+          const rawAcc    = reviewedAccuracyForGame(deps, game.id);
           const userColor = deps.getUserColor(game);
           const userAcc   = rawAcc && userColor ? (userColor === 'white' ? rawAcc.white : rawAcc.black) : null;
           const oppAcc    = rawAcc && userColor ? (userColor === 'white' ? rawAcc.black : rawAcc.white) : null;
@@ -1617,13 +1634,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const tcIcon  = game.timeClass ? SPEED_ICONS[game.timeClass] : undefined;
             const opening = game.opening?.trim() || '–';
             const srcUrl  = deps.gameSourceUrl(game);
-            const isAnalyzed = deps.analyzedGameIds.has(game.id);
+            const isAnalyzed = isReviewedGame(deps, game.id);
             const hasMissed  = deps.missedTacticGameIds.has(game.id);
             const isNewImport = isRecentlyImported(game);
             const accountLabel = importedAccountLabel(game);
 
-            // User accuracy: read from analyzedGameAccuracy map (populated at analysis-complete time).
-            const accEntry  = deps.analyzedGameAccuracy.get(game.id);
+            const accEntry  = reviewedAccuracyForGame(deps, game.id);
             const userColor = deps.getUserColor(game);
 
             // Rating cell: opponent's rating only.
