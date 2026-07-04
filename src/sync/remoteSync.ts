@@ -1586,10 +1586,52 @@ function payloadSettingValue(payload: unknown, fallbackKey: string): string | un
   return typeof value === 'string' ? value : undefined;
 }
 
-function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
-  if (!isAllowedSettingKey(item.itemKey)) return 'skipped';
-  if (item.updatedAt < settingUpdatedAt(item.itemKey)) return 'skipped';
-  if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert('settings', item.itemKey, item.updatedAt)) return 'skipped';
+// Pull/apply skip classification contract: benign reasons are deterministic local-policy no-ops
+// (re-pulling the row can never change the outcome), so they must not block cursor/version
+// metadata advancement. Unsafe reasons mean the row was not represented locally, so they land in
+// the blocking `skipped` count and keep full-pull-required set. Any new skip path defaults to
+// blocking unless it is explicitly listed as benign here.
+type RemoteSyncApplySkipReason =
+  | 'stale-remote'
+  | 'suppressed-upsert'
+  | 'disallowed-setting'
+  | 'unknown-store'
+  | 'missing-payload'
+  | 'merge-failed'
+  | 'invalid-payload';
+
+interface RemoteSyncSkippedApplyResult {
+  skipped: RemoteSyncApplySkipReason;
+}
+
+const BENIGN_SKIP_COUNT_KEYS: Partial<Record<RemoteSyncApplySkipReason, string>> = {
+  'stale-remote': 'skippedStaleRemote',
+  'suppressed-upsert': 'skippedSuppressedUpsert',
+  'disallowed-setting': 'skippedDisallowedSetting',
+};
+
+const UNSAFE_SKIP_DETAIL_COUNT_KEYS: Partial<Record<RemoteSyncApplySkipReason, string>> = {
+  'unknown-store': 'skippedUnknownStore',
+  'missing-payload': 'skippedMissingPayload',
+  'merge-failed': 'skippedMergeFailed',
+  'invalid-payload': 'skippedInvalidPayload',
+};
+
+function countSkippedApplyResult(counts: Record<string, number>, reason: RemoteSyncApplySkipReason): void {
+  const benignKey = BENIGN_SKIP_COUNT_KEYS[reason];
+  if (benignKey) {
+    counts[benignKey] = (counts[benignKey] ?? 0) + 1;
+    return;
+  }
+  counts.skipped = (counts.skipped ?? 0) + 1;
+  const detailKey = UNSAFE_SKIP_DETAIL_COUNT_KEYS[reason];
+  if (detailKey) counts[detailKey] = (counts[detailKey] ?? 0) + 1;
+}
+
+function applySettingItem(item: RemoteSyncItem): 'applied' | RemoteSyncSkippedApplyResult {
+  if (!isAllowedSettingKey(item.itemKey)) return { skipped: 'disallowed-setting' };
+  if (item.updatedAt < settingUpdatedAt(item.itemKey)) return { skipped: 'stale-remote' };
+  if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert('settings', item.itemKey, item.updatedAt)) return { skipped: 'suppressed-upsert' };
   if (isDeletedItem(item)) {
     withSettingsRemoteApplySuppressed(() => {
       localStorage.removeItem(item.itemKey);
@@ -1599,7 +1641,7 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | 'skipped' {
     return 'applied';
   }
   const value = payloadSettingValue(item.payload, item.itemKey);
-  if (value === undefined) return 'skipped';
+  if (value === undefined) return { skipped: 'invalid-payload' };
   withSettingsRemoteApplySuppressed(() => {
     localStorage.setItem(item.itemKey, value);
     setSettingUpdatedAt(item.itemKey, item.updatedAt);
@@ -2797,18 +2839,18 @@ export async function readLocalRemoteSyncItems(): Promise<RemoteSyncItem[]> {
   return [...groups.flat(), ...readLocalSettingsItems()];
 }
 
-async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted' | 'skipped'> {
+async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
   const spec = IDB_SPECS_BY_STORE.get(item.store);
-  if (!spec) return 'skipped';
+  if (!spec) return { skipped: 'unknown-store' };
 
   const db = await openIdb(spec.dbName, spec.dbVersion);
   try {
     const existing = await readRecordByItemKey(db, spec, item.itemKey);
-    if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt)) return 'skipped';
+    if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt)) return { skipped: 'suppressed-upsert' };
     if (item.store === 'accounts' && !isDeletedItem(item)) {
-      if (item.payload === undefined) return 'skipped';
+      if (item.payload === undefined) return { skipped: 'missing-payload' };
       const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
-      if (!merged) return 'skipped';
+      if (!merged) return { skipped: 'merge-failed' };
       await writeRecordByItemKey(db, spec, item.itemKey, merged);
       rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
       clearItemDeletedAt(spec.store, item.itemKey);
@@ -2816,7 +2858,7 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
     }
 
     const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
-    if (item.updatedAt < existingUpdatedAt) return 'skipped';
+    if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
 
     if (isDeletedItem(item)) {
       await deleteRecordByItemKey(db, spec, item.itemKey);
@@ -2824,7 +2866,7 @@ async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted'
       rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
       return 'deleted';
     }
-    if (item.payload === undefined) return 'skipped';
+    if (item.payload === undefined) return { skipped: 'missing-payload' };
     await writeRecordByItemKey(db, spec, item.itemKey, item.payload);
     rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
     clearItemDeletedAt(spec.store, item.itemKey);
@@ -2850,6 +2892,7 @@ export async function applyRemoteSyncItems(
       const item = normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true });
       if (!item) {
         counts.skipped = (counts.skipped ?? 0) + 1;
+        counts.skippedNormalizeFailed = (counts.skippedNormalizeFailed ?? 0) + 1;
         continue;
       }
 
@@ -2862,9 +2905,10 @@ export async function applyRemoteSyncItems(
         }
         if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
         else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
-        else counts.skipped = (counts.skipped ?? 0) + 1;
+        else countSkippedApplyResult(counts, result.skipped);
       } catch (error) {
         counts.skipped = (counts.skipped ?? 0) + 1;
+        counts.skippedApplyFailed = (counts.skippedApplyFailed ?? 0) + 1;
         const message = error instanceof Error ? error.message : 'Could not apply sync item.';
         recordRemoteSyncLog('pull', 'error', `Skipped ${item.store}/${item.itemKey}: ${message}`);
       }
@@ -3016,7 +3060,7 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
       const result = await remoteSyncFetch<PullResponse>(plan.path);
       if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
       setRemoteSyncLastCheckedAt();
-      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { skipped: 1 } };
+      if (syncGeneration !== generation || !hasRemoteSyncToken()) return { success: true, counts: { cancelled: 1 } };
 
       const items = plan.mode === 'cursor'
         ? versionOrderedRawItems(result.items ?? [])
