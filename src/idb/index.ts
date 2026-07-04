@@ -9,7 +9,7 @@ import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
-import type { RemoteSyncStoreName } from '../sync/remoteSync';
+import type { RemoteSyncItem, RemoteSyncStoreName } from '../sync/remoteSync';
 import {
   isDataManagementReviewWriteStale,
   recordDataManagementStaleWriteDrop,
@@ -162,6 +162,13 @@ function enqueueMainDbDelete(storeName: RemoteSyncStoreName, itemKey: string): v
   void import('../sync/remoteSync')
     .then(({ enqueueRemoteSyncDelete }) => enqueueRemoteSyncDelete(storeName, itemKey))
     .catch(e => console.warn('[idb] Remote sync delete enqueue failed', e));
+}
+
+function enqueueMainDbPutBatch(items: RemoteSyncItem[]): void {
+  if (items.length === 0) return;
+  void import('../sync/remoteSync')
+    .then(({ enqueueRemoteSyncItemsBatch }) => enqueueRemoteSyncItemsBatch(items))
+    .catch(e => console.warn('[idb] Remote sync batch enqueue failed', e));
 }
 
 // --- Stored schemas ---
@@ -1077,9 +1084,13 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
     );
     await txDone(legacyTx);
 
-    for (const record of records) {
-      enqueueMainDbPut('games', record.id, record, record.updatedAt);
-    }
+    enqueueMainDbPutBatch(records.map(record => ({
+      store: 'games' as const,
+      itemKey: record.id,
+      payload: record,
+      updatedAt: record.updatedAt,
+      operation: 'upsert' as const,
+    })));
     void captureStorageEstimate('post-idb-write');
   } catch (e) {
     console.warn('[idb] save failed', e);

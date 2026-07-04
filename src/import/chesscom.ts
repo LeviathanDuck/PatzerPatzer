@@ -82,7 +82,7 @@ function archiveMonthFromUrl(url: string): string | null {
  * Mirrors the cutoff logic in filters.ts filterGamesByDate().
  */
 export const chesscom = {
-  username: 'LeviathanDuck',
+  username: '',
   loading:  false,
   error:    null as string | null,
   /** Live count of games parsed so far during an active import. */

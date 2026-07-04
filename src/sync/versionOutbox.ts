@@ -274,6 +274,35 @@ export async function enqueueDurableVersionedOutboxEntry(
   return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
 }
 
+// Batch variant: one readEntries + one writeEntries for the whole input set. Fresh keys append
+// through a key index in O(1); only inputs whose store+itemKey already exists in the outbox go
+// through the per-entry coalesce path, so bulk imports avoid the O(n^2) rewrite-per-item cost.
+// opId is always generated per entry here — a shared options.opId would collide across inputs.
+export async function enqueueDurableVersionedOutboxEntries(
+  storage: DurableVersionedOutboxStorage,
+  inputs: readonly VersionedOutboxEnqueueInput[],
+  options: { now?: number } = {}
+): Promise<DurableRetryOutboxEntry[]> {
+  if (inputs.length === 0) return readDurableVersionedOutbox(storage);
+  let entries = await readDurableVersionedOutbox(storage);
+  const presentKeys = new Set(entries.map(entry => `${entry.store}\u0000${entry.itemKey}`));
+  let appended: DurableRetryOutboxEntry[] = [];
+  for (const input of inputs) {
+    const incoming = makeEntry(input, options.now !== undefined ? { now: options.now } : {});
+    const key = `${incoming.store}\u0000${incoming.itemKey}`;
+    if (presentKeys.has(key)) {
+      entries = coalesceDurableVersionedOutboxEntry([...entries, ...appended], incoming);
+      appended = [];
+    } else {
+      appended.push(incoming);
+      presentKeys.add(key);
+    }
+  }
+  const next = appended.length > 0 ? sortEntries([...entries, ...appended]) : entries;
+  await writeDurableVersionedOutbox(storage, next);
+  return next;
+}
+
 export function nextDurableVersionedOutboxBackoffMs(attemptCount: number, jitterMs = 0): number {
   const attempt = Math.max(1, Math.floor(attemptCount));
   const base = DURABLE_VERSIONED_OUTBOX_BACKOFF_MS[Math.min(attempt - 1, DURABLE_VERSIONED_OUTBOX_BACKOFF_MS.length - 1)] ?? MAX_BACKOFF_MS;

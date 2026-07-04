@@ -14,6 +14,7 @@ import {
   type VersionedWriteBatchResponse,
 } from './versionDrain';
 import {
+  createRemoteSyncItemVersionResolver,
   getRemoteSyncItemVersion,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemVersion,
@@ -21,6 +22,7 @@ import {
 } from './versionMetadata';
 import {
   defaultDurableVersionedOutboxStorage,
+  enqueueDurableVersionedOutboxEntries,
   enqueueDurableVersionedOutboxEntry,
   readDurableVersionedOutbox,
 } from './versionOutbox';
@@ -97,6 +99,7 @@ export type RemoteSyncLogAction =
   | 'push'
   | 'pull'
   | 'flush'
+  | 'reconcile'
   | 'token'
   | 'system';
 
@@ -2182,6 +2185,11 @@ async function waitForPendingVersionedOutboxWrites(): Promise<void> {
   }
 }
 
+// Last known durable versioned outbox size. Batch enqueues and flush reads keep it current so
+// the synchronous queued-count UI can reflect durable-only entries (bulk batches skip the legacy
+// localStorage outbox mirror, which cannot hold them). null means unknown — fall back to legacy.
+let durableOutboxCountCache: number | null = null;
+
 async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
@@ -2194,6 +2202,24 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
     clientUpdatedAt: item.updatedAt,
     ...(deleted ? {} : { payload }),
   });
+}
+
+async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]): Promise<void> {
+  if (items.length === 0) return;
+  const identity = storedServerIdentity();
+  const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+  const next = await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
+    const deleted = isDeletedItem(item);
+    return {
+      store: item.store,
+      itemKey: item.itemKey,
+      operation: deleted ? 'delete' as const : 'upsert' as const,
+      baseVersion: resolveVersion(item.store, item.itemKey),
+      clientUpdatedAt: item.updatedAt,
+      ...(deleted ? {} : { payload: item.payload }),
+    };
+  }));
+  durableOutboxCountCache = next.length;
 }
 
 async function migrateLegacyOutboxToVersioned(): Promise<number> {
@@ -2249,6 +2275,7 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (!isDeletedItem(normalized)) {
     if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) return;
   }
+  durableOutboxCountCache = null;
   queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
     const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
     recordRemoteSyncLog('flush', 'error', message);
@@ -2287,6 +2314,34 @@ export function enqueueRemoteSyncOperation(operation: RemoteSyncPersistenceOpera
   enqueueRemoteSyncUpsert(spec.store, operation.itemKey, operation.payload, operation.updatedAt);
 }
 
+
+
+
+
+export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): void {
+  if (applyingRemoteSync || items.length === 0) return;
+  const normalized: RemoteSyncItem[] = [];
+  for (const item of items) {
+    const entry = normalizeSyncItem(item);
+    if (!entry) throw new Error('Invalid Remote sync item.');
+    if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt)) continue;
+    normalized.push(entry);
+  }
+  if (normalized.length === 0) return;
+  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItemsBatch(normalized).catch(error => {
+    const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entries.';
+    recordRemoteSyncLog('flush', 'error', message);
+  }));
+  for (const entry of normalized) {
+    if (isDeletedItem(entry)) rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt);
+    else {
+      rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt);
+      clearItemDeletedAt(entry.store, entry.itemKey);
+    }
+  }
+  scheduleRemoteSyncFlush();
+}
+
 export function enqueueRemoteSyncUpsert(
   store: RemoteSyncStoreName,
   itemKey: string,
@@ -2306,7 +2361,10 @@ export function enqueueRemoteSyncDelete(
 
 export function getRemoteSyncOutboxCount(): number {
   const snapshot = readOutboxSnapshot();
-  return snapshot.valid.length + snapshot.preservedInvalid.length;
+  const legacyCount = snapshot.valid.length + snapshot.preservedInvalid.length;
+  // Single-item enqueues mirror into both queues, so max() avoids double counting while still
+  // surfacing durable-only bulk entries that never touch the legacy outbox.
+  return Math.max(legacyCount, durableOutboxCountCache ?? 0);
 }
 
 export async function queueAndFlushRemoteSyncUpsert(
@@ -2981,6 +3039,7 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
 export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   const pendingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+  durableOutboxCountCache = pendingVersioned.length;
   const queued = snapshot.valid.length + pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
   if (queued === 0) return { success: true, counts: {} };
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued } };
@@ -2999,6 +3058,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
   return withRemoteSyncActivity(async () => {
     try {
       const counts = await drainVersionedRemoteSyncOutbox();
+      durableOutboxCountCache = counts.queued ?? 0;
       setRemoteSyncLastSyncedAt(Date.now());
       recordRemoteSyncLog('flush', 'success', 'Queued CAS changes flushed.', counts);
       return { success: true, counts };
@@ -3006,6 +3066,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
       const remainingLegacy = readOutboxSnapshot({ logInvalid: true }).valid.length;
       const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+      durableOutboxCountCache = remainingVersioned.length;
       const counts = { queued: remainingLegacy + remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
       return { success: false, error: message, counts };
@@ -3045,6 +3106,81 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync push failed.';
       recordRemoteSyncLog('push', 'error', message);
+      return { success: false, error: message };
+    }
+  });
+}
+
+// Reconciliation for local data the sync layer never captured (e.g. enqueues lost to historical
+// localStorage quota failures): queue every local item the server has no recorded version for.
+// Explicit owner-triggered action — requires current pull state so the item-version metadata
+// reflects the remote database, and only ADDS outbox entries that drain through the normal CAS
+// path (baseVersion null → server-side create; existing rows resolve through the conflict path).
+export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
+  const refuse = (message: string): SyncResult => {
+    recordRemoteSyncLog('reconcile', 'error', message);
+    return { success: false, error: message };
+  };
+  if (!hasRemoteSyncToken()) return refuse('Enter the admin sync token first.');
+  if (isRemoteSyncFullPullRequired()) return refuse('Pull the token database before queueing the local library.');
+  const identity = storedServerIdentity();
+  if (readRemoteSyncVersionMetadata(localStorage, identity).needsFullPull) {
+    return refuse('Pull the token database before queueing the local library.');
+  }
+
+  return withRemoteSyncActivity(async () => {
+    try {
+      const localItems = await readLocalRemoteSyncItems();
+      const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+      const pendingKeys = new Set(
+        (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
+          .map(entry => `${entry.store}\u0000${entry.itemKey}`),
+      );
+      const untracked: RemoteSyncItem[] = [];
+      let alreadyTracked = 0;
+      let alreadyQueued = 0;
+      for (const item of localItems) {
+        if (isDeletedItem(item)) continue;
+        if (resolveVersion(item.store, item.itemKey) !== null) {
+          alreadyTracked += 1;
+          continue;
+        }
+        if (pendingKeys.has(`${item.store}\u0000${item.itemKey}`)) {
+          alreadyQueued += 1;
+          continue;
+        }
+        untracked.push(item);
+      }
+      const counts: Record<string, number> = {
+        scannedLocal: localItems.length,
+        alreadyTracked,
+        alreadyQueued,
+        queuedForSync: untracked.length,
+      };
+      for (const item of untracked) {
+        counts[`queued:${item.store}`] = (counts[`queued:${item.store}`] ?? 0) + 1;
+      }
+      if (untracked.length > 0) {
+        enqueueRemoteSyncItemsBatch(untracked);
+        await waitForPendingVersionedOutboxWrites();
+      }
+      recordRemoteSyncLog('reconcile', 'success', 'Local items missing from the token database queued for sync.', counts);
+      if (untracked.length === 0) return { success: true, counts };
+
+      const flush = await flushRemoteSyncOutbox();
+      if (!flush.success) {
+        return {
+          success: false,
+          error: flush.error || 'Remote sync flush failed.',
+          counts: { ...counts, ...(flush.counts ?? {}) },
+        };
+      }
+      mergeCounts(counts, flush.counts);
+      return { success: true, counts };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not queue the local library for sync.';
+      recordRemoteSyncLog('reconcile', 'error', message);
       return { success: false, error: message };
     }
   });

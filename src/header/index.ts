@@ -1912,7 +1912,7 @@ function renderHeaderAccountControl(
       key: `input-${importPlatform}`,
       attrs: {
         type: 'search',
-        placeholder: importPlatform === 'chesscom' ? 'Chess.com username' : 'Lichess username',
+        placeholder: importPlatform === 'chesscom' ? 'Enter your Chess.com username' : 'Enter your Lichess username',
         disabled: loading,
         autocomplete: 'off',
         spellcheck: false,
@@ -1962,6 +1962,8 @@ function renderHeaderAccountControl(
         if (value === 'new') {
           headerAccountMode = 'new';
           showImportPanel = false;
+          if (importPlatform === 'chesscom') chesscom.username = '';
+          else lichess.username = '';
           syncImportCategory(redraw);
           redraw();
           return;

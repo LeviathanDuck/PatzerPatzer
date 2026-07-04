@@ -152,6 +152,17 @@ export function getRemoteSyncItemVersion(
   return state.itemVersions[itemVersionKey(store, itemKey)] ?? null;
 }
 
+// Bulk lookup: parses the metadata blob once and returns a resolver, so batch
+// enqueues avoid re-reading/re-parsing storage for every item.
+export function createRemoteSyncItemVersionResolver(
+  storage: RemoteSyncVersionStorage,
+  identity: string
+): (store: string, itemKey: string) => number | null {
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  if (state.needsFullPull) return () => null;
+  return (store, itemKey) => state.itemVersions[itemVersionKey(store, itemKey)] ?? null;
+}
+
 export function resetRemoteSyncVersionMetadata(
   storage: RemoteSyncVersionStorage,
   identity: string

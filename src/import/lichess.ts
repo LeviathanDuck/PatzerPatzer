@@ -26,7 +26,7 @@ import { classifyOpening } from '../openings/eco';
 import { record, Severity } from '../diagnostics';
 
 export const lichess = {
-  username: 'Leviathan_Duck',
+  username: '',
   loading:  false,
   error:    null as string | null,
   /** Count of games parsed so far during an active import. */
