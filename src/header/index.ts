@@ -46,7 +46,9 @@ import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
 import {
   REMOTE_SYNC_ACTIVITY_EVENT,
+  REMOTE_SYNC_LOG_EVENT,
   clearRemoteSyncToken,
+  getRemoteSyncIdentitySnapshot,
   getRemoteSyncToken,
   hasRemoteSyncToken,
   isRemoteSyncActive,
@@ -83,6 +85,7 @@ let showBoardSettings     = false;
 let showDetectionModal    = false;
 let showRetroModal        = false;
 let showReleaseDetails    = false;
+let releaseCopyMessage    = '';
 let showLoginModal        = false;
 let showReviewMenu        = false;
 let showMobileNav    = false;
@@ -233,6 +236,10 @@ function ensureRemoteSyncActivityListener(redraw: () => void): void {
   if (remoteSyncActivityListenerAttached) return;
   remoteSyncActivityListenerAttached = true;
   window.addEventListener(REMOTE_SYNC_ACTIVITY_EVENT, () => {
+    remoteSyncBusy = isRemoteSyncActive();
+    redraw();
+  });
+  window.addEventListener(REMOTE_SYNC_LOG_EVENT, () => {
     remoteSyncBusy = isRemoteSyncActive();
     redraw();
   });
@@ -1074,6 +1081,7 @@ function closeGlobalMenu(redraw: () => void): void {
   showGlobalMenu    = false;
   showBoardSettings = false;
   showReleaseDetails = false;
+  releaseCopyMessage = '';
   redraw();
 }
 
@@ -1520,6 +1528,82 @@ function renderRetroModal(redraw: () => void): VNode {
   ]);
 }
 
+function formatMenuTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
+
+function syncIdentityDisplayLabel(): string {
+  const snapshot = getRemoteSyncIdentitySnapshot();
+  if (!snapshot.hasToken) return 'Logged out';
+  return snapshot.identityLabel ?? 'Token active, identity pending';
+}
+
+function syncLastSuccessLabel(): string {
+  const timestamp = formatMenuTimestamp(getRemoteSyncIdentitySnapshot().lastSyncedAt);
+  return timestamp ? `Last successful sync: ${timestamp}` : 'No successful sync recorded';
+}
+
+function renderSyncIdentityFooter(): VNode {
+  return h('div.global-menu__sync-identity', [
+    h('span.global-menu__sync-row', [
+      h('span.global-menu__sync-label', 'Sync identity'),
+      h('span.global-menu__sync-value', syncIdentityDisplayLabel()),
+    ]),
+    h('span.global-menu__sync-row', [
+      h('span.global-menu__sync-label', 'Sync status'),
+      h('span.global-menu__sync-value', syncLastSuccessLabel()),
+    ]),
+  ]);
+}
+
+function buildReleaseIdentityCopyText(): string {
+  const identity = getVisibleReleaseIdentity();
+  const syncSnapshot = getRemoteSyncIdentitySnapshot();
+  const lines = [
+    `Product: ${releaseProductLabel(identity)}`,
+    `Deploy: ${releaseDeployLabel(identity)}`,
+    `Release: ${identity.release}`,
+    identity.commit ? `Commit: ${identity.commit}` : null,
+    identity.commitTimestamp ? `Commit timestamp: ${identity.commitTimestamp}` : null,
+    identity.branch ? `Branch: ${identity.branch}` : null,
+    identity.deployedAt ? `Deployed: ${identity.deployedAt}` : null,
+    identity.builtAt ? `Built: ${identity.builtAt}` : null,
+    `Sync identity: ${syncIdentityDisplayLabel()}`,
+    syncSnapshot.lastSyncedAt
+      ? `Last successful sync: ${formatMenuTimestamp(syncSnapshot.lastSyncedAt)}`
+      : 'Last successful sync: No successful sync recorded',
+    syncSnapshot.lastCheckedAt
+      ? `Last database check: ${formatMenuTimestamp(syncSnapshot.lastCheckedAt)}`
+      : 'Last database check: No database check recorded',
+  ].filter((line): line is string => line !== null);
+
+  if (identity.commitMessage) {
+    lines.push('', 'Commit message:', identity.commitMessage);
+  }
+
+  return lines.join('\n');
+}
+
+function copyReleaseIdentityDetails(redraw: () => void): void {
+  if (typeof navigator === 'undefined' || !navigator.clipboard) {
+    releaseCopyMessage = 'Copy failed.';
+    redraw();
+    return;
+  }
+
+  releaseCopyMessage = 'Copying...';
+  redraw();
+  void navigator.clipboard.writeText(buildReleaseIdentityCopyText()).then(() => {
+    releaseCopyMessage = 'Copied.';
+    redraw();
+  }, () => {
+    releaseCopyMessage = 'Copy failed.';
+    redraw();
+  });
+}
+
 function renderReleaseIdentityFooter(redraw: () => void): VNode {
   const identity = getVisibleReleaseIdentity();
   const timestampLabel = releaseCommitTimestampLabel(identity);
@@ -1532,22 +1616,24 @@ function renderReleaseIdentityFooter(redraw: () => void): VNode {
   ].filter((row): row is { label: string; value: string } => row !== null);
   loadLiveReleaseIdentity(redraw);
 
-  return h('button.global-menu__release', {
+  return h('div.global-menu__release', {
     class: { 'global-menu__release--expanded': showReleaseDetails },
-    attrs: {
-      type: 'button',
-      title: releaseTooltip(identity),
-      'aria-label': `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
-      'aria-expanded': showReleaseDetails ? 'true' : 'false',
-    },
-    on: {
-      click: () => {
-        showReleaseDetails = !showReleaseDetails;
-        redraw();
-      },
-    },
   }, [
-    h('span.global-menu__release-summary', [
+    h('button.global-menu__release-toggle', {
+      attrs: {
+        type: 'button',
+        title: releaseTooltip(identity),
+        'aria-label': `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
+        'aria-expanded': showReleaseDetails ? 'true' : 'false',
+      },
+      on: {
+        click: () => {
+          showReleaseDetails = !showReleaseDetails;
+          releaseCopyMessage = '';
+          redraw();
+        },
+      },
+    }, [
       h('span.global-menu__release-primary', [
         h('span.global-menu__release-product', releaseProductLabel(identity)),
         h('span.global-menu__release-chevron', showReleaseDetails ? '▾' : '›'),
@@ -1556,6 +1642,13 @@ function renderReleaseIdentityFooter(redraw: () => void): VNode {
       timestampLabel ? h('span.global-menu__release-timestamp', timestampLabel) : null,
     ]),
     showReleaseDetails ? h('span.global-menu__release-details', [
+      h('span.global-menu__release-actions', [
+        h('button.global-menu__release-copy', {
+          attrs: { type: 'button' },
+          on: { click: () => copyReleaseIdentityDetails(redraw) },
+        }, 'Copy'),
+        releaseCopyMessage ? h('span.global-menu__release-copy-status', releaseCopyMessage) : null,
+      ]),
       ...detailRows.map(row => h('span.global-menu__release-detail', [
         h('span.global-menu__release-detail-label', row.label),
         h('span.global-menu__release-detail-value', row.value),
@@ -1579,7 +1672,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       on: { click: () => {
         showGlobalMenu    = !showGlobalMenu;
         showBoardSettings = false;
-        if (!showGlobalMenu) showReleaseDetails = false;
+        if (!showGlobalMenu) {
+          showReleaseDetails = false;
+          releaseCopyMessage = '';
+        }
         redraw();
       }},
     }, '⚙'),
@@ -1685,6 +1781,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
       showBoardSettings ? renderBoardSettings(redraw) : null,
 
+      renderSyncIdentityFooter(),
       renderReleaseIdentityFooter(redraw),
     ]) : null,
   ]);

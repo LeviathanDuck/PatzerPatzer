@@ -111,6 +111,13 @@ export interface RemoteSyncLogEntry {
   counts?: Record<string, number>;
 }
 
+export interface RemoteSyncIdentitySnapshot {
+  hasToken: boolean;
+  identityLabel: string | null;
+  lastSyncedAt: string | null;
+  lastCheckedAt: string | null;
+}
+
 interface PullResponse {
   ok?: boolean;
   code?: string;
@@ -364,6 +371,20 @@ function rememberServerIdentity(identity: unknown, userKey: unknown): void {
 
 function storedServerIdentity(): string {
   return localStorage.getItem(SERVER_IDENTITY_KEY)?.trim() || 'admin-beta';
+}
+
+function storedServerIdentityLabel(): string | null {
+  return localStorage.getItem(SERVER_IDENTITY_KEY)?.trim() || null;
+}
+
+export function getRemoteSyncIdentitySnapshot(): RemoteSyncIdentitySnapshot {
+  const hasToken = hasRemoteSyncToken();
+  return {
+    hasToken,
+    identityLabel: hasToken ? storedServerIdentityLabel() : null,
+    lastSyncedAt: getRemoteSyncLastSyncedAt(),
+    lastCheckedAt: getRemoteSyncLastCheckedAt(),
+  };
 }
 
 function clearServerGeneration(): void {
