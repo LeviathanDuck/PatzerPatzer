@@ -1666,16 +1666,30 @@ function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): void {
   removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
 }
 
-function pendingOutboxItem(store: RemoteSyncStoreName, itemKey: string): RemoteSyncItem | undefined {
-  return readOutbox().find(item => item.store === store && item.itemKey === itemKey);
+
+
+
+
+function pendingOutboxItem(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  outboxSnapshot?: readonly RemoteSyncItem[],
+): RemoteSyncItem | undefined {
+  const outbox = outboxSnapshot ?? readOutbox();
+  return outbox.find(item => item.store === store && item.itemKey === itemKey);
 }
 
-function localVersionForItem(spec: IdbStoreSpec, itemKey: string, existing: unknown | undefined): number {
+function localVersionForItem(
+  spec: IdbStoreSpec,
+  itemKey: string,
+  existing: unknown | undefined,
+  outboxSnapshot?: readonly RemoteSyncItem[],
+): number {
   return Math.max(
     existing === undefined ? 0 : spec.updatedAt(existing),
     rememberedItemUpdatedAt(spec.store, itemKey),
     rememberedItemDeletedAt(spec.store, itemKey),
-    pendingOutboxItem(spec.store, itemKey)?.updatedAt ?? 0,
+    pendingOutboxItem(spec.store, itemKey, outboxSnapshot)?.updatedAt ?? 0,
   );
 }
 
@@ -3052,6 +3066,12 @@ export async function restoreRemoteSyncBackup(preview: RemoteSyncBackupPreview):
     await clearLocalSyncedDataForRestore();
     localCleared = true;
     requireRemoteSyncFullPull();
+
+
+
+
+
+
     const pull = await pullFromRemoteSync({ since: null, flushAfter: false });
     if (!pull.success) throw new Error(pull.error || 'Restore committed, but full pull failed.');
     if (hasRemoteSyncToken()) startRemoteSyncAutoSync({ pushAfterHydrate: false });
@@ -3629,41 +3649,43 @@ export async function readLocalRemoteSyncItems(): Promise<RemoteSyncItem[]> {
   return [...groups.flat(), ...readLocalSettingsItems()];
 }
 
-async function applyIdbItem(item: RemoteSyncItem): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
-  const spec = IDB_SPECS_BY_STORE.get(item.store);
-  if (!spec) return { skipped: 'unknown-store' };
 
-  const db = await openIdb(spec.dbName, spec.dbVersion);
-  try {
-    const existing = await readRecordByItemKey(db, spec, item.itemKey);
-    if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt)) return { skipped: 'suppressed-upsert' };
-    if (item.store === 'accounts' && !isDeletedItem(item)) {
-      if (item.payload === undefined) return { skipped: 'missing-payload' };
-      const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
-      if (!merged) return { skipped: 'merge-failed' };
-      await writeRecordByItemKey(db, spec, item.itemKey, merged);
-      rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
-      clearItemDeletedAt(spec.store, item.itemKey);
-      return 'applied';
-    }
 
-    const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
-    if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
 
-    if (isDeletedItem(item)) {
-      await deleteRecordByItemKey(db, spec, item.itemKey);
-      if (spec.store === 'games') await deleteLegacyImportedGameById(db, item.itemKey);
-      rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
-      return 'deleted';
-    }
+
+
+async function applyIdbItem(
+  item: RemoteSyncItem,
+  spec: IdbStoreSpec,
+  db: IDBDatabase,
+  outboxSnapshot?: readonly RemoteSyncItem[],
+): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
+  const existing = await readRecordByItemKey(db, spec, item.itemKey);
+  if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt)) return { skipped: 'suppressed-upsert' };
+  if (item.store === 'accounts' && !isDeletedItem(item)) {
     if (item.payload === undefined) return { skipped: 'missing-payload' };
-    await writeRecordByItemKey(db, spec, item.itemKey, item.payload);
-    rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
+    const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
+    if (!merged) return { skipped: 'merge-failed' };
+    await writeRecordByItemKey(db, spec, item.itemKey, merged);
+    rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
     clearItemDeletedAt(spec.store, item.itemKey);
     return 'applied';
-  } finally {
-    db.close();
   }
+
+  const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing, outboxSnapshot);
+  if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
+
+  if (isDeletedItem(item)) {
+    await deleteRecordByItemKey(db, spec, item.itemKey);
+    if (spec.store === 'games') await deleteLegacyImportedGameById(db, item.itemKey);
+    rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
+    return 'deleted';
+  }
+  if (item.payload === undefined) return { skipped: 'missing-payload' };
+  await writeRecordByItemKey(db, spec, item.itemKey, item.payload);
+  rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
+  clearItemDeletedAt(spec.store, item.itemKey);
+  return 'applied';
 }
 
 interface RemoteSyncApplyProgress {
@@ -3692,6 +3714,28 @@ export async function applyRemoteSyncItems(
       // Progress reporting must never interrupt the pull apply loop.
     }
   };
+
+
+
+
+
+  const dbConnections = new Map<string, IDBDatabase>();
+  const connectionForSpec = async (spec: IdbStoreSpec): Promise<IDBDatabase> => {
+    const key = `${spec.dbName}::${spec.dbVersion}`;
+    const existingConnection = dbConnections.get(key);
+    if (existingConnection) return existingConnection;
+    const db = await openIdb(spec.dbName, spec.dbVersion);
+    dbConnections.set(key, db);
+    return db;
+  };
+
+
+  let outboxSnapshot: RemoteSyncItem[] | undefined;
+  const outboxSnapshotForRun = (): RemoteSyncItem[] => {
+    if (!outboxSnapshot) outboxSnapshot = readOutbox();
+    return outboxSnapshot;
+  };
+
   applyingRemoteSync = true;
   try {
     let index = 0;
@@ -3711,9 +3755,18 @@ export async function applyRemoteSyncItems(
       }
 
       try {
-        const result = item.store === 'settings'
-          ? applySettingItem(item)
-          : await applyIdbItem(item);
+        let result: 'applied' | 'deleted' | RemoteSyncSkippedApplyResult;
+        if (item.store === 'settings') {
+          result = applySettingItem(item);
+        } else {
+          const spec = IDB_SPECS_BY_STORE.get(item.store);
+          if (!spec) {
+            result = { skipped: 'unknown-store' };
+          } else {
+            const db = await connectionForSpec(spec);
+            result = await applyIdbItem(item, spec, db, outboxSnapshotForRun());
+          }
+        }
         if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
           analysisChanged = true;
         }
@@ -3731,6 +3784,7 @@ export async function applyRemoteSyncItems(
   } finally {
     applyingRemoteSync = false;
     if (analysisChanged) emitAnalysisChanged();
+    for (const db of dbConnections.values()) db.close();
   }
   return counts;
 }
@@ -3851,7 +3905,13 @@ export async function pushToRemoteSync(options: { skipFreshPull?: boolean } = {}
     try {
       let pullCounts: Record<string, number> | undefined;
       if (!options.skipFreshPull) {
-        const pull = await pullFromRemoteSync({ since: null, flushAfter: false, logNoop: false });
+
+
+
+
+
+
+        const pull = await pullFromRemoteSync({ flushAfter: false, logNoop: false });
         pullCounts = pull.counts;
         if (!pull.success) {
           const message = pull.error || 'Fresh pull failed before push.';
@@ -4084,7 +4144,13 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
 }
 
 export async function hydrateFromRemoteSync(): Promise<SyncResult> {
-  return pullFromRemoteSync({ since: null, flushAfter: true });
+
+
+
+
+
+
+  return pullFromRemoteSync({ flushAfter: true });
 }
 
 export const startupHydrateFromRemoteSync = hydrateFromRemoteSync;
