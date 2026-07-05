@@ -536,6 +536,7 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
     const result: AccountSyncResult = await syncAccountGames(account, {
       rated: importFilters.rated,
       speeds: importFilters.speeds,
+      syncDateRange: currentImportDateRangeConfig(),
       onProgress: count => {
         _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
         redraw();

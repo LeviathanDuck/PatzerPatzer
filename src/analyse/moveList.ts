@@ -3,7 +3,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { type MoveLabel } from '../engine/winchances';
-import { isDeepenedBeyondReviewStamp, labelForReviewEval } from './deepenedEval';
+import { labelForReviewEval } from './deepenedEval';
 import { showReviewLabels } from '../engine/ctrl';
 import { missedMomentConfig } from '../engine/tactics';
 import { pathInit } from '../tree/ops';
@@ -128,7 +128,6 @@ function renderMoveSpan(
     ? pgnGlyphs
     : (computedSymbol ? [{ symbol: computedSymbol }] : []);
   const mate   = cached?.mate;
-  const deepened = isDeepenedBeyondReviewStamp(cached, options?.reviewEngine);
 
   // Build children matching Lichess tview2: index? + san + glyph? + eval?
   // Mirrors lichess-org/lila: ui/analyse/src/view/components.ts renderMoveNodes + renderIndex
@@ -143,14 +142,6 @@ function renderMoveSpan(
   }
   // mate === 0 = terminal checkmate position; use KO notation instead of +M0.
   if (mate !== undefined) inner.push(h('eval', mate === 0 ? '#KO!' : `+M${Math.abs(mate)}`));
-  if (deepened) {
-    inner.push(h('deepened', {
-      attrs: {
-        title: `Eval deepened beyond review depth ${options?.reviewEngine?.reviewDepth}`,
-        'aria-label': `Eval deepened beyond review depth ${options?.reviewEngine?.reviewDepth}`,
-      },
-    }, 'D+'));
-  }
 
   const isBookmarked = bookmarkedPaths?.has(path) ?? false;
   const moveVnode = h('move', {
@@ -159,7 +150,6 @@ function renderMoveSpan(
       'context-active': contextMenuPath === path,
       'worst-miss':     worstMissPath !== undefined && path === worstMissPath,
       bookmarked:       isBookmarked,
-      deepened,
     },
     attrs: { p: path },
     on: {

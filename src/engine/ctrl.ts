@@ -217,6 +217,26 @@ let liveEngineUiTimer: ReturnType<typeof setTimeout> | null = null;
 let liveEngineUiLastFlushAt = 0;
 let liveEngineUiNeedsRetroCheck = false;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+let pendingLivePromotion: {
+  nodePath:   string;
+  nodePly:    number;
+  parentPath: string;
+  snapshot:   PositionEval;
+} | null = null;
+
 // --- Threat mode ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts toggleThreatMode + keyboard.ts 'x'
 
@@ -711,15 +731,105 @@ function cancelLiveEngineUiRefresh(): void {
     liveEngineUiTimer = null;
   }
   liveEngineUiNeedsRetroCheck = false;
+  // Discard any captured promotion candidate along with the refresh it was scheduled
+  // for — every caller of cancelLiveEngineUiRefresh() (navigation, threat mode, engine
+  // toggle-off, every bestmove) is exactly the set of events that can make evalNodePath
+  // move on, so a candidate surviving past a cancel would risk promoting stale data.
+  pendingLivePromotion = null;
 }
 
 function flushLiveEngineUiRefresh(): void {
   liveEngineUiTimer = null;
   liveEngineUiLastFlushAt = Date.now();
+  const candidate = pendingLivePromotion;
+  pendingLivePromotion = null;
+  if (candidate && !evalIsThreat && !isSilentEvalActive() && engineMode !== 'play') {
+    // Re-validate against the position currently on screen: this flush can fire up to
+    // LIVE_ENGINE_UI_THROTTLE_MS after the info line was captured, so the user may have
+    // navigated away (or the override position may have changed) in the interim. Mirrors
+    // the bestmove branch's own stale-path re-check (ctrl.ts:877), which itself mirrors
+    // lichess-org/lila onNewCeval's `node.fen !== ev.fen` guard.
+    const stillCurrent = _evalPositionOverride
+      ? _activeOverrideFen === _evalPositionOverride.currentFen
+      : candidate.nodePath === _getCtrl().path;
+    if (stillCurrent) {
+      promoteLiveEval(candidate.nodePath, candidate.nodePly, candidate.parentPath, candidate.snapshot);
+    }
+  }
   syncArrowDebounced();
   _redraw();
   if (liveEngineUiNeedsRetroCheck) _getCtrl().retro?.onCeval();
   liveEngineUiNeedsRetroCheck = false;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function computeLiveEvalPromotion(
+  cached:     PositionEval | undefined,
+  parentEval: PositionEval | undefined,
+  nodePly:    number,
+  evalData:   PositionEval,
+): PositionEval | null {
+  if (evalData.depth === undefined) return null;
+  if (evalData.cp === undefined && evalData.mate === undefined) return null;
+  if (!isDeeperEval(cached, evalData)) return null;
+  const stored: PositionEval = { ...evalData };
+  if (parentEval?.cp !== undefined && stored.cp !== undefined) {
+    stored.delta = stored.cp - parentEval.cp;
+  }
+  if (parentEval) {
+    const nodeWc   = evalWinChances(stored);
+    const parentWc = evalWinChances(parentEval);
+    if (nodeWc !== undefined && parentWc !== undefined) {
+      const whiteToMove   = nodePly % 2 === 1;
+      const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
+      const moverParentWc = whiteToMove ? parentWc : -parentWc;
+      stored.loss = (moverParentWc - moverNodeWc) / 2;
+    }
+  }
+  // Preserve fields the promoted snapshot may not have populated (an intermediate
+  // info-line iteration can still be missing `best`/`label` that a completed search or a
+  // stored review already established) so children's played-best checks and stored
+  // review labels don't regress.
+  if (cached?.best && !stored.best) stored.best = cached.best;
+  if (cached?.label && !stored.label) stored.label = cached.label;
+  return stored;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function promoteLiveEval(
+  nodePath:   string,
+  nodePly:    number,
+  parentPath: string,
+  evalData:   PositionEval,
+): void {
+  const cached     = evalCache.get(nodePath);
+  const parentEval = evalCache.get(parentPath);
+  const stored = computeLiveEvalPromotion(cached, parentEval, nodePly, evalData);
+  if (!stored) return;
+  evalCache.set(nodePath, stored);
+  _onLiveEvalImproved?.();
+  _onLiveEvalUpdated?.(nodePath, stored);
 }
 
 function scheduleLiveEngineUiRefresh(includeRetroCheck = false): void {
@@ -814,7 +924,21 @@ function parseEngineLine(line: string): void {
       if (pvMoves.length > 0 && !evalIsThreat) ev.moves = pvMoves;
       if (depth !== undefined && !evalIsThreat) ev.depth = depth;
       if ((score !== undefined || best) && !isSilentEvalActive()) {
-        if (!evalIsThreat) _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
+        if (!evalIsThreat) {
+          _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
+
+
+
+
+          if (currentEval.depth !== undefined && (currentEval.cp !== undefined || currentEval.mate !== undefined)) {
+            pendingLivePromotion = {
+              nodePath:   evalNodePath,
+              nodePly:    evalNodePly,
+              parentPath: evalParentPath,
+              snapshot:   { ...currentEval },
+            };
+          }
+        }
         scheduleLiveEngineUiRefresh(!evalIsThreat);
       }
     } else if (!evalIsThreat && score !== undefined) {
@@ -907,37 +1031,11 @@ function parseEngineLine(line: string): void {
       if (isSilentEvalActive()) {
         onSilentEvalBestmove?.();
       } else {
-        // Live eval: if this result is deeper than what's cached, promote it
-        // into evalCache so the eval graph and persistence stay up to date.
-        if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {
-          const nodePath   = evalNodePath;
-          const cached     = evalCache.get(nodePath);
 
 
-          if (isDeeperEval(cached, stored)) {
-            // Compute delta and loss for live eval promotion.
-            const parentPath = evalParentPath;
-            const parentEval = evalCache.get(parentPath);
-            if (parentEval?.cp !== undefined && stored.cp !== undefined) {
-              stored.delta = stored.cp - parentEval.cp;
-            }
-            if (parentEval) {
-              const nodeWc   = evalWinChances(stored);
-              const parentWc = evalWinChances(parentEval);
-              if (nodeWc !== undefined && parentWc !== undefined) {
-                const whiteToMove   = evalNodePly % 2 === 1;
-                const moverNodeWc   = whiteToMove ? nodeWc   : -nodeWc;
-                const moverParentWc = whiteToMove ? parentWc : -parentWc;
-                stored.loss = (moverParentWc - moverNodeWc) / 2;
-              }
-            }
-            // Preserve existing label from review if present and we don't have one.
-            if (cached?.label && !stored.label) stored.label = cached.label;
-            evalCache.set(nodePath, stored);
-            _onLiveEvalImproved?.();
-            _onLiveEvalUpdated?.(nodePath, stored);
-          }
-        }
+
+
+        promoteLiveEval(evalNodePath, evalNodePly, evalParentPath, stored);
         syncArrowDebounced();
         _redraw();
         if (pendingEval) {

@@ -3,12 +3,8 @@
 
 import { h, type VNode } from 'snabbdom';
 import { evalWinChances, type MoveLabel } from '../engine/winchances';
-import {
-  countDeepenedReviewEvals,
-  deepenedReviewSummaryText,
-  isDeepenedBeyondReviewStamp,
-  labelForReviewEval,
-} from './deepenedEval';
+import { labelForReviewEval } from './deepenedEval';
+import { buildAcplDataset, createAcplChart, getAcplChart, updateAcplChart } from './acplChart';
 import type { TreeNode } from '../tree/types';
 import type { ReviewEngineMetadata } from '../idb/index';
 
@@ -242,7 +238,6 @@ export function renderAnalysisSummary(
 
   const summary = computeAnalysisSummary(mainline, evalCache, reviewEngine);
   if (!summary) return h('div');
-  const deepenedCount = countDeepenedReviewEvals(mainline, path => evalCache.get(path), reviewEngine);
 
   function playerCol(name: string, data: PlayerSummary, color: 'white' | 'black'): VNode {
     const accText = data.accuracy !== null ? `${Math.round(data.accuracy)}%` : '—';
@@ -265,11 +260,6 @@ export function renderAnalysisSummary(
       playerCol(whiteName, summary.white, 'white'),
       playerCol(blackName, summary.black, 'black'),
     ]),
-    deepenedCount > 0 && reviewEngine
-      ? h('div.summary__deepened', {
-          attrs: { title: 'Some displayed evals are deeper than the stored review stamp.' },
-        }, deepenedReviewSummaryText(deepenedCount, reviewEngine.reviewDepth))
-      : null,
   ]);
 }
 
@@ -455,16 +445,15 @@ export function renderEvalBar(
 }
 
 // --- Evaluation graph ---
-// Adapted from lichess-org/lila: ui/chart/src/acpl.ts (concept)
-// Pure SVG, no charting library. X = move index, Y = white-perspective win chances.
-// Data source: evalCache (same normalized white-perspective values used for labels).
+// Interactive graph: chart.js line chart adapted from lichess-org/lila's acpl chart —
+// see src/analyse/acplChart.ts for the chart construction/dataset/update logic.
+// Background (mobile) graph: unchanged hand-rolled SVG (no charting library).
+// Data source: evalCache (same normalized white-perspective values used for move labels).
 
 const GRAPH_W = 600;
 const GRAPH_H = 80;
 const GRAPH_HEIGHT_MIN = 100;
 const GRAPH_HEIGHT_MAX = 300;
-let evalGraphScrubPointerId: number | null = null;
-let evalGraphLastScrubPath: string | null = null;
 const graphHeightRaw = Number.parseInt(localStorage.getItem('patzer.evalGraphHeightPct') ?? '', 10);
 let graphHeightPct = Number.isFinite(graphHeightRaw)
   ? Math.min(GRAPH_HEIGHT_MAX, Math.max(GRAPH_HEIGHT_MIN, graphHeightRaw))
@@ -477,8 +466,6 @@ export function setEvalGraphHeightPct(value: number): void {
 
 export function resetAnalysisViewSettingsRuntimeForDataManagement(): void {
   graphHeightPct = GRAPH_HEIGHT_MIN;
-  evalGraphScrubPointerId = null;
-  evalGraphLastScrubPath = null;
 }
 
 export function renderEvalGraph(
@@ -494,12 +481,6 @@ export function renderEvalGraph(
 ): VNode {
   const n = mainline.length - 1; // non-root move count
   const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
-  // svgH: the Y coordinate range used inside the SVG.
-  // In non-bg mode we match the viewBox height to the rendered pixel height so that
-  // scaleY = renderedGraphHeight / renderedGraphHeight = 1 — this keeps circle markers
-  // circular regardless of graph height. In bg mode the SVG is CSS-sized (height:100%)
-  // so we keep the fixed 80-unit coordinate space to preserve its fill geometry.
-  const svgH = bg ? GRAPH_H : renderedGraphHeight;
 
   if (n < 2) {
     // Background mode: render nothing when there is no data — empty transparent div
@@ -525,217 +506,59 @@ export function renderEvalGraph(
     ]);
   }
 
-  interface Pt { x: number; y: number; path: string; label: MoveLabel | null; hasMate: boolean; deepened: boolean; }
-
-  const shouldShowReviewAnnotation = (nodePly: number): boolean => {
-    if (!userOnly || userColor === null) return true;
-    const isWhiteMove = nodePly % 2 === 1;
-    return (userColor === 'white' && isWhiteMove) || (userColor === 'black' && !isWhiteMove);
-  };
-
-  const pts: (Pt | null)[] = [];
-  let path = '';
-  for (let i = 1; i <= n; i++) {
-    const node = mainline[i]!;
-    path += node.id;
-    const parentPath   = path.slice(0, -2);
-    const cached       = evalCache.get(path);
-    const parentCached = evalCache.get(parentPath);
-    const wc = cached?.mate === 0
-      ? (node.fen.split(' ')[1] === 'b' ? 1 : -1)
-      : (cached !== undefined ? evalWinChances(cached) : undefined);
-    if (wc !== undefined) {
-      const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
-      const label = !playedBest && shouldShowReviewAnnotation(node.ply)
-        ? labelForReviewEval(cached, playedBest, true, reviewEngine)
-        : null;
-      pts.push({
-        x: ((i - 1) / (n - 1)) * GRAPH_W,
-        y: ((1 - wc) / 2) * svgH, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
-        path,
-        label,
-        hasMate: cached?.mate !== undefined,
-        deepened: isDeepenedBeyondReviewStamp(cached, reviewEngine),
-      });
-    } else {
-      pts.push(null);
+  // --- Background (mobile) graph — unchanged hand-rolled SVG implementation. ---
+  // Renders behind the mobile controls bar; no pointer interaction (see .eval-graph--bg CSS).
+  if (bg) {
+    interface BgPt { x: number; y: number; path: string; }
+    const pts: (BgPt | null)[] = [];
+    let path = '';
+    for (let i = 1; i <= n; i++) {
+      const node = mainline[i]!;
+      path += node.id;
+      const cached = evalCache.get(path);
+      const wc = cached?.mate === 0
+        ? (node.fen.split(' ')[1] === 'b' ? 1 : -1)
+        : (cached !== undefined ? evalWinChances(cached) : undefined);
+      pts.push(wc !== undefined
+        ? { x: ((i - 1) / (n - 1)) * GRAPH_W, y: ((1 - wc) / 2) * GRAPH_H, path }
+        : null);
     }
-  }
+    const valid = pts.filter((p): p is BgPt => p !== null);
+    if (valid.length < 2) return h('div.eval-graph.eval-graph--bg');
 
-  const valid = pts.filter((p): p is Pt => p !== null);
+    const cy = GRAPH_H / 2;
+    const svgNodes: VNode[] = [];
+    const polyPts = [
+      `${valid[0]!.x},${GRAPH_H}`,
+      ...valid.map(p => `${p.x},${p.y}`),
+      `${valid[valid.length - 1]!.x},${GRAPH_H}`,
+    ].join(' ');
 
-  if (valid.length < 2) {
-    if (bg) return h('div.eval-graph.eval-graph--bg');
-    return h('div.eval-graph', [
-      h('div.eval-graph__empty', 'Analyze game to see graph.'),
-    ]);
-  }
+    // Center line (eval = 0) — pushed first so it renders behind the fill polygon and trace.
+    svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: '0.6' } }));
+    svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(255,255,255,0.35)', stroke: 'none' } }));
+    svgNodes.push(h('polyline', { attrs: {
+      points: valid.map(p => `${p.x},${p.y}`).join(' '),
+      fill: 'none',
+      stroke: '#d85000',
+      'stroke-width': 1.5,
+      opacity: '0.5',
+      'stroke-linejoin': 'round',
+      'stroke-linecap': 'round',
+    } }));
 
-  const cy = svgH / 2;
-  const svgNodes: VNode[] = [];
-  const hideHover = (svg: SVGSVGElement | null): void => {
-    const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
-    if (hl) hl.setAttribute('opacity', '0');
-  };
-  const showHover = (svg: SVGSVGElement | null, pt: Pt | null): void => {
-    const hl = svg?.querySelector('[data-hover]') as SVGLineElement | null;
-    if (!hl || !pt) return;
-    hl.setAttribute('x1', String(pt.x));
-    hl.setAttribute('x2', String(pt.x));
-    hl.setAttribute('opacity', '0.55');
-  };
-  const nearestPointForClientX = (svg: SVGSVGElement | null, clientX: number): Pt | null => {
-    if (!svg) return null;
-    const rect = svg.getBoundingClientRect();
-    if (rect.width <= 0) return null;
-    const graphX = Math.max(0, Math.min(GRAPH_W, ((clientX - rect.left) / rect.width) * GRAPH_W));
-    let nearest = valid[0]!;
-    let nearestDist = Math.abs(nearest.x - graphX);
-    for (let i = 1; i < valid.length; i++) {
-      const pt = valid[i]!;
-      const dist = Math.abs(pt.x - graphX);
-      if (dist < nearestDist) {
-        nearest = pt;
-        nearestDist = dist;
-      }
-    }
-    return nearest;
-  };
-  const updateHoverAndMaybeScrub = (target: EventTarget | null, clientX: number, scrub: boolean): void => {
-    const svg = target instanceof SVGElement
-      ? (target.ownerSVGElement ?? (target as SVGSVGElement))
-      : null;
-    const pt = nearestPointForClientX(svg, clientX);
-    showHover(svg, pt);
-    if (scrub && pt && pt.path !== evalGraphLastScrubPath) {
-      evalGraphLastScrubPath = pt.path;
-      navigate(pt.path);
-    }
-  };
-
-  // Follow-up parity refinement: render White territory as a fill rising from the
-  // bottom of the chart to the eval line, matching the intended Lichess-style read.
-  // This keeps the interaction model intact while removing the center-origin look.
-  const polyPts = [
-    `${valid[0]!.x},${svgH}`,
-    ...valid.map(p => `${p.x},${p.y}`),
-    `${valid[valid.length - 1]!.x},${svgH}`,
-  ].join(' ');
-
-  // Center line (eval = 0) — pushed first so it renders behind the fill polygon and trace.
-  svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: bg ? '0.6' : '1' } }));
-
-  svgNodes.push(h('polygon', {
-    attrs: {
-      points: polyPts,
-      fill: bg ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.85)',
-      stroke: 'none',
-    },
-  }));
-
-  // Eval trace
-  svgNodes.push(h('polyline', { attrs: {
-    points: valid.map(p => `${p.x},${p.y}`).join(' '),
-    fill: 'none',
-    stroke: '#d85000',
-    'stroke-width': bg ? 1.5 : 1,
-    opacity: bg ? '0.5' : '1',
-    'stroke-linejoin': 'round',
-    'stroke-linecap': 'round',
-  } }));
-
-  // Vertical bar at current move (drawn before dots so dots render on top)
-  const curPt = valid.find(p => p.path === currentPath);
-  if (curPt) {
-    if (bg) {
+    const curPt = valid.find(p => p.path === currentPath);
+    if (curPt) {
       svgNodes.push(h('line', { attrs: {
-        x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
+        x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
         stroke: 'rgba(0,0,0,0.72)', 'stroke-width': 4, opacity: '0.75',
       } }));
+      svgNodes.push(h('line', { attrs: {
+        x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
+        stroke: '#62d8ad', 'stroke-width': 2, opacity: '0.95',
+      } }));
     }
-    svgNodes.push(h('line', { attrs: {
-      x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
-      stroke: bg ? '#62d8ad' : '#4a8',
-      'stroke-width': bg ? 2 : 1,
-      opacity: bg ? '0.95' : '0.55',
-    } }));
-  }
 
-  // Hover indicator line and dots — skipped in background mode (no interaction).
-  if (!bg) svgNodes.push(h('line', {
-    attrs: {
-      'data-hover': '1',
-      x1: 0, y1: 0, x2: 0, y2: svgH,
-      stroke: '#aaa', 'stroke-width': 1.5, opacity: '0',
-      'pointer-events': 'none',
-    },
-  }));
-
-  // Dots — skipped in background mode.
-  // Only render a dot for the current position, mate opportunities, or classified moves
-  // (blunder / mistake / inaccuracy). Plain moves get no dot.
-  if (!bg) for (const pt of valid) {
-    const isCurrent = pt.path === currentPath;
-    if (!isCurrent && !pt.hasMate && !pt.label && !pt.deepened) continue;
-    const dotColor = isCurrent         ? '#4a8'
-      : pt.deepened                    ? '#7dd3fc'
-      : pt.hasMate                     ? 'hsl(307,80%,70%)'
-      : pt.label === 'blunder'         ? 'hsl(0,69%,60%)'
-      : pt.label === 'mistake'         ? 'hsl(41,100%,45%)'
-      :                                  'hsl(202,78%,62%)'; // inaccuracy
-    const dotR = isCurrent ? 3.5 : 2.5;
-    svgNodes.push(h('circle', { attrs: {
-      cx: pt.x, cy: pt.y,
-      r: dotR,
-      fill: dotColor,
-      stroke: isCurrent ? '#fff' : 'none',
-      'stroke-width': 1,
-      'pointer-events': 'none',
-    } }));
-  }
-
-  // Full-width interaction layer — skipped in background mode (pointer-events: none on container).
-  if (!bg) svgNodes.push(h('rect', {
-    attrs: {
-      x: 0,
-      y: 0,
-      width: GRAPH_W,
-      height: svgH,
-      fill: 'transparent',
-    },
-    on: {
-      pointerdown: (e: PointerEvent) => {
-        evalGraphScrubPointerId = e.pointerId;
-        evalGraphLastScrubPath = currentPath;
-        (e.currentTarget as SVGGraphicsElement).setPointerCapture?.(e.pointerId);
-        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, true);
-        e.preventDefault();
-      },
-      pointermove: (e: PointerEvent) => {
-        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, evalGraphScrubPointerId === e.pointerId);
-      },
-      pointerup: (e: PointerEvent) => {
-        if (evalGraphScrubPointerId === e.pointerId) {
-          evalGraphScrubPointerId = null;
-          evalGraphLastScrubPath = null;
-        }
-        (e.currentTarget as SVGGraphicsElement).releasePointerCapture?.(e.pointerId);
-      },
-      pointercancel: (e: PointerEvent) => {
-        if (evalGraphScrubPointerId === e.pointerId) {
-          evalGraphScrubPointerId = null;
-          evalGraphLastScrubPath = null;
-        }
-        hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement);
-      },
-      pointerleave: (e: PointerEvent) => {
-        if (evalGraphScrubPointerId !== e.pointerId) hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement);
-      },
-    },
-  }));
-
-  // Background mode: no interaction handlers, SVG fills 100% of the container.
-  if (bg) {
     return h('div.eval-graph.eval-graph--bg', [
       h('svg', { attrs: {
         viewBox: `0 0 ${GRAPH_W} ${GRAPH_H}`,
@@ -746,31 +569,40 @@ export function renderEvalGraph(
     ]);
   }
 
-  const reviewEngineLabel = reviewEngine
+  // --- Interactive graph — chart.js, adapted from lichess-org/lila's acpl chart. ---
+  // buildAcplDataset is called here only to gate the empty state; the canvas hooks below
+  // rebuild it again at chart-creation/update time (cheap — a few hundred points at most).
+  const dataset = buildAcplDataset(mainline, evalCache, userColor, userOnly, reviewEngine);
+  if (dataset.points.length < 2) {
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', 'Analyze game to see graph.'),
+    ]);
+  }
+
+  const chartOptions = { userColor, userOnly, reviewEngine, onNavigate: navigate };
+  const reviewEngineText = reviewEngine
     ? `${reviewEngine.engineName} · ${reviewEngine.strengthLabel} · depth ${reviewEngine.reviewDepth}`
-    : null;
-  const deepenedCount = countDeepenedReviewEvals(mainline, path => evalCache.get(path), reviewEngine);
-  const reviewEngineText = reviewEngineLabel && reviewEngine
-    ? [
-        reviewEngineLabel,
-        deepenedCount > 0 ? deepenedReviewSummaryText(deepenedCount, reviewEngine.reviewDepth) : null,
-      ].filter((part): part is string => part !== null).join(' · ')
     : null;
 
   return h('div.eval-graph', {
-    on: {
-      mouseleave: (e: MouseEvent) => hideHover((e.currentTarget as Element).querySelector('svg')),
-    },
+    attrs: { style: `height:${renderedGraphHeight}px` },
   }, [
-    h('svg', { attrs: {
-      // viewBox matches the rendered pixel height so scaleY = 1, keeping circle
-      // markers circular at any graph height. scaleX still stretches to fill
-      // container width, which is the intended horizontal-fill behavior.
-      viewBox: `0 0 ${GRAPH_W} ${svgH}`,
-      width: '100%',
-      height: renderedGraphHeight,
-      preserveAspectRatio: 'none',
-    } }, svgNodes),
+    h('canvas', {
+      hook: {
+        insert: (vnode) => {
+          createAcplChart(vnode.elm as HTMLCanvasElement, mainline, evalCache, currentPath, chartOptions);
+        },
+        update: (_old, vnode) => {
+          const canvas = vnode.elm as HTMLCanvasElement;
+          const existing = getAcplChart(canvas);
+          if (existing) updateAcplChart(existing, mainline, evalCache, currentPath, chartOptions);
+          else createAcplChart(canvas, mainline, evalCache, currentPath, chartOptions);
+        },
+        destroy: (vnode) => {
+          getAcplChart(vnode.elm as HTMLCanvasElement)?.destroy();
+        },
+      },
+    }),
     ...(reviewEngineText ? [h('div.eval-graph__review-engine', reviewEngineText)] : []),
     h('div.eval-graph__resize-handle', {
       attrs: {
@@ -814,6 +646,10 @@ function bindEvalGraphResize(handle: HTMLElement, redraw: () => void): void {
       const delta = pos[1] - startPos[1];
       setEvalGraphHeightPct(startHeight + delta);
       redraw();
+      // Chart.js's own ResizeObserver picks up the container height change, but nudge it
+      // explicitly so the canvas tracks the drag with no visible lag (interactive graph only).
+      const canvas = handle.parentElement?.querySelector('canvas');
+      if (canvas) getAcplChart(canvas)?.resize();
     };
 
     document.body.classList.add('resizing');

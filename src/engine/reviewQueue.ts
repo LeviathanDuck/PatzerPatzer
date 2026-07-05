@@ -740,6 +740,12 @@ export interface ReviewQueueEntry {
   total:  number;
   status: 'pending' | 'analyzing' | 'complete' | 'error';
   depth:  number;
+
+
+
+
+
+  feed: 'bulk' | 'one-off';
   minimumDepthUsed?: number;
 }
 
@@ -1232,6 +1238,9 @@ async function mirrorQueueFromManifest(): Promise<void> {
       total:  record.total,
       status: record.status,
       depth:  record.depth,
+
+
+      feed: 'bulk',
       ...(record.minimumDepthUsed !== undefined ? { minimumDepthUsed: record.minimumDepthUsed } : {}),
     };
   });
@@ -2339,7 +2348,11 @@ function beginReviewSearch(item: ReviewBatchItem): void {
     ply:      item.nodePly,
   }).token;
   reviewProtocol.setPositionContext(item.position);
-  reviewProtocol.go(reviewActiveDepth, 1, bulkReviewMovetime ?? undefined);
+
+
+
+
+  reviewProtocol.go(reviewActiveDepth, 1, entry.feed === 'bulk' ? (bulkReviewMovetime ?? undefined) : undefined);
   armWatchdog();
 }
 
@@ -2523,7 +2536,9 @@ function onWatchdogExpiry(): void {
       eventType:   'watchdog-expiry',
       depthTarget: reviewActiveDepth,
       depthReached: reviewCurrentEval.depth ?? null,
-      movetimeMs:  bulkReviewMovetime ?? null,
+
+
+      movetimeMs:  entry?.feed === 'bulk' ? (bulkReviewMovetime ?? null) : null,
       ply:         reviewNodePly,
       retries:     reviewWatchdogRetries,
       ...reviewProtocol.deviceCapabilityMetadata(),
@@ -2922,7 +2937,9 @@ function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | 
             eventType:    'stale-bestmove-drop',
             depthTarget:  reviewActiveDepth,
             depthReached: reviewCurrentEval.depth ?? null,
-            movetimeMs:   bulkReviewMovetime ?? null,
+
+
+            movetimeMs:   staleEntry?.feed === 'bulk' ? (bulkReviewMovetime ?? null) : null,
             ply:          reviewNodePly,
             consumedKind: consumedSearch?.kind ?? null,
             consumedStale: consumedSearch?.stale ?? null,
@@ -2953,14 +2970,14 @@ function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | 
           fen: activeItem.fen,
           nodePly: activeItem.nodePly,
         });
-        onReviewBestmove();
+        onReviewBestmove(consumedSearch);
         return;
       }
       markActiveEntryErrored(`review engine returned invalid bestmove: ${line.trim()}`);
       return;
     }
     reviewCurrentEval.best = bestmove;
-    onReviewBestmove();
+    onReviewBestmove(consumedSearch);
   }
 }
 
@@ -2970,7 +2987,25 @@ function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | 
 
 
 
-function onReviewBestmove(): void {
+
+
+
+
+
+
+
+
+function reviewResultMismatchKind(
+  item: ReviewBatchItem,
+  stored: PositionEval,
+  consumedSearch: ReviewSearchDescriptor | null,
+): 'descriptor-fen' | 'illegal-best' | null {
+  if (consumedSearch && !engineFenEquals(consumedSearch.fen, item.fen)) return 'descriptor-fen';
+  if (stored.best && !uciMoveIsLegalInFen(item.fen, stored.best)) return 'illegal-best';
+  return null;
+}
+
+function onReviewBestmove(consumedSearch: ReviewSearchDescriptor | null): void {
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (!entry) return;
   if (reviewWatchdogRetries > 0 && reviewWatchdogTriggeredAt !== null) {
@@ -2999,14 +3034,15 @@ function onReviewBestmove(): void {
     },
   });
 
-  // Engine-result→node binding guard. The engine's best move must be legal in the exact FEN we asked
-  // it to analyse (item.fen). If it is not, the result was computed for a different position — storing
-  // it would shift the saved eval by a ply and corrupt the graph/accuracy/labels (BUG-2026-06-29-019,
-  // proven signature: 84/88 stored best moves illegal in own FEN, legal in parent). Drop it and
-  // re-search the same FEN; re-searching re-syncs a one-position-behind engine (its next "previous
-  // position" becomes this exact FEN). Bounded so a persistent mismatch errors the game loudly rather
-  // than silently saving corruption.
-  if (item && stored.best && !uciMoveIsLegalInFen(item.fen, stored.best)) {
+
+
+
+
+
+
+
+  const mismatchKind = item ? reviewResultMismatchKind(item, stored, consumedSearch) : null;
+  if (item && mismatchKind) {
     const retriesForItem = reviewMismatchRetryIndex === reviewItemIndex ? reviewMismatchRetryCount : 0;
     const positionReplay = replayEnginePositionContext(item.position, item.fen);
     const positionReplayReason = positionReplay.reason
@@ -3020,6 +3056,7 @@ function onReviewBestmove(): void {
       metadata: {
         role:          reviewDiagnosticRole(),
         ...reviewPositionContextMetadata(item, positionReplay, positionReplayReason),
+        mismatchKind,
         retries:       retriesForItem,
         timestamp:     Date.now(),
       },
@@ -3028,7 +3065,7 @@ function onReviewBestmove(): void {
     reviewCurrentEval = {};
     if (retriesForItem >= REVIEW_MISMATCH_MAX_RETRIES) {
       markActiveEntryErrored(
-        `review-fen-binding-mismatch persisted at ${reviewItemIndex + 1}/${reviewItemQueue.length}`,
+        `review-fen-binding-mismatch (${mismatchKind}) persisted at ${reviewItemIndex + 1}/${reviewItemQueue.length}`,
       );
       return;
     }
@@ -3421,7 +3458,16 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
     const moments = detectMissedMoments(ctrl.mainline, cache, userColor);
     const summary = computeAnalysisSummary(ctrl.mainline, cache);
     const completionDepth = entryMinimumDepth(entry);
-    const reviewEngine = buildReviewEngineMetadata(reviewProtocol.engineName, completionDepth);
+
+
+
+
+
+    const reviewEngine = buildReviewEngineMetadata(reviewProtocol.engineName, completionDepth, {
+      requestedDepth: entry.depth,
+      profileId:      entry.feed,
+      movetimeMs:     entry.feed === 'bulk' ? (bulkReviewMovetime ?? null) : null,
+    });
 
     await saveAnalysisToIdbStrict(
       'complete',
@@ -3730,6 +3776,7 @@ function enqueueBulkReviewAsLeader(
       total,
       status: 'pending',
       depth:  entryDepth,
+      feed:   'bulk',
     };
     queue.push(entry);
     persistManifestEntry(entry);
@@ -3823,7 +3870,7 @@ export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceC
  * immediately after any currently-analyzing entry finishes.
  * Games already analyzed or already in the queue are silently skipped.
  */
-function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number): void {
+function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number, feed: 'bulk' | 'one-off'): void {
   ensureActiveReviewRun(orderedGames, entryDepth);
   const lazy = orderedGames.length > LAZY_BUILD_THRESHOLD;
   const newEntries: ReviewQueueEntry[] = [];
@@ -3868,6 +3915,7 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
       total,
       status: 'pending',
       depth:  entryDepth,
+      feed,
     });
   }
 
@@ -3897,7 +3945,13 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
   }
 }
 
-export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
+
+
+
+
+
+
+export function enqueueAtFront(games: ImportedGame[], depth?: number, feed: 'bulk' | 'one-off' = 'one-off'): void {
   preemptTreeEvalLease('bulk-review-enqueued');
   const entryDepth = depth ?? bulkReviewDepth;
   const orderedGames = reviewGamesInNewestFirstOrder(games);
@@ -3912,14 +3966,14 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number): void {
     };
     if (ownerUnavailable) {
       runAfterReviewIntentTakeover(ownerUnavailable, () => {
-        enqueueAtFrontAsLeader(orderedGames, entryDepth);
+        enqueueAtFrontAsLeader(orderedGames, entryDepth, feed);
       }, runAsObserver);
       return;
     }
     runAsObserver();
     return;
   }
-  enqueueAtFrontAsLeader(orderedGames, entryDepth);
+  enqueueAtFrontAsLeader(orderedGames, entryDepth, feed);
 }
 
 /**
@@ -4028,6 +4082,10 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
       // advanceQueue/startEntryBatch will pick the game back up from its cache.
       status: record.status === 'analyzing' ? 'pending' : record.status,
       depth:  record.depth,
+
+
+
+      feed: 'bulk',
       ...(minimumDepthUsed !== undefined ? { minimumDepthUsed } : {}),
     });
   }

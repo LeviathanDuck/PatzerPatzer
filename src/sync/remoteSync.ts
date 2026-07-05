@@ -11,6 +11,7 @@ import {
   drainDurableVersionedOutbox,
   runVersionedPreWriteGate,
   type VersionedOutboxDrainBatchProgress,
+  type VersionedRejectedItem,
   type VersionedWriteBatchRequest,
   type VersionedWriteBatchResponse,
 } from './versionDrain';
@@ -29,6 +30,11 @@ import {
   enqueueDurableVersionedOutboxEntries,
   enqueueDurableVersionedOutboxEntry,
   readDurableVersionedOutbox,
+  readQuarantineRecords,
+  removeQuarantineRecords,
+  writeQuarantineRecords,
+  type DurableQuarantineRecord,
+  type DurableRetryOutboxEntry,
 } from './versionOutbox';
 import {
   REMOTE_SYNC_STORE_NAMES,
@@ -56,9 +62,11 @@ import {
   restoreRemoteSyncProgressOperations,
   seedRemoteSyncProgressStoreFromPersisted,
   serializeRemoteSyncProgressStore,
+  setRemoteSyncProgressBackoff,
   updateRemoteSyncOperation,
   type AddRemoteSyncIssueInput,
   type BeginRemoteSyncOperationOptions,
+  type RemoteSyncBackoffState,
   type RemoteSyncIssueReason,
   type RemoteSyncOperationKind,
   type RemoteSyncProgressSnapshot,
@@ -110,6 +118,7 @@ export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
 
 export type {
+  RemoteSyncBackoffState,
   RemoteSyncIssue,
   RemoteSyncIssueReason,
   RemoteSyncOperationKind,
@@ -203,6 +212,30 @@ interface RemoteSyncPullOptions {
 type RemoteSyncPullPlan =
   | { mode: 'cursor'; path: string; cursor: number; forcedFullPull: boolean }
   | { mode: 'since'; path: string; since: number };
+
+type RemoteSyncCursorPullPlan = Extract<RemoteSyncPullPlan, { mode: 'cursor' }>;
+
+
+
+
+
+
+
+
+
+
+interface RemoteSyncPullOutcome {
+  result: SyncResult;
+  flushEligible: boolean;
+  flushed: boolean;
+  revalidation?: { ok: boolean; latestVersion?: number; error?: string };
+}
+
+interface InFlightRemoteSyncPull {
+  promise: Promise<RemoteSyncPullOutcome>;
+  plan: RemoteSyncPullPlan;
+  options: RemoteSyncPullOptions;
+}
 
 interface DataManagementDeleteResponse {
   ok?: boolean;
@@ -459,6 +492,12 @@ function rememberServerGeneration(generation: unknown, reason?: unknown): void {
 
 
     syncGeneration++;
+
+
+
+
+
+    inFlightRemoteSyncPull = null;
     recordRemoteSyncLog('system', 'info', `generation-changed:${reasonText ?? 'unknown'}`, { syncGeneration: next });
   }
 }
@@ -1246,7 +1285,10 @@ let applyingRemoteSync = false;
 let syncGeneration = 0;
 let skipNextStartupPush = false;
 let activeSyncOperationCount = 0;
-let autoPullInFlight = false;
+
+
+
+let inFlightRemoteSyncPull: InFlightRemoteSyncPull | null = null;
 let pendingVersionedOutboxEnqueues: Promise<void>[] = [];
 
 interface ActiveDataManagementDelete {
@@ -1526,6 +1568,71 @@ function clearVersionedPullUnsafeSkipped(): void {
   safeClearProgressIssue('unsafe-skips');
 }
 
+// P6b (audit F-8 gap 2, ledger G-11): entries whose attemptCount reaches this threshold before
+// the attempt-cap (12, DEFAULT_MAX_DRAIN_ATTEMPTS in versionDrain.ts) quarantines them are a
+// "poisoned batch" signal worth surfacing well before the eventual quarantine.
+const PUSH_RETRYING_ATTEMPT_THRESHOLD = 3;
+const PUSH_RETRYING_NAMED_KEYS_LIMIT = 5;
+
+/**
+ * Derives idle-queue backoff state (P6b) and the push-retrying escalation issue from a snapshot
+ * of the durable outbox entries, and applies both to the in-memory progress store. Both are pure
+ * re-derivations of already-persisted `attemptCount`/`nextAttemptAt` fields (written by
+ * versionDrain.ts's recordDurableVersionedOutboxFailure) — this only reads them from outside;
+ * the drain's own retry/quarantine logic in versionDrain.ts is untouched. Escalation clears
+ * itself naturally the next time this runs after the offending entries drain (removed from the
+ * outbox on success) or are quarantined (removed on attempt-cap) — no separate clear path needed.
+ */
+function applyRemoteSyncBackoffAndEscalation(
+  entries: readonly DurableRetryOutboxEntry[],
+  now: number = Date.now(),
+): void {
+  const backedOff = entries.filter(entry => entry.attemptCount > 0 && entry.nextAttemptAt > now);
+  remoteSyncProgressStore = setRemoteSyncProgressBackoff(
+    remoteSyncProgressStore,
+    backedOff.length > 0
+      ? {
+          count: backedOff.length,
+          earliestNextAttemptAt: Math.min(...backedOff.map(entry => entry.nextAttemptAt)),
+        }
+      : null,
+  );
+
+  const escalated = entries.filter(entry => entry.attemptCount >= PUSH_RETRYING_ATTEMPT_THRESHOLD);
+  if (escalated.length === 0) {
+    remoteSyncProgressStore = clearRemoteSyncIssue(remoteSyncProgressStore, 'push-retrying');
+    return;
+  }
+  const named = escalated
+    .slice(0, PUSH_RETRYING_NAMED_KEYS_LIMIT)
+    .map(entry => `${entry.store}/${entry.itemKey} (attempt ${entry.attemptCount})`)
+    .join(', ');
+  const suffix = escalated.length > PUSH_RETRYING_NAMED_KEYS_LIMIT
+    ? `, and ${escalated.length - PUSH_RETRYING_NAMED_KEYS_LIMIT} more`
+    : '';
+  remoteSyncProgressStore = addRemoteSyncIssue(remoteSyncProgressStore, {
+    reason: 'push-retrying',
+    message: `${escalated.length} sync write${escalated.length === 1 ? '' : 's'} keep failing and are being retried: ${named}${suffix}.`,
+    counts: { retrying: escalated.length },
+  });
+}
+
+/**
+ * Post-drain update (not a new refresh trigger): re-reads the durable outbox and re-derives
+ * backoff/escalation state right after a real drain finishes, so the menu reflects the outcome
+ * without waiting for the next sanctioned refresh. Best-effort; a stale view for a few seconds is
+ * acceptable per the P6b policy.
+ */
+async function refreshRemoteSyncBackoffAndEscalation(): Promise<void> {
+  try {
+    const entries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+    applyRemoteSyncBackoffAndEscalation(entries);
+    scheduleRemoteSyncProgressEmit();
+  } catch {
+    // Best-effort; keep whatever backoff/escalation state is already cached.
+  }
+}
+
 
 
 
@@ -1536,8 +1643,25 @@ export async function refreshRemoteSyncProgressSnapshot(): Promise<RemoteSyncPro
   try {
     const durableEntries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
     durableOutboxCountCache = durableEntries.length;
+    applyRemoteSyncBackoffAndEscalation(durableEntries);
   } catch {
-    // Best-effort refresh; keep whatever durable outbox count is already cached.
+    // Best-effort refresh; keep whatever durable outbox count/backoff/escalation state is already cached.
+  }
+
+
+
+
+  try {
+    const quarantineCount = (await readQuarantineRecords()).length;
+    remoteSyncProgressStore = quarantineCount > 0
+      ? addRemoteSyncIssue(remoteSyncProgressStore, {
+          reason: 'quarantined-writes',
+          message: `${quarantineCount} sync write${quarantineCount === 1 ? '' : 's'} were permanently dropped and need review.`,
+          counts: { quarantined: quarantineCount },
+        })
+      : clearRemoteSyncIssue(remoteSyncProgressStore, 'quarantined-writes');
+  } catch {
+    // Best-effort; leave whatever quarantined-writes issue state is already cached.
   }
 
   const identity = storedServerIdentityLabel();
@@ -1669,6 +1793,185 @@ function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): void {
 
 
 
+export function clearRemoteSyncDeletedAtMarker(store: RemoteSyncStoreName, itemKey: string): void {
+  clearItemDeletedAt(store, itemKey);
+}
+
+
+
+
+
+
+const SUPPRESSED_ENQUEUE_COUNT_PREFIX = 'chesspatzer.remoteSync.suppressedEnqueueCount.';
+const loggedSuppressedEnqueueKeys = new Set<string>();
+
+function suppressedEnqueueCountKey(store: RemoteSyncStoreName): string {
+  return `${SUPPRESSED_ENQUEUE_COUNT_PREFIX}${store}`;
+}
+
+function readSuppressedEnqueueCount(store: RemoteSyncStoreName): number {
+  const raw = localStorage.getItem(suppressedEnqueueCountKey(store));
+  const value = raw ? Number.parseInt(raw, 10) : 0;
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function incrementSuppressedEnqueueCount(store: RemoteSyncStoreName): number {
+  const next = readSuppressedEnqueueCount(store) + 1;
+  setLegacySyncStorageItem(suppressedEnqueueCountKey(store), String(next), 'suppressed-enqueue counter');
+  return next;
+}
+
+/** Never-silent hook for the two enqueue-side suppression checks (single + batch, below). Always
+ * bumps the durable counter; logs once per store+itemKey per session (module lifetime) so a
+ * repeatedly-retried write against the same shadowed item cannot spam the Sync Log. */
+function recordSuppressedRemoteSyncEnqueue(store: RemoteSyncStoreName, itemKey: string): void {
+  const count = incrementSuppressedEnqueueCount(store);
+  const sessionKey = `${store}\u0000${itemKey}`;
+  if (loggedSuppressedEnqueueKeys.has(sessionKey)) return;
+  loggedSuppressedEnqueueKeys.add(sessionKey);
+  recordRemoteSyncLog(
+    'flush',
+    'info',
+    `Local write for ${store}/${itemKey} was suppressed: a recorded delete tombstone for this item is newer or equal. Run "Queue local library for sync" to recover it if this is unexpected.`,
+    { [`suppressedEnqueue:${store}`]: count },
+  );
+}
+
+
+
+export function getSuppressedRemoteSyncEnqueueCounts(): Partial<Record<RemoteSyncStoreName, number>> {
+  const counts: Partial<Record<RemoteSyncStoreName, number>> = {};
+  for (const store of REMOTE_SYNC_STORE_NAMES) {
+    const count = readSuppressedEnqueueCount(store);
+    if (count > 0) counts[store] = count;
+  }
+  return counts;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+const SERVER_WINS_SILENT_STORES = new Set<RemoteSyncStoreName>(['settings', 'opening-session']);
+const SERVER_WINS_CONFLICTS_KEY = 'chesspatzer.remoteSync.serverWinsConflicts';
+const SERVER_WINS_CONFLICTS_MAX_KEYS = 5;
+
+export interface RemoteSyncServerWinsConflictKey {
+  store: string;
+  itemKey: string;
+  at: number;
+}
+
+export interface RemoteSyncServerWinsConflictRecord {
+  count: number;
+  lastKeys: RemoteSyncServerWinsConflictKey[];
+  updatedAt: number;
+}
+
+function isVisibleServerWinsConflictStore(store: RemoteSyncStoreName): boolean {
+  return !SERVER_WINS_SILENT_STORES.has(store);
+}
+
+function isServerWinsConflictKey(value: unknown): value is RemoteSyncServerWinsConflictKey {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.store === 'string' && typeof candidate.itemKey === 'string' && typeof candidate.at === 'number';
+}
+
+function readServerWinsConflictRecord(): RemoteSyncServerWinsConflictRecord | null {
+  try {
+    const raw = localStorage.getItem(SERVER_WINS_CONFLICTS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RemoteSyncServerWinsConflictRecord>;
+    if (typeof parsed.count !== 'number' || !Array.isArray(parsed.lastKeys)) return null;
+    return {
+      count: Math.max(0, Math.floor(parsed.count)),
+      lastKeys: parsed.lastKeys.filter(isServerWinsConflictKey).slice(0, SERVER_WINS_CONFLICTS_MAX_KEYS),
+      updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function serverWinsConflictIssueMessage(record: RemoteSyncServerWinsConflictRecord): string {
+  const named = record.lastKeys.map(key => `${key.store}/${key.itemKey}`).join(', ');
+  return `${record.count} server-wins conflict${record.count === 1 ? '' : 's'} dropped local change${record.count === 1 ? '' : 's'}: ${named}.`;
+}
+
+function applyServerWinsConflictIssue(record: RemoteSyncServerWinsConflictRecord): void {
+  remoteSyncProgressStore = addRemoteSyncIssue(remoteSyncProgressStore, {
+    reason: 'server-wins-conflicts',
+    message: serverWinsConflictIssueMessage(record),
+    counts: { serverWins: record.count },
+    at: record.updatedAt || Date.now(),
+  });
+  scheduleRemoteSyncProgressEmit();
+}
+
+/**
+ * Records a server-wins conflict (P2c) when the affected store is visible per the audit's G-1
+ * policy; a no-op for silent stores (settings, opening-session). Persists a small rolling
+ * localStorage record (count + last 5 store/itemKeys + timestamp) and raises/updates the
+ * server-wins-conflicts warning issue. Called from this module's conflictAdapter.applyCurrent
+ * below — every call there is a server-wins resolution, never a reenqueue.
+ */
+function recordServerWinsConflictIfVisible(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  now: number = Date.now(),
+): void {
+  if (!isVisibleServerWinsConflictStore(store)) return;
+  const existing = readServerWinsConflictRecord();
+  const record: RemoteSyncServerWinsConflictRecord = {
+    count: (existing?.count ?? 0) + 1,
+    lastKeys: [{ store, itemKey, at: now }, ...(existing?.lastKeys ?? [])].slice(0, SERVER_WINS_CONFLICTS_MAX_KEYS),
+    updatedAt: now,
+  };
+  try {
+    localStorage.setItem(SERVER_WINS_CONFLICTS_KEY, JSON.stringify(record));
+  } catch {
+    // Persisting the rolling record is best-effort; the issue is still raised in-memory below so
+    // this tab still surfaces it even if the localStorage write failed (e.g. quota exceeded).
+  }
+  applyServerWinsConflictIssue(record);
+}
+
+/**
+ * Menu "Dismiss" action (P2c): clears the persistent server-wins-conflicts record and its
+ * progress issue. Purely a visibility reset — the server's version already won when the conflict
+ * was resolved; this does not touch any sync data or re-enqueue anything.
+ */
+export function dismissServerWinsConflicts(): void {
+  try {
+    localStorage.removeItem(SERVER_WINS_CONFLICTS_KEY);
+  } catch {
+    // Best-effort; clearing the in-memory issue below still stops the menu from showing it.
+  }
+  clearRemoteSyncProgressIssue('server-wins-conflicts');
+}
+
+// Rehydrate the server-wins-conflicts issue from its persistent record at module load, mirroring
+// the denominator-restore bootstrap above — the in-memory progress store is fresh on every
+// reload, but the visibility record (and thus the issue) should survive until explicitly
+// dismissed.
+if (typeof localStorage !== 'undefined') {
+  const persistedServerWinsConflicts = readServerWinsConflictRecord();
+  if (persistedServerWinsConflicts && persistedServerWinsConflicts.count > 0) {
+    applyServerWinsConflictIssue(persistedServerWinsConflicts);
+  }
+}
+
+
+
+
 
 function pendingOutboxItem(
   store: RemoteSyncStoreName,
@@ -1698,17 +2001,29 @@ function pendingDeleteUpdatedAt(store: RemoteSyncStoreName, itemKey: string): nu
   return pending && isDeletedItem(pending) ? pending.updatedAt : 0;
 }
 
+
+
+
+
+function isTombstoneShadowedLocalSnapshotItem(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+  payloadUpdatedAt: number,
+): boolean {
+  const deletedAt = Math.max(
+    rememberedItemDeletedAt(store, itemKey),
+    pendingDeleteUpdatedAt(store, itemKey),
+  );
+  return deletedAt > 0 && payloadUpdatedAt <= deletedAt;
+}
+
 function shouldSuppressLocalSnapshotItem(
   store: RemoteSyncStoreName,
   itemKey: string,
   payloadUpdatedAt: number,
 ): boolean {
   if (isActiveDataManagementDeleteKey(store, itemKey)) return true;
-  const deletedAt = Math.max(
-    rememberedItemDeletedAt(store, itemKey),
-    pendingDeleteUpdatedAt(store, itemKey),
-  );
-  return deletedAt > 0 && payloadUpdatedAt <= deletedAt;
+  return isTombstoneShadowedLocalSnapshotItem(store, itemKey, payloadUpdatedAt);
 }
 
 export function shouldSuppressRemoteSyncUpsert(
@@ -2029,7 +2344,11 @@ function readLocalSettingsItemKeys(): string[] {
   return keys;
 }
 
-function readLocalSettingsItems(): RemoteSyncItem[] {
+
+
+
+
+function readLocalSettingsItems(options: { includeSuppressed?: boolean } = {}): RemoteSyncItem[] {
   const items: RemoteSyncItem[] = [];
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
@@ -2041,7 +2360,8 @@ function readLocalSettingsItems(): RemoteSyncItem[] {
       updatedAt = Date.now();
       setSettingUpdatedAt(key, updatedAt);
     }
-    if (shouldSuppressLocalSnapshotItem('settings', key, updatedAt)) continue;
+    if (isActiveDataManagementDeleteKey('settings', key)) continue;
+    if (!options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem('settings', key, updatedAt)) continue;
     items.push({
       store: 'settings',
       itemKey: key,
@@ -2196,19 +2516,19 @@ export function clearRemoteSyncToken(): void {
 function runVisibleAutoPull(): void {
   if (!hasRemoteSyncToken()) return;
   if (document.visibilityState !== 'visible') return;
-  if (autoPullInFlight) return;
   if (activeDataManagementDelete) return;
 
 
 
 
 
-  autoPullInFlight = true;
+
+
+
+
   void pullFromRemoteSync({
     flushAfter: !isRemoteSyncFullPullRequired(),
     logNoop: false,
-  }).finally(() => {
-    autoPullInFlight = false;
   });
 }
 
@@ -2249,6 +2569,9 @@ export function startRemoteSyncAutoSync(options: { pushAfterHydrate?: boolean } 
 
 export function stopRemoteSyncAutoSync(): void {
   syncGeneration++;
+
+
+  inFlightRemoteSyncPull = null;
   autoSyncStarted = false;
   if (flushDebounceTimer !== null) {
     window.clearTimeout(flushDebounceTimer);
@@ -2278,7 +2601,6 @@ export function stopRemoteSyncAutoSync(): void {
     window.removeEventListener('online', onlineSyncHandler);
     onlineSyncHandler = null;
   }
-  autoPullInFlight = false;
 }
 
 export function logoutRemoteSync(): void {
@@ -2778,7 +3100,10 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
   if (!isDeletedItem(normalized)) {
-    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) return;
+    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) {
+      recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
+      return;
+    }
   }
   durableOutboxCountCache = null;
   queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
@@ -2829,7 +3154,10 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
   for (const item of items) {
     const entry = normalizeSyncItem(item);
     if (!entry) throw new Error('Invalid Remote sync item.');
-    if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt)) continue;
+    if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt)) {
+      recordSuppressedRemoteSyncEnqueue(entry.store, entry.itemKey);
+      continue;
+    }
     normalized.push(entry);
   }
   if (normalized.length === 0) return;
@@ -3217,6 +3545,93 @@ function planRemoteSyncPull(options: RemoteSyncPullOptions): RemoteSyncPullPlan 
   };
 }
 
+function planRevalidationPull(cursor: number): RemoteSyncCursorPullPlan {
+  return {
+    mode: 'cursor',
+    path: `pull.php?cursor=${encodeURIComponent(String(cursor))}`,
+    cursor,
+    forcedFullPull: cursor === 0,
+  };
+}
+
+// Debug-only label for a plan's effective strength ('since' | 'cursor' | 'full') -- used solely by
+// the coordinator's quiet console.debug notes, never by any decision logic.
+function describePullPlan(plan: RemoteSyncPullPlan): string {
+  if (plan.mode === 'since') return 'since';
+  return plan.forcedFullPull ? 'full' : 'cursor';
+}
+
+
+
+
+
+function pullSatisfiesRequest(inFlightPlan: RemoteSyncPullPlan, requestedPlan: RemoteSyncPullPlan): boolean {
+  if (requestedPlan.mode === 'since') return false;
+  if (inFlightPlan.mode === 'since') return false;
+  if (inFlightPlan.forcedFullPull) return true;
+  return !requestedPlan.forcedFullPull;
+}
+
+
+
+
+
+function registerInFlightPull(
+  plan: RemoteSyncPullPlan,
+  options: RemoteSyncPullOptions,
+  execute: () => Promise<RemoteSyncPullOutcome>,
+): Promise<RemoteSyncPullOutcome> {
+  let record: InFlightRemoteSyncPull;
+  const promise = execute().finally(() => {
+    if (inFlightRemoteSyncPull === record) inFlightRemoteSyncPull = null;
+  });
+  record = { promise, plan, options };
+  inFlightRemoteSyncPull = record;
+  return promise;
+}
+
+// A coalesced requester that wanted flushAfter:true whose satisfying pull ran with flushAfter:false
+// (or was flush-ineligible, e.g. a full pull) performs the flush step itself -- but never forces a
+// flush the satisfying pull was not eligible for (a full pull never auto-flushes, matching a
+// direct, uncoalesced call with the same plan).
+async function applyTrailingFlushIfNeeded(outcome: RemoteSyncPullOutcome, options: RemoteSyncPullOptions): Promise<SyncResult> {
+  if (!options.flushAfter || outcome.flushed || !outcome.flushEligible || !outcome.result.success) return outcome.result;
+  const flush = await flushRemoteSyncOutbox();
+  if (!flush.success) {
+    return {
+      success: false,
+      error: flush.error || 'Remote sync flush failed.',
+      counts: { ...(outcome.result.counts ?? {}), ...(flush.counts ?? {}) },
+    };
+  }
+  const counts = { ...(outcome.result.counts ?? {}) };
+  mergeCounts(counts, flush.counts);
+  return { success: true, counts };
+}
+
+// Adapts a coordinator outcome to the pre-write gate's exact `{ ok, latestVersion, error }`
+// contract. When the in-flight pull that satisfied this revalidation request was itself a
+// revalidation run, `outcome.revalidation` is the original, non-reconstructed result. Otherwise
+// (coalesced with a routine/boot/push pull) this re-derives the same contract from the SyncResult,
+// preserving the generation-cancellation check applyVersionedRevalidationPull itself performs.
+function revalidationResultFromOutcome(
+  outcome: RemoteSyncPullOutcome,
+  generation: number,
+): { ok: boolean; latestVersion?: number; error?: string } {
+  if (outcome.revalidation) return outcome.revalidation;
+  if (!outcome.result.success) {
+    return { ok: false, error: outcome.result.error || 'RemoteSync pre-write revalidation failed.' };
+  }
+  const counts = outcome.result.counts ?? {};
+  if ((counts.cancelled ?? 0) > 0 || syncGeneration !== generation || !hasRemoteSyncToken()) {
+    return { ok: false, error: 'RemoteSync pre-write revalidation was cancelled before cursor metadata advanced.' };
+  }
+  if ((counts.versionMetadataDeferred ?? 0) > 0) {
+    return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
+  }
+  return counts.latestVersion !== undefined ? { ok: true, latestVersion: counts.latestVersion } : { ok: true };
+}
+
 function canAdvancePullVersionMetadata(counts: Record<string, number>): boolean {
   return (counts.cancelled ?? 0) === 0
     && (counts.skipped ?? 0) === 0
@@ -3254,18 +3669,71 @@ async function applyVersionedRevalidationPull(
   return { ok: true, latestVersion };
 }
 
+
+
+
+
+
+async function executeRevalidationPull(plan: RemoteSyncCursorPullPlan, generation: number): Promise<RemoteSyncPullOutcome> {
+  const initial = await remoteSyncFetch<PullResponse>(plan.path);
+  let response = initial;
+  let forcedFullPull = plan.forcedFullPull;
+  if (!initial.ok && shouldRunFullVersionedPull(initial)) {
+    recordRemoteSyncLog('pull', 'info', 'Version cursor was too old; running full versioned pull before write drain.');
+    response = await remoteSyncFetch<PullResponse>('pull.php?cursor=0');
+    forcedFullPull = true;
+  }
+  const revalidation = await applyVersionedRevalidationPull(response, generation, forcedFullPull);
+  const result: SyncResult = revalidation.ok
+    ? { success: true, counts: revalidation.latestVersion !== undefined ? { latestVersion: revalidation.latestVersion } : {} }
+    : { success: false, error: revalidation.error ?? 'RemoteSync pre-write revalidation failed.' };
+  return { result, flushEligible: false, flushed: false, revalidation };
+}
+
+
+
+
+
+
+
 async function revalidateBeforeVersionedDrain(cursor: number): Promise<{ ok: boolean; latestVersion?: number; error?: string }> {
   const generation = syncGeneration;
-  const result = await remoteSyncFetch<PullResponse>(`pull.php?cursor=${encodeURIComponent(String(cursor))}`);
-  if (!result.ok && shouldRunFullVersionedPull(result)) {
-    recordRemoteSyncLog('pull', 'info', 'Version cursor was too old; running full versioned pull before write drain.');
-    const fullPull = await remoteSyncFetch<PullResponse>('pull.php?cursor=0');
-    // The fallback fetch is always an explicit cursor=0 full pull.
-    return applyVersionedRevalidationPull(fullPull, generation, true);
+  const plan = planRevalidationPull(cursor);
+  const current = inFlightRemoteSyncPull;
+
+  if (current && pullSatisfiesRequest(current.plan, plan)) {
+    console.debug('[remote-sync] pre-write revalidation coalesced into an in-flight pull', { cursor });
+    const outcome = await current.promise;
+    return revalidationResultFromOutcome(outcome, generation);
   }
-  // `cursor === 0` here means the pre-write gate itself requested a full pull (forcedFullPull),
-  // so this fetch is equally a full pull even though it took the primary branch.
-  return applyVersionedRevalidationPull(result, generation, cursor === 0);
+  if (current) {
+    console.debug('[remote-sync] pre-write revalidation chained after a weaker in-flight pull', { cursor });
+    await current.promise.catch(() => {});
+  }
+
+  const outcome = await registerInFlightPull(plan, { flushAfter: false }, () => executeRevalidationPull(plan, generation));
+  return revalidationResultFromOutcome(outcome, generation);
+}
+
+
+
+
+
+
+export function buildQuarantineRecordsFromPermanentRejection(
+  entries: readonly DurableRetryOutboxEntry[],
+  rejections: readonly VersionedRejectedItem[],
+  now: number = Date.now(),
+): DurableQuarantineRecord[] {
+  return entries.map((entry, index) => {
+    const rejection = rejections[index];
+    return {
+      ...entry,
+      code: rejection?.code ?? 'unknown',
+      message: rejection?.message || `Removed from the sync outbox (${rejection?.code ?? 'unknown'}).`,
+      quarantinedAt: now,
+    };
+  });
 }
 
 async function drainVersionedRemoteSyncOutbox(
@@ -3286,7 +3754,16 @@ async function drainVersionedRemoteSyncOutbox(
       clientId: casClientId(),
       sendBatch: sendVersionedWriteBatch,
       ...(progressOptions.onBatchProgress ? { onBatchProgress: progressOptions.onBatchProgress } : {}),
-      onPermanentRejection: (entries, rejections) => {
+      onPermanentRejection: async (entries, rejections) => {
+
+
+
+        try {
+          await writeQuarantineRecords(buildQuarantineRecordsFromPermanentRejection(entries, rejections));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Could not persist quarantine records.';
+          recordRemoteSyncLog('flush', 'error', `Failed to persist ${entries.length} quarantine record(s): ${message}`);
+        }
         const detail = entries
           .slice(0, 10)
           .map((entry, index) => `${entry.store}/${entry.itemKey} (${rejections[index]?.code ?? 'unknown'})`)
@@ -3295,7 +3772,7 @@ async function drainVersionedRemoteSyncOutbox(
         recordRemoteSyncLog(
           'flush',
           'error',
-          `Permanently removed ${entries.length} queued write(s) from the sync outbox: ${detail}${suffix}. Local data is preserved; use Queue local library for sync to re-queue after the cause is fixed.`,
+          `Permanently removed ${entries.length} queued write(s) from the sync outbox: ${detail}${suffix}. Local data is preserved; use the Quarantined writes section on the Sync page to re-queue after the cause is fixed.`,
         );
         durableOutboxCountCache = null;
       },
@@ -3311,6 +3788,11 @@ async function drainVersionedRemoteSyncOutbox(
           const counts = await applyRemoteSyncItems([current], { generation: syncGeneration });
           applySettingsPullLiveIfNeeded(counts, current.updatedAt, [current]);
           emitRemoteSyncApplied(counts, current.updatedAt);
+          // P2c (audit G-1): this adapter never implements shouldReenqueue/reenqueue, so every
+          // applyCurrent call versionDrain.ts makes here resolves as serverWins (mergeCounts below
+          // it), never 'reenqueued' — see the drain loop's conflict branch. Visibility only; no
+          // re-enqueue happens as a result of this call.
+          recordServerWinsConflictIfVisible(current.store, current.itemKey);
         },
       },
     }),
@@ -3424,12 +3906,17 @@ function flattenLegacyGameLibrary(records: IdbRecord[]): unknown[] {
   return games;
 }
 
-function recordsToSyncItems(spec: IdbStoreSpec, records: IdbRecord[]): RemoteSyncItem[] {
+function recordsToSyncItems(
+  spec: IdbStoreSpec,
+  records: IdbRecord[],
+  options: { includeSuppressed?: boolean } = {},
+): RemoteSyncItem[] {
   return records.flatMap(record => {
     const itemKey = spec.keyForRecord(record.value, record.primaryKey);
     if (!itemKey) return [];
     const payloadUpdatedAt = spec.updatedAt(record.value);
-    if (shouldSuppressLocalSnapshotItem(spec.store, itemKey, payloadUpdatedAt)) return [];
+    if (isActiveDataManagementDeleteKey(spec.store, itemKey)) return [];
+    if (!options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem(spec.store, itemKey, payloadUpdatedAt)) return [];
     const updatedAt = Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(spec.store, itemKey));
     return [{
       store: spec.store,
@@ -3441,7 +3928,10 @@ function recordsToSyncItems(spec: IdbStoreSpec, records: IdbRecord[]): RemoteSyn
   });
 }
 
-async function readLocalStoreItems(spec: IdbStoreSpec): Promise<RemoteSyncItem[]> {
+async function readLocalStoreItems(
+  spec: IdbStoreSpec,
+  options: { includeSuppressed?: boolean } = {},
+): Promise<RemoteSyncItem[]> {
   const db = await openIdb(spec.dbName, spec.dbVersion);
   try {
     const records = await readAllFromStore(db, spec.objectStore);
@@ -3450,13 +3940,14 @@ async function readLocalStoreItems(spec: IdbStoreSpec): Promise<RemoteSyncItem[]
       return legacyGames.flatMap(record => {
         const itemKey = stringField(record, 'id');
         const payloadUpdatedAt = genericUpdatedAt(record);
-        if (itemKey && shouldSuppressLocalSnapshotItem('games', itemKey, payloadUpdatedAt)) return [];
+        if (itemKey && isActiveDataManagementDeleteKey('games', itemKey)) return [];
+        if (itemKey && !options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem('games', itemKey, payloadUpdatedAt)) return [];
         return itemKey
           ? [{ store: 'games' as const, itemKey, updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt('games', itemKey)), payload: record, operation: 'upsert' as const }]
           : [];
       });
     }
-    return recordsToSyncItems(spec, records);
+    return recordsToSyncItems(spec, records, options);
   } finally {
     db.close();
   }
@@ -3644,9 +4135,15 @@ export async function readRemoteSyncUntrackedScanCountsForTest(): Promise<Remote
   return getRemoteSyncUntrackedScanCounts();
 }
 
-export async function readLocalRemoteSyncItems(): Promise<RemoteSyncItem[]> {
-  const groups = await Promise.all(IDB_STORE_SPECS.map(readLocalStoreItems));
-  return [...groups.flat(), ...readLocalSettingsItems()];
+
+
+
+
+export async function readLocalRemoteSyncItems(
+  options: { includeSuppressed?: boolean } = {},
+): Promise<RemoteSyncItem[]> {
+  const groups = await Promise.all(IDB_STORE_SPECS.map(spec => readLocalStoreItems(spec, options)));
+  return [...groups.flat(), ...readLocalSettingsItems(options)];
 }
 
 
@@ -3885,12 +4382,17 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
       recordRemoteSyncLog('flush', 'success', 'Queued CAS changes flushed.', counts);
       safeCompleteProgress(opId);
       safeClearProgressIssue('push-failed');
+      // P6b post-drain update (not a new refresh trigger): re-derive backoff/escalation right
+      // after this real drain so the menu reflects the outcome without waiting for the next
+      // sanctioned refresh.
+      await refreshRemoteSyncBackoffAndEscalation();
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
       const remainingLegacy = readOutboxSnapshot({ logInvalid: true }).valid.length;
       const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
       durableOutboxCountCache = remainingVersioned.length;
+      applyRemoteSyncBackoffAndEscalation(remainingVersioned);
       const counts = { queued: remainingLegacy + remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
       safeFailProgress(opId, { reason: 'push-failed', message, counts: { queuedRemaining: counts.queued } });
@@ -3975,18 +4477,41 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
   return withRemoteSyncActivity(async () => {
     const opId = safeBeginProgress('reconciling', { phase: 'Scanning local library…' });
     try {
-      const localItems = await readLocalRemoteSyncItems();
+
+
+
+      const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
       const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
           .map(entry => `${entry.store}\u0000${entry.itemKey}`),
       );
       const untracked: RemoteSyncItem[] = [];
+      const shadowedSurvivors: RemoteSyncItem[] = [];
       let alreadyTracked = 0;
       let alreadyQueued = 0;
+      let requeuedTombstoneShadowed = 0;
       for (const item of localItems) {
         if (isDeletedItem(item)) continue;
-        if (resolveVersion(item.store, item.itemKey) !== null) {
+        const recordedVersion = resolveVersion(item.store, item.itemKey);
+        if (recordedVersion !== null) {
+
+
+
+
+
+
+
+
+
+
+
+          if (rememberedItemDeletedAt(item.store, item.itemKey) > 0 && item.updatedAt > 0) {
+            requeuedTombstoneShadowed += 1;
+            clearItemDeletedAt(item.store, item.itemKey);
+            shadowedSurvivors.push(item);
+            continue;
+          }
           alreadyTracked += 1;
           continue;
         }
@@ -3996,30 +4521,32 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
         }
         untracked.push(item);
       }
+      const toEnqueue = [...untracked, ...shadowedSurvivors];
       const counts: Record<string, number> = {
         scannedLocal: localItems.length,
         alreadyTracked,
         alreadyQueued,
-        queuedForSync: untracked.length,
+        queuedForSync: toEnqueue.length,
+        requeuedTombstoneShadowed,
       };
-      for (const item of untracked) {
+      for (const item of toEnqueue) {
         counts[`queued:${item.store}`] = (counts[`queued:${item.store}`] ?? 0) + 1;
       }
       safeUpdateProgress(opId, {
         total: localItems.length,
         done: localItems.length,
         phase: 'Classifying local items…',
-        counts: { scannedLocal: localItems.length, alreadyTracked, alreadyQueued, queuedForSync: untracked.length },
+        counts: { scannedLocal: localItems.length, alreadyTracked, alreadyQueued, queuedForSync: toEnqueue.length, requeuedTombstoneShadowed },
       });
-      if (untracked.length > 0) {
+      if (toEnqueue.length > 0) {
 
 
         safeCompleteProgress(opId);
-        enqueueRemoteSyncItemsBatch(untracked);
+        enqueueRemoteSyncItemsBatch(toEnqueue);
         await waitForPendingVersionedOutboxWrites();
       }
       recordRemoteSyncLog('reconcile', 'success', 'Local items missing from the token database queued for sync.', counts);
-      if (untracked.length === 0) {
+      if (toEnqueue.length === 0) {
         safeCompleteProgress(opId);
 
 
@@ -4054,93 +4581,255 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
   });
 }
 
-export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): Promise<SyncResult> {
-  if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
-  return withRemoteSyncActivity(async () => {
-    let opId = '';
+
+
+
+
+
+
+export async function getQuarantinedRemoteSyncWrites(): Promise<DurableQuarantineRecord[]> {
+  return readQuarantineRecords();
+}
+
+
+
+async function readCurrentLocalRemoteSyncItem(
+  store: RemoteSyncStoreName,
+  itemKey: string,
+): Promise<RemoteSyncItem | null> {
+  if (store === 'settings') {
+    return readLocalSettingsItems().find(item => item.itemKey === itemKey) ?? null;
+  }
+  const spec = IDB_SPECS_BY_STORE.get(store);
+  if (!spec) return null;
+  const items = await readLocalStoreItems(spec);
+  return items.find(item => item.itemKey === itemKey) ?? null;
+}
+
+
+
+
+
+
+async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): Promise<void> {
+  if (record.operation === 'delete') {
+    enqueueRemoteSyncDelete(record.store, record.itemKey, Date.now());
+  } else {
+    const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
+    if (current && !isDeletedItem(current)) {
+      enqueueRemoteSyncUpsert(record.store, record.itemKey, current.payload, current.updatedAt);
+    } else {
+      // Local row is gone: fall back to the quarantined payload so the re-queue can still restore
+      // the historical write instead of silently dropping it a second time.
+      enqueueRemoteSyncUpsert(record.store, record.itemKey, record.payload, record.clientUpdatedAt ?? Date.now());
+    }
+  }
+  await removeQuarantineRecords([record.opId]);
+}
+
+export interface QuarantineActionResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function requeueQuarantinedRemoteSyncWrite(opId: string): Promise<QuarantineActionResult> {
+  const records = await readQuarantineRecords();
+  const record = records.find(entry => entry.opId === opId);
+  if (!record) return { success: false, error: 'Quarantine record was already removed.' };
+  try {
+    await performRequeueQuarantineRecord(record);
+    recordRemoteSyncLog(
+      'flush',
+      'info',
+      `Re-queued quarantined ${record.operation} for ${record.store}/${record.itemKey} (was: ${record.code}).`,
+      { requeued: 1 },
+    );
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not re-queue the quarantined write.';
+    recordRemoteSyncLog('flush', 'error', `Failed to re-queue quarantined write for ${record.store}/${record.itemKey}: ${message}`);
+    return { success: false, error: message };
+  }
+}
+
+export async function requeueAllQuarantinedRemoteSyncWrites(): Promise<QuarantineActionResult & { counts: Record<string, number> }> {
+  const records = await readQuarantineRecords();
+  let requeued = 0;
+  const failures: string[] = [];
+  for (const record of records) {
     try {
-      opId = safeBeginProgress('pulling', { phase: 'Fetching from server…' });
-      await ensureServerGenerationLoaded();
-      const generation = syncGeneration;
-      const plan = planRemoteSyncPull(options);
-      const result = await remoteSyncFetch<PullResponse>(plan.path);
-      if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
-      setRemoteSyncLastCheckedAt();
-      if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+      await performRequeueQuarantineRecord(record);
+      requeued += 1;
+    } catch {
+      failures.push(`${record.store}/${record.itemKey}`);
+    }
+  }
+  const counts = { requeued, failed: failures.length };
+  if (failures.length > 0) {
+    const detail = failures.slice(0, 10).join(', ');
+    const suffix = failures.length > 10 ? `, and ${failures.length - 10} more` : '';
+    recordRemoteSyncLog(
+      'flush',
+      'error',
+      `Re-queued ${requeued} quarantined write(s); ${failures.length} failed: ${detail}${suffix}.`,
+      counts,
+    );
+  } else if (requeued > 0) {
+    recordRemoteSyncLog('flush', 'info', `Re-queued all ${requeued} quarantined write(s).`, counts);
+  }
+  return { success: failures.length === 0, counts };
+}
+
+export async function discardQuarantinedRemoteSyncWrite(opId: string): Promise<QuarantineActionResult> {
+  const records = await readQuarantineRecords();
+  const record = records.find(entry => entry.opId === opId);
+  if (!record) return { success: false, error: 'Quarantine record was already removed.' };
+  await removeQuarantineRecords([opId]);
+  recordRemoteSyncLog(
+    'flush',
+    'info',
+    `Discarded quarantined ${record.operation} for ${record.store}/${record.itemKey} (was: ${record.code}). Local data was left untouched.`,
+    { discarded: 1 },
+  );
+  return { success: true };
+}
 
 
 
-        markRemoteSyncCloudStateStale();
-        safeCompleteProgress(opId);
-        return { success: true, counts: { cancelled: 1 } };
-      }
-
-      const items = plan.mode === 'cursor'
-        ? versionOrderedRawItems(result.items ?? [])
-        : result.items ?? [];
-      safeUpdateProgress(opId, { total: items.length, done: 0, phase: 'Applying pulled changes…' });
-      const counts = await applyRemoteSyncItems(items, {
-        generation,
-        onProgress: progress => safeUpdateProgress(opId, { done: progress.done, counts: progress.counts }),
-      });
-      let versionMetadataAdvanced = plan.mode !== 'cursor';
-      if ((result.skippedMalformedJson ?? 0) > 0) {
-        counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
-        recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
-      }
-      if (syncGeneration !== generation || !hasRemoteSyncToken()) {
 
 
 
-        markRemoteSyncCloudStateStale();
-        safeCompleteProgress(opId);
-        return { success: true, counts };
-      }
-      if (plan.mode === 'cursor') {
-        if (canAdvancePullVersionMetadata(counts)) {
-          const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
-          counts.latestVersion = latestVersion;
-          if (plan.forcedFullPull) counts.fullVersionPull = 1;
-          clearVersionedPullUnsafeSkipped();
-          versionMetadataAdvanced = true;
-        } else {
-          markVersionedPullUnsafeSkipped(counts);
-          counts.versionMetadataDeferred = 1;
-        }
-      }
-      const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
-      if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
-      applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
-      emitRemoteSyncApplied(counts, latestUpdatedAt);
-      safeCompleteProgress(opId);
+async function runRemoteSyncPullOutcome(plan: RemoteSyncPullPlan, options: RemoteSyncPullOptions): Promise<RemoteSyncPullOutcome> {
+  let opId = '';
+  try {
+    opId = safeBeginProgress('pulling', { phase: 'Fetching from server…' });
+    await ensureServerGenerationLoaded();
+    const generation = syncGeneration;
+    const result = await remoteSyncFetch<PullResponse>(plan.path);
+    if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
+    setRemoteSyncLastCheckedAt();
+    if (syncGeneration !== generation || !hasRemoteSyncToken()) {
 
-      if (options.flushAfter && !(plan.mode === 'cursor' && (plan.forcedFullPull || !versionMetadataAdvanced))) {
-        const flush = await flushRemoteSyncOutbox();
-        if (!flush.success) {
-          return {
-            success: false,
-            error: flush.error || 'Remote sync flush failed.',
-            counts: { ...counts, ...(flush.counts ?? {}) },
-          };
-        }
-        mergeCounts(counts, flush.counts);
-      }
-
-      const shouldLog = options.logNoop !== false
-        || Object.values(counts).some(value => value > 0)
-        || items.length > 0;
-      if (shouldLog) recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
-      return { success: true, counts };
-    } catch (error) {
 
 
       markRemoteSyncCloudStateStale();
-      const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
-      recordRemoteSyncLog('pull', 'error', message);
-      safeFailProgress(opId, { message });
-      return { success: false, error: message };
+      safeCompleteProgress(opId);
+      return { result: { success: true, counts: { cancelled: 1 } }, flushEligible: false, flushed: false };
     }
-  });
+
+    const items = plan.mode === 'cursor'
+      ? versionOrderedRawItems(result.items ?? [])
+      : result.items ?? [];
+    safeUpdateProgress(opId, { total: items.length, done: 0, phase: 'Applying pulled changes…' });
+    const counts = await applyRemoteSyncItems(items, {
+      generation,
+      onProgress: progress => safeUpdateProgress(opId, { done: progress.done, counts: progress.counts }),
+    });
+    let versionMetadataAdvanced = plan.mode !== 'cursor';
+    if ((result.skippedMalformedJson ?? 0) > 0) {
+      counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
+      recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
+    }
+    if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+
+
+
+      markRemoteSyncCloudStateStale();
+      safeCompleteProgress(opId);
+      return { result: { success: true, counts }, flushEligible: false, flushed: false };
+    }
+    if (plan.mode === 'cursor') {
+      if (canAdvancePullVersionMetadata(counts)) {
+        const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
+        counts.latestVersion = latestVersion;
+        if (plan.forcedFullPull) counts.fullVersionPull = 1;
+        clearVersionedPullUnsafeSkipped();
+        versionMetadataAdvanced = true;
+      } else {
+        markVersionedPullUnsafeSkipped(counts);
+        counts.versionMetadataDeferred = 1;
+      }
+    }
+    const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
+    if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
+    applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
+    emitRemoteSyncApplied(counts, latestUpdatedAt);
+    safeCompleteProgress(opId);
+
+    const flushEligible = !(plan.mode === 'cursor' && (plan.forcedFullPull || !versionMetadataAdvanced));
+    let flushed = false;
+    if (options.flushAfter && flushEligible) {
+      flushed = true;
+      const flush = await flushRemoteSyncOutbox();
+      if (!flush.success) {
+        return {
+          result: {
+            success: false,
+            error: flush.error || 'Remote sync flush failed.',
+            counts: { ...counts, ...(flush.counts ?? {}) },
+          },
+          flushEligible,
+          flushed,
+        };
+      }
+      mergeCounts(counts, flush.counts);
+    }
+
+    const shouldLog = options.logNoop !== false
+      || Object.values(counts).some(value => value > 0)
+      || items.length > 0;
+    if (shouldLog) recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
+    return { result: { success: true, counts }, flushEligible, flushed };
+  } catch (error) {
+
+
+    markRemoteSyncCloudStateStale();
+    const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
+    recordRemoteSyncLog('pull', 'error', message);
+    safeFailProgress(opId, { message });
+    return { result: { success: false, error: message }, flushEligible: false, flushed: false };
+  }
+}
+
+
+
+
+
+
+
+
+
+async function coordinatedRemoteSyncPull(options: RemoteSyncPullOptions): Promise<SyncResult> {
+  const requestedPlan = planRemoteSyncPull(options);
+  const current = inFlightRemoteSyncPull;
+
+  if (current && pullSatisfiesRequest(current.plan, requestedPlan)) {
+    console.debug('[remote-sync] pull request coalesced into an in-flight pull', {
+      requested: describePullPlan(requestedPlan),
+      inFlight: describePullPlan(current.plan),
+    });
+    const outcome = await current.promise;
+    return applyTrailingFlushIfNeeded(outcome, options);
+  }
+
+  if (current) {
+    console.debug('[remote-sync] pull request chained after a weaker in-flight pull', {
+      requested: describePullPlan(requestedPlan),
+      inFlight: describePullPlan(current.plan),
+    });
+    await current.promise.catch(() => {});
+  }
+
+  // Re-plan after any chained wait: the awaited pull may have advanced the cursor or cleared
+  // fullPullRequired, and this request's own fetch should reflect that current state.
+  const plan = planRemoteSyncPull(options);
+  const outcome = await registerInFlightPull(plan, options, () => runRemoteSyncPullOutcome(plan, options));
+  return outcome.result;
+}
+
+export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): Promise<SyncResult> {
+  if (activeDataManagementDelete) return { success: true, counts: { paused: 1 } };
+  return withRemoteSyncActivity(() => coordinatedRemoteSyncPull(options));
 }
 
 export async function hydrateFromRemoteSync(): Promise<SyncResult> {

@@ -1,6 +1,5 @@
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { ReviewEngineMetadata } from '../idb';
-import type { TreeNode } from '../tree/types';
 
 export interface ReviewEvalEntry {
   loss?: number;
@@ -28,24 +27,4 @@ export function labelForReviewEval(
     return classifyLoss(entry.loss);
   }
   return entry.label ?? (entry.loss !== undefined ? classifyLoss(entry.loss) : null);
-}
-
-export function countDeepenedReviewEvals(
-  mainline: readonly TreeNode[],
-  getEval: (path: string) => ReviewEvalEntry | undefined,
-  reviewEngine: ReviewEngineMetadata | undefined,
-): number {
-  if (!reviewEngine) return 0;
-  let count = 0;
-  let path = '';
-  for (let index = 1; index < mainline.length; index++) {
-    const node = mainline[index]!;
-    path += node.id;
-    if (isDeepenedBeyondReviewStamp(getEval(path), reviewEngine)) count++;
-  }
-  return count;
-}
-
-export function deepenedReviewSummaryText(count: number, reviewDepth: number): string {
-  return `${count} eval${count === 1 ? '' : 's'} deepened beyond review depth ${reviewDepth}`;
 }

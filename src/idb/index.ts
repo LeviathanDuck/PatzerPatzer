@@ -158,6 +158,29 @@ function enqueueMainDbPut(storeName: RemoteSyncStoreName, itemKey: string, paylo
     .catch(e => console.warn('[idb] Remote sync enqueue failed', e));
 }
 
+
+
+
+
+
+
+
+
+
+function enqueueMainDbPutClearingDeletedAt(
+  storeName: RemoteSyncStoreName,
+  itemKey: string,
+  payload: unknown,
+  updatedAt = Date.now(),
+): void {
+  void import('../sync/remoteSync')
+    .then(({ clearRemoteSyncDeletedAtMarker, enqueueRemoteSyncUpsert }) => {
+      clearRemoteSyncDeletedAtMarker(storeName, itemKey);
+      enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt);
+    })
+    .catch(e => console.warn('[idb] Remote sync enqueue failed', e));
+}
+
 function enqueueMainDbDelete(storeName: RemoteSyncStoreName, itemKey: string): void {
   void import('../sync/remoteSync')
     .then(({ enqueueRemoteSyncDelete }) => enqueueRemoteSyncDelete(storeName, itemKey))
@@ -200,6 +223,16 @@ export interface ReviewEngineMetadata {
   uciLimitStrength: false;
   reviewDepth:      number;
   capturedAt:       string;
+
+
+
+  /** The depth this run was ASKED for (entry.depth), as opposed to reviewDepth's min-reached stamp. */
+  requestedDepth?: number;
+
+  profileId?:      'bulk' | 'one-off';
+  /** Movetime actually in effect for this entry at completion: the live Bulk movetime for a
+   *  'bulk' entry, or null for a depth-only 'one-off' entry (which never carries a movetime clause). */
+  movetimeMs?:     number | null;
 }
 
 export interface StoredNodeEntry {
@@ -275,7 +308,14 @@ export interface AnalysisLibraryClassification {
 
 // --- Analysis serialization ---
 
-export function buildReviewEngineMetadata(engineName: string | undefined, reviewDepth: number): ReviewEngineMetadata {
+export function buildReviewEngineMetadata(
+  engineName: string | undefined,
+  reviewDepth: number,
+
+
+
+  requestBudget?: { requestedDepth?: number; profileId?: 'bulk' | 'one-off'; movetimeMs?: number | null },
+): ReviewEngineMetadata {
   return {
     engineName:       engineName?.trim() || 'Stockfish 18 smallnet',
     engineModel:      'sf_18_smallnet',
@@ -283,6 +323,9 @@ export function buildReviewEngineMetadata(engineName: string | undefined, review
     uciLimitStrength: false,
     reviewDepth,
     capturedAt:       new Date().toISOString(),
+    ...(requestBudget?.requestedDepth !== undefined ? { requestedDepth: requestBudget.requestedDepth } : {}),
+    ...(requestBudget?.profileId !== undefined ? { profileId: requestBudget.profileId } : {}),
+    ...(requestBudget?.movetimeMs !== undefined ? { movetimeMs: requestBudget.movetimeMs } : {}),
   };
 }
 
@@ -323,7 +366,11 @@ async function persistAnalysisToIdb(
   const tx = db.transaction('analysis-library', 'readwrite');
   tx.objectStore('analysis-library').put(record, gameId);
   await txDone(tx);
-  enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
+
+
+
+  if (status === 'complete') enqueueMainDbPutClearingDeletedAt('analysis', gameId, record, record.updatedAt);
+  else enqueueMainDbPut('analysis', gameId, record, record.updatedAt);
   void captureStorageEstimate('post-idb-write');
 }
 
@@ -368,13 +415,22 @@ export function isStoredAnalysisLoadable(
 
 
 
+
+
+
+
+
+
+
+
+
 export function storedAnalysisSatisfiesAskingDepth(
-  stored: Pick<StoredAnalysis, 'status' | 'analysisVersion' | 'analysisDepth'> | undefined,
+  stored: Pick<StoredAnalysis, 'status' | 'analysisVersion' | 'analysisDepth' | 'reviewEngine'> | undefined,
   askingDepth: number,
 ): boolean {
-  return stored?.status === 'complete'
-    && stored.analysisVersion === ANALYSIS_VERSION
-    && stored.analysisDepth >= askingDepth;
+  if (stored?.status !== 'complete' || stored.analysisVersion !== ANALYSIS_VERSION) return false;
+  const effectiveDepth = stored.reviewEngine?.requestedDepth ?? stored.analysisDepth;
+  return effectiveDepth >= askingDepth;
 }
 
 
@@ -1729,7 +1785,10 @@ export async function saveGameSummary(summary: GameSummary): Promise<void> {
     tx.objectStore('game-summaries').put(summary, summary.gameId);
     await txDone(tx);
     const analyzedAt = Date.parse(summary.analyzedAt);
-    enqueueMainDbPut('game-summaries', summary.gameId, summary, Number.isNaN(analyzedAt) ? Date.now() : analyzedAt);
+
+
+
+    enqueueMainDbPutClearingDeletedAt('game-summaries', summary.gameId, summary, Number.isNaN(analyzedAt) ? Date.now() : analyzedAt);
   } catch (e) {
     console.warn('[idb] game-summary save failed', e);
   }

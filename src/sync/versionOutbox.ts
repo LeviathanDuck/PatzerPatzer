@@ -21,6 +21,18 @@ export interface DurableRetryOutboxEntry extends VersionedWriteOp {
   blockedByOpId?: string;
 }
 
+
+
+
+
+export interface DurableQuarantineRecord extends DurableRetryOutboxEntry {
+  /** Rejection classification: 'attempt-cap' for a retry-count quarantine, or the server's
+   * non-retryable rejection code (e.g. 'invalid-payload', 'unsupported-store'). */
+  code: string;
+  message: string;
+  quarantinedAt: number;
+}
+
 export interface VersionedOutboxEnqueueInput {
   opId?: string;
   store: RemoteSyncStoreName;
@@ -48,11 +60,24 @@ export interface DurableVersionedOutboxStorage {
    */
   deleteEntries?(opIds: readonly string[]): Promise<void>;
   putEntries?(entries: readonly DurableRetryOutboxEntry[]): Promise<void>;
+
+
+
+
+
+
+  readQuarantineRecords?(): Promise<unknown[]>;
+  writeQuarantineRecords?(records: readonly DurableQuarantineRecord[]): Promise<void>;
+  removeQuarantineRecords?(opIds: readonly string[]): Promise<void>;
 }
 
 const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
-const OUTBOX_DB_VERSION = 1;
+
+
+
+const OUTBOX_DB_VERSION = 2;
 const OUTBOX_STORE_NAME = 'entries';
+const QUARANTINE_STORE_NAME = 'quarantine';
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 export const DURABLE_VERSIONED_OUTBOX_BACKOFF_MS = Object.freeze([
@@ -65,6 +90,44 @@ export const DURABLE_VERSIONED_OUTBOX_BACKOFF_MS = Object.freeze([
 ]);
 
 let defaultStorage: DurableVersionedOutboxStorage | null = null;
+
+// --- Cross-tab mutex (audit F-7, Phase 3 P5e) ---------------------------------------------------
+// Every outbox mutation below is a read-modify-write against the shared IndexedDB store. Two
+// same-profile tabs mutating concurrently can silently drop each other's fresh enqueues (a lost
+// write intent) or resurrect just-removed entries. `withDurableOutboxLock` serializes every
+// mutation entry point (enqueue, mark-attempt, record-failure, remove, quarantine write/remove)
+// through one named Web Lock so only one RMW runs at a time, including across tabs. Pure reads
+// (readDurableVersionedOutbox, dueDurableVersionedOutboxEntries, readQuarantineRecords) are not
+// wrapped -- they never race destructively with each other, only with mutations, and the version
+// they observe was already stale the instant a concurrent mutation lands regardless of locking.
+//
+// Fallback: when `navigator.locks` is unavailable (Node test harnesses, older browsers), mutations
+// instead serialize through a module-local promise chain. This ONLY guarantees ordering within the
+// current tab/process -- it provides no cross-tab exclusion at all, so the F-7 race remains
+// possible across tabs whenever the real Web Locks API isn't present. That is an accepted gap:
+// Node has no tabs to guard, and pre-Web-Locks browsers predate any realistic multi-tab exposure
+// for this beta app.
+const OUTBOX_LOCK_NAME = 'patzer-remoteSync-outbox';
+
+let outboxLockChain: Promise<unknown> = Promise.resolve();
+
+async function withDurableOutboxLock<T>(fn: () => Promise<T>): Promise<T> {
+  const locks: LockManager | undefined = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (locks && typeof locks.request === 'function') {
+    // `await` here (rather than returning the request() promise directly) matters for more than
+    // style: lib.dom.d.ts types LockGrantedCallback as `(lock) => T`, not `T | PromiseLike<T>`, so
+    // a callback returning `Promise<T>` makes `request()`'s declared return `Promise<Promise<T>>`
+    // -- `await`'s `Awaited<T>` normalization is what makes the resulting type (and, matching real
+    // Web Locks behavior, the runtime value) the flattened `T`, not a nested promise.
+    return await locks.request(OUTBOX_LOCK_NAME, () => fn());
+  }
+  const run = outboxLockChain.then(fn, fn);
+  // Normalize the chain itself back to a resolved promise regardless of `run`'s outcome, so one
+  // failed mutation never wedges every mutation queued behind it; the failure still propagates to
+  // this call's own caller via the returned `run` promise.
+  outboxLockChain = run.then(() => undefined, () => undefined);
+  return run;
+}
 
 function assertNonEmpty(value: string, label: string): string {
   const trimmed = value.trim();
@@ -169,6 +232,28 @@ function normalizeEntry(raw: unknown): DurableRetryOutboxEntry | null {
   if (typeof value.lastError === 'string') entry.lastError = value.lastError;
   if (typeof value.blockedByOpId === 'string' && value.blockedByOpId.trim()) entry.blockedByOpId = value.blockedByOpId.trim();
   return entry;
+}
+
+function normalizeQuarantineRecord(raw: unknown): DurableQuarantineRecord | null {
+  const entry = normalizeEntry(raw);
+  if (!entry) return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.code !== 'string' || !value.code.trim()) return null;
+  if (typeof value.message !== 'string') return null;
+  if (!validTime(value.quarantinedAt)) return null;
+  return {
+    ...entry,
+    code: value.code.trim(),
+    message: value.message,
+    quarantinedAt: Math.floor(value.quarantinedAt as number),
+  };
+}
+
+function sortQuarantineRecords(records: DurableQuarantineRecord[]): DurableQuarantineRecord[] {
+  return records.slice().sort((left, right) => {
+    if (left.quarantinedAt !== right.quarantinedAt) return left.quarantinedAt - right.quarantinedAt;
+    return left.opId.localeCompare(right.opId);
+  });
 }
 
 function sortEntries(entries: DurableRetryOutboxEntry[]): DurableRetryOutboxEntry[] {
@@ -277,10 +362,12 @@ export async function enqueueDurableVersionedOutboxEntry(
   options: VersionedOutboxEnqueueOptions = {}
 ): Promise<DurableRetryOutboxEntry> {
   const incoming = makeEntry(input, options);
-  const entries = await readDurableVersionedOutbox(storage);
-  const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
-  await writeDurableVersionedOutbox(storage, next);
-  return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
+  return withDurableOutboxLock(async () => {
+    const entries = await readDurableVersionedOutbox(storage);
+    const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
+    await writeDurableVersionedOutbox(storage, next);
+    return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
+  });
 }
 
 // Batch variant: one readEntries + one writeEntries for the whole input set. Fresh keys append
@@ -293,23 +380,25 @@ export async function enqueueDurableVersionedOutboxEntries(
   options: { now?: number } = {}
 ): Promise<DurableRetryOutboxEntry[]> {
   if (inputs.length === 0) return readDurableVersionedOutbox(storage);
-  let entries = await readDurableVersionedOutbox(storage);
-  const presentKeys = new Set(entries.map(entry => `${entry.store}\u0000${entry.itemKey}`));
-  let appended: DurableRetryOutboxEntry[] = [];
-  for (const input of inputs) {
-    const incoming = makeEntry(input, options.now !== undefined ? { now: options.now } : {});
-    const key = `${incoming.store}\u0000${incoming.itemKey}`;
-    if (presentKeys.has(key)) {
-      entries = coalesceDurableVersionedOutboxEntry([...entries, ...appended], incoming);
-      appended = [];
-    } else {
-      appended.push(incoming);
-      presentKeys.add(key);
+  return withDurableOutboxLock(async () => {
+    let entries = await readDurableVersionedOutbox(storage);
+    const presentKeys = new Set(entries.map(entry => `${entry.store}\u0000${entry.itemKey}`));
+    let appended: DurableRetryOutboxEntry[] = [];
+    for (const input of inputs) {
+      const incoming = makeEntry(input, options.now !== undefined ? { now: options.now } : {});
+      const key = `${incoming.store}\u0000${incoming.itemKey}`;
+      if (presentKeys.has(key)) {
+        entries = coalesceDurableVersionedOutboxEntry([...entries, ...appended], incoming);
+        appended = [];
+      } else {
+        appended.push(incoming);
+        presentKeys.add(key);
+      }
     }
-  }
-  const next = appended.length > 0 ? sortEntries([...entries, ...appended]) : entries;
-  await writeDurableVersionedOutbox(storage, next);
-  return next;
+    const next = appended.length > 0 ? sortEntries([...entries, ...appended]) : entries;
+    await writeDurableVersionedOutbox(storage, next);
+    return next;
+  });
 }
 
 export function nextDurableVersionedOutboxBackoffMs(attemptCount: number, jitterMs = 0): number {
@@ -341,16 +430,18 @@ export async function markDurableVersionedOutboxAttemptStarted(
 ): Promise<DurableRetryOutboxEntry[]> {
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
-  const entries = await readDurableVersionedOutbox(storage);
-  const changed: DurableRetryOutboxEntry[] = [];
-  const next = entries.map(entry => {
-    if (!ids.has(entry.opId)) return entry;
-    const updated = { ...entry, lastAttemptAt: now };
-    changed.push(updated);
-    return updated;
+  return withDurableOutboxLock(async () => {
+    const entries = await readDurableVersionedOutbox(storage);
+    const changed: DurableRetryOutboxEntry[] = [];
+    const next = entries.map(entry => {
+      if (!ids.has(entry.opId)) return entry;
+      const updated = { ...entry, lastAttemptAt: now };
+      changed.push(updated);
+      return updated;
+    });
+    await putChangedEntries(storage, next, changed);
+    return next;
   });
-  await putChangedEntries(storage, next, changed);
-  return next;
 }
 
 export async function recordDurableVersionedOutboxFailure(
@@ -361,23 +452,25 @@ export async function recordDurableVersionedOutboxFailure(
 ): Promise<DurableRetryOutboxEntry[]> {
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
-  const entries = await readDurableVersionedOutbox(storage);
-  const changed: DurableRetryOutboxEntry[] = [];
-  const next = entries.map(entry => {
-    if (!ids.has(entry.opId)) return entry;
-    const attemptCount = entry.attemptCount + 1;
-    const updated = {
-      ...entry,
-      attemptCount,
-      lastAttemptAt: now,
-      nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
-      lastError: error,
-    };
-    changed.push(updated);
-    return updated;
+  return withDurableOutboxLock(async () => {
+    const entries = await readDurableVersionedOutbox(storage);
+    const changed: DurableRetryOutboxEntry[] = [];
+    const next = entries.map(entry => {
+      if (!ids.has(entry.opId)) return entry;
+      const attemptCount = entry.attemptCount + 1;
+      const updated = {
+        ...entry,
+        attemptCount,
+        lastAttemptAt: now,
+        nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
+        lastError: error,
+      };
+      changed.push(updated);
+      return updated;
+    });
+    await putChangedEntries(storage, next, changed);
+    return next;
   });
-  await putChangedEntries(storage, next, changed);
-  return next;
 }
 
 // Deletes the drained opIds via the storage's keyed `deleteEntries` when available — one
@@ -390,13 +483,56 @@ export async function removeDurableVersionedOutboxEntries(
 ): Promise<void> {
   if (opIds.length === 0) return;
   const ids = Array.from(new Set(opIds));
-  if (storage.deleteEntries) {
-    await storage.deleteEntries(ids);
-    return;
+  await withDurableOutboxLock(async () => {
+    if (storage.deleteEntries) {
+      await storage.deleteEntries(ids);
+      return;
+    }
+    const idSet = new Set(ids);
+    const next = (await readDurableVersionedOutbox(storage)).filter(entry => !idSet.has(entry.opId));
+    await writeDurableVersionedOutbox(storage, next);
+  });
+}
+
+
+
+
+
+
+
+
+export async function writeQuarantineRecords(
+  records: readonly DurableQuarantineRecord[],
+  storage: DurableVersionedOutboxStorage = defaultDurableVersionedOutboxStorage()
+): Promise<void> {
+  if (records.length === 0) return;
+  const write = storage.writeQuarantineRecords?.bind(storage);
+  if (!write) {
+    throw new Error('Quarantine storage is unavailable for this outbox storage backend.');
   }
-  const idSet = new Set(ids);
-  const next = (await readDurableVersionedOutbox(storage)).filter(entry => !idSet.has(entry.opId));
-  await writeDurableVersionedOutbox(storage, next);
+  await withDurableOutboxLock(() => write(records));
+}
+
+export async function readQuarantineRecords(
+  storage: DurableVersionedOutboxStorage = defaultDurableVersionedOutboxStorage()
+): Promise<DurableQuarantineRecord[]> {
+  if (!storage.readQuarantineRecords) return [];
+  const raw = await storage.readQuarantineRecords();
+  const records = raw
+    .map(normalizeQuarantineRecord)
+    .filter((record): record is DurableQuarantineRecord => record !== null);
+  return sortQuarantineRecords(records);
+}
+
+export async function removeQuarantineRecords(
+  opIds: readonly string[],
+  storage: DurableVersionedOutboxStorage = defaultDurableVersionedOutboxStorage()
+): Promise<void> {
+  if (opIds.length === 0) return;
+  const remove = storage.removeQuarantineRecords?.bind(storage);
+  if (!remove) return;
+  const ids = Array.from(new Set(opIds));
+  await withDurableOutboxLock(() => remove(ids));
 }
 
 export async function dueDurableVersionedOutboxEntries(
@@ -416,8 +552,13 @@ function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error ?? new Error('Could not open durable RemoteSync outbox database.'));
     request.onupgradeneeded = () => {
       const db = request.result;
+      // Only ever creates missing stores; an existing `entries` store (v1) is left untouched
+      // when upgrading straight to v2, so pre-existing outbox entries survive the upgrade.
       if (!db.objectStoreNames.contains(OUTBOX_STORE_NAME)) {
         db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'opId' });
+      }
+      if (!db.objectStoreNames.contains(QUARANTINE_STORE_NAME)) {
+        db.createObjectStore(QUARANTINE_STORE_NAME, { keyPath: 'opId' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -481,6 +622,50 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           tx.oncomplete = () => resolve();
           const store = tx.objectStore(OUTBOX_STORE_NAME);
           for (const entry of entries) store.put(entry);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async readQuarantineRecords(): Promise<unknown[]> {
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const request = db.transaction(QUARANTINE_STORE_NAME, 'readonly').objectStore(QUARANTINE_STORE_NAME).getAll();
+          request.onerror = () => reject(request.error ?? new Error('Could not read quarantined RemoteSync outbox records.'));
+          request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async writeQuarantineRecords(records: readonly DurableQuarantineRecord[]): Promise<void> {
+      if (records.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(QUARANTINE_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not write quarantined RemoteSync outbox records.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Quarantined RemoteSync outbox record write aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(QUARANTINE_STORE_NAME);
+          for (const record of records) store.put(record);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async removeQuarantineRecords(opIds: readonly string[]): Promise<void> {
+      if (opIds.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(QUARANTINE_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not remove quarantined RemoteSync outbox records.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Quarantined RemoteSync outbox record removal aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(QUARANTINE_STORE_NAME);
+          for (const opId of opIds) store.delete(opId);
         });
       } finally {
         db.close();

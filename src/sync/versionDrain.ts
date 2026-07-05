@@ -238,7 +238,19 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
   return result;
 }
 
-export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {
+// --- Cross-tab drain guard (audit F-7, Phase 3 P5e) ---------------------------------------------
+// Two tabs (or an overlapping timer firing in the same tab) draining concurrently would both read
+// the same due entries and both call sendBatch for them -- a double-send. `drainDurableVersionedOutbox`
+// wraps the whole pass in a separate named Web Lock using `ifAvailable: true`: if another drain is
+// already in flight anywhere in this origin, this call skips immediately instead of double-sending.
+// This is a distinct lock name from the outbox mutation lock in versionOutbox.ts -- the drain lock
+// is held around the whole pass (including the network awaits below), while the outbox lock is
+// only ever held briefly inside each individual storage mutation the pass delegates to. Different
+// lock names never nest-deadlock with each other; only re-acquiring the *same* name while already
+// holding it would, and neither lock is ever requested recursively under itself.
+const DRAIN_LOCK_NAME = 'patzer-remoteSync-drain';
+
+async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {
   const now = normalizeNow(options.now);
   const batchSize = Math.max(1, Math.floor(options.batchSize ?? DEFAULT_BATCH_SIZE));
   const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? DEFAULT_MAX_DRAIN_ATTEMPTS));
@@ -472,6 +484,24 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
   const queued = (await readDurableVersionedOutbox(options.outboxStorage)).length;
   if (queued > 0) counts.queued = queued;
   return { success: (counts.failed ?? 0) === 0 && (counts.metadataWriteFailed ?? 0) === 0, counts };
+}
+
+export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {
+  const locks: LockManager | undefined = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!locks || typeof locks.request !== 'function') {
+    // No Web Locks API available (Node test harnesses, older browsers): there is no cross-tab
+    // concept to guard here, so run the pass directly. This mirrors the outbox mutation lock's
+    // fallback -- same-tab-only environments have nothing cross-tab to protect against.
+    return runDrainPass(options);
+  }
+  const result = await locks.request(DRAIN_LOCK_NAME, { ifAvailable: true }, async lock => {
+    if (!lock) return null;
+    return runDrainPass(options);
+  });
+  if (result === null) {
+    return { success: true, counts: { drainSkipped: 1 } };
+  }
+  return result;
 }
 
 export async function runVersionedPreWriteGate(options: VersionedPreWriteGateOptions): Promise<VersionedPreWriteGateResult> {

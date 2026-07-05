@@ -78,8 +78,16 @@ export function currentImportDateRangeConfig(): ImportDateRangeConfig {
   };
 }
 
-export function importSyncFilterKey(rated: boolean, speeds: ReadonlySet<ImportSpeed>): string {
-  return `${rated ? 'rated' : 'any'}|${[...speeds].sort().join(',')}`;
+export function importSyncFilterKey(
+  rated: boolean,
+  speeds: ReadonlySet<ImportSpeed>,
+  config: ImportDateRangeConfig = currentImportDateRangeConfig(),
+): string {
+  const speedKey = [...speeds].sort().join(',');
+  const rangeKey = config.dateRange === 'custom'
+    ? `${config.dateRange}|${config.customFrom || '~'}|${config.customTo || '~'}`
+    : config.dateRange;
+  return `${rated ? 'rated' : 'any'}|${speedKey}|${rangeKey}`;
 }
 
 

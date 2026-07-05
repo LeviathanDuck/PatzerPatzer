@@ -39,7 +39,10 @@ export type RemoteSyncIssueReason =
   | 'durable-enqueue-failed'
   | 'untracked-local-items'
   | 'push-failed'
-  | 'remote-count-mismatch';
+  | 'remote-count-mismatch'
+  | 'quarantined-writes'
+  | 'push-retrying'
+  | 'server-wins-conflicts';
 
 export type RemoteSyncProgressSeverity = 'ok' | 'active' | 'warning' | 'error';
 
@@ -99,9 +102,24 @@ export interface RemoteSyncIssue {
   severity: 'warning' | 'error';
 }
 
+
+
+
+
+
+
+export interface RemoteSyncBackoffState {
+  /** Count of durable outbox entries that have failed at least once and are not yet due again. */
+  count: number;
+  /** Earliest `nextAttemptAt` among the backed-off entries, for a "retrying in ~X" estimate. */
+  earliestNextAttemptAt: number;
+}
+
 export interface RemoteSyncProgressStore {
   operations: Record<string, RemoteSyncOperationRecord>;
   issues: Partial<Record<RemoteSyncIssueReason, RemoteSyncIssue>>;
+  /** null when no entry is currently backed off (nothing idle-queued and retrying). */
+  backoff: RemoteSyncBackoffState | null;
 }
 
 export interface RemoteSyncProgressIdentity {
@@ -125,6 +143,8 @@ export interface RemoteSyncProgressSnapshot {
   title: string;
   operations: RemoteSyncOperationSummary[];
   issues: RemoteSyncIssue[];
+  /** Idle-queue backoff context (P6b); null when nothing is currently backed off. */
+  backoff: RemoteSyncBackoffState | null;
   identity: RemoteSyncProgressIdentityBlock;
   updatedAt: number;
 }
@@ -139,6 +159,18 @@ const ISSUE_SEVERITY: Record<RemoteSyncIssueReason, 'warning' | 'error'> = {
   'untracked-local-items': 'warning',
   'push-failed': 'error',
   'remote-count-mismatch': 'error',
+  // A permanent drop (attempt-cap quarantine or explicit non-retryable server reject) is
+  // proven-broken, not a routine skip: the write is gone from the outbox with no server
+  // acceptance (F-4). Red is reserved for exactly this class of issue.
+  'quarantined-writes': 'error',
+  // P6b (audit F-8 gap 2 / G-11): a deterministic same-batch failure reaching attemptCount>=3 is
+  // "poisoned batch visible long before quarantine" — a warning, not proven-broken, since it may
+  // still self-resolve (drain succeeds) before the attempt-cap (12) quarantines it.
+  'push-retrying': 'warning',
+  // P2c (audit G-1): a server-wins conflict on a visible store dropped a local queued write. This
+  // is a routine, expected outcome of the CAS protocol (not a proven-broken failure), so it stays
+  // a warning even though it is data the user may want to know was overwritten.
+  'server-wins-conflicts': 'warning',
 };
 
 const DEFAULT_ISSUE_MESSAGES: Record<RemoteSyncIssueReason, string> = {
@@ -149,6 +181,9 @@ const DEFAULT_ISSUE_MESSAGES: Record<RemoteSyncIssueReason, string> = {
   'untracked-local-items': 'Some local items are not yet tracked by sync.',
   'push-failed': 'The last push to the server failed.',
   'remote-count-mismatch': 'Server and local item counts do not match.',
+  'quarantined-writes': 'Some sync writes were permanently dropped and need review.',
+  'push-retrying': 'Some sync writes keep failing and are being retried.',
+  'server-wins-conflicts': "The server's version won over some local changes.",
 };
 
 const ACTIVE_LABELS: Record<RemoteSyncOperationKind, string> = {
@@ -176,7 +211,15 @@ export function defaultRemoteSyncIssueMessage(reason: RemoteSyncIssueReason): st
 }
 
 export function createRemoteSyncProgressStore(): RemoteSyncProgressStore {
-  return { operations: {}, issues: {} };
+  return { operations: {}, issues: {}, backoff: null };
+}
+
+/** Pure setter for the idle-queue backoff snapshot (P6b). Pass null to clear it. */
+export function setRemoteSyncProgressBackoff(
+  store: RemoteSyncProgressStore,
+  backoff: RemoteSyncBackoffState | null,
+): RemoteSyncProgressStore {
+  return { ...store, backoff };
 }
 
 let operationSequence = 0;
@@ -369,6 +412,7 @@ export function deriveRemoteSyncProgressSnapshot(
     title,
     operations,
     issues,
+    backoff: store.backoff,
     identity: { ...identity, scopeNote: REMOTE_SYNC_PROGRESS_SCOPE_NOTE },
     updatedAt: now,
   };

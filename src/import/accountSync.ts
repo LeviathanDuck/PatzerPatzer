@@ -7,6 +7,7 @@ import {
   filterGamesByDateRange,
   importRangeStartMsFor,
   importSyncFilterKey,
+  currentImportDateRangeConfig,
   type ImportDateRangeConfig,
   type ImportSpeed,
 } from './filters';
@@ -23,6 +24,11 @@ export type AccountSyncMode = 'cursor' | 'wider-safety-fetch' | 'fallback-range'
 export interface AccountSyncOptions {
   rated: boolean;
   speeds: ReadonlySet<ImportSpeed>;
+  /**
+   * Captures the date-range filter to record with the sync cursor key.
+   * If omitted, the live import filter config is used.
+   */
+  syncDateRange?: ImportDateRangeConfig;
   /**
    * Required when the caller wants to run without a safe cursor, either
    * because the account has no cursor yet or because filters changed.
@@ -141,7 +147,8 @@ async function syncChesscomLifetimeBest(account: ChessAccount): Promise<void> {
 
 export async function syncAccountGames(account: ChessAccount, options: AccountSyncOptions): Promise<AccountSyncResult> {
   const cursor = account.newestGameTimestamp;
-  const filterKey = importSyncFilterKey(options.rated, options.speeds);
+  const syncFilter = options.syncDateRange ?? options.fallbackDateRange ?? currentImportDateRangeConfig();
+  const filterKey = importSyncFilterKey(options.rated, options.speeds, syncFilter);
   const filterMatches = account.syncFilterKey === filterKey;
 
   if (cursor === null && options.fallbackDateRange === undefined) {

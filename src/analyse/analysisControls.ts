@@ -21,12 +21,18 @@ import {
 import { reviewDotsUserOnly, setReviewDotsUserOnly } from '../board/cosmetics';
 import { analysisComplete } from '../engine/reviewStatus';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
+import {
+  isLichessCompareAdminSessionActive,
+  openLichessCompareFlow,
+  closeLichessCompareFlow,
+  renderLichessComparePanel,
+} from './lichessCompareUi';
 
 // --- Action-menu open/close state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
 
 let _actionMenuOpen = false;
-let _actionMenuSubView: null | 'mistake-detection' = null;
+let _actionMenuSubView: null | 'mistake-detection' | 'lichess-compare' = null;
 
 export function isActionMenuOpen(): boolean {
   return _actionMenuOpen;
@@ -37,6 +43,9 @@ export function toggleActionMenu(): void {
 }
 
 export function closeActionMenu(): void {
+
+
+  if (_actionMenuSubView === 'lichess-compare') closeLichessCompareFlow();
   _actionMenuOpen = false;
   _actionMenuSubView = null;
 }
@@ -59,6 +68,12 @@ interface AnalysisControlsDeps {
   onSaveToLibrary:  () => void;
   // LFYM settings count preview for the current analysis game.
   getRetroConfigCountSummary?: () => RetroChoiceCountSummary | null;
+
+
+  getSelectedGameForCompare?: () => { gameId: string; pgn: string } | null;
+
+
+  hasCompletedReviewForSelectedGame?: () => boolean;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -201,6 +216,11 @@ export function renderActionMenu(): VNode | null {
   const canLFYM  = analysisComplete;
 
 
+
+  const canCompareWithLichess =
+    isLichessCompareAdminSessionActive() && !!deps.hasCompletedReviewForSelectedGame?.();
+
+
   if (_actionMenuSubView === 'mistake-detection') {
     return h('div.action-menu', [
       h('button.action-menu__back-btn', {
@@ -211,6 +231,17 @@ export function renderActionMenu(): VNode | null {
         countSummary: deps.getRetroConfigCountSummary?.() ?? null,
         idPrefix: 'analysis-retro-config',
       })),
+    ]);
+  }
+
+
+  if (_actionMenuSubView === 'lichess-compare') {
+    return h('div.action-menu', [
+      h('button.action-menu__back-btn', {
+        on: { click: () => { closeLichessCompareFlow(); _actionMenuSubView = null; deps.redraw(); } },
+      }, '\u2190 Back'),
+      h('h2', 'Compare with Lichess analysis'),
+      h('div.action-menu__subpanel', [renderLichessComparePanel()]),
     ]);
   }
 
@@ -248,6 +279,18 @@ export function renderActionMenu(): VNode | null {
           close();
         } },
       }, 'Report issue'),
+
+
+      ...(canCompareWithLichess ? [h('button', {
+        attrs: { title: 'Compare this Game Review against Lichess server analysis' },
+        on: { click: () => {
+          const selection = deps.getSelectedGameForCompare?.() ?? null;
+          if (!selection) return;
+          openLichessCompareFlow({ gameId: selection.gameId, pgn: selection.pgn, redraw: deps.redraw });
+          _actionMenuSubView = 'lichess-compare';
+          deps.redraw();
+        } },
+      }, 'Compare with Lichess analysis')] : []),
     ]),
 
 

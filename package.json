@@ -4,6 +4,7 @@
     "@lichess-org/stockfish-web": "^0.2.3",
     "better-auth": "^1.6.10",
     "better-sqlite3": "^12.8.0",
+    "chart.js": "4.5.1",
     "chessops": "^0.15.0",
     "snabbdom": "^3.6.2",
     "stockfish": "^16.0.0",

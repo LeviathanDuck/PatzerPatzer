@@ -33,8 +33,27 @@ import {
   resolveGamesRoutePage,
   serializeGamesRouteState,
   type GamesRouteAccountOverride,
+  type GamesRouteDensity,
   type GamesRouteState,
 } from './routeState';
+import {
+  renderRichGameRow,
+  renderReviewControl,
+  renderSecondaryActions,
+  renderTagArea,
+  gameExtras,
+  formatDelta,
+  openingPreview,
+  TIME_CLASS_ICON,
+  NO_CLOCK_ICON,
+  type GameExtras,
+  type ReviewControlOpts,
+  type ReviewControlState,
+  type RichGameRowDeps,
+  type RichRowIconInputs,
+  type RichRowSecondaryAction,
+  type RichRowTagInputs,
+} from './richRow';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -178,14 +197,23 @@ function importedAccountColor(game: ImportedGame): 'white' | 'black' | null {
   return null;
 }
 
-function importedAccountLabel(game: ImportedGame): string | null {
-  const username = game.importedUsername?.trim();
-  if (!username) return null;
-  const color = importedAccountColor(game);
-  const rating = color === 'white' ? game.whiteRating
-    : color === 'black' ? game.blackRating
-    : undefined;
-  return rating !== undefined ? `${username} (${rating})` : username;
+
+
+
+function compressTimestamp(display: string): string {
+  const year = new Date().getFullYear();
+  return display.replace(new RegExp(`,\\s*${year}$`), '');
+}
+
+
+
+
+
+
+export interface CompactRowExtras {
+  tags?:        RichRowTagInputs;
+  reviewState?: ReviewControlState;
+  addLibrary?:  { onAdd: () => void } | null;
 }
 
 export function renderCompactGameRow(
@@ -193,6 +221,7 @@ export function renderCompactGameRow(
   isAnalyzed: boolean,
   hasMissedTactic: boolean,
   accuracy?: { user: number | null; opp: number | null },
+  extras?: CompactRowExtras,
 ): (VNode | null)[] {
   const result    = gameResult(game);
   const userColor = getUserColor(game);
@@ -200,45 +229,94 @@ export function renderCompactGameRow(
     : userColor === 'black' ? (game.white ?? game.id)
     : (game.white && game.black ? `${game.white} vs ${game.black}` : game.id);
 
-  const date = game.date ? game.date.slice(0, 10) : null;
-
-  const tcIconMap: Record<string, string> = {
-    ultrabullet: '\ue032',
-    bullet:      '\ue032',
-    blitz:       '\ue008',
-    rapid:       '\ue002',
-  };
-  const tcIcon = game.timeClass ? (tcIconMap[game.timeClass] ?? null) : null;
   const isNewImport = isRecentlyImported(game);
-  const accountLabel = importedAccountLabel(game);
   const openingLabel = game.opening?.trim() || null;
+  const pgnExtras: GameExtras = gameExtras(game);
 
   const resultCls = result === 'win'  ? 'grl__result--win'
     : result === 'loss' ? 'grl__result--loss'
     : result === 'draw' ? 'grl__result--draw'
     : 'grl__result--unknown';
 
+  // Line 1 -- opponent (chip + rating + delta REQUIRED) -> vs -> imported account (delta), each
+  // followed by inline accuracy once Game Review data exists (Phase 1 design, compact section).
   const oppColor  = userColor === 'white' ? 'black' : userColor === 'black' ? 'white' : null;
   const oppChip   = oppColor ? h('span.color-chip.--' + oppColor) : null;
   const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
-  const oppLabel  = oppRating !== undefined ? `${opponent} (${oppRating})` : opponent;
+  const oppDelta  = userColor === 'white' ? pgnExtras.ratingDiff.black : userColor === 'black' ? pgnExtras.ratingDiff.white : null;
   const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== undefined
-    ? h('span.grl__opp-accuracy', `${Math.round(accuracy.opp)}%`)
+    ? h('span.grl__accuracy', `${Math.round(accuracy.opp)}%`)
     : null;
 
-  return [
+  const acctColor  = importedAccountColor(game);
+  const acctName   = game.importedUsername?.trim() || null;
+  const acctRating = acctColor === 'white' ? game.whiteRating : acctColor === 'black' ? game.blackRating : undefined;
+  const acctDelta  = acctColor === 'white' ? pgnExtras.ratingDiff.white : acctColor === 'black' ? pgnExtras.ratingDiff.black : null;
+  const acctAccNode = accuracy?.user !== null && accuracy?.user !== undefined
+    ? h('span.grl__accuracy', `${Math.round(accuracy.user)}%`)
+    : null;
+
+  const renderDelta = (delta: number | null): VNode | null => delta === null ? null
+    : h('span.grl__delta', { class: { '--gain': delta > 0, '--loss': delta < 0 } }, formatDelta(delta));
+
+  const line1 = h('div.grl__line1', [
     h('span.grl__result.' + resultCls, '●'),
-    h('span.grl__opponent', [oppLabel, oppChip, oppAccNode]),
-    openingLabel ? h('span.grl__opening', { attrs: { title: openingLabel } }, openingLabel) : null,
-    accountLabel ? h('span.grl__account', accountLabel) : null,
-    date ? h('span.grl__date', date) : null,
-    tcIcon ? h('span.grl__tc', { attrs: { 'data-icon': tcIcon, ...(game.timeClass ? { title: game.timeClass } : {}) } }) : null,
-    (isNewImport || isAnalyzed || hasMissedTactic) ? h('span.grl__badges', [
-      isNewImport ? h('span.grl__badge.--new', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
-      isAnalyzed  ? h('span.grl__badge.--ok',  { attrs: { title: 'Analyzed' } },       '✓') : null,
-      renderMissedBadge(game.id, hasMissedTactic),
-    ]) : null,
-  ];
+    h('div.grl__matchup', [
+      h('span.grl__opponent-block', [
+        h('span.grl__name', opponent),
+        oppRating !== undefined ? h('span.grl__rating', String(oppRating)) : null,
+        renderDelta(oppDelta),
+        oppChip,
+        oppAccNode,
+      ]),
+      h('span.grl__account-line', [
+        h('span.grl__vs', 'vs'),
+        h('span.grl__name.--account', acctName ?? game.id),
+        acctRating !== undefined ? h('span.grl__rating', String(acctRating)) : null,
+        renderDelta(acctDelta),
+        acctAccNode,
+      ]),
+    ]),
+  ]);
+
+  // Line 2 -- opening + move count (ellipsizes first) times colored time-class icon times compressed
+  // timestamp (right).
+  const preview = openingPreview(game);
+  const totalMoves = preview ? Math.ceil(preview.totalPlies / 2) : null;
+  const moveCountLabel = totalMoves !== null ? `${totalMoves} move${totalMoves === 1 ? '' : 's'}` : null;
+  const tcIcon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
+  const tcTitle = game.timeClass ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1) : 'Study import · No clock';
+  const tsTooltip = [pgnExtras.timestamp.iso, pgnExtras.timestamp.sourceLabel].filter(Boolean).join(' · ') || pgnExtras.timestamp.display;
+
+  const line2 = h('div.grl__line2', [
+    h('span.grl__opening', { attrs: { title: [openingLabel, moveCountLabel].filter(Boolean).join(' — ') } }, [
+      openingLabel ? h('span.grl__opening-name', openingLabel) : null,
+      moveCountLabel ? h('span.grl__opening-moves', moveCountLabel) : null,
+    ]),
+    h('span.grl__tc-icon.' + tcIcon.cls, { attrs: { 'data-icon': tcIcon.glyph, title: tcTitle } }),
+    h('span.grl__timestamp', { attrs: { title: tsTooltip } }, compressTimestamp(pgnExtras.timestamp.display)),
+  ]);
+
+  // Line 3 (space permitting) -- tags: Add Library (grey, low weight) first, then highest-priority
+  // available tags, overflow +N. Only rendered when a caller opts in via `extras` (games-list
+  // surfaces); the header import list and Study library divergence list omit it and keep their
+  // existing two-field layout.
+  const line3 = extras?.reviewState !== undefined
+    ? renderTagArea(extras.reviewState, extras.tags ?? {}, extras.addLibrary)
+    : null;
+
+  // The "Analyzed" ✓ badge is redundant once a caller opts into the review control + Reviewed
+  // tag (extras.reviewState) — those already state reviewed status prominently. Consumers that
+  // omit extras (header import list, Study library divergence list) have no other reviewed
+  // indicator, so they keep the badge.
+  const showAnalyzedBadge = isAnalyzed && extras?.reviewState === undefined;
+  const badges = (isNewImport || showAnalyzedBadge || hasMissedTactic) ? h('span.grl__badges', [
+    isNewImport ? h('span.grl__badge.--new', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
+    showAnalyzedBadge ? h('span.grl__badge.--ok', { attrs: { title: 'Analyzed' } }, '✓') : null,
+    renderMissedBadge(game.id, hasMissedTactic),
+  ]) : null;
+
+  return [line1, line2, line3, badges];
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +347,7 @@ export interface GamesViewDeps {
   gameResult:            (game: ImportedGame) => 'win' | 'loss' | 'draw' | null;
   getUserColor:          (game: ImportedGame) => 'white' | 'black' | null;
   gameSourceUrl:         (game: ImportedGame) => string | undefined;
-  renderCompactGameRow:  (game: ImportedGame, analyzed: boolean, missed: boolean, accuracy?: { user: number | null; opp: number | null }) => (VNode | null)[];
+  renderCompactGameRow:  (game: ImportedGame, analyzed: boolean, missed: boolean, accuracy?: { user: number | null; opp: number | null }, extras?: CompactRowExtras) => (VNode | null)[];
   /** Set selectedGameId + call loadGame (used for click-to-load in the game list). */
   selectGame:            (game: ImportedGame) => void;
   /** selectGame + navigate to analysis + enqueue priority review (used for Review button). */
@@ -327,6 +405,18 @@ let gamesSortField: GamesSortField = 'date';
 let gamesSortDir:   'asc' | 'desc' = 'desc';
 const GAMES_PAGE_SIZE = 50;
 let gamesPage = 0;
+// Full Games page row density: 'full' (rich row feed, default) or 'compact' (renderCompactGameRow
+// list style, reusing the underboard's compact fragments). URL-owned, see routeState.ts.
+let gamesDensity: GamesRouteDensity = 'full';
+
+
+
+let gamesFilterRatingMin: number | null = null;
+let gamesFilterRatingMax: number | null = null;
+let gamesFilterDateFrom = ''; // 'YYYY-MM-DD', played-date lower bound (inclusive)
+let gamesFilterDateTo   = ''; // 'YYYY-MM-DD', played-date upper bound (inclusive)
+
+let gamesAdvancedPanelOpen = false;
 
 // Separate filter state for the compact underboard game list.
 // Kept independent of the Games-tab filter state so the two views don't cross-contaminate.
@@ -337,6 +427,22 @@ let gameListFilterColor:   '' | 'white' | 'black'        = '';
 let gameListFilterReview:  GameListReviewFilter          = '';
 let gameListPage = 0;
 let gameListPageSize: GameListPageSize = loadGameListPageSize();
+
+
+
+let gameListMorePillsOpen = false;
+
+
+
+type UnderboardDensity = 'compact' | 'rich';
+const GAME_LIST_DENSITY_STORAGE_KEY = 'patzer.games.underboardDensity.v1';
+let gameListDensity: UnderboardDensity = loadGameListDensity();
+// Measured by a ResizeObserver on the underboard's rendered width (installed in renderGameList's
+// insert hook) — rich rows only actually render when both the density preference is 'rich' AND
+// the container is wide enough for the 132px thumbnail + body content (Phase 1 design: "the
+// underboard MAY step up to rich rows when layout permits").
+const UNDERBOARD_RICH_MIN_WIDTH = 460;
+let gameListWideEnough = false;
 
 // Account lens shared by both game list views: whose games are shown.
 // "My accounts" = all mine-category accounts plus uncategorized PGN-paste games.
@@ -461,14 +567,6 @@ function reviewRowLifecycleLabel(
   };
 }
 
-function renderReviewLifecyclePill(label: ReviewRowLifecycleLabel): VNode {
-  return h(`span.game-list__row-progress.--${label.modifier}`, { attrs: { title: label.title } }, label.label);
-}
-
-function renderGamesReviewLifecyclePill(label: ReviewRowLifecycleLabel): VNode {
-  return h(`span.games-view__review-lifecycle.--${label.modifier}`, { attrs: { title: label.title } }, label.label);
-}
-
 export function currentVisibleListReviewRunContext(games: readonly ImportedGame[]): ReviewRunSourceContext {
   return visibleListReviewRunContext(games, {
     sortKey:       gamesSortField,
@@ -518,6 +616,55 @@ function setGameListPageSize(size: GameListPageSize): void {
   } catch {
     // Non-critical: setting still works for the current session.
   }
+}
+
+function loadGameListDensity(): UnderboardDensity {
+  try {
+    const raw = localStorage.getItem(GAME_LIST_DENSITY_STORAGE_KEY);
+    if (raw === 'compact' || raw === 'rich') return raw;
+  } catch {
+    // Non-critical: fall back to the compact-list default.
+  }
+  return 'compact';
+}
+
+function setGameListDensity(density: UnderboardDensity): void {
+  gameListDensity = density;
+  try {
+    localStorage.setItem(GAME_LIST_DENSITY_STORAGE_KEY, density);
+  } catch {
+    // Non-critical: setting still works for the current session.
+  }
+}
+
+
+
+
+type GameListElement = HTMLElement & { __glResizeObserver: ResizeObserver | undefined };
+
+function observeGameListWidth(vnode: VNode, redraw: () => void): void {
+  const el = vnode.elm as GameListElement | undefined;
+  if (!el) return;
+  const update = (width: number) => {
+    const nowWide = width >= UNDERBOARD_RICH_MIN_WIDTH;
+    if (nowWide !== gameListWideEnough) {
+      gameListWideEnough = nowWide;
+      redraw();
+    }
+  };
+  update(el.clientWidth);
+  const observer = new ResizeObserver(entries => {
+    const entry = entries[0];
+    if (entry) update(entry.contentRect.width);
+  });
+  observer.observe(el);
+  el.__glResizeObserver = observer;
+}
+
+function unobserveGameListWidth(vnode: VNode): void {
+  const el = vnode.elm as GameListElement | undefined;
+  el?.__glResizeObserver?.disconnect();
+  if (el) el.__glResizeObserver = undefined;
 }
 
 function resetGameListPage(): void {
@@ -614,6 +761,11 @@ function currentGamesRouteStateSnapshot(): GamesRouteState {
     review: gamesFilterReviewIssues,
     sort: { field: gamesSortField, direction: gamesSortDir },
     page: gamesPage + 1,
+    density: gamesDensity,
+    ...(gamesFilterRatingMin !== null ? { ratingMin: gamesFilterRatingMin } : {}),
+    ...(gamesFilterRatingMax !== null ? { ratingMax: gamesFilterRatingMax } : {}),
+    ...(gamesFilterDateFrom ? { dateFrom: gamesFilterDateFrom } : {}),
+    ...(gamesFilterDateTo ? { dateTo: gamesFilterDateTo } : {}),
   };
 }
 
@@ -647,6 +799,11 @@ function applyGamesRouteStateForView(state: GamesRouteState): void {
   gamesSortField = state.sort.field;
   gamesSortDir = state.sort.direction;
   gamesPage = Math.max(0, state.page - 1);
+  gamesDensity = state.density ?? 'full';
+  gamesFilterRatingMin = state.ratingMin ?? null;
+  gamesFilterRatingMax = state.ratingMax ?? null;
+  gamesFilterDateFrom = state.dateFrom ?? '';
+  gamesFilterDateTo = state.dateTo ?? '';
   gamesRouteAccountOverrideActive = state.accountSource === 'route-override';
 
   if (state.accountOverride) {
@@ -677,6 +834,12 @@ export function resetGamesViewRouteStateForTests(): void {
   gamesSortField = 'date';
   gamesSortDir = 'desc';
   gamesPage = 0;
+  gamesDensity = 'full';
+  gamesFilterRatingMin = null;
+  gamesFilterRatingMax = null;
+  gamesFilterDateFrom = '';
+  gamesFilterDateTo = '';
+  gamesAdvancedPanelOpen = false;
   gameListSearch = '';
   gameListFilterResults = new Set();
   gameListFilterSpeeds = new Set();
@@ -702,6 +865,7 @@ export function getGamesViewRouteSnapshotForTests(): {
   review: ReviewIssueFilter;
   sort: { field: GamesSortField; direction: 'asc' | 'desc' };
   pageIndex: number;
+  density: GamesRouteDensity;
   accountFilter: AccountFilterState;
   compact: {
     search: string;
@@ -722,6 +886,7 @@ export function getGamesViewRouteSnapshotForTests(): {
     review: gamesFilterReviewIssues,
     sort: { field: gamesSortField, direction: gamesSortDir },
     pageIndex: gamesPage,
+    density: gamesDensity,
     accountFilter: accountFilterState.mode === 'all'
       ? { mode: 'all' }
       : {
@@ -814,11 +979,18 @@ function toggleGamesSort(field: GamesSortField, deps: GamesViewDeps): void {
   deps.redraw();
 }
 
+// Advanced-search-only filters (Layer 2): opponent/opening search, opponent rating range, and
+// played-date range. Used to decide chip visibility while the advanced panel is collapsed.
+function gamesAdvancedFiltersActive(): boolean {
+  return gamesFilterOpponent.trim() !== '' || gamesFilterOpening.trim() !== '' ||
+    gamesFilterRatingMin !== null || gamesFilterRatingMax !== null ||
+    gamesFilterDateFrom !== '' || gamesFilterDateTo !== '';
+}
+
 function gamesFilterActive(): boolean {
   return gamesFilterResults.size > 0 || gamesFilterSpeeds.size > 0 ||
-    gamesFilterOpponent.trim() !== '' || gamesFilterColor !== '' ||
-    gamesFilterTactics.size > 0 || gamesFilterOpening.trim() !== '' ||
-    gamesFilterReviewIssues !== 'all';
+    gamesFilterColor !== '' || gamesFilterTactics.size > 0 ||
+    gamesFilterReviewIssues !== 'all' || gamesAdvancedFiltersActive();
 }
 
 function clearGamesFilters(deps: GamesViewDeps): void {
@@ -829,6 +1001,10 @@ function clearGamesFilters(deps: GamesViewDeps): void {
   gamesFilterTactics  = new Set();
   gamesFilterOpening  = '';
   gamesFilterReviewIssues = 'all';
+  gamesFilterRatingMin = null;
+  gamesFilterRatingMax = null;
+  gamesFilterDateFrom = '';
+  gamesFilterDateTo = '';
   gamesSortField = 'date';
   gamesSortDir = 'desc';
   gamesPage = 0;
@@ -992,6 +1168,30 @@ function filteredGames(deps: GamesViewDeps): ImportedGame[] {
     list = list.filter(g => g.opening?.toLowerCase().includes(q));
   }
 
+  if (gamesFilterRatingMin !== null || gamesFilterRatingMax !== null) {
+    list = list.filter(g => {
+      const rating = opponentRating(g, deps.getUserColor);
+      if (rating === undefined) return false;
+      if (gamesFilterRatingMin !== null && rating < gamesFilterRatingMin) return false;
+      if (gamesFilterRatingMax !== null && rating > gamesFilterRatingMax) return false;
+      return true;
+    });
+  }
+
+  if (gamesFilterDateFrom || gamesFilterDateTo) {
+    // Inclusive played-date range; day-only bounds parsed at UTC midnight (dateTo covers through
+    // end-of-day). Games with no derivable played date never match a date-bounded filter.
+    const fromTs = gamesFilterDateFrom ? Date.parse(`${gamesFilterDateFrom}T00:00:00Z`) : null;
+    const toTs   = gamesFilterDateTo ? Date.parse(`${gamesFilterDateTo}T23:59:59.999Z`) : null;
+    list = list.filter(g => {
+      const played = playedTimestamp(g);
+      if (played === null) return false;
+      if (fromTs !== null && played < fromTs) return false;
+      if (toTs !== null && played > toTs) return false;
+      return true;
+    });
+  }
+
   if (gamesFilterReviewIssues === 'failed-skipped') {
     list = list.filter(g => {
       const status = getFailedReviewStatus(g.id);
@@ -1032,20 +1232,43 @@ function opponentName(
   return (game.white && game.black) ? `${game.white} vs ${game.black}` : undefined;
 }
 
-function renderResultIcon(r: 'win' | 'loss' | 'draw' | null): VNode {
-  if (r === 'win')  return h('span.games-view__result.--win',  { attrs: { title: 'Win'  } }, '●');
-  if (r === 'loss') return h('span.games-view__result.--loss', { attrs: { title: 'Loss' } }, '●');
-  if (r === 'draw') return h('span.games-view__result.--draw', { attrs: { title: 'Draw' } }, '●');
-  return h('span.games-view__result', '–');
+
+
+function opponentRating(
+  game: ImportedGame,
+  getUserColor: (g: ImportedGame) => 'white' | 'black' | null,
+): number | undefined {
+  const color = getUserColor(game);
+  return color === 'white' ? game.blackRating : color === 'black' ? game.whiteRating : undefined;
 }
 
-function renderSortTh(label: string, field: GamesSortField, deps: GamesViewDeps): VNode {
+const SORT_FIELD_LABEL: Record<GamesSortField, string> = {
+  date: 'Date', result: 'Result', opponent: 'Opponent', timeClass: 'Time',
+};
+
+// Toolbar sort pill — replaces the old sortable-table-header affordance now that the full
+// Games page renders a row feed instead of a `<table>`; keeps the same gamesSortField/
+// gamesSortDir pipeline and click-to-toggle-direction behavior as the retired `<th>` version.
+function renderSortPill(field: GamesSortField, deps: GamesViewDeps): VNode {
   const active = gamesSortField === field;
   const arrow  = active ? (gamesSortDir === 'desc' ? ' ↓' : ' ↑') : '';
-  return h('th', {
-    class: { 'games-view__th--active': active },
-    on:   { click: () => toggleGamesSort(field, deps) },
-  }, label + arrow);
+  return h('button.games-view__pill', {
+    class: { active },
+    attrs: { type: 'button', title: `Sort by ${SORT_FIELD_LABEL[field]}` },
+    on:    { click: () => toggleGamesSort(field, deps) },
+  }, SORT_FIELD_LABEL[field] + arrow);
+}
+
+
+
+function renderGamesChip(label: string, onRemove: () => void): VNode {
+  return h('span.games-view__chip', [
+    h('span.games-view__chip-label', label),
+    h('button.games-view__chip-remove', {
+      attrs: { type: 'button', title: `Remove filter: ${label}`, 'aria-label': `Remove filter: ${label}` },
+      on: { click: onRemove },
+    }, '✕'),
+  ]);
 }
 
 const SPEED_ICONS: Record<string, string> = {
@@ -1207,11 +1430,31 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   const listSelectedCount = [...selectedGameIds].filter(id => lensGames.some(g => g.id === id)).length;
 
   const toolbar = h('div.game-list__toolbar', [
-    renderAccountLensSelect(deps),
+    h('div.game-list__toolbar-top', [
+      renderAccountLensSelect(deps),
+
+
+
+      h('div.game-list__density-toggle', [
+        h('button.games-view__density-btn', {
+          class: { active: gameListDensity === 'rich' },
+          attrs: { type: 'button', title: 'Rich row view (when wide enough)', 'aria-pressed': String(gameListDensity === 'rich') },
+          on: { click: () => { if (gameListDensity !== 'rich') { setGameListDensity('rich'); deps.redraw(); } } },
+        }, '▤'),
+        h('button.games-view__density-btn', {
+          class: { active: gameListDensity === 'compact' },
+          attrs: { type: 'button', title: 'Compact row view', 'aria-pressed': String(gameListDensity === 'compact') },
+          on: { click: () => { if (gameListDensity !== 'compact') { setGameListDensity('compact'); deps.redraw(); } } },
+        }, '☰'),
+      ]),
+    ]),
     h('input.games-view__search', {
       attrs: { type: 'search', placeholder: 'Search opponent/opening...', value: gameListSearch },
       on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; resetGameListPage(); deps.redraw(); } },
     }),
+
+
+
     h('div.game-list__filter-pills', [
       h('button.games-view__pill.--review-filter', {
         class: { active: gameListFilterReview === 'reviewed' },
@@ -1237,24 +1480,15 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           on: { click: () => toggleResult(r) },
         }, r.charAt(0).toUpperCase() + r.slice(1)),
       ),
-      ...(['white', 'black'] as const).map(color =>
-        h('button.games-view__pill', {
-          class: { active: gameListFilterColor === color },
-          attrs: {
-            type: 'button',
-            title: `Show games where this account played ${color}`,
-            'aria-pressed': String(gameListFilterColor === color),
-          },
-          on: { click: () => toggleColor(color) },
-        }, color.charAt(0).toUpperCase() + color.slice(1)),
-      ),
-      ...(['bullet', 'blitz', 'rapid'] as const).map(tc =>
-        h('button.games-view__pill', {
-          class: { active: gameListFilterSpeeds.has(tc) },
-          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '' },
-          on: { click: () => toggleSpeed(tc) },
-        }, tc.charAt(0).toUpperCase() + tc.slice(1)),
-      ),
+      h('button.games-view__pill.--more', {
+        class: { active: gameListMorePillsOpen },
+        attrs: {
+          type: 'button',
+          title: gameListMorePillsOpen ? 'Hide more filters' : 'Show color/time-control filters',
+          'aria-expanded': String(gameListMorePillsOpen),
+        },
+        on: { click: () => { gameListMorePillsOpen = !gameListMorePillsOpen; deps.redraw(); } },
+      }, gameListMorePillsOpen ? 'More ▴' : 'More ▾'),
       anyFilter
         ? h('button.games-view__clear', {
             attrs: { title: 'Clear filters', 'aria-label': 'Clear filters' },
@@ -1294,6 +1528,26 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           }, 'Review All')
         : null,
     ]),
+    gameListMorePillsOpen ? h('div.game-list__filter-pills.--overflow', [
+      ...(['white', 'black'] as const).map(color =>
+        h('button.games-view__pill', {
+          class: { active: gameListFilterColor === color },
+          attrs: {
+            type: 'button',
+            title: `Show games where this account played ${color}`,
+            'aria-pressed': String(gameListFilterColor === color),
+          },
+          on: { click: () => toggleColor(color) },
+        }, color.charAt(0).toUpperCase() + color.slice(1)),
+      ),
+      ...(['bullet', 'blitz', 'rapid'] as const).map(tc =>
+        h('button.games-view__pill', {
+          class: { active: gameListFilterSpeeds.has(tc) },
+          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '' },
+          on: { click: () => toggleSpeed(tc) },
+        }, tc.charAt(0).toUpperCase() + tc.slice(1)),
+      ),
+    ]) : null,
     h('div.game-list__page-size', [
       h('span.game-list__page-size-label', 'Show'),
       ...GAME_LIST_PAGE_SIZE_OPTIONS.map(size =>
@@ -1319,6 +1573,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     ? queueSummaryCandidate
     : null;
   const queueItemsByGameId = new Map(getReviewQueueItems().map(item => [item.gameId, item]));
+  const totalWaveCount = [...queueItemsByGameId.values()].reduce((max, item) => Math.max(max, item.waveIndex + 1), 1);
+  // Rich rows only actually render once the ResizeObserver (installed below) confirms the
+  // underboard is wide enough; otherwise the ▤ preference still shows compact v2 rows.
+  const effectiveDensity: UnderboardDensity = gameListDensity === 'rich' && gameListWideEnough ? 'rich' : 'compact';
   const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
     h('button.games-view__page-btn', {
       attrs: { type: 'button', disabled: gameListPage === 0 },
@@ -1331,7 +1589,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     }, 'Next'),
   ]) : null;
 
-  return h('div.game-list', [
+  return h('div.game-list', {
+    hook: {
+      insert: vnode => observeGameListWidth(vnode, deps.redraw),
+      destroy: unobserveGameListWidth,
+    },
+  }, [
     h('div.game-list__header', countLabel),
     toolbar,
     queueSummary
@@ -1369,119 +1632,36 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     visible.length === 0
       ? h('div.game-list__no-results', 'No games match.')
       : h('ul', pageGames.map(game => {
-          const isAnalyzed      = isReviewedGame(deps, game.id);
-          const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
-          const srcUrl          = deps.gameSourceUrl(game);
-          const queueItem       = queueItemsByGameId.get(game.id);
-          const progress        = getReviewProgress(game.id);
-          const queueProgress   = queueItem ? reviewQueueItemProgressPercent(queueItem) : undefined;
-          const isErrored       = isGameErrored(game.id);
-          const failedStatus    = getFailedReviewStatus(game.id);
-          const isAnalyzing     = !isErrored && progress !== undefined && progress < 100;
-          const isPending       = !isErrored && !isAnalyzed && queueItem !== undefined && !isAnalyzing;
-          const lifecycleLabel  = reviewRowLifecycleLabel(queueSummary, game.id, queueItem);
-          const lifecyclePill   = lifecycleLabel ? renderReviewLifecyclePill(lifecycleLabel) : null;
+          const isAnalyzed       = isReviewedGame(deps, game.id);
+          const hasMissedTactic  = deps.missedTacticGameIds.has(game.id);
+          const srcUrl           = deps.gameSourceUrl(game);
+          const queueItem        = queueItemsByGameId.get(game.id);
+          const { state, opts }  = richRowReviewState(deps, game, queueSummary, queueItemsByGameId, totalWaveCount);
+          const accuracy         = richRowAccuracy(deps, game, isAnalyzed);
+          const secondaryActions = richRowSecondaryActions(deps, game, visible, state);
 
+          const srcLink = srcUrl ? h('a.game-ext-link', {
+            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+            on: { click: (e: Event) => e.stopPropagation() },
+          }) : null;
 
-
-          const incompleteStatus = !isErrored && !isAnalyzing && !isPending && !isAnalyzed
-            ? reviewIncompleteStatusForGame(deps, game.id)
-            : undefined;
-
-          // Accuracy for this game (available once analyzed).
-          const rawAcc    = reviewedAccuracyForGame(deps, game.id);
-          const userColor = deps.getUserColor(game);
-          const userAcc   = rawAcc && userColor ? (userColor === 'white' ? rawAcc.white : rawAcc.black) : null;
-          const oppAcc    = rawAcc && userColor ? (userColor === 'white' ? rawAcc.black : rawAcc.white) : null;
-          const accuracy  = rawAcc ? { user: userAcc, opp: oppAcc } : undefined;
-
-          // Per-row review control:
-          // - error: show error indicator (game can be re-queued)
-          // - analyzing: show live % progress
-          // - pending in queue (not yet started): show "Queued"
-          // - analyzed: show user accuracy % (or nothing if unavailable)
-          // - not yet queued: show Review button
-          const reviewControl = isErrored
-            ? h('button.game-list__row-progress.--failed-skip', {
-                attrs: {
-                  type: 'button',
-                  title: 'Skip this failed game',
-                  'aria-label': `Skip failed review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
-                },
-                on: { click: (e: MouseEvent) => {
-                  e.stopPropagation();
-                  skipFailedReviewGame(game.id);
-                  deps.redraw();
-                }},
-              }, [
-                h('span.--failed-label', failedStatus ? `Failed (${failedStatus.attempts})` : 'Failed'),
-                h('span.--skip-label', 'Skip'),
-              ])
-            : isAnalyzing && lifecycleLabel && lifecycleLabel.modifier !== 'active' && lifecycleLabel.modifier !== 'queued'
-            ? lifecyclePill
-            : isAnalyzing
-            ? h('span.game-list__row-progress', `${progress}%`)
-            : isPending
-              ? lifecyclePill ?? h('span.game-list__row-progress.--queued', `${queueProgress ?? 0}%`)
-              : isAnalyzed
-                ? (userAcc !== null && userAcc !== undefined
-                    ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
-                    : null)
-                : incompleteStatus?.classification === 'partial'
-                ? h('button.game-list__row-progress.--incomplete', {
-                    attrs: {
-                      type: 'button',
-                      title: 'Review incomplete — click to resume',
-                      'aria-label': `Resume review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
-                    },
-                    on: { click: (e: MouseEvent) => {
-                      e.stopPropagation();
-                      enqueueBulkReview([game]);
-                      deps.redraw();
-                    }},
-                  }, [
-                    h('span.--incomplete-label', 'Review incomplete'),
-                    h('span.--resume-label', 'Resume'),
-                  ])
-                : lifecyclePill
-                  ? lifecyclePill
-                : isBulkRunning()
-                  ? h('div.game-list__row-queue-split', [
-                      h('button.game-list__row-queue-btn.--top', {
-                        attrs: { title: 'Review next', 'aria-label': 'Review next' },
-                        on: { click: (e: MouseEvent) => {
-                          e.stopPropagation();
-                          const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
-                            ? deps.importedGames.filter(g => selectedGameIds.has(g.id))
-                            : [game];
-                          enqueueAtFront(bulk);
-                          deps.redraw();
-                        }},
-                      }, '⬆'),
-                      h('button.game-list__row-queue-btn.--bottom', {
-                        attrs: { title: 'Add to queue', 'aria-label': 'Add to queue' },
-                        on: { click: (e: MouseEvent) => {
-                          e.stopPropagation();
-                          const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
-                            ? deps.importedGames.filter(g => selectedGameIds.has(g.id))
-                            : [game];
-                          appendBulkReviewRunSource(bulk);
-                          deps.redraw();
-                        }},
-                      }, '⬇'),
-                    ])
-                  : h('button.game-list__row-review', {
-                      attrs: {
-                        title: incompleteStatus?.classification === 'version-stale'
-                          ? 'Re-run Review — stored analysis needs to be regenerated'
-                          : 'Queue for background review',
-                      },
-                      on: { click: (e: MouseEvent) => {
-                        e.stopPropagation();
-                        enqueueBulkReview([game]);
-                        deps.redraw();
-                      }},
-                    }, 'Review');
+          if (effectiveDensity === 'rich') {
+            const rowDeps: RichGameRowDeps = {
+              selected:    selectedGameIds.has(game.id),
+              ...(accuracy !== undefined ? { accuracy } : {}),
+              reviewState: state,
+              reviewOpts:  opts,
+              icons:       richRowIcons(deps, game),
+              tags:        richRowTags(deps, game),
+              addLibrary:  null,
+              ...(secondaryActions.length > 0 ? { secondaryActions } : {}),
+              onSelectRow: (g, e) => handleGameRowClick(g, visible, e, deps, () => selectAnalysisGame(g, deps)),
+            };
+            return h('li', { class: reviewRunWaveClasses(queueItem) }, [
+              renderRichGameRow(game, rowDeps),
+              srcLink,
+            ]);
+          }
 
           return h('li', {
             class: reviewRunWaveClasses(queueItem),
@@ -1490,21 +1670,243 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               class: {
                 active:    game.id === deps.selectedGameId,
                 selected:  selectedGameIds.has(game.id),
-                analyzing: isAnalyzing,
+                analyzing: state.kind === 'running',
               },
               on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => selectAnalysisGame(game, deps)) },
-            }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy)),
-            reviewControl,
-            srcUrl ? h('a.game-ext-link', {
-              attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
-            }) : null,
+            }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy, {
+              tags: richRowTags(deps, game),
+              reviewState: state,
+              addLibrary: null,
+            })),
+            h('div.grr__review-group', [
+              renderReviewControl(state, { ...opts, compact: true }),
+              renderSecondaryActions(secondaryActions),
+            ]),
+            srcLink,
           ]);
         })),
     paginationBar,
   ]);
 }
 
-/** Full Games tab view: filter bar + sortable table. */
+
+
+
+
+
+
+
+
+/** Per-game accuracy for the shared row renderers; undefined until Game Review data exists. */
+function richRowAccuracy(
+  deps: GamesViewDeps,
+  game: ImportedGame,
+  isAnalyzed: boolean,
+): { user: number | null; opp: number | null } | undefined {
+  if (!isAnalyzed) return undefined;
+  const accEntry = reviewedAccuracyForGame(deps, game.id);
+  if (!accEntry) return undefined;
+  const userColor = deps.getUserColor(game);
+  return {
+    user: userColor === 'white' ? accEntry.white : userColor === 'black' ? accEntry.black : null,
+    opp:  userColor === 'white' ? accEntry.black : userColor === 'black' ? accEntry.white : null,
+  };
+}
+
+function richRowIcons(deps: GamesViewDeps, game: ImportedGame): RichRowIconInputs {
+  const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
+  const severities = gameTacticsSeverities(game.id, hasMissedTactic);
+  const missedTacticSeverity = severities.has('!!!') ? 3 : severities.has('!!') ? 2 : severities.has('!') ? 1 : undefined;
+  return {
+    hasMissedMate: severities.has('M?!'),
+    ...(missedTacticSeverity !== undefined ? { missedTacticSeverity } : {}),
+  };
+}
+
+function richRowTags(deps: GamesViewDeps, game: ImportedGame): RichRowTagInputs {
+  const generatedPuzzleCount = deps.savedPuzzles.filter(p => p.gameId === game.id).length;
+  return generatedPuzzleCount > 0 ? { generatedPuzzleCount } : {};
+}
+
+/**
+ * Maps this game's current review/queue status to the shared seven-state review control model
+ * (unreviewed/queued/running/failed/reviewed/stalled/incomplete). Mirrors the exact resting-order
+ * priority the retired `<table>` review cell used: errored > analyzing > pending > incomplete >
+ * unreviewed. `totalWaveCount` comes from scanning the already-fetched queue items list (no new
+ * reviewQueue.ts reads).
+ */
+function richRowReviewState(
+  deps: GamesViewDeps,
+  game: ImportedGame,
+  queueSummary: QueueSummary | null,
+  queueItemsByGameId: ReadonlyMap<string, ReviewQueueItemView>,
+  totalWaveCount: number,
+): { state: ReviewControlState; opts: ReviewControlOpts } {
+  if (isReviewedGame(deps, game.id)) {
+    return {
+      state: { kind: 'reviewed' },
+      opts:  { onOpenReview: () => selectAnalysisGame(game, deps) },
+    };
+  }
+
+  if (isGameErrored(game.id)) {
+    const failedStatus = getFailedReviewStatus(game.id);
+    return {
+      state: { kind: 'failed', ...(failedStatus ? { attempts: failedStatus.attempts } : {}) },
+      opts: {
+        onRetry: () => { enqueueBulkReview([game]); deps.redraw(); },
+        onSkip:  () => { skipFailedReviewGame(game.id); deps.redraw(); },
+      },
+    };
+  }
+
+  const queueItem      = queueItemsByGameId.get(game.id);
+  const reviewProgress = getReviewProgress(game.id);
+  const isAnalyzing    = reviewProgress !== undefined && reviewProgress < 100;
+  const isPending      = !isAnalyzing && queueItem !== undefined;
+  const lifecycleLabel = reviewRowLifecycleLabel(queueSummary, game.id, queueItem);
+
+  if (isAnalyzing) {
+    if (lifecycleLabel?.modifier === 'warning') {
+      return { state: { kind: 'stalled' }, opts: { onResume: () => { enqueueBulkReview([game]); deps.redraw(); } } };
+    }
+    return { state: { kind: 'running', percent: reviewProgress ?? 0 }, opts: {} };
+  }
+
+  if (isPending) {
+    const wave = (queueItem?.waveIndex ?? 0) + 1;
+    return { state: { kind: 'queued', wave, totalWaves: Math.max(wave, totalWaveCount) }, opts: {} };
+  }
+
+  if (reviewIncompleteStatusForGame(deps, game.id)) {
+    return {
+      state: { kind: 'incomplete' },
+      opts:  { onResume: () => { enqueueBulkReview([game]); deps.redraw(); } },
+    };
+  }
+
+  return {
+    state: { kind: 'unreviewed' },
+    opts:  { onReview: () => { enqueueBulkReview([game]); deps.redraw(); } },
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function richRowSecondaryActions(
+  deps: GamesViewDeps,
+  game: ImportedGame,
+  allFilteredGames: ImportedGame[],
+  reviewState: ReviewControlState,
+): RichRowSecondaryAction[] {
+  if (reviewState.kind !== 'unreviewed' || !isBulkRunning()) return [];
+  const bulkGames = () => selectedGameIds.size > 1 && selectedGameIds.has(game.id)
+    ? allFilteredGames.filter(g => selectedGameIds.has(g.id))
+    : [game];
+  return [
+    {
+      glyph: '⬆',
+      title: 'Review next',
+      onClick: () => {
+
+
+        enqueueAtFront(bulkGames(), undefined, 'bulk');
+        deps.redraw();
+      },
+    },
+    {
+      glyph: '⬇',
+      title: 'Add to queue',
+      onClick: () => {
+        appendBulkReviewRunSource(bulkGames());
+        deps.redraw();
+      },
+    },
+  ];
+}
+
+/** Full Games page, density: 'full' — rich row feed (thumbnails, players, review control). */
+function renderRichRowsFeed(
+  deps: GamesViewDeps,
+  games: ImportedGame[],
+  allFilteredGames: ImportedGame[],
+  queueSummary: QueueSummary | null,
+  queueItemsByGameId: ReadonlyMap<string, ReviewQueueItemView>,
+  totalWaveCount: number,
+): VNode {
+  return h('div.games-view__feed', games.map(game => {
+    const isAnalyzed = isReviewedGame(deps, game.id);
+    const { state, opts } = richRowReviewState(deps, game, queueSummary, queueItemsByGameId, totalWaveCount);
+    const accuracy = richRowAccuracy(deps, game, isAnalyzed);
+    const secondaryActions = richRowSecondaryActions(deps, game, allFilteredGames, state);
+    const rowDeps: RichGameRowDeps = {
+      selected:    selectedGameIds.has(game.id),
+      ...(accuracy !== undefined ? { accuracy } : {}),
+      reviewState: state,
+      reviewOpts:  opts,
+      icons:       richRowIcons(deps, game),
+      tags:        richRowTags(deps, game),
+      addLibrary:  null,
+      ...(secondaryActions.length > 0 ? { secondaryActions } : {}),
+      onSelectRow: (g, e) => handleGameRowClick(g, games, e, deps, () => selectAnalysisGame(g, deps)),
+    };
+    return renderRichGameRow(game, rowDeps);
+  }));
+}
+
+/**
+ * Full Games page, density: 'compact' — reuses deps.renderCompactGameRow's fragments (the same
+ * compact row style as the underboard game list) plus the shared renderReviewControl, per the
+ * Phase 1 design's "compact review control states match the full set."
+ */
+function renderGamesCompactFeed(
+  deps: GamesViewDeps,
+  games: ImportedGame[],
+  allFilteredGames: ImportedGame[],
+  queueSummary: QueueSummary | null,
+  queueItemsByGameId: ReadonlyMap<string, ReviewQueueItemView>,
+  totalWaveCount: number,
+): VNode {
+  return h('div.game-list', [
+    h('ul', games.map(game => {
+      const isAnalyzed      = isReviewedGame(deps, game.id);
+      const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
+      const srcUrl          = deps.gameSourceUrl(game);
+      const queueItem       = queueItemsByGameId.get(game.id);
+      const { state, opts } = richRowReviewState(deps, game, queueSummary, queueItemsByGameId, totalWaveCount);
+      const secondaryActions = richRowSecondaryActions(deps, game, allFilteredGames, state);
+
+      return h('li', { class: reviewRunWaveClasses(queueItem) }, [
+        h('button.game-list__row', {
+          class: {
+            active:   game.id === deps.selectedGameId,
+            selected: selectedGameIds.has(game.id),
+          },
+          on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => selectAnalysisGame(game, deps)) },
+        }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, richRowAccuracy(deps, game, isAnalyzed))),
+        h('div.grr__review-group', [
+          renderReviewControl(state, { ...opts, compact: true }),
+          renderSecondaryActions(secondaryActions),
+        ]),
+        srcUrl ? h('a.game-ext-link', {
+          attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+          on: { click: (e: Event) => e.stopPropagation() },
+        }) : null,
+      ]);
+    })),
+  ]);
+}
+
+/** Full Games tab view: filter bar + density-switchable row feed (rich or compact). */
 export function renderGamesView(deps: GamesViewDeps): VNode {
   hydrateGamesRouteState(deps);
   const games = filteredGames(deps);
@@ -1512,7 +1914,10 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
   const lensTotal = accountLensGames(deps).length;
   const { redraw } = deps;
 
-  // Controls bar
+
+
+
+
   const filterBar = h('div.games-view__controls', [
     // Account lens
     h('div.games-view__filter-group', [
@@ -1520,132 +1925,42 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       renderAccountLensSelect(deps),
     ]),
 
-    // Result filter
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Result'),
-      ...(['win', 'loss', 'draw'] as GamesResultFilter[]).map(r =>
-        h('button.games-view__pill', {
-          class: { active: gamesFilterResults.has(r) },
-          on: { click: () => {
-            const s = new Set(gamesFilterResults);
-            s.has(r) ? s.delete(r) : s.add(r);
-            gamesFilterResults = s;
-            gamesPage = 0;
-            writeCurrentGamesRouteState(deps);
-            redraw();
-          }},
-        }, r.charAt(0).toUpperCase() + r.slice(1))
-      ),
-    ]),
 
-    // Time class filter
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Time'),
-      ...(['bullet', 'blitz', 'rapid'] as string[]).map(tc =>
-        h('button.games-view__pill', {
-          class: { active: gamesFilterSpeeds.has(tc) },
-          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '' },
-          on: { click: () => {
-            const s = new Set(gamesFilterSpeeds);
-            s.has(tc) ? s.delete(tc) : s.add(tc);
-            gamesFilterSpeeds = s;
-            gamesPage = 0;
-            writeCurrentGamesRouteState(deps);
-            redraw();
-          }},
-        }, tc.charAt(0).toUpperCase() + tc.slice(1))
-      ),
-    ]),
-
-    // Color filter (playing as)
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Color'),
-      h('button.games-view__pill', {
-        class: { active: gamesFilterColor === 'white' },
-        on: { click: () => {
-          gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white';
-          gamesPage = 0;
-          writeCurrentGamesRouteState(deps);
-          redraw();
-        } },
-      }, 'White'),
-      h('button.games-view__pill', {
-        class: { active: gamesFilterColor === 'black' },
-        on: { click: () => {
-          gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black';
-          gamesPage = 0;
-          writeCurrentGamesRouteState(deps);
-          redraw();
-        } },
-      }, 'Black'),
-    ]),
-
-    // Tactics severity filter
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Misses'),
-      ...(['!', '!!', '!!!', 'M?!'] as string[]).map(sev =>
-        h('button.games-view__pill.--tactics', {
-          class: { active: gamesFilterTactics.has(sev) },
-          on: { click: () => {
-            const s = new Set(gamesFilterTactics);
-            s.has(sev) ? s.delete(sev) : s.add(sev);
-            gamesFilterTactics = s;
-            gamesPage = 0;
-            writeCurrentGamesRouteState(deps);
-            redraw();
-          }},
-        }, sev)
-      ),
-    ]),
-
-    // Opponent search
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Opponent'),
-      h('input.games-view__search', {
-        attrs: { type: 'search', placeholder: 'Name…', value: gamesFilterOpponent },
-        on: { input: (e: Event) => {
-          gamesFilterOpponent = (e.target as HTMLInputElement).value;
-          gamesPage = 0;
-          writeCurrentGamesRouteState(deps);
-          redraw();
-        } },
-      }),
-    ]),
-
-    // Opening filter
-    h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Opening'),
-      h('input.games-view__search', {
-        attrs: { type: 'search', placeholder: 'Name...', value: gamesFilterOpening },
-        on: { input: (e: Event) => {
-          gamesFilterOpening = (e.target as HTMLInputElement).value;
-          gamesPage = 0;
-          writeCurrentGamesRouteState(deps);
-          redraw();
-        } },
-      }),
-    ]),
 
     h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Review'),
-      h('button.games-view__pill', {
-        class: { active: gamesFilterReviewIssues === 'failed-skipped' },
-        attrs: {
-          type: 'button',
-          title: 'Show games with failed or skipped review state',
-          'aria-pressed': String(gamesFilterReviewIssues === 'failed-skipped'),
-        },
-        on: { click: () => {
-          gamesFilterReviewIssues = gamesFilterReviewIssues === 'failed-skipped' ? 'all' : 'failed-skipped';
-          gamesPage = 0;
-          writeCurrentGamesRouteState(deps);
-          redraw();
-        }},
-      }, 'Failed / skipped'),
+      h('button.games-view__advanced-toggle', {
+        class: { active: gamesAdvancedPanelOpen },
+        attrs: { type: 'button', 'aria-expanded': String(gamesAdvancedPanelOpen) },
+        on: { click: () => { gamesAdvancedPanelOpen = !gamesAdvancedPanelOpen; redraw(); } },
+      }, gamesAdvancedPanelOpen ? 'Advanced search ▴' : 'Advanced search ▾'),
     ]),
 
     // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
+
+
+      h('div.games-view__density-toggle', [
+        h('button.games-view__density-btn', {
+          class: { active: gamesDensity === 'full' },
+          attrs: { type: 'button', title: 'Rich row view', 'aria-pressed': String(gamesDensity === 'full') },
+          on: { click: () => {
+            if (gamesDensity === 'full') return;
+            gamesDensity = 'full';
+            writeCurrentGamesRouteState(deps);
+            redraw();
+          }},
+        }, '▤'),
+        h('button.games-view__density-btn', {
+          class: { active: gamesDensity === 'compact' },
+          attrs: { type: 'button', title: 'Compact row view', 'aria-pressed': String(gamesDensity === 'compact') },
+          on: { click: () => {
+            if (gamesDensity === 'compact') return;
+            gamesDensity = 'compact';
+            writeCurrentGamesRouteState(deps);
+            redraw();
+          }},
+        }, '☰'),
+      ]),
       h('span.games-view__summary', `${games.length} of ${lensTotal} game${lensTotal === 1 ? '' : 's'}`),
       h('button.games-view__clear', {
         attrs: { type: 'button', title: 'Report an issue with the Games page' },
@@ -1675,10 +1990,280 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ]),
   ]);
 
+  // Layer 1 — quick filter pills: result, time class, color, review state, missed tactics.
+  // Always visible, one-click toggles wired 1:1 onto the existing filter state (no semantics
+  // change from the retired per-group toolbar layout, only presentation).
+  const quickPillsBar = h('div.games-view__quick-pills', [
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Result'),
+      ...(['win', 'loss', 'draw'] as GamesResultFilter[]).map(r =>
+        h('button.games-view__pill.--quick', {
+          class: { active: gamesFilterResults.has(r) },
+          attrs: { type: 'button', 'aria-pressed': String(gamesFilterResults.has(r)) },
+          on: { click: () => {
+            const s = new Set(gamesFilterResults);
+            s.has(r) ? s.delete(r) : s.add(r);
+            gamesFilterResults = s;
+            gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
+            redraw();
+          }},
+        }, r.charAt(0).toUpperCase() + r.slice(1))
+      ),
+    ]),
+
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Time'),
+      ...(['bullet', 'blitz', 'rapid'] as string[]).map(tc =>
+        h('button.games-view__pill.--quick', {
+          class: { active: gamesFilterSpeeds.has(tc) },
+          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '', type: 'button', 'aria-pressed': String(gamesFilterSpeeds.has(tc)) },
+          on: { click: () => {
+            const s = new Set(gamesFilterSpeeds);
+            s.has(tc) ? s.delete(tc) : s.add(tc);
+            gamesFilterSpeeds = s;
+            gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
+            redraw();
+          }},
+        }, tc.charAt(0).toUpperCase() + tc.slice(1))
+      ),
+    ]),
+
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Color'),
+      h('button.games-view__pill.--quick', {
+        class: { active: gamesFilterColor === 'white' },
+        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'white') },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white';
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
+      }, 'White'),
+      h('button.games-view__pill.--quick', {
+        class: { active: gamesFilterColor === 'black' },
+        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'black') },
+        on: { click: () => {
+          gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black';
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        } },
+      }, 'Black'),
+    ]),
+
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Review'),
+      h('button.games-view__pill.--quick', {
+        class: { active: gamesFilterReviewIssues === 'failed-skipped' },
+        attrs: {
+          type: 'button',
+          title: 'Show games with failed or skipped review state',
+          'aria-pressed': String(gamesFilterReviewIssues === 'failed-skipped'),
+        },
+        on: { click: () => {
+          gamesFilterReviewIssues = gamesFilterReviewIssues === 'failed-skipped' ? 'all' : 'failed-skipped';
+          gamesPage = 0;
+          writeCurrentGamesRouteState(deps);
+          redraw();
+        }},
+      }, 'Failed / skipped'),
+    ]),
+
+    h('div.games-view__filter-group', [
+      h('span.games-view__filter-label', 'Misses'),
+      ...(['!', '!!', '!!!', 'M?!'] as string[]).map(sev =>
+        h('button.games-view__pill.--quick', {
+          class: { active: gamesFilterTactics.has(sev) },
+          attrs: { type: 'button', 'aria-pressed': String(gamesFilterTactics.has(sev)) },
+          on: { click: () => {
+            const s = new Set(gamesFilterTactics);
+            s.has(sev) ? s.delete(sev) : s.add(sev);
+            gamesFilterTactics = s;
+            gamesPage = 0;
+            writeCurrentGamesRouteState(deps);
+            redraw();
+          }},
+        }, sev)
+      ),
+    ]),
+  ]);
+
+
+
+
+  const advancedChips: VNode[] = [];
+  if (gamesFilterOpponent.trim()) {
+    const value = gamesFilterOpponent.trim();
+    advancedChips.push(renderGamesChip(`Opponent: ${value}`, () => {
+      gamesFilterOpponent = '';
+      gamesPage = 0;
+      writeCurrentGamesRouteState(deps);
+      redraw();
+    }));
+  }
+  if (gamesFilterOpening.trim()) {
+    const value = gamesFilterOpening.trim();
+    advancedChips.push(renderGamesChip(`Opening: ${value}`, () => {
+      gamesFilterOpening = '';
+      gamesPage = 0;
+      writeCurrentGamesRouteState(deps);
+      redraw();
+    }));
+  }
+  if (gamesFilterRatingMin !== null || gamesFilterRatingMax !== null) {
+    const label = gamesFilterRatingMin !== null && gamesFilterRatingMax !== null
+      ? `Opp rating ${gamesFilterRatingMin}–${gamesFilterRatingMax}`
+      : gamesFilterRatingMin !== null
+      ? `Opp rating ≥ ${gamesFilterRatingMin}`
+      : `Opp rating ≤ ${gamesFilterRatingMax}`;
+    advancedChips.push(renderGamesChip(label, () => {
+      gamesFilterRatingMin = null;
+      gamesFilterRatingMax = null;
+      gamesPage = 0;
+      writeCurrentGamesRouteState(deps);
+      redraw();
+    }));
+  }
+  if (gamesFilterDateFrom || gamesFilterDateTo) {
+    const label = gamesFilterDateFrom && gamesFilterDateTo
+      ? `Played ${gamesFilterDateFrom} – ${gamesFilterDateTo}`
+      : gamesFilterDateFrom
+      ? `Played since ${gamesFilterDateFrom}`
+      : `Played until ${gamesFilterDateTo}`;
+    advancedChips.push(renderGamesChip(label, () => {
+      gamesFilterDateFrom = '';
+      gamesFilterDateTo = '';
+      gamesPage = 0;
+      writeCurrentGamesRouteState(deps);
+      redraw();
+    }));
+  }
+  const chipsBar = (!gamesAdvancedPanelOpen && advancedChips.length > 0)
+    ? h('div.games-view__chips', advancedChips)
+    : null;
+
+  // Layer 2 — advanced search panel: opponent/opening/opponent-rating-range, played-date range,
+  // and sort. Collapsed by default; the panel footer holds Clear filters (clears quick pills too)
+  // and Apply (collapses the panel back — filters already apply live, matching existing behavior).
+  const advancedPanel = gamesAdvancedPanelOpen ? h('div.games-view__advanced-panel', [
+    h('div.games-view__advanced-group', [
+      h('h4.games-view__advanced-group-title', 'Opponent & opening'),
+      h('div.games-view__advanced-row', [
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Opponent'),
+          h('input.games-view__search', {
+            attrs: { type: 'search', placeholder: 'Name…', value: gamesFilterOpponent },
+            on: { input: (e: Event) => {
+              gamesFilterOpponent = (e.target as HTMLInputElement).value;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Opening'),
+          h('input.games-view__search', {
+            attrs: { type: 'search', placeholder: 'Name...', value: gamesFilterOpening },
+            on: { input: (e: Event) => {
+              gamesFilterOpening = (e.target as HTMLInputElement).value;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Opp rating min'),
+          h('input.games-view__search.--num', {
+            attrs: {
+              type: 'number', min: '0', max: '4000', placeholder: 'Min',
+              value: gamesFilterRatingMin === null ? '' : String(gamesFilterRatingMin),
+            },
+            on: { input: (e: Event) => {
+              const raw = (e.target as HTMLInputElement).value.trim();
+              const parsed = raw === '' ? NaN : Number(raw);
+              gamesFilterRatingMin = Number.isFinite(parsed) ? Math.max(0, Math.min(4000, Math.round(parsed))) : null;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Opp rating max'),
+          h('input.games-view__search.--num', {
+            attrs: {
+              type: 'number', min: '0', max: '4000', placeholder: 'Max',
+              value: gamesFilterRatingMax === null ? '' : String(gamesFilterRatingMax),
+            },
+            on: { input: (e: Event) => {
+              const raw = (e.target as HTMLInputElement).value.trim();
+              const parsed = raw === '' ? NaN : Number(raw);
+              gamesFilterRatingMax = Number.isFinite(parsed) ? Math.max(0, Math.min(4000, Math.round(parsed))) : null;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+      ]),
+    ]),
+    h('div.games-view__advanced-group', [
+      h('h4.games-view__advanced-group-title', 'Date'),
+      h('div.games-view__advanced-row', [
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Played since'),
+          h('input.games-view__search', {
+            attrs: { type: 'date', value: gamesFilterDateFrom },
+            on: { input: (e: Event) => {
+              gamesFilterDateFrom = (e.target as HTMLInputElement).value;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+        h('label.games-view__advanced-field', [
+          h('span.games-view__filter-label', 'Played until'),
+          h('input.games-view__search', {
+            attrs: { type: 'date', value: gamesFilterDateTo },
+            on: { input: (e: Event) => {
+              gamesFilterDateTo = (e.target as HTMLInputElement).value;
+              gamesPage = 0;
+              writeCurrentGamesRouteState(deps);
+              redraw();
+            } },
+          }),
+        ]),
+      ]),
+    ]),
+    h('div.games-view__advanced-group', [
+      h('h4.games-view__advanced-group-title', 'Sort'),
+      h('div.games-view__advanced-row', [
+        ...(['date', 'result', 'opponent', 'timeClass'] as GamesSortField[]).map(field => renderSortPill(field, deps)),
+      ]),
+    ]),
+    h('div.games-view__advanced-actions', [
+      gamesFilterActive()
+        ? h('button.games-view__clear', { attrs: { type: 'button' }, on: { click: () => clearGamesFilters(deps) } }, 'Clear filters')
+        : null,
+      h('button.games-view__advanced-apply', {
+        attrs: { type: 'button' },
+        on: { click: () => { gamesAdvancedPanelOpen = false; redraw(); } },
+      }, 'Apply'),
+    ]),
+  ]) : null;
+
+  const filterBars = [filterBar, quickPillsBar, chipsBar, advancedPanel];
+
   // Empty state
   if (deps.importedGames.length === 0) {
     return h('div.games-view', [
-      filterBar,
+      ...filterBars,
       h('div.games-view__empty', [
         h('p', 'No games imported yet.'),
         h('p.games-view__empty-hint', 'Use the search bar above to import from Chess.com or Lichess.'),
@@ -1690,7 +2275,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
   // empty table with no explanation.
   if (games.length === 0 && !gamesFilterActive()) {
     return h('div.games-view', [
-      filterBar,
+      ...filterBars,
       h('div.games-view__empty', [
         h('p', 'No games for this account yet.'),
         h('p.games-view__empty-hint', 'Import this account from the search bar above, or switch the Account lens.'),
@@ -1725,221 +2310,16 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ? tableQueueSummaryCandidate
     : null;
   const tableQueueItemsByGameId = new Map(getReviewQueueItems().map(item => [item.gameId, item]));
+  const tableTotalWaveCount = [...tableQueueItemsByGameId.values()]
+    .reduce((max, item) => Math.max(max, item.waveIndex + 1), 1);
 
-  // Table
-  const table = h('div.games-view__table-wrap', [
-    h('table.games-view__table', [
-      h('thead', h('tr', [
-        renderSortTh('Result',   'result',    deps),
-        renderSortTh('Opponent', 'opponent',  deps),
-        h('th.games-view__rating-th', 'Rating'),
-        h('th.games-view__account-th', 'Account'),
-        renderSortTh('Date',     'date',      deps),
-        renderSortTh('Time',     'timeClass', deps),
-        h('th', 'Opening'),
-        h('th.games-view__review-th', 'Review'),
-        h('th.games-view__puzzles-th', 'Puzzles'),
-        h('th'),
-      ])),
-      h('tbody', pageGames.length > 0
-        ? pageGames.map(game => {
-            const r       = deps.gameResult(game);
-            const opp     = opponentName(game, deps.getUserColor) ?? '–';
-            const date    = game.date ? game.date.slice(0, 10) : '–';
-            const tc      = game.timeClass ?? '–';
-            const tcIcon  = game.timeClass ? SPEED_ICONS[game.timeClass] : undefined;
-            const opening = game.opening?.trim() || '–';
-            const srcUrl  = deps.gameSourceUrl(game);
-            const isAnalyzed = isReviewedGame(deps, game.id);
-            const hasMissed  = deps.missedTacticGameIds.has(game.id);
-            const isNewImport = isRecentlyImported(game);
-            const accountLabel = importedAccountLabel(game);
+  // Row feed: rich (default) or compact density — same pagination/queue read model the retired
+  // sortable `<table>` used, now rendered through richRow.ts's shared row/review-control renderers.
+  const rowsFeed = pageGames.length === 0
+    ? h('div.games-view__empty', 'No games match current filters.')
+    : gamesDensity === 'full'
+    ? renderRichRowsFeed(deps, pageGames, games, tableQueueSummary, tableQueueItemsByGameId, tableTotalWaveCount)
+    : renderGamesCompactFeed(deps, pageGames, games, tableQueueSummary, tableQueueItemsByGameId, tableTotalWaveCount);
 
-            const accEntry  = reviewedAccuracyForGame(deps, game.id);
-            const userColor = deps.getUserColor(game);
-
-            // Rating cell: opponent's rating only.
-            const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
-            const ratingText = (() => {
-              if (oppRating !== undefined) return String(oppRating);
-              if (!userColor && (game.whiteRating !== undefined || game.blackRating !== undefined)) {
-                const parts: string[] = [];
-                if (game.whiteRating !== undefined) parts.push(`W:${game.whiteRating}`);
-                if (game.blackRating !== undefined) parts.push(`B:${game.blackRating}`);
-                return parts.join(' ');
-              }
-              return null;
-            })();
-            const ratingCell = h('td.games-view__rating', ratingText ?? '–');
-
-            let accuracyText: string | null = null;
-            if (isAnalyzed && accEntry) {
-              if (userColor === 'white' && accEntry.white !== null) {
-                accuracyText = `${Math.round(accEntry.white)}%`;
-              } else if (userColor === 'black' && accEntry.black !== null) {
-                accuracyText = `${Math.round(accEntry.black)}%`;
-              } else if (!userColor) {
-                const w = accEntry.white !== null ? `W:${Math.round(accEntry.white)}%` : null;
-                const b = accEntry.black !== null ? `B:${Math.round(accEntry.black)}%` : null;
-                accuracyText = [w, b].filter(Boolean).join(' ') || null;
-              }
-            }
-
-            // Review status cell
-            const queueItem       = !isAnalyzed ? tableQueueItemsByGameId.get(game.id) : undefined;
-            const reviewProgress  = !isAnalyzed ? getReviewProgress(game.id) : undefined;
-            const queueProgress   = queueItem ? reviewQueueItemProgressPercent(queueItem) : undefined;
-            const isReviewErrored = !isAnalyzed && isGameErrored(game.id);
-            const failedStatus    = !isAnalyzed ? getFailedReviewStatus(game.id) : undefined;
-            const isAnalyzing     = !isReviewErrored && reviewProgress !== undefined && reviewProgress < 100;
-            const isPending       = !isReviewErrored && !isAnalyzed && queueItem !== undefined && !isAnalyzing;
-            const lifecycleLabel  = !isAnalyzed ? reviewRowLifecycleLabel(tableQueueSummary, game.id, queueItem) : null;
-            const lifecyclePill   = lifecycleLabel ? renderGamesReviewLifecyclePill(lifecycleLabel) : null;
-
-
-
-            const incompleteStatus = !isReviewErrored && !isAnalyzing && !isPending && !isAnalyzed
-              ? reviewIncompleteStatusForGame(deps, game.id)
-              : undefined;
-            const reviewCell = isAnalyzed
-              ? h('td.games-view__review-cell', [
-                  h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
-                  renderMissedBadge(game.id, hasMissed),
-                  accuracyText ? h('span.games-view__accuracy', { attrs: { title: 'Your accuracy' } }, accuracyText) : null,
-                ])
-              : isReviewErrored
-              ? h('td.games-view__review-cell', [
-                  h('button.games-view__review-failed-skip', {
-                    attrs: {
-                      type: 'button',
-                      title: 'Skip this failed game',
-                      'aria-label': `Skip failed review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
-                    },
-                    on: { click: (e: Event) => {
-                      e.stopPropagation();
-                      skipFailedReviewGame(game.id);
-                      deps.redraw();
-                    }},
-                  }, [
-                    h('span.--failed-label', failedStatus ? `Failed (${failedStatus.attempts})` : 'Failed'),
-                    h('span.--skip-label', 'Skip'),
-                  ]),
-                ])
-              : isAnalyzing && lifecycleLabel && lifecycleLabel.modifier !== 'active' && lifecycleLabel.modifier !== 'queued'
-              ? h('td.games-view__review-cell', [lifecyclePill])
-              : isAnalyzing
-              ? h('td.games-view__review-cell', [
-                  h('span.games-view__analyzing-progress', { attrs: { title: 'Reviewing…' } }, `${reviewProgress}%`),
-                ])
-              : isPending
-              ? h('td.games-view__review-cell', [
-                  lifecyclePill
-                    ?? h('span.games-view__review-lifecycle.--queued', { attrs: { title: 'Queued for Bulk Review' } }, `${queueProgress ?? 0}%`),
-                ])
-              : h('td.games-view__review-cell', [
-                  incompleteStatus?.classification === 'partial'
-                    ? h('button.games-view__review-incomplete', {
-                        attrs: {
-                          type: 'button',
-                          title: 'Review incomplete — click to resume',
-                          'aria-label': `Resume review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
-                        },
-                        on: { click: (e: Event) => {
-                          e.stopPropagation();
-                          enqueueBulkReview([game]);
-                          deps.redraw();
-                        }},
-                      }, [
-                        h('span.--incomplete-label', 'Review incomplete'),
-                        h('span.--resume-label', 'Resume'),
-                      ])
-                    : lifecyclePill
-                    ? lifecyclePill
-                    : isBulkRunning()
-                    ? h('div.games-view__review-split', [
-                        h('button.games-view__review-queue-btn.--top', {
-                          attrs: { title: 'Review next', 'aria-label': 'Review next' },
-                          on: { click: (e: Event) => {
-                            e.stopPropagation();
-                            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
-                              ? games.filter(g => selectedGameIds.has(g.id))
-                              : [game];
-                            enqueueAtFront(bulk);
-                            deps.redraw();
-                          }},
-                        }, '⬆'),
-                        h('button.games-view__review-queue-btn.--bottom', {
-                          attrs: { title: 'Add to queue', 'aria-label': 'Add to queue' },
-                          on: { click: (e: Event) => {
-                            e.stopPropagation();
-                            const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
-                              ? games.filter(g => selectedGameIds.has(g.id))
-                              : [game];
-                            appendBulkReviewRunSource(bulk);
-                            deps.redraw();
-                          }},
-                        }, '⬇'),
-                      ])
-                    : h('button.games-view__review-btn', {
-                        on: { click: (e: Event) => {
-                          e.stopPropagation();
-                          enqueueBulkReview([game]);
-                          deps.redraw();
-                        } },
-                        attrs: {
-                          title: incompleteStatus?.classification === 'version-stale'
-                            ? 'Re-run Review — stored analysis needs to be regenerated'
-                            : 'Queue for background review',
-                        },
-                      }, 'Review'),
-                ]);
-
-            // Puzzle status: real data from savedPuzzles (persisted in IDB).
-            const puzzleCount = deps.savedPuzzles.filter(p => p.gameId === game.id).length;
-            const puzzleCell  = h('td.games-view__puzzles-cell',
-              puzzleCount > 0
-                ? h('span.games-view__puzzle-count', { attrs: { title: `${puzzleCount} saved puzzle${puzzleCount !== 1 ? 's' : ''}` } }, String(puzzleCount))
-                : h('span.games-view__puzzle-none', '–')
-            );
-
-            return h('tr.games-view__row', {
-              class: {
-                active:   game.id === deps.selectedGameId,
-                selected: selectedGameIds.has(game.id),
-                ...reviewRunWaveClasses(queueItem),
-              },
-              on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => {
-                selectAnalysisGame(game, deps);
-              })},
-            }, [
-              h('td', renderResultIcon(r)),
-              h('td.games-view__opponent', [
-                opp,
-                userColor ? h('span.color-chip.--' + (userColor === 'white' ? 'black' : 'white')) : null,
-                isNewImport ? h('span.games-view__new-import', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
-              ]),
-              ratingCell,
-              h('td.games-view__account', accountLabel ?? ''),
-              h('td.games-view__date', date),
-              h('td.games-view__tc', [
-                tcIcon
-                  ? h('span', { attrs: { 'data-icon': tcIcon, style: 'font-family:lichess;margin-right:4px' } })
-                  : null,
-                tc.charAt(0).toUpperCase() + tc.slice(1),
-              ]),
-              h('td.games-view__opening', h('span', { attrs: { title: opening } }, opening)),
-              reviewCell,
-              puzzleCell,
-              h('td.games-view__link-cell', srcUrl ? h('a.game-ext-link', {
-                attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
-                on: { click: (e: Event) => e.stopPropagation() },
-              }) : null),
-            ]);
-          })
-        : [h('tr', h('td', { attrs: { colspan: '10' } }, h('div.games-view__empty', 'No games match current filters.')))]
-      ),
-    ]),
-  ]);
-
-  return h('div.games-view', [filterBar, table, paginationBar]);
+  return h('div.games-view', [...filterBars, rowsFeed, paginationBar]);
 }

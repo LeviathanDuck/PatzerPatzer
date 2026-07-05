@@ -47,6 +47,7 @@ import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/setti
 import {
   REMOTE_SYNC_PROGRESS_EVENT,
   clearRemoteSyncToken,
+  dismissServerWinsConflicts,
   getRemoteSyncOutboxCount,
   getRemoteSyncIdentitySnapshot,
   getRemoteSyncProgressSnapshot,
@@ -58,6 +59,7 @@ import {
   setRemoteSyncToken,
   startRemoteSyncAutoSync,
   testRemoteSyncConnection,
+  type RemoteSyncBackoffState,
   type RemoteSyncOperationKind,
   type RemoteSyncOperationSummary,
   type RemoteSyncProgressSnapshot,
@@ -1188,17 +1190,42 @@ function renderSyncOperationRow(op: RemoteSyncOperationSummary): VNode {
   ]);
 }
 
-function renderSyncIssueRow(issue: RemoteSyncIssue): VNode {
+function renderSyncIssueRow(issue: RemoteSyncIssue, redraw: () => void): VNode {
 
 
   const severity = issue.severity;
   const countsText = issue.counts ? formatSyncCountsInline(issue.counts) : '';
-  return h('div.sync-menu__label', {
+  const label = h('div.sync-menu__label', {
     class: {
       'sync-menu__label--warning': severity === 'warning',
       'sync-menu__label--error': severity === 'error',
     },
   }, countsText ? `${issue.message} (${countsText})` : issue.message);
+  // P2c (audit G-1): server-wins-conflicts is the one issue with an explicit menu "Dismiss"
+  // action — it clears the persistent visibility record, not any sync data (the server's version
+  // already won when the conflict was resolved).
+  if (issue.reason !== 'server-wins-conflicts') return label;
+  return h('div.sync-menu__issue-row', { key: issue.reason }, [
+    label,
+    h('button.sync-menu__btn', {
+      attrs: { type: 'button', title: 'Dismiss this server-wins conflict notice' },
+      on: { click: () => { dismissServerWinsConflicts(); redraw(); } },
+    }, 'Dismiss'),
+  ]);
+}
+
+// P6b (audit F-8 gap 2): idle-queue backoff line, rendered only while nothing is actively
+// pushing/pulling/etc. — snapshot.backoff is derived and cached at refresh time (never IDB on
+// render), so this is a plain synchronous format of already-known numbers.
+function formatSyncRetryEta(msUntil: number): string {
+  const seconds = Math.max(1, Math.round(Math.max(0, msUntil) / 1000));
+  if (seconds < 60) return `~${seconds}s`;
+  return `~${Math.max(1, Math.round(seconds / 60))}m`;
+}
+
+function renderSyncBackoffRow(backoff: RemoteSyncBackoffState): VNode {
+  const eta = formatSyncRetryEta(backoff.earliestNextAttemptAt - Date.now());
+  return h('div.sync-menu__label', `${formatSyncCount(backoff.count)} queued, retrying in ${eta}`);
 }
 
 function buildSyncProgressDiagnosticsText(snapshot: RemoteSyncProgressSnapshot): string {
@@ -1213,6 +1240,9 @@ function buildSyncProgressDiagnosticsText(snapshot: RemoteSyncProgressSnapshot):
     `Session: ${identity.identityLabel ?? 'Logged out'} · ${identity.deviceTag} · session ${identity.sessionIdShort} · client ${identity.clientIdShort}`,
     identity.scopeNote,
     `Queued for sync (durable outbox): ${getRemoteSyncOutboxCount()}`,
+    snapshot.backoff
+      ? `Backoff: ${snapshot.backoff.count} queued, retrying in ${formatSyncRetryEta(snapshot.backoff.earliestNextAttemptAt - Date.now())} (earliest ${new Date(snapshot.backoff.earliestNextAttemptAt).toISOString()})`
+      : null,
     ...snapshot.operations.map(op => {
       const progress = typeof op.total === 'number' ? ` ${op.done ?? 0}/${op.total}` : '';
       const counts = Object.entries(op.counts).map(([key, value]) => `${key}=${value}`).join(', ');
@@ -1358,11 +1388,14 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
 
       h('div.sync-menu__section', [
         h('div.sync-menu__label', `Queued for sync: ${formatSyncCount(getRemoteSyncOutboxCount())}`),
+        // P6b (audit F-8 gap 2): only shown while idle (no active operation) — the driving
+        // operation's own progress already covers a live push/drain.
+        snapshot.operations.length === 0 && snapshot.backoff ? renderSyncBackoffRow(snapshot.backoff) : null,
       ]),
 
       snapshot.issues.length > 0 ? h('div.sync-menu__section', [
         h('div.sync-menu__section-title', 'Issues'),
-        ...snapshot.issues.map(renderSyncIssueRow),
+        ...snapshot.issues.map(issue => renderSyncIssueRow(issue, redraw)),
       ]) : null,
 
       h('div.sync-menu__section', [
@@ -2298,6 +2331,7 @@ function renderSyncMenu(
       const result: AccountSyncResult = await syncAccountGames(account, {
         rated: importFilters.rated,
         speeds: importFilters.speeds,
+        syncDateRange: currentImportDateRangeConfig(),
         onProgress: count => {
           headerSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
           redraw();

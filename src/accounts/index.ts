@@ -74,10 +74,10 @@ export interface ChessAccount {
    */
   oldestGameTimestamp: number | null;
   /**
-   * Rated/speed filter combination the coverage cursors were recorded under
-   * (adapters derive the key from the import filters). The cursor is only
-   * applied when the current filters match, so loosening a filter triggers a
-   * full-range refetch instead of hiding games behind the cursor.
+   * Rated/speed/date-range filter combination the coverage cursors were recorded
+   * under (adapters derive the key from the import filters). The cursor is only
+   * applied when the current filters match, so loosening or widening a filter
+   * triggers a full-range refetch instead of hiding games behind the cursor.
    * Null until the first successful import.
    */
   syncFilterKey: string | null;

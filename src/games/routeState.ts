@@ -3,6 +3,10 @@ export type GamesRouteSpeed = 'bullet' | 'blitz' | 'rapid';
 export type GamesRouteColor = '' | 'white' | 'black';
 export type GamesRouteMiss = '!' | '!!' | '!!!' | 'M?!';
 export type GamesRouteReview = 'all' | 'failed-skipped';
+
+
+
+export type GamesRouteDensity = 'full' | 'compact';
 export type GamesRouteSortField = 'date' | 'result' | 'opponent' | 'timeClass';
 export type GamesRouteSortDirection = 'asc' | 'desc';
 export type GamesRouteAccountOverride =
@@ -29,6 +33,17 @@ export interface GamesRouteState {
   review: GamesRouteReview;
   sort: GamesRouteSort;
   page: number;
+  /** Omitted (implicit 'full') unless the route explicitly requests 'compact'. */
+  density?: GamesRouteDensity;
+
+
+
+  /** Opponent rating range, inclusive. Maps onto per-game whiteRating/blackRating. */
+  ratingMin?: number;
+  ratingMax?: number;
+  /** Played-date range, inclusive, 'YYYY-MM-DD'. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface GamesRouteInvalidParam {
@@ -104,7 +119,12 @@ export type GamesRouteField =
   | 'misses'
   | 'review'
   | 'sort'
-  | 'page';
+  | 'page'
+  | 'density'
+  | 'ratingMin'
+  | 'ratingMax'
+  | 'dateFrom'
+  | 'dateTo';
 
 const GAMES_ROUTE = '#/games';
 const SEARCH_MAX_LENGTH = 80;
@@ -139,6 +159,11 @@ const PARAM_ORDER: readonly GamesRouteField[] = [
   'review',
   'sort',
   'page',
+  'density',
+  'ratingMin',
+  'ratingMax',
+  'dateFrom',
+  'dateTo',
 ];
 
 const KNOWN_PARAMS = new Set<GamesRouteField>(PARAM_ORDER);
@@ -296,6 +321,48 @@ function parseSort(value: string | null, invalidParams: GamesRouteInvalidParam[]
   return { ...DEFAULT_STATE.sort };
 }
 
+function parseDensity(value: string | null, invalidParams: GamesRouteInvalidParam[]): GamesRouteDensity {
+  if (value === null || value === '') return 'full';
+  if (value === 'full' || value === 'compact') return value;
+  invalidParams.push(invalid('density', value, 'full', 'invalid-value'));
+  return 'full';
+}
+
+const RATING_BOUND_MIN = 0;
+const RATING_BOUND_MAX = 4000;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseRatingBound(
+  field: 'ratingMin' | 'ratingMax',
+  value: string | null,
+  invalidParams: GamesRouteInvalidParam[],
+): number | undefined {
+  if (value === null || value === '') return undefined;
+  if (!/^\d+$/.test(value)) {
+    invalidParams.push(invalid(field, value, 'omitted', 'malformed'));
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < RATING_BOUND_MIN || parsed > RATING_BOUND_MAX) {
+    invalidParams.push(invalid(field, value, 'omitted', 'out-of-range'));
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseDateBound(
+  field: 'dateFrom' | 'dateTo',
+  value: string | null,
+  invalidParams: GamesRouteInvalidParam[],
+): string | undefined {
+  if (value === null || value === '') return undefined;
+  if (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+    invalidParams.push(invalid(field, value, 'omitted', 'invalid-date'));
+    return undefined;
+  }
+  return value;
+}
+
 function parsePage(value: string | null, invalidParams: GamesRouteInvalidParam[]): number {
   if (value === null || value === '') return 1;
   if (!/^(0|[1-9]\d*)$/.test(value)) {
@@ -439,6 +506,11 @@ export function serializeGamesRouteState(state: Partial<GamesRouteState>): strin
     appendParam(params, 'sort', `${next.sort.field}.${next.sort.direction}`);
   }
   if (Number.isSafeInteger(next.page) && next.page > 1) appendParam(params, 'page', String(next.page));
+  if (next.density && next.density !== 'full') appendParam(params, 'density', next.density);
+  if (next.ratingMin !== undefined) appendParam(params, 'ratingMin', String(next.ratingMin));
+  if (next.ratingMax !== undefined) appendParam(params, 'ratingMax', String(next.ratingMax));
+  if (next.dateFrom) appendParam(params, 'dateFrom', next.dateFrom);
+  if (next.dateTo) appendParam(params, 'dateTo', next.dateTo);
 
   const query = params.join('&');
   const route = `${GAMES_ROUTE}${query ? `?${query}` : ''}`;
@@ -456,6 +528,23 @@ export function parseGamesRouteState(input: string, opts: GamesRouteStateParseOp
   }
 
   const account = parseAccountOverride(grouped, invalidParams, duplicateParams, opts);
+  const density = parseDensity(lastValue(grouped, 'density', duplicateParams), invalidParams);
+  let ratingMin = parseRatingBound('ratingMin', lastValue(grouped, 'ratingMin', duplicateParams), invalidParams);
+  let ratingMax = parseRatingBound('ratingMax', lastValue(grouped, 'ratingMax', duplicateParams), invalidParams);
+  if (ratingMin !== undefined && ratingMax !== undefined && ratingMin > ratingMax) {
+    invalidParams.push(invalid('ratingMin', String(ratingMin), 'omitted', 'inverted-range'));
+    invalidParams.push(invalid('ratingMax', String(ratingMax), 'omitted', 'inverted-range'));
+    ratingMin = undefined;
+    ratingMax = undefined;
+  }
+  let dateFrom = parseDateBound('dateFrom', lastValue(grouped, 'dateFrom', duplicateParams), invalidParams);
+  let dateTo = parseDateBound('dateTo', lastValue(grouped, 'dateTo', duplicateParams), invalidParams);
+  if (dateFrom !== undefined && dateTo !== undefined && dateFrom > dateTo) {
+    invalidParams.push(invalid('dateFrom', dateFrom, 'omitted', 'inverted-range'));
+    invalidParams.push(invalid('dateTo', dateTo, 'omitted', 'inverted-range'));
+    dateFrom = undefined;
+    dateTo = undefined;
+  }
   const state: GamesRouteState = {
     accountOverride: account.override,
     accountSource:   account.source,
@@ -468,6 +557,13 @@ export function parseGamesRouteState(input: string, opts: GamesRouteStateParseOp
     review:          parseReview(lastValue(grouped, 'review', duplicateParams), invalidParams),
     sort:            parseSort(lastValue(grouped, 'sort', duplicateParams), invalidParams),
     page:            parsePage(lastValue(grouped, 'page', duplicateParams), invalidParams),
+    // Only set when non-default: keeps GamesRouteState's parsed shape identical to pre-density
+    // callers/tests when no `density=` param is present (see the type's optional-field comment).
+    ...(density !== 'full' ? { density } : {}),
+    ...(ratingMin !== undefined ? { ratingMin } : {}),
+    ...(ratingMax !== undefined ? { ratingMax } : {}),
+    ...(dateFrom !== undefined ? { dateFrom } : {}),
+    ...(dateTo !== undefined ? { dateTo } : {}),
   };
   const canonicalRoute = serializeGamesRouteState(state);
 
