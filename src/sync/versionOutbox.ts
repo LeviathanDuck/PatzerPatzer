@@ -39,6 +39,15 @@ export interface VersionedOutboxEnqueueOptions {
 export interface DurableVersionedOutboxStorage {
   readEntries(): Promise<unknown[]>;
   writeEntries(entries: readonly DurableRetryOutboxEntry[]): Promise<void>;
+  /**
+   * Optional keyed fast paths (store is already `keyPath: opId`). When present, removal and
+   * changed-entry writes use these instead of the full read-all/filter/write-all rewrite, which
+   * is the O(n^2) cost identified for large drains (pre-audit ledger S-1). Storage
+   * implementations that only provide readEntries/writeEntries (legacy storages and existing
+   * test fakes) keep working through the full-rewrite fallback below.
+   */
+  deleteEntries?(opIds: readonly string[]): Promise<void>;
+  putEntries?(entries: readonly DurableRetryOutboxEntry[]): Promise<void>;
 }
 
 const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
@@ -309,6 +318,22 @@ export function nextDurableVersionedOutboxBackoffMs(attemptCount: number, jitter
   return Math.min(MAX_BACKOFF_MS, Math.max(0, base + Math.floor(jitterMs)));
 }
 
+// Writes only the entries that actually changed, via the storage's keyed `putEntries` when
+// available; falls back to a full-rewrite `writeEntries` for old-style storages (S-1). `next` is
+// still returned so callers/tests can inspect the resulting full set without a second read.
+async function putChangedEntries(
+  storage: DurableVersionedOutboxStorage,
+  next: readonly DurableRetryOutboxEntry[],
+  changed: readonly DurableRetryOutboxEntry[]
+): Promise<void> {
+  if (changed.length === 0) return;
+  if (storage.putEntries) {
+    await storage.putEntries(changed);
+    return;
+  }
+  await writeDurableVersionedOutbox(storage, next);
+}
+
 export async function markDurableVersionedOutboxAttemptStarted(
   storage: DurableVersionedOutboxStorage,
   opIds: readonly string[],
@@ -317,11 +342,14 @@ export async function markDurableVersionedOutboxAttemptStarted(
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
   const entries = await readDurableVersionedOutbox(storage);
+  const changed: DurableRetryOutboxEntry[] = [];
   const next = entries.map(entry => {
     if (!ids.has(entry.opId)) return entry;
-    return { ...entry, lastAttemptAt: now };
+    const updated = { ...entry, lastAttemptAt: now };
+    changed.push(updated);
+    return updated;
   });
-  await writeDurableVersionedOutbox(storage, next);
+  await putChangedEntries(storage, next, changed);
   return next;
 }
 
@@ -334,29 +362,41 @@ export async function recordDurableVersionedOutboxFailure(
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
   const entries = await readDurableVersionedOutbox(storage);
+  const changed: DurableRetryOutboxEntry[] = [];
   const next = entries.map(entry => {
     if (!ids.has(entry.opId)) return entry;
     const attemptCount = entry.attemptCount + 1;
-    return {
+    const updated = {
       ...entry,
       attemptCount,
       lastAttemptAt: now,
       nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
       lastError: error,
     };
+    changed.push(updated);
+    return updated;
   });
-  await writeDurableVersionedOutbox(storage, next);
+  await putChangedEntries(storage, next, changed);
   return next;
 }
 
+// Deletes the drained opIds via the storage's keyed `deleteEntries` when available — one
+// transaction, only the drained keys touched — instead of read-all/filter/clear+put-all (S-1,
+// the biggest single win for large drains). Falls back to the full-rewrite path for old-style
+// storages. The keyed path never needs to read the full store, so it skips straight to deletion.
 export async function removeDurableVersionedOutboxEntries(
   storage: DurableVersionedOutboxStorage,
   opIds: readonly string[]
-): Promise<DurableRetryOutboxEntry[]> {
-  const ids = new Set(opIds);
-  const next = (await readDurableVersionedOutbox(storage)).filter(entry => !ids.has(entry.opId));
+): Promise<void> {
+  if (opIds.length === 0) return;
+  const ids = Array.from(new Set(opIds));
+  if (storage.deleteEntries) {
+    await storage.deleteEntries(ids);
+    return;
+  }
+  const idSet = new Set(ids);
+  const next = (await readDurableVersionedOutbox(storage)).filter(entry => !idSet.has(entry.opId));
   await writeDurableVersionedOutbox(storage, next);
-  return next;
 }
 
 export async function dueDurableVersionedOutboxEntries(
@@ -408,6 +448,38 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           tx.oncomplete = () => resolve();
           const store = tx.objectStore(OUTBOX_STORE_NAME);
           store.clear();
+          for (const entry of entries) store.put(entry);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async deleteEntries(opIds: readonly string[]): Promise<void> {
+      if (opIds.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(OUTBOX_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not delete durable RemoteSync outbox entries.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Durable RemoteSync outbox delete aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(OUTBOX_STORE_NAME);
+          for (const opId of opIds) store.delete(opId);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async putEntries(entries: readonly DurableRetryOutboxEntry[]): Promise<void> {
+      if (entries.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(OUTBOX_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not write durable RemoteSync outbox entries.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Durable RemoteSync outbox entry write aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(OUTBOX_STORE_NAME);
           for (const entry of entries) store.put(entry);
         });
       } finally {

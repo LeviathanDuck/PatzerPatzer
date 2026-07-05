@@ -1,8 +1,10 @@
 import type { RemoteSyncStoreName } from './remoteSyncMigrations';
 import {
+  createRemoteSyncItemVersionResolver,
   getRemoteSyncItemVersion,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemVersion,
+  recordRemoteSyncItemVersions,
   type RemoteSyncVersionStorage,
 } from './versionMetadata';
 import {
@@ -315,43 +317,94 @@ export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainO
     const droppedEntries: DurableRetryOutboxEntry[] = [];
     const droppedRejections: VersionedRejectedItem[] = [];
 
+
+
+
+
+    const versionCandidates: Array<{
+      entry: DurableRetryOutboxEntry;
+      kind: 'accepted' | 'recovered';
+      accepted?: VersionedAcceptedItem;
+      item: VersionedSyncItem;
+    }> = [];
+    const remainingEntries: DurableRetryOutboxEntry[] = [];
     for (const entry of batch) {
       const accepted = acceptedByOpId.get(entry.opId);
       if (accepted) {
-        try {
-          if (recordAcceptedVersion(options.versionStorage, options.identity, accepted.item)) {
-            await options.acceptedAdapter?.applyAccepted(accepted.item, accepted, entry);
-            durableOpIds.push(entry.opId);
-            mergeCounts(counts, 'accepted');
-          } else {
-            failedOpIds.push(entry.opId);
-            mergeCounts(counts, 'metadataWriteFailed');
-          }
-        } catch {
-          failedOpIds.push(entry.opId);
-          mergeCounts(counts, 'metadataWriteFailed');
-        }
+        versionCandidates.push({ entry, kind: 'accepted', accepted, item: accepted.item });
         continue;
       }
-
       const conflict = conflictsByOpId.get(entry.opId);
       const recovered = conflict ? matchingRecoveredConflict(entry, conflict) : null;
       if (recovered) {
-        try {
-          if (recordAcceptedVersion(options.versionStorage, options.identity, recovered)) {
-            durableOpIds.push(entry.opId);
-            mergeCounts(counts, 'recovered');
-          } else {
-            failedOpIds.push(entry.opId);
-            mergeCounts(counts, 'metadataWriteFailed');
-          }
-        } catch {
-          failedOpIds.push(entry.opId);
-          mergeCounts(counts, 'metadataWriteFailed');
-        }
+        versionCandidates.push({ entry, kind: 'recovered', item: recovered });
         continue;
       }
+      remainingEntries.push(entry);
+    }
 
+    const durableCandidateOpIds = new Set<string>();
+    if (versionCandidates.length > 0) {
+      const records = versionCandidates.map(candidate => ({
+        store: candidate.item.store,
+        itemKey: candidate.item.itemKey,
+        version: candidate.item.version,
+      }));
+      let batchRecorded = false;
+      try {
+        recordRemoteSyncItemVersions(options.versionStorage, options.identity, records);
+        batchRecorded = true;
+      } catch {
+        batchRecorded = false;
+      }
+
+      if (batchRecorded) {
+        // Spot-verify the batch write landed via one metadata read (the resolver), not N
+        // individual storage reads — preserves the old per-item verify step in effect.
+        const resolveVersion = createRemoteSyncItemVersionResolver(options.versionStorage, options.identity);
+        for (const candidate of versionCandidates) {
+          if (resolveVersion(candidate.item.store, candidate.item.itemKey) === candidate.item.version) {
+            durableCandidateOpIds.add(candidate.entry.opId);
+          }
+        }
+      } else {
+        // Batched write failed outright: fall back to per-item recording so one poisoned item
+        // cannot stall its neighbors. Items that still fail keep metadataWriteFailed below.
+        for (const candidate of versionCandidates) {
+          try {
+            if (recordAcceptedVersion(options.versionStorage, options.identity, candidate.item)) {
+              durableCandidateOpIds.add(candidate.entry.opId);
+            }
+          } catch {
+            // Leave unresolved; falls through to metadataWriteFailed below.
+          }
+        }
+      }
+    }
+
+    for (const candidate of versionCandidates) {
+      if (!durableCandidateOpIds.has(candidate.entry.opId)) {
+        failedOpIds.push(candidate.entry.opId);
+        mergeCounts(counts, 'metadataWriteFailed');
+        continue;
+      }
+      if (candidate.kind === 'accepted') {
+        try {
+          await options.acceptedAdapter?.applyAccepted(candidate.item, candidate.accepted!, candidate.entry);
+          durableOpIds.push(candidate.entry.opId);
+          mergeCounts(counts, 'accepted');
+        } catch {
+          failedOpIds.push(candidate.entry.opId);
+          mergeCounts(counts, 'metadataWriteFailed');
+        }
+      } else {
+        durableOpIds.push(candidate.entry.opId);
+        mergeCounts(counts, 'recovered');
+      }
+    }
+
+    for (const entry of remainingEntries) {
+      const conflict = conflictsByOpId.get(entry.opId);
       if (conflict) {
         if (!conflict.current || !options.conflictAdapter) {
           mergeCounts(counts, 'conflicts');
@@ -428,7 +481,10 @@ export async function runVersionedPreWriteGate(options: VersionedPreWriteGateOpt
   let cursorUsed: number | undefined;
 
   if (needsRevalidation) {
-    cursorUsed = forcedFullPull ? 0 : metadata.latestVersion;
+    // The revalidation pre-write fetch is a cursor pull, so it must use the routine pull cursor
+    // (never `latestVersion`, which can now be ahead of the cursor from push acceptance alone —
+    // audit F-1) — see src/sync/versionMetadata.ts.
+    cursorUsed = forcedFullPull ? 0 : metadata.pullCursor;
     const trigger: VersionedPreWriteRevalidationTrigger = forcedFullPull ? 'metadata-missing' : 'stale-cloud-state';
     let revalidation: VersionedPreWriteRevalidationResult;
     try {

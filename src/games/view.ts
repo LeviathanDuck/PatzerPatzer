@@ -245,12 +245,23 @@ export function renderCompactGameRow(
 // Dependency surface injected by main.ts at render time
 // ---------------------------------------------------------------------------
 
+
+
+
+
+
+export interface GameReviewIncompleteStatus {
+  classification: 'partial' | 'version-stale';
+  updatedAt:      number;
+}
+
 export interface GamesViewDeps {
   importedGames:         ImportedGame[];
   /** Registered chess accounts, for the account lens switcher. */
   accounts:              ChessAccount[];
   selectedGameId:        string | null;
   reviewedStatusIndex:   ReadonlyMap<string, ReviewedGameStatus>;
+  reviewIncompleteIndex: ReadonlyMap<string, GameReviewIncompleteStatus>;
   analyzedGameIds:       Set<string>;
   missedTacticGameIds:   Set<string>;
   analyzedGameAccuracy:  Map<string, { white: number | null; black: number | null }>;
@@ -275,6 +286,15 @@ export function reviewedStatusForGame(deps: GamesViewDeps, gameId: string): Revi
 
 export function isReviewedGame(deps: GamesViewDeps, gameId: string): boolean {
   return reviewedStatusForGame(deps, gameId)?.reviewed === true || deps.analyzedGameIds.has(gameId);
+}
+
+// Never true at the same time as isReviewedGame for the same gameId — hydration keeps the two
+// indexes disjoint (a record is either complete, or partial/version-stale, never both).
+export function reviewIncompleteStatusForGame(
+  deps: GamesViewDeps,
+  gameId: string,
+): GameReviewIncompleteStatus | undefined {
+  return deps.reviewIncompleteIndex.get(gameId);
 }
 
 export function reviewedAccuracyForGame(
@@ -1362,6 +1382,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const lifecycleLabel  = reviewRowLifecycleLabel(queueSummary, game.id, queueItem);
           const lifecyclePill   = lifecycleLabel ? renderReviewLifecyclePill(lifecycleLabel) : null;
 
+
+
+          const incompleteStatus = !isErrored && !isAnalyzing && !isPending && !isAnalyzed
+            ? reviewIncompleteStatusForGame(deps, game.id)
+            : undefined;
+
           // Accuracy for this game (available once analyzed).
           const rawAcc    = reviewedAccuracyForGame(deps, game.id);
           const userColor = deps.getUserColor(game);
@@ -1401,6 +1427,22 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 ? (userAcc !== null && userAcc !== undefined
                     ? h('span.game-list__row-progress.--accuracy', `${Math.round(userAcc)}%`)
                     : null)
+                : incompleteStatus?.classification === 'partial'
+                ? h('button.game-list__row-progress.--incomplete', {
+                    attrs: {
+                      type: 'button',
+                      title: 'Review incomplete — click to resume',
+                      'aria-label': `Resume review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
+                    },
+                    on: { click: (e: MouseEvent) => {
+                      e.stopPropagation();
+                      enqueueBulkReview([game]);
+                      deps.redraw();
+                    }},
+                  }, [
+                    h('span.--incomplete-label', 'Review incomplete'),
+                    h('span.--resume-label', 'Resume'),
+                  ])
                 : lifecyclePill
                   ? lifecyclePill
                 : isBulkRunning()
@@ -1429,7 +1471,11 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                       }, '⬇'),
                     ])
                   : h('button.game-list__row-review', {
-                      attrs: { title: 'Queue for background review' },
+                      attrs: {
+                        title: incompleteStatus?.classification === 'version-stale'
+                          ? 'Re-run Review — stored analysis needs to be regenerated'
+                          : 'Queue for background review',
+                      },
                       on: { click: (e: MouseEvent) => {
                         e.stopPropagation();
                         enqueueBulkReview([game]);
@@ -1749,6 +1795,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             const isPending       = !isReviewErrored && !isAnalyzed && queueItem !== undefined && !isAnalyzing;
             const lifecycleLabel  = !isAnalyzed ? reviewRowLifecycleLabel(tableQueueSummary, game.id, queueItem) : null;
             const lifecyclePill   = lifecycleLabel ? renderGamesReviewLifecyclePill(lifecycleLabel) : null;
+
+
+
+            const incompleteStatus = !isReviewErrored && !isAnalyzing && !isPending && !isAnalyzed
+              ? reviewIncompleteStatusForGame(deps, game.id)
+              : undefined;
             const reviewCell = isAnalyzed
               ? h('td.games-view__review-cell', [
                   h('span.games-view__reviewed', { attrs: { title: 'Reviewed' } }, '✓'),
@@ -1785,7 +1837,23 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                     ?? h('span.games-view__review-lifecycle.--queued', { attrs: { title: 'Queued for Bulk Review' } }, `${queueProgress ?? 0}%`),
                 ])
               : h('td.games-view__review-cell', [
-                  lifecyclePill
+                  incompleteStatus?.classification === 'partial'
+                    ? h('button.games-view__review-incomplete', {
+                        attrs: {
+                          type: 'button',
+                          title: 'Review incomplete — click to resume',
+                          'aria-label': `Resume review for ${game.white ?? 'White'} vs ${game.black ?? 'Black'}`,
+                        },
+                        on: { click: (e: Event) => {
+                          e.stopPropagation();
+                          enqueueBulkReview([game]);
+                          deps.redraw();
+                        }},
+                      }, [
+                        h('span.--incomplete-label', 'Review incomplete'),
+                        h('span.--resume-label', 'Resume'),
+                      ])
+                    : lifecyclePill
                     ? lifecyclePill
                     : isBulkRunning()
                     ? h('div.games-view__review-split', [
@@ -1818,7 +1886,11 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                           enqueueBulkReview([game]);
                           deps.redraw();
                         } },
-                        attrs: { title: 'Queue for background review' },
+                        attrs: {
+                          title: incompleteStatus?.classification === 'version-stale'
+                            ? 'Re-run Review — stored analysis needs to be regenerated'
+                            : 'Queue for background review',
+                        },
                       }, 'Review'),
                 ]);
 

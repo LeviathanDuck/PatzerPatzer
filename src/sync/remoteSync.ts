@@ -15,10 +15,13 @@ import {
   type VersionedWriteBatchResponse,
 } from './versionDrain';
 import {
+  advanceRemoteSyncPullCursor,
   createRemoteSyncItemVersionResolver,
   getRemoteSyncItemVersion,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemVersions,
+  resetRemoteSyncVersionMetadata,
+  setRemoteSyncPullCursor,
   type RemoteSyncItemVersionRecord,
 } from './versionMetadata';
 import {
@@ -78,6 +81,11 @@ const SERVER_IDENTITY_KEY = 'chesspatzer.remoteSync.syncIdentity';
 const SERVER_LATEST_VERSION_KEY_PREFIX = 'chesspatzer.remoteSync.lastObservedServerVersion';
 const FULL_PULL_REQUIRED_KEY = 'chesspatzer.remoteSync.fullPullRequired';
 const CLOUD_STATE_STALE_KEY = 'chesspatzer.remoteSync.cloudStateStale';
+
+
+
+
+const SERVER_VERSION_GAP_KEY_PREFIX = 'chesspatzer.remoteSync.serverVersionGapObservation';
 const CAS_CLIENT_ID_KEY = 'chesspatzer.remoteSync.casClientId';
 export const REMOTE_SYNC_LOG_EVENT = 'chesspatzer:remoteSync-sync-log-changed';
 export const REMOTE_SYNC_ANALYSIS_CHANGED_EVENT = 'chesspatzer:remoteSync-analysis-changed';
@@ -154,7 +162,9 @@ export interface RemoteSyncLogEntry {
   counts?: Record<string, number>;
 }
 
-export type RemoteSyncFreshnessState = 'fresh' | 'stale' | 'unknown';
+
+
+export type RemoteSyncFreshnessState = 'fresh' | 'stale' | 'unknown' | 'catching-up';
 
 export interface RemoteSyncIdentitySnapshot {
   hasToken: boolean;
@@ -406,11 +416,50 @@ export function getRemoteSyncGeneration(): number | undefined {
   return storedServerGeneration();
 }
 
+// Shared by rememberServerGeneration (generation-number-change path) and handleStaleSession
+// (defense in depth). Targets only the CURRENT stored identity's blob (task item 4) — it is not a
+// global reset, so other identities' cached CAS state is left untouched.
+function resetCurrentIdentityVersionMetadata(): void {
+  const identity = storedServerIdentity();
+  resetRemoteSyncVersionMetadata(localStorage, identity);
+  // The gap-observation marker's `pullCursorAtObservation` is only meaningful relative to the
+  // metadata blob just reset (pullCursor -> 0 on next read), so stale comparisons must not survive.
+  clearServerVersionGapObservation(identity);
+}
+
 function rememberServerGeneration(generation: unknown, reason?: unknown): void {
   if (typeof generation !== 'number' || !Number.isFinite(generation) || generation <= 0) return;
-  localStorage.setItem(SERVER_GENERATION_KEY, String(Math.floor(generation)));
-  if (typeof reason === 'string' && reason.trim()) {
-    localStorage.setItem(`${SERVER_GENERATION_KEY}.reason`, reason);
+  const next = Math.floor(generation);
+  const previous = storedServerGeneration();
+  localStorage.setItem(SERVER_GENERATION_KEY, String(next));
+  const reasonText = typeof reason === 'string' && reason.trim() ? reason.trim() : undefined;
+  if (reasonText) localStorage.setItem(`${SERVER_GENERATION_KEY}.reason`, reasonText);
+
+
+
+
+
+
+
+
+
+  if (previous !== undefined && previous !== next) {
+    resetCurrentIdentityVersionMetadata();
+    requireRemoteSyncFullPull();
+
+
+
+
+
+
+
+
+
+
+
+
+    syncGeneration++;
+    recordRemoteSyncLog('system', 'info', `generation-changed:${reasonText ?? 'unknown'}`, { syncGeneration: next });
   }
 }
 
@@ -470,6 +519,94 @@ function clearObservedServerLatestVersions(): void {
   for (const key of keysToRemove) localStorage.removeItem(key);
 }
 
+interface ServerVersionGapObservation {
+  serverVersion: number;
+  pullCursorAtObservation: number;
+  confirmed: boolean;
+}
+
+function serverVersionGapKey(identity: string): string {
+  return `${SERVER_VERSION_GAP_KEY_PREFIX}.${encodeURIComponent(identity)}`;
+}
+
+function readServerVersionGapObservation(identity: string): ServerVersionGapObservation | null {
+  const raw = localStorage.getItem(serverVersionGapKey(identity));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<ServerVersionGapObservation>;
+    if (
+      !validSyncVersion(parsed.serverVersion)
+      || !validSyncVersion(parsed.pullCursorAtObservation)
+      || typeof parsed.confirmed !== 'boolean'
+    ) return null;
+    return {
+      serverVersion: parsed.serverVersion,
+      pullCursorAtObservation: parsed.pullCursorAtObservation,
+      confirmed: parsed.confirmed,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeServerVersionGapObservation(identity: string, observation: ServerVersionGapObservation): void {
+  localStorage.setItem(serverVersionGapKey(identity), JSON.stringify(observation));
+}
+
+function clearServerVersionGapObservation(identity: string): void {
+  localStorage.removeItem(serverVersionGapKey(identity));
+}
+
+function clearAllServerVersionGapObservations(): void {
+  const prefix = `${SERVER_VERSION_GAP_KEY_PREFIX}.`;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith(prefix)) keysToRemove.push(key);
+  }
+  for (const key of keysToRemove) localStorage.removeItem(key);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function evaluateServerVersionGap(
+  identity: string,
+  serverVersion: number | null,
+  pullCursor: number | null,
+): { hasGap: boolean; confirmed: boolean; behind: number } {
+  if (serverVersion === null || pullCursor === null || serverVersion <= pullCursor) {
+    clearServerVersionGapObservation(identity);
+    return { hasGap: false, confirmed: false, behind: 0 };
+  }
+  const behind = serverVersion - pullCursor;
+  const existing = readServerVersionGapObservation(identity);
+  if (!existing) {
+    writeServerVersionGapObservation(identity, { serverVersion, pullCursorAtObservation: pullCursor, confirmed: false });
+    return { hasGap: true, confirmed: false, behind };
+  }
+  if (pullCursor > existing.pullCursorAtObservation) {
+    writeServerVersionGapObservation(identity, { serverVersion, pullCursorAtObservation: pullCursor, confirmed: true });
+    return { hasGap: true, confirmed: true, behind };
+  }
+  if (existing.serverVersion !== serverVersion) {
+    writeServerVersionGapObservation(identity, { ...existing, serverVersion });
+  }
+  return { hasGap: true, confirmed: existing.confirmed, behind };
+}
+
 function syncFreshnessSnapshot(
   hasToken: boolean,
   identityLabel: string | null,
@@ -512,7 +649,12 @@ function syncFreshnessSnapshot(
   }
 
   const metadata = readRemoteSyncVersionMetadata(localStorage, identityLabel);
-  const localVersion = metadata.needsFullPull ? null : metadata.latestVersion;
+
+
+
+
+
+  const localVersion = metadata.needsFullPull ? null : metadata.pullCursor;
   const serverVersion = getObservedServerLatestVersion(identityLabel);
   const stale = (label: string, title: string) => ({
     freshnessState: 'stale' as const,
@@ -528,8 +670,25 @@ function syncFreshnessSnapshot(
   if (fullPullRequired) return stale('Sync may be stale', 'Full pull required before local data is current.');
   if (cloudStateStale) return stale('Sync may be stale', 'Local sync state needs a fresh pull from the server.');
   if (metadata.needsFullPull) return stale('Sync may be stale', 'Local sync cursor is missing; pull the token database before trusting local data.');
-  if (serverVersion !== null && localVersion !== null && serverVersion > localVersion) {
-    return stale('Sync may be stale', 'Server has newer sync data than this browser.');
+
+  const gap = evaluateServerVersionGap(identityLabel, serverVersion, localVersion);
+  if (gap.confirmed) {
+    return stale(
+      'Sync may be stale',
+      `Server still has newer sync data (${gap.behind} version${gap.behind === 1 ? '' : 's'} behind) after a completed pull.`,
+    );
+  }
+  if (gap.hasGap) {
+    return {
+      freshnessState: 'catching-up',
+      freshnessWarning: false,
+      freshnessLabel: 'Catching up',
+      freshnessTitle: `Catching up · ${gap.behind} behind. Waiting for a completed pull to confirm.`,
+      localVersion,
+      serverVersion,
+      fullPullRequired,
+      cloudStateStale,
+    };
   }
   if (getRemoteSyncLastCheckedAt() && !getRemoteSyncLastSyncedAt()) {
     return stale('Sync may be stale', 'No completed sync has been recorded after the last database check.');
@@ -575,6 +734,7 @@ function clearServerGeneration(): void {
   localStorage.removeItem(`${SERVER_GENERATION_KEY}.reason`);
   localStorage.removeItem(SERVER_IDENTITY_KEY);
   clearObservedServerLatestVersions();
+  clearAllServerVersionGapObservations();
   localStorage.removeItem(CLOUD_STATE_STALE_KEY);
 }
 
@@ -2024,7 +2184,11 @@ function runVisibleAutoPull(): void {
   if (document.visibilityState !== 'visible') return;
   if (autoPullInFlight) return;
   if (activeDataManagementDelete) return;
-  markRemoteSyncCloudStateStale();
+
+
+
+
+
   autoPullInFlight = true;
   void pullFromRemoteSync({
     flushAfter: !isRemoteSyncFullPullRequired(),
@@ -2167,6 +2331,14 @@ function handleStaleSession(body: ApiErrorBody): never {
   clearRemoteSyncToken();
   clearRemoteSyncMarkers();
   requireRemoteSyncFullPull();
+
+
+
+
+
+
+
+  resetCurrentIdentityVersionMetadata();
   const error = new RemoteSyncStaleSessionError(body);
   recordRemoteSyncLog('system', 'error', error.message, body.syncGeneration ? { syncGeneration: body.syncGeneration } : undefined);
   throw error;
@@ -2947,7 +3119,19 @@ async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Pro
   };
 }
 
-function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown): number {
+
+
+
+
+
+
+
+
+
+
+
+type VersionedPullCursorMode = 'set' | 'advance' | 'none';
+function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): number {
   const latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
     ? Math.floor(latestVersion)
     : 0;
@@ -2964,7 +3148,14 @@ function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion:
     if (!store || !itemKey || version === null) continue;
     records.push({ store, itemKey, version });
   }
-  return recordRemoteSyncItemVersions(localStorage, storedServerIdentity(), records, latest);
+  const identity = storedServerIdentity();
+  const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, records, latest);
+  if (cursorMode === 'set') {
+    setRemoteSyncPullCursor(localStorage, identity, latest);
+  } else if (cursorMode === 'advance') {
+    advanceRemoteSyncPullCursor(localStorage, identity, latest);
+  }
+  return latestRecorded;
 }
 
 function rawVersionedPullSortKey(raw: unknown): { version: number; store: string; itemKey: string } {
@@ -2997,7 +3188,7 @@ function planRemoteSyncPull(options: RemoteSyncPullOptions): RemoteSyncPullPlan 
 
   const metadata = readRemoteSyncVersionMetadata(localStorage, storedServerIdentity());
   const forcedFullPull = isRemoteSyncFullPullRequired() || options.since === null || metadata.needsFullPull;
-  const cursor = forcedFullPull ? 0 : metadata.latestVersion;
+  const cursor = forcedFullPull ? 0 : metadata.pullCursor;
   return {
     mode: 'cursor',
     path: `pull.php?cursor=${encodeURIComponent(String(cursor))}`,
@@ -3015,6 +3206,7 @@ function canAdvancePullVersionMetadata(counts: Record<string, number>): boolean 
 async function applyVersionedRevalidationPull(
   result: PullResponse,
   generation: number,
+  forcedFullPull = false,
 ): Promise<{ ok: boolean; latestVersion?: number; error?: string }> {
   if (!result.ok) return { ok: false, error: result.error || 'RemoteSync pre-write revalidation failed.' };
   const items = result.items ?? [];
@@ -3037,7 +3229,7 @@ async function applyVersionedRevalidationPull(
     markVersionedPullUnsafeSkipped(counts);
     return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
   }
-  const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
+  const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, forcedFullPull ? 'set' : 'advance');
   clearVersionedPullUnsafeSkipped();
   return { ok: true, latestVersion };
 }
@@ -3048,9 +3240,12 @@ async function revalidateBeforeVersionedDrain(cursor: number): Promise<{ ok: boo
   if (!result.ok && shouldRunFullVersionedPull(result)) {
     recordRemoteSyncLog('pull', 'info', 'Version cursor was too old; running full versioned pull before write drain.');
     const fullPull = await remoteSyncFetch<PullResponse>('pull.php?cursor=0');
-    return applyVersionedRevalidationPull(fullPull, generation);
+    // The fallback fetch is always an explicit cursor=0 full pull.
+    return applyVersionedRevalidationPull(fullPull, generation, true);
   }
-  return applyVersionedRevalidationPull(result, generation);
+  // `cursor === 0` here means the pre-write gate itself requested a full pull (forcedFullPull),
+  // so this fetch is equally a full pull even though it took the primary branch.
+  return applyVersionedRevalidationPull(result, generation, cursor === 0);
 }
 
 async function drainVersionedRemoteSyncOutbox(
@@ -3140,7 +3335,11 @@ async function commitDataManagementDeleteKeys(
       if (tombstones.length !== items.length) {
         throw new Error(`RemoteSync data delete confirmed ${tombstones.length} of ${items.length} requested tombstone${items.length === 1 ? '' : 's'}.`);
       }
-      const latestVersion = rememberVersionedPullMetadata(result.items ?? [], result.latestVersion);
+      // Accepted-write acknowledgment, not a pull: record tombstone versions for CAS bases but
+      // never move the pull cursor (audit F-1 — advancing here skips rows other browsers wrote
+      // between our last pull and this delete; the next routine pull re-pulls our own tombstones
+      // idempotently and advances the cursor itself).
+      const latestVersion = rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
       for (const tombstone of tombstones) rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
       removeOutboxItemsForCommittedDeletes(tombstones);
 
@@ -3808,6 +4007,10 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
       if (!result.ok) throw new Error(result.error || 'Remote sync pull failed.');
       setRemoteSyncLastCheckedAt();
       if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+
+
+
+        markRemoteSyncCloudStateStale();
         safeCompleteProgress(opId);
         return { success: true, counts: { cancelled: 1 } };
       }
@@ -3826,12 +4029,16 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
         recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
       }
       if (syncGeneration !== generation || !hasRemoteSyncToken()) {
+
+
+
+        markRemoteSyncCloudStateStale();
         safeCompleteProgress(opId);
         return { success: true, counts };
       }
       if (plan.mode === 'cursor') {
         if (canAdvancePullVersionMetadata(counts)) {
-          const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion);
+          const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
           counts.latestVersion = latestVersion;
           if (plan.forcedFullPull) counts.fullVersionPull = 1;
           clearVersionedPullUnsafeSkipped();
@@ -3865,6 +4072,9 @@ export async function pullFromRemoteSync(options: RemoteSyncPullOptions = {}): P
       if (shouldLog) recordRemoteSyncLog('pull', 'success', 'Database changes pulled into local cache.', counts);
       return { success: true, counts };
     } catch (error) {
+
+
+      markRemoteSyncCloudStateStale();
       const message = error instanceof Error ? error.message : 'Remote sync pull failed.';
       recordRemoteSyncLog('pull', 'error', message);
       safeFailProgress(opId, { message });

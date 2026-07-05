@@ -248,6 +248,31 @@ export interface CompletedAnalysisMetadata {
   nodes:        Record<string, StoredNodeEntry>;
 }
 
+
+
+
+
+
+
+
+export interface PartialAnalysisMetadata {
+  gameId:    string;
+  updatedAt: number;
+  status:    AnalysisStatus;
+}
+
+export interface VersionStaleAnalysisMetadata {
+  gameId:          string;
+  updatedAt:       number;
+  analysisVersion: number;
+}
+
+export interface AnalysisLibraryClassification {
+  complete:     CompletedAnalysisMetadata[];
+  partial:      PartialAnalysisMetadata[];
+  versionStale: VersionStaleAnalysisMetadata[];
+}
+
 // --- Analysis serialization ---
 
 export function buildReviewEngineMetadata(engineName: string | undefined, reviewDepth: number): ReviewEngineMetadata {
@@ -1377,44 +1402,83 @@ export async function loadAnalysisFromIdb(gameId: string): Promise<StoredAnalysi
   }
 }
 
+export type AnalysisRecordClassification = 'complete' | 'partial' | 'version-stale';
 
 
 
 
 
-export async function listCompletedAnalysisMetadataFromIdb(
+
+
+
+
+
+export function classifyStoredAnalysisRecord(
+  stored: Pick<StoredAnalysis, 'status' | 'analysisVersion'>,
   analysisVersion: number,
-): Promise<CompletedAnalysisMetadata[]> {
+): AnalysisRecordClassification {
+  if (stored.analysisVersion !== analysisVersion) return 'version-stale';
+  return stored.status === 'complete' ? 'complete' : 'partial';
+}
+
+
+
+
+
+
+export async function listAnalysisLibraryClassificationFromIdb(
+  analysisVersion: number,
+): Promise<AnalysisLibraryClassification> {
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
-    const records: CompletedAnalysisMetadata[] = [];
+    const complete:     CompletedAnalysisMetadata[]    = [];
+    const partial:      PartialAnalysisMetadata[]      = [];
+    const versionStale: VersionStaleAnalysisMetadata[] = [];
     const req = db.transaction('analysis-library', 'readonly')
       .objectStore('analysis-library')
       .openCursor();
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor) {
-        resolve(records);
+        resolve({ complete, partial, versionStale });
         return;
       }
       const stored = cursor.value as StoredAnalysis;
-      if (
-        isStoredAnalysisLoadable(stored)
-        && stored.status === 'complete'
-        && typeof stored.gameId === 'string'
-        && stored.gameId.trim()
-      ) {
-        records.push({
-          gameId: stored.gameId,
-          ...(stored.reviewEngine !== undefined ? { reviewEngine: stored.reviewEngine } : {}),
-          updatedAt: typeof stored.updatedAt === 'number' ? stored.updatedAt : 0,
-          nodes: stored.nodes ?? {},
-        });
+      if (typeof stored.gameId === 'string' && stored.gameId.trim()) {
+        const updatedAt = typeof stored.updatedAt === 'number' ? stored.updatedAt : 0;
+        switch (classifyStoredAnalysisRecord(stored, analysisVersion)) {
+          case 'complete':
+            complete.push({
+              gameId: stored.gameId,
+              ...(stored.reviewEngine !== undefined ? { reviewEngine: stored.reviewEngine } : {}),
+              updatedAt,
+              nodes: stored.nodes ?? {},
+            });
+            break;
+          case 'partial':
+            partial.push({ gameId: stored.gameId, updatedAt, status: stored.status });
+            break;
+          case 'version-stale':
+            versionStale.push({ gameId: stored.gameId, updatedAt, analysisVersion: stored.analysisVersion });
+            break;
+        }
       }
       cursor.continue();
     };
     req.onerror = () => reject(recordReqFailure(req, 'analysis-library', 'cursor'));
   });
+}
+
+// Back-compat entry point: existing callers (e.g. reviewedStatusDerivation.ts) only need the
+// "complete" bucket. Delegates to the single classification pass above rather than re-walking the
+// store, so callers of both this and listAnalysisLibraryClassificationFromIdb in the same
+// hydration cycle never trigger two cursor sweeps (main.ts hydration calls the classification
+// function directly for that reason).
+export async function listCompletedAnalysisMetadataFromIdb(
+  analysisVersion: number,
+): Promise<CompletedAnalysisMetadata[]> {
+  const classification = await listAnalysisLibraryClassificationFromIdb(analysisVersion);
+  return classification.complete;
 }
 
 export async function clearAnalysisFromIdb(gameId: string): Promise<void> {

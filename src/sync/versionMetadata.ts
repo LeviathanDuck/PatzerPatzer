@@ -1,3 +1,5 @@
+import { REMOTE_SYNC_STORE_NAMES } from './remoteSyncMigrations';
+
 export interface RemoteSyncVersionStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -8,6 +10,20 @@ export interface RemoteSyncVersionMetadata {
   identity: string;
   latestVersion: number;
   itemVersions: Record<string, number>;
+
+
+
+
+
+
+
+  pullCursor: number;
+  /**
+   * Per-store pull cursor, initialized equal to `pullCursor` on every cursor write. Forward door
+   * for the future G-13 per-store replication scope (ADR) — written and migrated today, not yet
+   * consumed by any pull-planning logic.
+   */
+  pullCursors: Record<string, number>;
 }
 
 export interface RemoteSyncVersionMetadataState extends RemoteSyncVersionMetadata {
@@ -18,7 +34,7 @@ export type RemoteSyncVersionWriteReadiness =
   | { ok: true; latestVersion: number }
   | { ok: false; reason: 'needs-full-pull' };
 
-const METADATA_SCHEMA_VERSION = 1;
+const METADATA_SCHEMA_VERSION = 2;
 const METADATA_KEY_PREFIX = 'chesspatzer.remoteSync.versionMetadata.v1';
 
 function assertNonEmpty(value: string, label: string): string {
@@ -50,11 +66,17 @@ function normalizeItemVersions(value: unknown): Record<string, number> | null {
   return normalized;
 }
 
+function pullCursorsForAllStores(cursor: number): Record<string, number> {
+  return Object.fromEntries(REMOTE_SYNC_STORE_NAMES.map(store => [store, cursor]));
+}
+
 function missingMetadata(identity: string): RemoteSyncVersionMetadataState {
   return {
     identity: assertNonEmpty(identity, 'identity'),
     latestVersion: 0,
     itemVersions: {},
+    pullCursor: 0,
+    pullCursors: {},
     needsFullPull: true,
   };
 }
@@ -73,17 +95,26 @@ export function readRemoteSyncVersionMetadata(
       identity?: unknown;
       latestVersion?: unknown;
       itemVersions?: unknown;
+      pullCursor?: unknown;
+      pullCursors?: unknown;
     };
+    // A v1 blob (schemaVersion 1, no pullCursor split) fails this check and falls through to
+    // missingMetadata, which forces exactly one clean full pull to migrate the browser onto v2.
     if (parsed.schemaVersion !== METADATA_SCHEMA_VERSION) return missingMetadata(normalizedIdentity);
     if (parsed.identity !== normalizedIdentity) return missingMetadata(normalizedIdentity);
     if (!validVersion(parsed.latestVersion)) return missingMetadata(normalizedIdentity);
+    if (!validVersion(parsed.pullCursor)) return missingMetadata(normalizedIdentity);
     const itemVersions = normalizeItemVersions(parsed.itemVersions);
     if (!itemVersions) return missingMetadata(normalizedIdentity);
+    const pullCursors = normalizeItemVersions(parsed.pullCursors);
+    if (!pullCursors) return missingMetadata(normalizedIdentity);
 
     return {
       identity: normalizedIdentity,
       latestVersion: parsed.latestVersion,
       itemVersions,
+      pullCursor: parsed.pullCursor,
+      pullCursors,
       needsFullPull: false,
     };
   } catch {
@@ -99,14 +130,21 @@ export function writeRemoteSyncVersionMetadata(
   if (!validVersion(metadata.latestVersion)) {
     throw new Error('latestVersion must be a non-negative integer.');
   }
+  if (!validVersion(metadata.pullCursor)) {
+    throw new Error('pullCursor must be a non-negative integer.');
+  }
   const itemVersions = normalizeItemVersions(metadata.itemVersions);
   if (!itemVersions) throw new Error('itemVersions must map item keys to non-negative integer versions.');
+  const pullCursors = normalizeItemVersions(metadata.pullCursors);
+  if (!pullCursors) throw new Error('pullCursors must map store names to non-negative integer versions.');
 
   storage.setItem(metadataStorageKey(identity), JSON.stringify({
     schemaVersion: METADATA_SCHEMA_VERSION,
     identity,
     latestVersion: metadata.latestVersion,
     itemVersions,
+    pullCursor: metadata.pullCursor,
+    pullCursors,
   }));
 }
 
@@ -120,8 +158,14 @@ export function setRemoteSyncLatestVersion(
     identity: state.identity,
     latestVersion,
     itemVersions: state.needsFullPull ? {} : state.itemVersions,
+    pullCursor: state.needsFullPull ? 0 : state.pullCursor,
+    pullCursors: state.needsFullPull ? {} : state.pullCursors,
   });
 }
+
+
+
+
 
 export function recordRemoteSyncItemVersion(
   storage: RemoteSyncVersionStorage,
@@ -138,6 +182,8 @@ export function recordRemoteSyncItemVersion(
     identity: state.identity,
     latestVersion: Math.max(state.needsFullPull ? 0 : state.latestVersion, version),
     itemVersions,
+    pullCursor: state.needsFullPull ? 0 : state.pullCursor,
+    pullCursors: state.needsFullPull ? {} : state.pullCursors,
   });
 }
 
@@ -157,6 +203,7 @@ export interface RemoteSyncItemVersionRecord {
   itemKey: string;
   version: number;
 }
+
 
 
 
@@ -185,8 +232,50 @@ export function recordRemoteSyncItemVersions(
     identity: state.identity,
     latestVersion: latest,
     itemVersions,
+    pullCursor: state.needsFullPull ? 0 : state.pullCursor,
+    pullCursors: state.needsFullPull ? {} : state.pullCursors,
   });
   return latest;
+}
+
+// Explicit cursor writers — used only by pull completion (routine cursor pulls), never by push
+// acceptance. Incremental pulls can only move the cursor forward (max semantics): a cursor pull
+// response is a superset of everything below its `since`, so regressing here would be a bug.
+export function advanceRemoteSyncPullCursor(
+  storage: RemoteSyncVersionStorage,
+  identity: string,
+  cursor: number
+): void {
+  if (!validVersion(cursor)) throw new Error('pull cursor must be a non-negative integer.');
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  const nextCursor = Math.max(state.needsFullPull ? 0 : state.pullCursor, cursor);
+  writeRemoteSyncVersionMetadata(storage, {
+    identity: state.identity,
+    latestVersion: state.needsFullPull ? 0 : state.latestVersion,
+    itemVersions: state.needsFullPull ? {} : state.itemVersions,
+    pullCursor: nextCursor,
+    pullCursors: pullCursorsForAllStores(nextCursor),
+  });
+}
+
+// A clean full (cursor=0) pull completion SETS the cursor to the response latestVersion even if
+// that is lower than the previously stored cursor. This is what makes restore recovery converge
+// (audit F-2): after a replace-mode restore renumbers server rows to 1..N, the cursor must be
+// allowed to regress from the old high-water mark down to N.
+export function setRemoteSyncPullCursor(
+  storage: RemoteSyncVersionStorage,
+  identity: string,
+  cursor: number
+): void {
+  if (!validVersion(cursor)) throw new Error('pull cursor must be a non-negative integer.');
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  writeRemoteSyncVersionMetadata(storage, {
+    identity: state.identity,
+    latestVersion: state.needsFullPull ? 0 : state.latestVersion,
+    itemVersions: state.needsFullPull ? {} : state.itemVersions,
+    pullCursor: cursor,
+    pullCursors: pullCursorsForAllStores(cursor),
+  });
 }
 
 // Bulk lookup: parses the metadata blob once and returns a resolver, so batch

@@ -989,6 +989,30 @@ export function isReviewRunHygieneCadenceBoundary(
   return cadence > 0 && completedCount > 0 && completedCount % cadence === 0;
 }
 
+/**
+ * True when an existing queue entry for a requested game is a stale 'pending' record left
+ * behind by an interrupted bulk run (reload/crash — T05 manifest resume, see
+ * resumeReviewQueueFromManifest in reviewQueue.ts) while the queue sits paused with
+ * pauseReason 'reload'. Without this check, reviewQueue.ts's enqueueBulkReviewAsLeader /
+ * enqueueAtFrontAsLeader treat the entry as "already queued" and silently skip it — an
+ * explicit re-review request (the single-game Review button, the games-list Review button,
+ * or "review next") for exactly that game then has no effect at all, and the game's
+ * partial analysis-library record can never reach 'complete' (BUG-2026-07-05-001 / F-6
+ * regeneration path).
+ *
+ * Deliberately narrow: this must fire ONLY for pauseReason 'reload'. A queue paused for
+ * 'user' (explicit Pause) or 'hidden' (backgrounded tab, unattended mode off) is an
+ * intentional pause state that a re-review click on some other game must never silently
+ * override.
+ */
+export function reviewQueueEntryStalledByReloadPause(
+  entryStatus: string,
+  queuePaused: boolean,
+  queuePauseReason: string | null,
+): boolean {
+  return entryStatus === 'pending' && queuePaused && queuePauseReason === 'reload';
+}
+
 export function selectNextReviewRunBatch(params: {
   manifest: ReviewRunManifest;
   libraryGames: readonly ImportedGame[];

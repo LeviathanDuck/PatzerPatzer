@@ -35,6 +35,7 @@ import {
   normalizeReviewRunManifest,
   REVIEW_RUN_HYGIENE_CADENCE,
   reviewGamesInNewestFirstOrder,
+  reviewQueueEntryStalledByReloadPause,
   reviewSearchIdentityMatches,
   reviewRunSourceUiItems,
   sampleReviewRunProgressByVisibility,
@@ -3682,6 +3683,13 @@ function enqueueBulkReviewAsLeader(
   markReviewQueueProgress();
   const lazy = orderedGames.length > LAZY_BUILD_THRESHOLD;
   reviewDebugLog('[reviewQueue] enqueueBulkReview called — games:', orderedGames.map(g => g.id), 'queue len:', queue.length, 'activeIndex:', activeIndex, 'engineInitStarted:', reviewEngineInitStarted, 'depth:', entryDepth, 'lazy:', lazy);
+  // Set when a requested game already has a 'pending' queue entry left behind by an
+  // interrupted bulk run (reload/crash — T05 manifest resume) while the queue sits
+  // paused with pauseReason 'reload'. Without this, a re-review request for exactly
+  // that game silently no-ops below (the entry is "already queued", so the loop just
+  // `continue`s) and the queue never unpauses — the game's partial analysis-library
+  // record can never reach 'complete' (BUG-2026-07-05-001 / F-6 regeneration path).
+  let stalledReloadEntryNeedsResume = false;
   for (const game of orderedGames) {
     // Skip already analyzed games.
     reviewDebugLog('[reviewQueue]  game', game.id, '— alreadyAnalyzed:', _analyzedGameIds.has(game.id), 'alreadyQueued:', queue.some(e => e.game.id === game.id));
@@ -3695,6 +3703,9 @@ function enqueueBulkReviewAsLeader(
       if (existing.status === 'error') {
         queue.splice(existingIdx, 1);
         if (activeIndex > existingIdx) activeIndex--;
+      } else if (reviewQueueEntryStalledByReloadPause(existing.status, queuePaused, queuePauseReason)) {
+        stalledReloadEntryNeedsResume = true;
+        continue;
       } else {
         // Already pending/analyzing/complete — skip.
         continue;
@@ -3730,8 +3741,13 @@ function enqueueBulkReviewAsLeader(
     void initReviewEngine('/stockfish-web');
   }
 
-  // Start processing if nothing is running (skip if engine failed).
-  if (activeIndex < 0 && !reviewEngineFailed) {
+  if (stalledReloadEntryNeedsResume) {
+    // Explicit re-review request for a game stuck behind a reload-pause: resume the
+    // queue instead of leaving the pause in place (never overrides an explicit user
+    // Pause or a hidden-tab suspend — those use different pauseReason values).
+    resumeBulkReview();
+  } else if (activeIndex < 0 && !reviewEngineFailed) {
+    // Start processing if nothing is running (skip if engine failed).
     advanceQueue();
   }
 }
@@ -3811,6 +3827,11 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
   ensureActiveReviewRun(orderedGames, entryDepth);
   const lazy = orderedGames.length > LAZY_BUILD_THRESHOLD;
   const newEntries: ReviewQueueEntry[] = [];
+  // Existing 'pending' entries left behind by an interrupted bulk run (reload/crash —
+  // T05 manifest resume) that a "review next" request just asked to jump the queue.
+  // These are spliced out below and reinserted at the front alongside newEntries so the
+  // explicit request is honored instead of silently no-op'ing (BUG-2026-07-05-001 / F-6).
+  const resumedStaleEntries: ReviewQueueEntry[] = [];
   for (const game of orderedGames) {
     if (_analyzedGameIds.has(game.id)) continue;
     clearFailedGameState(game.id, entryDepth);
@@ -3822,6 +3843,11 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
       if (existing.status === 'error') {
         queue.splice(existingIdx, 1);
         if (activeIndex > existingIdx) activeIndex--;
+      } else if (reviewQueueEntryStalledByReloadPause(existing.status, queuePaused, queuePauseReason)) {
+        queue.splice(existingIdx, 1);
+        if (activeIndex > existingIdx) activeIndex--;
+        resumedStaleEntries.push(existing);
+        continue;
       } else {
         // Already pending/analyzing/complete — skip.
         continue;
@@ -3845,13 +3871,14 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
     });
   }
 
-  if (newEntries.length === 0) return;
+  if (newEntries.length === 0 && resumedStaleEntries.length === 0) return;
 
   // Insert immediately after the active entry so these are next in line.
   const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
-  queue.splice(insertAt, 0, ...newEntries);
-  for (let i = 0; i < newEntries.length; i++) {
-    const entry = newEntries[i]!;
+  const entriesToInsert = [...resumedStaleEntries, ...newEntries];
+  queue.splice(insertAt, 0, ...entriesToInsert);
+  for (let i = 0; i < entriesToInsert.length; i++) {
+    const entry = entriesToInsert[i]!;
     persistManifestEntry(entry);
     recordReviewGameEnqueued(entry.game.id, insertAt + i);
   }
@@ -3860,7 +3887,12 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
     void initReviewEngine('/stockfish-web');
   }
 
-  if (activeIndex < 0 && !reviewEngineFailed) {
+  if (resumedStaleEntries.length > 0) {
+    // Explicit re-review request for a game stuck behind a reload-pause: resume the
+    // queue instead of leaving the pause in place (never overrides an explicit user
+    // Pause or a hidden-tab suspend — those use different pauseReason values).
+    resumeBulkReview();
+  } else if (activeIndex < 0 && !reviewEngineFailed) {
     advanceQueue();
   }
 }
