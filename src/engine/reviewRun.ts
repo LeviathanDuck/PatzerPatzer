@@ -517,6 +517,42 @@ export function withReviewRunGameComplete(
   };
 }
 
+export function withReviewRunSourceContextAppended(
+  manifest: ReviewRunManifest,
+  sourceContext: ReviewRunSourceContext,
+  now = Date.now(),
+): ReviewRunManifest {
+  const sourceGameIds = [...manifest.sourceGameIds];
+  const seenSourceIds = new Set(sourceGameIds);
+  for (const gameId of sourceContext.sourceGameIds) {
+    if (seenSourceIds.has(gameId)) continue;
+    seenSourceIds.add(gameId);
+    sourceGameIds.push(gameId);
+  }
+
+  const speeds = [...manifest.timeControlContext.speeds];
+  const seenSpeeds = new Set(speeds);
+  for (const speed of sourceContext.timeControlContext?.speeds ?? []) {
+    if (seenSpeeds.has(speed)) continue;
+    seenSpeeds.add(speed);
+    speeds.push(speed);
+  }
+
+  const sourceChanged = sourceGameIds.length !== manifest.sourceGameIds.length;
+  const speedChanged = speeds.length !== manifest.timeControlContext.speeds.length;
+  if (!sourceChanged && !speedChanged) return manifest;
+
+  return {
+    ...manifest,
+    sourceGameIds,
+    timeControlContext: {
+      ...manifest.timeControlContext,
+      speeds,
+    },
+    updatedAt: now,
+  };
+}
+
 
 
 

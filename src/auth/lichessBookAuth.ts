@@ -14,7 +14,7 @@ const CALLBACK_MESSAGE_TYPE = 'patzer:book-oauth-callback';
 const PENDING_STORAGE_KEY = 'patzer.lichess.bookOAuthPending';
 const CALLBACK_STORAGE_KEY = 'patzer.lichess.bookOAuthCallback';
 const POPUP_NAME = 'patzer-lichess-book-login';
-const POPUP_CLOSE_CALLBACK_GRACE_MS = 1500;
+const POPUP_CALLBACK_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface BookAccessStatus {
   connected: boolean;
@@ -68,7 +68,7 @@ interface CompletedBookLogin {
   expiresAt: number | null;
 }
 
-type BookCallbackChannel = 'message' | 'storage' | 'initial-storage' | 'close-storage' | 'close-grace-storage';
+type BookCallbackChannel = 'message' | 'storage' | 'initial-storage' | 'poll-storage' | 'close-storage';
 type BookAuthPhaseMetadata = Record<string, string | number | boolean | null>;
 
 function base64Url(bytes: Uint8Array): string {
@@ -255,7 +255,20 @@ function openBookLoginPopup(): Window | null {
 }
 
 function closeBookLoginPopup(popup: Window | null): void {
-  if (popup && !popup.closed) popup.close();
+  if (!popup) return;
+  try {
+    if (!popup.closed) popup.close();
+  } catch {
+    // COOP isolation can sever the opener reference; cleanup should stay best-effort.
+  }
+}
+
+function popupLooksClosed(popup: Window): boolean {
+  try {
+    return popup.closed;
+  } catch {
+    return true;
+  }
 }
 
 function navigateBookLoginPopup(popup: Window | null, url: string): Window {
@@ -299,14 +312,12 @@ function waitForPopupCallback(popup: Window, state: string): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
     let closeObserved = false;
-    let closeGraceTimer = 0;
     const startedAt = Date.now();
     const cleanup = () => {
       window.removeEventListener('message', onMessage);
       window.removeEventListener('storage', onStorage);
       window.clearInterval(closedTimer);
       window.clearTimeout(timeoutTimer);
-      window.clearTimeout(closeGraceTimer);
     };
     const finish = (fn: () => void) => {
       if (settled) return;
@@ -380,24 +391,18 @@ function waitForPopupCallback(popup: Window, state: string): Promise<string> {
       handleStoredCallback('storage');
     };
     const closedTimer = window.setInterval(() => {
-      if (!popup.closed || settled) return;
-      if (handleStoredCallback(closeObserved ? 'close-grace-storage' : 'close-storage')) return;
-      if (closeObserved) return;
+      if (settled) return;
+      if (handleStoredCallback(closeObserved ? 'close-storage' : 'poll-storage')) return;
+      if (!popupLooksClosed(popup) || closeObserved) return;
+      // Under COOP, a cross-origin OAuth popup can look closed/severed to the opener
+      // even while the user is still completing the provider flow.
       closeObserved = true;
-      recordBookAuthPhase('popup-closed-before-callback', Severity.Warn, {
+      recordBookAuthPhase('popup-closed-or-isolated-before-callback', Severity.Warn, {
         popupClosed: true,
         elapsedMs: elapsedMs(),
-        graceMs: POPUP_CLOSE_CALLBACK_GRACE_MS,
+        timeoutMs: POPUP_CALLBACK_TIMEOUT_MS,
+        failureClass: 'popup-closed-or-coop-isolated',
       });
-      closeGraceTimer = window.setTimeout(() => {
-        if (handleStoredCallback('close-grace-storage')) return;
-        recordBookAuthPhase('popup-close-cancelled', Severity.Warn, {
-          popupClosed: true,
-          elapsedMs: elapsedMs(),
-          failureClass: 'popup-closed-before-callback',
-        });
-        finish(() => reject(new Error('Lichess book login was cancelled.')));
-      }, POPUP_CLOSE_CALLBACK_GRACE_MS);
     }, 500);
     const timeoutTimer = window.setTimeout(() => {
       recordBookAuthPhase('callback-timeout', Severity.Error, {
@@ -405,7 +410,7 @@ function waitForPopupCallback(popup: Window, state: string): Promise<string> {
         failureClass: 'timeout',
       });
       finish(() => reject(new Error('Lichess book login timed out.')));
-    }, 5 * 60 * 1000);
+    }, POPUP_CALLBACK_TIMEOUT_MS);
     window.addEventListener('message', onMessage);
     window.addEventListener('storage', onStorage);
     handleStoredCallback('initial-storage');
@@ -571,6 +576,7 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;
+    let closeObserved = false;
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
       void getServerLichessStatus().then(status => {
@@ -586,19 +592,18 @@ async function runServerPopupLogin(popup: Window | null): Promise<void> {
           resolve();
           return;
         }
-        if (authPopup.closed && Date.now() - startedAt > 1000) {
-          settled = true;
-          window.clearInterval(timer);
-          recordBookAuthPhase('server-popup-close-cancelled', Severity.Warn, {
+        if (popupLooksClosed(authPopup) && !closeObserved) {
+          closeObserved = true;
+          recordBookAuthPhase('server-popup-closed-or-isolated-before-status', Severity.Warn, {
             endpointClass: 'server-lichess-status',
             popupClosed: true,
             latencyMs: Date.now() - startedAt,
-            failureClass: 'popup-closed-before-status',
+            timeoutMs: POPUP_CALLBACK_TIMEOUT_MS,
+            failureClass: 'popup-closed-or-coop-isolated',
           });
-          reject(new Error('Lichess book login was cancelled.'));
           return;
         }
-        if (Date.now() - startedAt > 5 * 60 * 1000) {
+        if (Date.now() - startedAt > POPUP_CALLBACK_TIMEOUT_MS) {
           settled = true;
           window.clearInterval(timer);
           closeBookLoginPopup(authPopup);

@@ -10,7 +10,7 @@ import type { ChessAccount } from '../accounts';
 import { chesscom } from '../import/chesscom';
 import { lichess } from '../import/lichess';
 import {
-  enqueueBulkReview, enqueueAtFront, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
+  enqueueBulkReview, enqueueAtFront, appendBulkReviewRunSource, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
   getReviewQueueItems,
   isGameErrored, formatReviewDuration, getFailedReviewStatus, skipFailedReviewGame, isLeaderTab,
   getReviewCrashContext, subscribeReviewQueueState,
@@ -1423,7 +1423,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                           const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
                             ? deps.importedGames.filter(g => selectedGameIds.has(g.id))
                             : [game];
-                          enqueueBulkReview(bulk);
+                          appendBulkReviewRunSource(bulk);
                           deps.redraw();
                         }},
                       }, '⬇'),
@@ -1807,7 +1807,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
                             const bulk = selectedGameIds.size > 1 && selectedGameIds.has(game.id)
                               ? games.filter(g => selectedGameIds.has(g.id))
                               : [game];
-                            enqueueBulkReview(bulk);
+                            appendBulkReviewRunSource(bulk);
                             deps.redraw();
                           }},
                         }, '⬇'),

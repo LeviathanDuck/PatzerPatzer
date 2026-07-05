@@ -47,6 +47,7 @@ import {
   searchOwnerRegisterGo,
   searchOwnerReset,
   selectNextReviewRunBatch,
+  timeControlContextForGames,
   reviewRunCircuitBreakerShouldTrip,
   reviewRunSummaryFromManifest,
   verifyReviewRunManifestConsistency,
@@ -69,6 +70,7 @@ import {
   withReviewRunGameFailureRecorded,
   withReviewRunGameSkippedFromActiveBatch,
   withReviewRunGameSkipped,
+  withReviewRunSourceContextAppended,
   withReviewRunAutoRetryEnabled,
   withReviewRunUnattendedRunEnabled,
 } from './reviewRun';
@@ -801,6 +803,7 @@ type ReviewChannelMessage =
   | { type: 'auto-retry'; tabId: string; enabled: boolean }
   | { type: 'unattended-run'; tabId: string; enabled: boolean }
   | { type: 'review-depth'; tabId: string; depth: number }
+  | { type: 'append-run-source'; tabId: string; games: ImportedGame[]; depth: number; sourceContext?: ReviewRunSourceContext }
   | { type: 'data-management-fence'; tabId: string; detail: DataManagementLocalChangeDetail }
   | { type: 'move-queue-game'; tabId: string; gameId: string; direction: 'up' | 'down' }
   | { type: 'remove-queue-game'; tabId: string; gameId: string }
@@ -1073,8 +1076,10 @@ function initLeaderElection(): void {
           type?: string;
           tabId?: string;
           gameId?: string;
+          games?: ImportedGame[];
           enabled?: boolean;
           depth?: number;
+          sourceContext?: ReviewRunSourceContext;
           detail?: DataManagementLocalChangeDetail;
           direction?: 'up' | 'down';
         } | null;
@@ -1107,6 +1112,13 @@ function initLeaderElection(): void {
         } else if (msg.type === 'review-depth' && isCurrentLeader && typeof msg.depth === 'number') {
           syncBulkReviewDepthSetting(msg.depth);
           applyReviewDepthToActiveQueue(msg.depth, { source: 'channel' });
+        } else if (
+          msg.type === 'append-run-source'
+          && isCurrentLeader
+          && Array.isArray(msg.games)
+          && typeof msg.depth === 'number'
+        ) {
+          appendBulkReviewRunSourceAsLeader(msg.games, msg.depth, msg.sourceContext);
         } else if (msg.type === 'data-management-fence' && isCurrentLeader && msg.detail) {
           void fenceReviewQueueForDataManagement(msg.detail);
         } else if (
@@ -1580,27 +1592,57 @@ function storedAnalysisMatchesReviewDepth(
   return storedAnalysisSatisfiesAskingDepth(stored, depth);
 }
 
-function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, sourceContext?: ReviewRunSourceContext): void {
+function reviewRunSourceContextForOrderedGames(
+  games: readonly ImportedGame[],
+  sourceContext?: ReviewRunSourceContext,
+): ReviewRunSourceContext {
   const enqueuedGameIds = games.map(game => game.id);
-  const sourceGameIds = sourceContext?.sourceGameIds ?? enqueuedGameIds;
-  const activeBatchIds = sourceContext?.activeBatchIds ?? enqueuedGameIds;
-  if (sourceGameIds.length === 0 || activeBatchIds.length === 0) return;
+  return {
+    sourceMode:         sourceContext?.sourceMode ?? 'selected-games',
+    sourceGameIds:      sourceContext?.sourceGameIds ?? enqueuedGameIds,
+    timeControlContext: sourceContext?.timeControlContext ?? timeControlContextForGames(games),
+    ...(sourceContext?.orderingContext ? { orderingContext: sourceContext.orderingContext } : {}),
+    activeBatchIds:     sourceContext?.activeBatchIds ?? enqueuedGameIds,
+  };
+}
+
+function createActiveReviewRun(
+  games: readonly ImportedGame[],
+  depth: number,
+  sourceContext?: ReviewRunSourceContext,
+): boolean {
+  const runContext = reviewRunSourceContextForOrderedGames(games, sourceContext);
+  const activeBatchIds = runContext.activeBatchIds ?? games.map(game => game.id);
+  const sourceGameIds = runContext.sourceGameIds;
+  if (sourceGameIds.length === 0 || activeBatchIds.length === 0) return false;
+  activeReviewRun = createReviewRunManifest({
+    sourceMode:         runContext.sourceMode,
+    sourceGameIds,
+    reviewDepth:        depth,
+    unattendedRunEnabled: readPersistedReviewUnattendedRunEnabled(),
+    activeBatchIds,
+    ...(runContext.timeControlContext ? { timeControlContext: runContext.timeControlContext } : {}),
+    ...(runContext.orderingContext ? { orderingContext: runContext.orderingContext } : {}),
+  });
+  persistActiveReviewRun();
+  return true;
+}
+
+function mergeActiveReviewRunLiveEntries(
+  games: readonly ImportedGame[],
+  depth: number,
+  sourceContext?: ReviewRunSourceContext,
+): void {
+  const runContext = reviewRunSourceContextForOrderedGames(games, sourceContext);
+  const activeBatchIds = runContext.activeBatchIds ?? games.map(game => game.id);
+  if (runContext.sourceGameIds.length === 0 || activeBatchIds.length === 0) return;
   if (!activeReviewRun) {
-    activeReviewRun = createReviewRunManifest({
-      sourceMode:         sourceContext?.sourceMode ?? 'visible-list',
-      sourceGameIds,
-      reviewDepth:        depth,
-      unattendedRunEnabled: readPersistedReviewUnattendedRunEnabled(),
-      activeBatchIds,
-      ...(sourceContext?.timeControlContext ? { timeControlContext: sourceContext.timeControlContext } : {}),
-      ...(sourceContext?.orderingContext ? { orderingContext: sourceContext.orderingContext } : {}),
-    });
-    persistActiveReviewRun();
+    createActiveReviewRun(games, depth, runContext);
     return;
   }
+  activeReviewRun = withReviewRunSourceContextAppended(activeReviewRun, runContext);
   const sourceIds = new Set(activeReviewRun.sourceGameIds);
   const batchIds = new Set(activeReviewRun.activeBatchIds);
-  for (const gameId of sourceGameIds) sourceIds.add(gameId);
   for (const gameId of activeBatchIds) batchIds.add(gameId);
   activeReviewRun.sourceGameIds = [...sourceIds];
   activeReviewRun.activeBatchIds = [...batchIds];
@@ -1609,6 +1651,29 @@ function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, so
   activeReviewRun.lifecycleState = 'running';
   activeReviewRun.updatedAt = Date.now();
   persistActiveReviewRun();
+}
+
+function activeReviewRunCanAcceptSourceAppend(): boolean {
+  return !!activeReviewRun && reviewRunProgressState(activeReviewRun) !== 'complete';
+}
+
+function appendActiveReviewRunSourceOnly(
+  games: readonly ImportedGame[],
+  sourceContext?: ReviewRunSourceContext,
+): void {
+  if (!activeReviewRun) return;
+  const runContext = reviewRunSourceContextForOrderedGames(games, sourceContext);
+  if (runContext.sourceGameIds.length === 0) return;
+  activeReviewRun = withReviewRunSourceContextAppended(activeReviewRun, runContext);
+  activeReviewRun.unattendedRunEnabled = readPersistedReviewUnattendedRunEnabled();
+  persistActiveReviewRun();
+  markReviewQueueProgress();
+  notifyReviewQueueStateChanged();
+  postReviewChannelMessage({ type: 'manifest-changed', tabId });
+}
+
+function ensureActiveReviewRun(games: readonly ImportedGame[], depth: number, sourceContext?: ReviewRunSourceContext): void {
+  mergeActiveReviewRunLiveEntries(games, depth, sourceContext);
 }
 
 function markActiveReviewRunGameComplete(gameId: string): void {
@@ -3669,6 +3734,48 @@ function enqueueBulkReviewAsLeader(
   if (activeIndex < 0 && !reviewEngineFailed) {
     advanceQueue();
   }
+}
+
+function appendBulkReviewRunSourceAsLeader(
+  orderedGames: ImportedGame[],
+  entryDepth: number,
+  sourceContext?: ReviewRunSourceContext,
+): void {
+  const canAppendToCurrentRun = activeReviewRunCanAcceptSourceAppend();
+  if (!activeReviewRun || !canAppendToCurrentRun) {
+    if (activeReviewRun && !canAppendToCurrentRun) activeReviewRun = null;
+    enqueueBulkReviewAsLeader(orderedGames, entryDepth, sourceContext);
+    return;
+  }
+  appendActiveReviewRunSourceOnly(orderedGames, sourceContext);
+}
+
+export function appendBulkReviewRunSource(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
+  preemptTreeEvalLease('bulk-review-source-appended');
+  const entryDepth = depth ?? bulkReviewDepth;
+  const orderedGames = reviewGamesInNewestFirstOrder(games);
+  if (!isCurrentLeader) {
+    const ownerUnavailable = isReviewOwnerUnavailableFromToken();
+    const runAsObserver = (): void => {
+      postReviewChannelMessage({
+        type: 'append-run-source',
+        tabId,
+        games: orderedGames,
+        depth: entryDepth,
+        ...(sourceContext ? { sourceContext } : {}),
+      });
+      postReviewChannelMessage({ type: 'wake', tabId });
+    };
+    if (ownerUnavailable) {
+      runAfterReviewIntentTakeover(ownerUnavailable, () => {
+        appendBulkReviewRunSourceAsLeader(orderedGames, entryDepth, sourceContext);
+      }, runAsObserver);
+      return;
+    }
+    runAsObserver();
+    return;
+  }
+  appendBulkReviewRunSourceAsLeader(orderedGames, entryDepth, sourceContext);
 }
 
 export function enqueueBulkReview(games: ImportedGame[], depth?: number, sourceContext?: ReviewRunSourceContext): void {
