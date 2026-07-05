@@ -274,6 +274,13 @@ export interface AccountSyncOlderOptions {
   /** Optional epoch-ms start of the target day to fetch back to. */
   targetDateStartMs?: number;
   onProgress?: (count: number) => void;
+
+
+
+
+
+
+  signal?: AbortSignal;
 }
 
 export interface AccountSyncOlderResult {
@@ -290,6 +297,8 @@ export interface AccountSyncOlderResult {
   newOldestTimestamp: number | null;
   /** True when a target-date request covered the requested lower bound. */
   reachedTargetDate: boolean;
+
+  aborted: boolean;
 }
 
 /**
@@ -316,6 +325,7 @@ export async function syncAccountGamesOlder(
     duplicateCount: 0,
     newOldestTimestamp: oldest,
     reachedTargetDate: false,
+    aborted: options.signal?.aborted ?? false,
   });
 
   // No oldest cursor means we have no boundary to go back from — must run
@@ -331,18 +341,23 @@ export async function syncAccountGamesOlder(
     : null;
   const hasTargetDate = targetDateStartMs !== null && targetDateStartMs < oldest;
   let reachedTargetDate = false;
+  let aborted = false;
 
   const fetched: ImportedGame[] = [];
   let progressOffset = 0;
   const onBatchProgress = (count: number): void => {
     options.onProgress?.(progressOffset + count);
   };
+  if (options.signal?.aborted) return noOpResult(true, false);
   if (account.platform === 'lichess') {
     // Fetch games whose start time is strictly before the oldest-imported game.
     // The Lichess API returns games newest-first up to max=300; passing `until`
     // bounds the window so we get the 300 games immediately preceding the cursor.
     let batchUntil = oldest - 1;
     while (true) {
+
+
+      if (options.signal?.aborted) { aborted = true; break; }
       const batch = await fetchLichessGames(
         account.displayName,
         options.rated,
@@ -393,17 +408,23 @@ export async function syncAccountGamesOlder(
     invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
   }
 
-  // Lower the oldest cursor based on what the API returned:
-  // - Games received: cursor moves to the oldest game in this batch (may go further back next call)
-  // - No games received: we've reached the beginning of history; record as 0
+
+
+
+
+
   const newOldest = minTimestamp(account, fetched);
-  const oldestToRecord = hasTargetDate && reachedTargetDate
+  const oldestToRecord = aborted
+    ? newOldest
+    : hasTargetDate && reachedTargetDate
     ? Math.min(newOldest ?? targetDateStartMs, targetDateStartMs)
     : newOldest ?? 0;
 
   // Pass null for newestGameTimestamp and syncFilterKey — do not change the
   // forward cursor or filter key, only lower the oldest cursor.
-  await recordAccountSync(account.id, null, oldestToRecord, null);
+  if (oldestToRecord !== null) {
+    await recordAccountSync(account.id, null, oldestToRecord, null);
+  }
 
   return {
     accountId: account.id,
@@ -415,6 +436,7 @@ export async function syncAccountGamesOlder(
     duplicateCount: Math.max(0, fetched.length - newGames.length),
     newOldestTimestamp: newOldest,
     reachedTargetDate,
+    aborted,
   };
 }
 
@@ -425,6 +447,12 @@ export interface AccountSyncBackfillOptions extends AccountSyncOptions {
    * forward sync).
    */
   backfillTargetStartMs?: number;
+
+
+
+
+
+  signal?: AbortSignal;
 }
 
 export interface AccountSyncWithBackfillResult {
@@ -434,6 +462,8 @@ export interface AccountSyncWithBackfillResult {
   fetchedCount: number;
   addedCount: number;
   newGames: ImportedGame[];
+
+  aborted: boolean;
 }
 
 
@@ -448,7 +478,7 @@ export async function syncAccountGamesWithBackfill(
   account: ChessAccount,
   options: AccountSyncBackfillOptions,
 ): Promise<AccountSyncWithBackfillResult> {
-  const { backfillTargetStartMs, onProgress, ...forwardOptions } = options;
+  const { backfillTargetStartMs, onProgress, signal, ...forwardOptions } = options;
   const forward = await syncAccountGames(account, {
     ...forwardOptions,
     ...(onProgress ? { onProgress } : {}),
@@ -460,9 +490,10 @@ export async function syncAccountGamesWithBackfill(
     fetchedCount: forward.fetchedCount + (older?.fetchedCount ?? 0),
     addedCount: forward.addedCount + (older?.addedCount ?? 0),
     newGames: older ? [...forward.newGames, ...older.newGames] : forward.newGames,
+    aborted: older?.aborted ?? (signal?.aborted ?? false),
   });
 
-  if (backfillTargetStartMs === undefined) return result(null);
+  if (backfillTargetStartMs === undefined || signal?.aborted) return result(null);
   const target = Math.max(0, backfillTargetStartMs);
 
   // The forward phase updated the cursors on disk; the in-memory account is stale.
@@ -492,6 +523,7 @@ export async function syncAccountGamesWithBackfill(
     speeds: options.speeds,
     targetDateStartMs: target,
     onProgress: count => onProgress?.(forwardCount + count),
+    ...(signal ? { signal } : {}),
   });
   return result(older);
 }

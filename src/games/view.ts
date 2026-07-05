@@ -40,7 +40,6 @@ import {
   renderRichGameRow,
   renderReviewControl,
   renderSecondaryActions,
-  renderReviewedChip,
   renderLibraryChip,
   playerDotClass,
   gameExtras,
@@ -317,13 +316,13 @@ export function renderCompactGameRow(
   const tcTitle = game.timeClass ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1) : 'Study import · No clock';
   const tsTooltip = [pgnExtras.timestamp.iso, pgnExtras.timestamp.sourceLabel].filter(Boolean).join(' · ') || pgnExtras.timestamp.display;
 
-  // Tertiary "Reviewed · + Library" status chips — reuses richRow.ts's shared chip renderers (no
-  // duplicate Reviewed/addLibrary logic) so styling matches the full-view card exactly. Gated on
-  // `extras` the same way the retired Line 3 tag area was, so the header import list and Study
-  // library divergence list (which omit extras) keep their existing two-line layout.
+
+
+
+
+
+
   const statusChips = extras?.reviewState !== undefined ? h('div.grr__chips', [
-    renderReviewedChip(extras.reviewState),
-    extras.reviewState.kind === 'reviewed' ? h('span.grl__status-sep', '·') : null,
     renderLibraryChip(extras.addLibrary),
   ]) : null;
 

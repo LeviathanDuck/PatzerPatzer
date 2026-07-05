@@ -409,6 +409,8 @@ const _peekTimer = new Map<string, ReturnType<typeof setTimeout>>();
 const _importedSpeedsView = new Map<string, Set<string>>();
 const _importedSpeedsLoading = new Set<string>();
 let _accountSyncRunningId: string | null = null;
+
+let _accountSyncAbort: AbortController | null = null;
 const _accountSyncMessages = new Map<string, string>();
 const _accountSyncErrors = new Map<string, string>();
 
@@ -550,6 +552,7 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
   const needsFallback = account.newestGameTimestamp === null || filterMismatch;
   _accountSyncRunningId = account.id;
+  _accountSyncAbort = new AbortController();
   _accountSyncMessages.delete(account.id);
   _accountSyncErrors.delete(account.id);
   redraw();
@@ -559,6 +562,7 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
       speeds: importFilters.speeds,
       syncDateRange: currentImportDateRangeConfig(),
       backfillTargetStartMs: syncBackfillTargetStartMs(),
+      signal: _accountSyncAbort.signal,
       onProgress: count => {
         _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
         redraw();
@@ -573,14 +577,18 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
       await openAccountResearch(refreshedAccount, redraw);
     }
     const olderAdded = result.older?.addedCount ?? 0;
-    _accountSyncMessages.set(account.id, result.addedCount === 0
+    const summary = result.addedCount === 0
       ? 'No new games to import'
       : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}${
-          olderAdded > 0 ? ` (${olderAdded} older)` : ''}`);
+          olderAdded > 0 ? ` (${olderAdded} older)` : ''}`;
+    _accountSyncMessages.set(account.id, result.aborted
+      ? `Sync stopped — ${summary.charAt(0).toLowerCase()}${summary.slice(1)}`
+      : summary);
   } catch (err) {
     _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
   } finally {
     _accountSyncRunningId = null;
+    _accountSyncAbort = null;
     redraw();
   }
 }
@@ -706,6 +714,21 @@ function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode
     : peek?.loading ? 'Checking for new games…'
     : peek?.supported ? (peek.count > 0 ? `Sync in ${peek.count} new game${peek.count === 1 ? '' : 's'}` : 'Up to date')
     : '';
+
+
+  const oldest = account.oldestGameTimestamp;
+  const newest = account.newestGameTimestamp;
+  const coverage = newest === null ? null
+    : oldest !== null && oldest <= 0 ? `Imported: full history — ${formatLongSyncDate(newest)}`
+    : oldest !== null ? `Imported: ${formatLongSyncDate(oldest)} — ${formatLongSyncDate(newest)}`
+    : null;
+  // Gap hint: the selected Period reaches further back than coverage.
+  const backfillTarget = syncBackfillTargetStartMs();
+  const hasGap = oldest !== null && oldest > 0 && backfillTarget < oldest;
+  // Wider-safety-fetch warning, mirroring the header sync menu.
+  const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
+  const filterMismatch = newest !== null && account.syncFilterKey !== filterKey;
+
   return h('div.openings__preload-sync', [
     h('div.openings__preload-sync-row', [
       h('span.openings__preload-sync-date', `Last synced ${formatLongSyncDate(account.lastSyncedAt)}`),
@@ -713,11 +736,22 @@ function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode
         attrs: { type: 'button', title: 'Check for new games' },
         on: { click: (e: Event) => { e.stopPropagation(); resetAccountPeek(account.id); redraw(); } },
       }, '⟳'),
+      running ? h('button.openings__preload-sync-btn', {
+        attrs: { type: 'button', title: 'Stop after the current batch; games fetched so far are kept' },
+        on: { click: (e: Event) => { e.stopPropagation(); _accountSyncAbort?.abort(); } },
+      }, 'Cancel') : null,
       h('button.openings__preload-sync-btn', {
         attrs: { type: 'button', disabled: _accountSyncRunningId !== null },
         on: { click: (e: Event) => { e.stopPropagation(); void startAccountSync(account, redraw); } },
       }, running ? 'Syncing…' : 'Sync'),
     ]),
+    coverage ? h('div.openings__preload-sync-peek', coverage) : null,
+    hasGap && !running
+      ? h('div.openings__preload-sync-peek', 'Selected period is older than imported history — Sync will fetch the missing older games')
+      : null,
+    filterMismatch && !running
+      ? h('div.openings__preload-sync-peek', 'Filter changed; the next sync runs a wider safety fetch and dedupes existing games')
+      : null,
     peekText ? h('div.openings__preload-sync-peek', { class: { 'has-new': hasNew } }, peekText) : null,
     error ? h('div.openings__preload-sync-error', error)
       : message ? h('div.openings__preload-sync-msg', message) : null,

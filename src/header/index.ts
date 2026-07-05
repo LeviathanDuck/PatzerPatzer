@@ -119,6 +119,8 @@ let showMobileNav    = false;
 let headerAccountMode: 'account' | 'new' = 'account';
 let selectedMineAccountId: string | null = null;
 let headerSyncRunning = false;
+
+let headerSyncAbort: AbortController | null = null;
 let headerSyncMessage: string | null = null;
 let headerSyncError: string | null = null;
 let headerOlderSyncRunning = false;
@@ -634,6 +636,204 @@ function renderReviewProgressLabel(label: string): VNode {
   ]);
 }
 
+
+
+
+
+
+
+function reviewPillIcon(children: VNode[], opts: { spin?: boolean } = {}): VNode {
+  const cls = opts.spin
+    ? 'svg.review-menu__trigger-icon.review-menu__trigger-icon--spin'
+    : 'svg.review-menu__trigger-icon';
+  return h(cls, {
+    attrs: { viewBox: '0 0 16 16', width: 11, height: 11, 'aria-hidden': 'true', focusable: 'false' },
+  }, children);
+}
+
+function iconSpinnerArc(): VNode {
+  return reviewPillIcon([
+    h('circle', { attrs: {
+      cx: 8, cy: 8, r: 6, fill: 'none', stroke: 'currentColor',
+      'stroke-width': 2, 'stroke-dasharray': '18 20', 'stroke-linecap': 'round',
+    } }),
+  ], { spin: true });
+}
+
+function iconPause(): VNode {
+  return reviewPillIcon([
+    h('rect', { attrs: { x: 4, y: 3, width: 2.6, height: 10, rx: 1, fill: 'currentColor' } }),
+    h('rect', { attrs: { x: 9.4, y: 3, width: 2.6, height: 10, rx: 1, fill: 'currentColor' } }),
+  ]);
+}
+
+function iconExclamation(): VNode {
+  return reviewPillIcon([
+    h('rect', { attrs: { x: 7, y: 2.5, width: 2, height: 7, rx: 1, fill: 'currentColor' } }),
+    h('circle', { attrs: { cx: 8, cy: 12.5, r: 1.1, fill: 'currentColor' } }),
+  ]);
+}
+
+function iconPlay(): VNode {
+  return reviewPillIcon([
+    h('path', { attrs: { d: 'M4.5 2.5v11l9-5.5-9-5.5z', fill: 'currentColor' } }),
+  ]);
+}
+
+function iconRetry(): VNode {
+  return reviewPillIcon([
+    h('path', { attrs: {
+      d: 'M12.8 8A4.8 4.8 0 1 1 11 4.3',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round',
+    } }),
+    h('path', { attrs: { d: 'M11.4 1.8l0.4 2.9-2.9-0.4z', fill: 'currentColor' } }),
+  ]);
+}
+
+function iconPauseBang(): VNode {
+  return reviewPillIcon([
+    h('rect', { attrs: { x: 2.5, y: 3.5, width: 2.2, height: 9, rx: 1, fill: 'currentColor' } }),
+    h('rect', { attrs: { x: 6.5, y: 3.5, width: 2.2, height: 9, rx: 1, fill: 'currentColor' } }),
+    h('rect', { attrs: { x: 12, y: 3, width: 1.8, height: 5.5, rx: 0.9, fill: 'currentColor' } }),
+    h('circle', { attrs: { cx: 12.9, cy: 11, r: 1, fill: 'currentColor' } }),
+  ]);
+}
+
+function iconDatabase(): VNode {
+  return reviewPillIcon([
+    h('ellipse', { attrs: { cx: 8, cy: 4, rx: 5, ry: 2, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 } }),
+    h('path', { attrs: { d: 'M3 4v8c0 1.1 2.24 2 5 2s5-.9 5-2V4', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 } }),
+    h('path', { attrs: { d: 'M3 8c0 1.1 2.24 2 5 2s5-.9 5-2', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.3 } }),
+  ]);
+}
+
+function iconCross(): VNode {
+  return reviewPillIcon([
+    h('path', { attrs: { d: 'M4 4l8 8M12 4l-8 8', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round' } }),
+  ]);
+}
+
+function iconCheck(): VNode {
+  return reviewPillIcon([
+    h('path', { attrs: {
+      d: 'M3 8.5l3.3 3.3L13 4.3',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    } }),
+  ]);
+}
+
+
+
+
+
+
+
+function reviewTriggerActiveGamePercent(summary: ReturnType<typeof getQueueSummary>): number {
+  const activeItem = getReviewQueueItems().find(item => item.isActive);
+  if (activeItem && activeItem.total > 0) {
+    const done = Math.min(Math.max(0, activeItem.done), activeItem.total);
+    return Math.round((done / activeItem.total) * 100);
+  }
+  if (summary.totalPositions > 0) {
+    const analyzed = Math.min(Math.max(0, summary.positionsAnalyzed), summary.totalPositions);
+    return Math.round((analyzed / summary.totalPositions) * 100);
+  }
+  return 0;
+}
+
+// Split-view number text: "41% · 12/25", or just "41%" for a single-game run.
+function reviewTriggerNumberText(summary: ReturnType<typeof getQueueSummary>, percent: number): string {
+  return summary.total === 1 ? `${percent}%` : `${percent}% · ${summary.done}/${summary.total}`;
+}
+
+type ReviewPillState =
+  | 'breaker' | 'failed' | 'storage' | 'resume' | 'stalled'
+  | 'paused-auto' | 'paused' | 'complete' | 'running';
+
+
+
+
+
+
+
+
+
+
+
+
+function reviewTriggerPillState(
+  breakerPaused: boolean,
+  failedStatus: unknown,
+  storageFailure: boolean,
+  interruptedAfterReload: boolean,
+  staleNotice: boolean,
+  activePauseNotice: { reason: string } | null,
+  paused: boolean,
+  completionNotice: boolean,
+): ReviewPillState {
+  if (breakerPaused) return 'breaker';
+  if (failedStatus) return 'failed';
+  if (storageFailure) return 'storage';
+  if (interruptedAfterReload) return 'resume';
+  if (staleNotice) return 'stalled';
+  const autopaused = activePauseNotice !== null
+    && (activePauseNotice.reason === 'hidden-suspended' || activePauseNotice.reason === 'browser-stalled');
+  if (autopaused) return 'paused-auto';
+  if (paused) return 'paused';
+  if (completionNotice) return 'complete';
+  return 'running';
+}
+
+interface ReviewPillSpec {
+  icon: VNode | null;
+  numberText: string | null;
+  fillVariant: 'teal' | 'amber' | 'red' | 'shimmer' | null;
+  fillPercent: number;
+  edge: boolean;
+}
+
+
+
+
+
+function reviewTriggerPillSpec(state: ReviewPillState, percent: number, numberText: string): ReviewPillSpec {
+  switch (state) {
+    case 'running':
+      return { icon: null, numberText, fillVariant: 'teal', fillPercent: percent, edge: true };
+    case 'paused':
+    case 'paused-auto':
+      return { icon: iconPause(), numberText, fillVariant: 'amber', fillPercent: percent, edge: false };
+    case 'stalled':
+      return { icon: iconExclamation(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+    case 'resume':
+      return { icon: iconPlay(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+    case 'failed':
+      return { icon: iconRetry(), numberText, fillVariant: 'red', fillPercent: percent, edge: false };
+    case 'breaker':
+      return { icon: iconPauseBang(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+    case 'storage':
+      return { icon: iconDatabase(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+    case 'complete':
+      return { icon: iconCheck(), numberText: '100%', fillVariant: null, fillPercent: 0, edge: false };
+  }
+}
+
+function renderReviewTriggerPillContent(spec: ReviewPillSpec): VNode[] {
+  const children: VNode[] = [];
+  if (spec.fillVariant) {
+    const width = spec.fillVariant === 'shimmer' ? 100 : spec.fillPercent;
+    children.push(h(`div.review-menu__trigger-fill.review-menu__trigger-fill--${spec.fillVariant}`, {
+      class: { 'review-menu__trigger-fill--edge': spec.edge },
+      style: { width: `${width}%` },
+    }));
+  }
+  const inner: VNode[] = [];
+  if (spec.icon) inner.push(spec.icon);
+  if (spec.numberText !== null) inner.push(h('span.review-menu__trigger-number', spec.numberText));
+  children.push(h('span.review-menu__trigger-content', inner));
+  return children;
+}
+
 function renderReviewMenuPanelHeader(redraw: () => void): VNode {
   return h('div.review-menu__panel-header', [
     h('div.review-menu__panel-title', 'Review Queue'),
@@ -760,12 +960,13 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   // Surface engine init failure as an explicit error state even when no game
   // is actively running (so the queue never shows a perpetual spinner).
   if (engineFailed) {
+    const engineErrorTitle = 'Engine error: engine unavailable — review queue halted';
     return h('div.review-menu', [
-      h('button.review-menu__trigger.review-menu__trigger--error', {
+      h('button.review-menu__trigger.review-menu__trigger--engine-error', {
         class: { active: showReviewMenu },
-        attrs: { title: 'Engine unavailable — review queue halted' },
+        attrs: { title: engineErrorTitle, 'aria-label': engineErrorTitle },
         on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-      }, [renderReviewProgressLabel('Engine error')]),
+      }, renderReviewTriggerPillContent({ icon: iconCross(), numberText: null, fillVariant: null, fillPercent: 0, edge: false })),
       showReviewMenu ? h('div.review-menu__backdrop', {
         on: { click: () => { showReviewMenu = false; redraw(); } },
       }) : null,
@@ -787,11 +988,14 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   // Surface the "initializing" state so callers can distinguish it from
   // "active" (which requires at least one pending/analyzing entry).
   if (engineInitializing && !active) {
+    const loadingTitle = 'Engine loading: review engine loading…';
     return h('div.review-menu', [
-      h('button.review-menu__trigger', {
+      h('button.review-menu__trigger.review-menu__trigger--loading', {
         class: { active: false },
-        attrs: { title: 'Review engine loading…', disabled: true },
-      }, [renderReviewProgressLabel('Engine loading…')]),
+        attrs: { title: loadingTitle, 'aria-label': loadingTitle, disabled: true },
+      }, renderReviewTriggerPillContent({
+        icon: iconSpinnerArc(), numberText: null, fillVariant: 'shimmer', fillPercent: 100, edge: false,
+      })),
     ]);
   }
 
@@ -806,7 +1010,6 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const pauseNotice = summary.pauseNotice;
   const activePauseNotice = pauseNotice?.active === true ? pauseNotice : null;
   const lastPauseNotice = summary.lastPauseNotice;
-  const pausedOrStalled = paused || staleNotice || breakerPaused || activePauseNotice !== null;
   const canControlQueue = isQueueOwner && (running || paused);
   const timeControlLabel = summary.timeControlContext?.speeds.length
     ? summary.timeControlContext.speeds.join(', ')
@@ -817,55 +1020,70 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const positionProgress = formatReviewPositionProgress(summary.positionsAnalyzed, summary.totalPositions);
   const activeProgressLabel = positionProgress ?? `${summary.done}/${summary.total} games`;
   const positionProgressRemaining = Math.max(0, summary.totalPositions - summary.positionsAnalyzed);
-  const reviewTriggerLabel = pausedOrStalled
-    ? 'Paused'
-    : breakerPaused
-    ? `Review paused · ${runSummary?.failed.length ?? 0} failed in a row`
-    : failedStatus
-    ? positionProgress
-      ? `Failed (${failedStatus.attempts}) · ${positionProgress}`
-      : `Failed (${failedStatus.attempts})`
-    : storageFailure
-      ? 'Storage error'
-    : interruptedAfterReload
-      ? `Resume review ${activeProgressLabel}`
-    : staleNotice
-      ? `Review stalled · ${activeProgressLabel}`
-    : paused
-      ? `Review paused · ${activeProgressLabel}`
-    : summary
-        ? `Reviewing ${activeProgressLabel}`
-        : 'Reviewing…';
-  const reviewTriggerTitle = activePauseNotice
-    ? `${formatReviewPauseReasonLabel(activePauseNotice.reason)}: ${activePauseNotice.message}`
-    : breakerPaused
-    ? (runSummary?.breakerTrippedReason === 'engine-init-failure'
-        ? 'Review paused: the background engine failed to initialize'
-        : 'Review paused: 3 consecutive game failures')
-    : failedStatus
-    ? 'Current review failed and is retrying'
-    : storageFailure
-      ? 'Review storage write failed - resume may be unavailable'
-    : interruptedAfterReload
-      ? 'Review interrupted after reload - resume manually'
-    : staleNotice
-      ? 'No recent review progress detected'
-    : 'Bulk Review settings';
+
+
+
+
+
+  const pillState = reviewTriggerPillState(
+    breakerPaused, failedStatus, storageFailure, interruptedAfterReload,
+    staleNotice, activePauseNotice, paused, completionNotice,
+  );
+  const pillPercent = reviewTriggerActiveGamePercent(summary);
+  const pillNumberText = reviewTriggerNumberText(summary, pillPercent);
+  const pillSpec = reviewTriggerPillSpec(pillState, pillPercent, pillNumberText);
+  const pillStateSentence = (() => {
+    switch (pillState) {
+      case 'breaker':
+        return `${runSummary?.breakerTrippedReason === 'engine-init-failure'
+          ? 'Review paused: the background engine failed to initialize.'
+          : 'Review paused: 3 consecutive game failures.'} Review paused · ${runSummary?.failed.length ?? 0} failed in a row.`;
+      case 'failed':
+        return `Current review failed and is retrying. ${positionProgress
+          ? `Failed (${failedStatus?.attempts}) · ${positionProgress}.`
+          : `Failed (${failedStatus?.attempts}).`}`;
+      case 'storage':
+        return 'Storage error: review storage write failed - resume may be unavailable.';
+      case 'resume':
+        return `Review interrupted after reload - resume manually. Resume review ${activeProgressLabel}.`;
+      case 'stalled':
+        return `No recent review progress detected. Review stalled · ${activeProgressLabel}.`;
+      case 'paused-auto':
+      case 'paused':
+        return activePauseNotice
+          ? `${formatReviewPauseReasonLabel(activePauseNotice.reason)}: ${activePauseNotice.message}`
+          : `Review paused · ${activeProgressLabel}.`;
+      case 'complete':
+        return 'Batch complete. Dismiss this notice, or Cancel to stop the run.';
+      case 'running':
+      default:
+        return summary ? `Reviewing ${activeProgressLabel}.` : 'Reviewing…';
+    }
+  })();
+  const pillNumbersSuffix = [
+    summary.totalPositions > 0
+      ? `${Math.min(Math.max(0, summary.positionsAnalyzed), summary.totalPositions)}/${summary.totalPositions} positions analyzed`
+      : null,
+    currentBatchLabel,
+    summary.reviewDepth !== null ? `Depth ${summary.reviewDepth}` : null,
+  ].filter(Boolean).join(' · ');
+  const reviewTriggerTitle = pillNumbersSuffix
+    ? `${pillStateSentence} (${pillNumbersSuffix})`
+    : pillStateSentence;
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
       class: {
         active: showReviewMenu || active,
-        'review-menu__trigger--warning': staleNotice,
-        'review-menu__trigger--error': pausedOrStalled || storageFailure,
+        [`review-menu__trigger--${pillState}`]: true,
       },
-      attrs: { title: reviewTriggerTitle },
+      attrs: { title: reviewTriggerTitle, 'aria-label': reviewTriggerTitle },
       on: { click: () => {
         if (ownerUnavailable) takeOverUnavailableReviewOwner();
         showReviewMenu = !showReviewMenu;
         redraw();
       } },
-    }, [renderReviewProgressLabel(reviewTriggerLabel)]),
+    }, renderReviewTriggerPillContent(pillSpec)),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -2533,6 +2751,7 @@ async function runHeaderAccountSync(account: ChessAccount, deps: HeaderDeps): Pr
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
   const needsFallback = account.newestGameTimestamp === null || filterMismatch;
   headerSyncRunning = true;
+  headerSyncAbort = new AbortController();
   headerSyncMessage = null;
   headerSyncError = null;
   redraw();
@@ -2542,6 +2761,7 @@ async function runHeaderAccountSync(account: ChessAccount, deps: HeaderDeps): Pr
       speeds: importFilters.speeds,
       syncDateRange: currentImportDateRangeConfig(),
       backfillTargetStartMs: importRangeStartMsFor(currentImportDateRangeConfig()) ?? 0,
+      signal: headerSyncAbort.signal,
       onProgress: count => {
         headerSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
         redraw();
@@ -2552,16 +2772,17 @@ async function runHeaderAccountSync(account: ChessAccount, deps: HeaderDeps): Pr
     deps.refreshAccounts();
     resetHeaderPeek();
     if (result.addedCount === 0) {
-      headerSyncMessage = 'No new games to import';
+      headerSyncMessage = result.aborted ? 'Sync stopped — no new games imported' : 'No new games to import';
     } else {
       const olderAdded = result.older?.addedCount ?? 0;
-      headerSyncMessage = `Imported ${syncOutcome.addedCount} new game${syncOutcome.addedCount === 1 ? '' : 's'}${
+      headerSyncMessage = `${result.aborted ? 'Sync stopped — imported' : 'Imported'} ${syncOutcome.addedCount} new game${syncOutcome.addedCount === 1 ? '' : 's'}${
         olderAdded > 0 ? ` (${olderAdded} older)` : ''}`;
     }
   } catch (err) {
     headerSyncError = err instanceof Error ? err.message : 'Sync failed.';
   } finally {
     headerSyncRunning = false;
+    headerSyncAbort = null;
     redraw();
   }
 }
@@ -2693,6 +2914,14 @@ function renderSyncMenu(
       h('p.header__panel-hint', account.newestGameTimestamp === null
         ? 'No sync cursor yet'
         : `Sync from newest imported game: ${formatSyncDate(account.newestGameTimestamp)}`),
+
+      account.newestGameTimestamp !== null
+        ? h('p.header__panel-hint', account.oldestGameTimestamp !== null && account.oldestGameTimestamp <= 0
+            ? `Imported: full history — ${formatSyncDate(account.newestGameTimestamp)}`
+            : account.oldestGameTimestamp !== null
+            ? `Imported: ${formatSyncDate(account.oldestGameTimestamp)} — ${formatSyncDate(account.newestGameTimestamp)}`
+            : '')
+        : null,
       filterMismatch ? h('p.header__panel-hint.header__panel-warn',
         'Filter changed; Patzer will run a wider safety fetch and dedupe existing games.') : null,
     ]),
@@ -2744,10 +2973,16 @@ function renderSyncMenu(
         : null,
       headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
       headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
-      h('button.header__panel-btn', {
-        attrs: { disabled: headerSyncRunning || headerOlderSyncRunning },
-        on: { click: () => { void runSync(); } },
-      }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+      h('div.header__panel-row', [
+        h('button.header__panel-btn', {
+          attrs: { disabled: headerSyncRunning || headerOlderSyncRunning },
+          on: { click: () => { void runSync(); } },
+        }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+        headerSyncRunning ? h('button.header__panel-btn', {
+          attrs: { type: 'button', title: 'Stop after the current batch; games fetched so far are kept' },
+          on: { click: () => { headerSyncAbort?.abort(); } },
+        }, 'Cancel') : null,
+      ]),
     ]),
     h('div.header__panel-divider'),
     h('div.header__panel-section', [

@@ -277,20 +277,26 @@ export function resolveRatingDeltas(
   return { white: headerWhite, black: headerBlack };
 }
 
-// ---------------------------------------------------------------------------
-// Board thumbnail — CSS grid of 64 squares using the current piece set's existing CSS custom
-// properties (---white-pawn etc., set on <body> by applyPieceSet in board/cosmetics.ts), NOT a
-// Chessground instance. Populated lazily: the Snabbdom vnode only renders an empty grid
-// container; an IntersectionObserver installed in the insert hook calls thumbnailFen() and
-// builds the squares via direct DOM writes only once the row actually scrolls into view, so
-// offscreen rows never parse PGN (CR-2/CR-4).
-//
-// Square coloring/texture is NOT drawn per-square here: `.grr__thumb-grid` reuses the same
-// `body[data-board=...] cg-board::before` selector group as the main board (main.scss), so the
-// active board theme's own image renders as one continuous background behind the squares — same
-// mechanism applyBoardTheme() (board/cosmetics.ts) already drives, so future themes work
-// automatically. The squares below only host piece elements.
-// ---------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const ROLE_BY_LETTER: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
 
@@ -338,6 +344,9 @@ function populateThumbnailGrid(container: HTMLElement, fen: string, flipped: boo
   }
 
   container.replaceChildren(frag);
+  // Reveals the themed board-image background (main.scss gates it on this class) now that there
+  // are actual pieces to show it behind — see the file-header comment above.
+  container.classList.add('--populated');
 }
 
 type ThumbGridElement = HTMLElement & { __grrObserver: IntersectionObserver | undefined };
@@ -441,7 +450,9 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
 
-      return h('button.grr__review.--reviewed', {
+
+
+      return h('button.grr__review.--reviewed' + (opts.compact ? '.--compact' : ''), {
         attrs: { type: 'button', title: 'Open stored review' },
         on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
       }, opts.compact ? ['✓', h('span.grr__review-collapse', ' Reviewed')] : '✓ Open review');
@@ -655,9 +666,11 @@ function renderMatchupCell(opts: PlayerBlockOpts): VNode {
     ? h('span.grr__delta', { class: { '--gain': opts.delta > 0, '--loss': opts.delta < 0 } }, formatDelta(opts.delta))
     : null;
 
-  // Opponent's name never truncates (Global rule); account name is the one allowed to shrink —
-  // enforced in main.scss via the grid column tracks (opponent: auto/content-sized, account:
-  // minmax(0, 1fr)), not by omitting overflow styling here.
+
+
+
+
+
   return h('div.grr__player.--' + opts.variant, [
     h('span.grr__player-name', opts.name),
     opts.rating !== undefined ? h('span.grr__player-rating', String(opts.rating)) : null,
@@ -747,12 +760,47 @@ export const TIME_CLASS_ICON: Record<string, { glyph: string; cls: string }> = {
 // Study import / no time control — licon.Book, distinct glyph + color from every timed class.
 export const NO_CLOCK_ICON = { glyph: '', cls: '--no-clock' };
 
-/** Base time in seconds from a raw PGN `TimeControl` label (e.g. "180+2" → 180); increment omitted. */
-function parseTimeControlBase(timeControlLabel: string | null): number | null {
-  if (!timeControlLabel) return null;
-  const match = timeControlLabel.match(/^(\d+)/);
-  const digits = match?.[1];
-  return digits !== undefined ? parseInt(digits, 10) : null;
+/** Formats a base duration in seconds as minutes (`Nm`, non-integer minutes like 90s → `1.5m`) or,
+ *  for sub-minute bases, seconds (`Ns`). Shared by the clock and daily/correspondence branches of
+ *  formatTimeControlLabel below. */
+function formatDurationUnit(totalSeconds: number, unitSeconds: number, suffix: string): string {
+  const value = totalSeconds / unitSeconds;
+  const rounded = Math.round(value * 10) / 10;
+  const label = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${label}${suffix}`;
+}
+
+
+
+
+
+
+
+
+
+
+export function formatTimeControlLabel(raw: string | null): string | null {
+  if (!raw) return null;
+
+  const dailyMatch = raw.match(/^\d+\/(\d+)$/);
+  const dailySecondsGroup = dailyMatch?.[1];
+  if (dailySecondsGroup !== undefined) {
+    const seconds = parseInt(dailySecondsGroup, 10);
+    return Number.isNaN(seconds) || seconds <= 0 ? null : formatDurationUnit(seconds, 86400, 'd');
+  }
+
+  const clockMatch = raw.match(/^(\d+)(?:\+(\d+))?$/);
+  const baseSecondsGroup = clockMatch?.[1];
+  if (baseSecondsGroup === undefined) return null;
+  const baseSeconds = parseInt(baseSecondsGroup, 10);
+  if (Number.isNaN(baseSeconds)) return null;
+  const incrementGroup = clockMatch?.[2];
+  const incrementSeconds = incrementGroup !== undefined ? parseInt(incrementGroup, 10) : 0;
+
+  const baseLabel = baseSeconds < 60
+    ? formatDurationUnit(baseSeconds, 1, 's')
+    : formatDurationUnit(baseSeconds, 60, 'm');
+  return incrementSeconds > 0 ? `${baseLabel} + ${incrementSeconds}` : baseLabel;
 }
 
 function metaRow(glyph: string | null, iconCls: string, text: string, tooltip?: string): VNode {
@@ -771,13 +819,14 @@ function metaRow(glyph: string | null, iconCls: string, text: string, tooltip?: 
 
 
 
+
 function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: string | null | undefined): VNode {
   const icon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
   const tcLabel = game.timeClass
     ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1)
     : 'Study import';
-  const baseSeconds = parseTimeControlBase(extras.timeControlLabel);
-  const tcText = baseSeconds !== null ? `${tcLabel} ${baseSeconds}` : tcLabel;
+  const formattedControl = formatTimeControlLabel(extras.timeControlLabel);
+  const tcText = formattedControl !== null ? `${tcLabel} ${formattedControl}` : tcLabel;
   const ratedLabel = extras.rated === true ? 'Rated' : extras.rated === false ? 'Casual' : null;
   const tcTooltip = ratedLabel ? `${tcText} · ${ratedLabel}` : tcText;
   const tsTooltip = [extras.timestamp.iso, extras.timestamp.sourceLabel].filter(Boolean).join(' · ');
