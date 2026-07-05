@@ -1,7 +1,8 @@
 import type { ChessAccount } from '../accounts';
-import { recordAccountSync, updateAccount } from '../accounts';
+import { getAccount, recordAccountSync, updateAccount } from '../accounts';
 import { loadGamesFromIdb, saveGamesToIdb } from '../idb';
 import { chesscomGameTimestamp, fetchChesscomGames, fetchChesscomLifetimeBest } from './chesscom';
+import { fetchChesscomImportedAccountStats } from './profiles';
 import {
   archiveCutoffMonthFor,
   filterGamesByDateRange,
@@ -133,6 +134,26 @@ async function loadExistingGames(): Promise<ImportedGame[]> {
 
 
 
+
+
+
+
+
+async function recordSyncFilterMemory(
+  account: ChessAccount,
+  rated: boolean,
+  speeds: ReadonlySet<ImportSpeed>,
+): Promise<void> {
+  try {
+    await updateAccount(account.id, {
+      lastSyncSpeeds: [...speeds].sort(),
+      lastSyncRated: rated,
+    });
+  } catch {
+    // Swallow: filter memory is a UI preference, not sync state.
+  }
+}
+
 async function syncChesscomLifetimeBest(account: ChessAccount): Promise<void> {
   if (account.platform !== 'chesscom') return;
   try {
@@ -142,6 +163,29 @@ async function syncChesscomLifetimeBest(account: ChessAccount): Promise<void> {
     await updateAccount(account.id, { lifetimeBest: merged });
   } catch {
     // Swallow: a failed lifetime-stats fetch must never break account sync.
+  }
+}
+
+/**
+ * Best-effort refresh of a chess.com account's cached per-speed current/best
+ * ratings and W/L/D record (spec item 16 — imported accounts ONLY, never
+ * opponents; this only ever runs for the account being synced here, which is
+ * always an imported account by construction of this call site). Same
+ * failure/merge contract as syncChesscomLifetimeBest: swallows errors, a
+ * fetch returning nothing leaves the prior cached value untouched, and
+ * existing per-speed entries are merged (not replaced wholesale) so a
+ * response missing a speed never erases a previously cached one. No-op for
+ * lichess: fetchChesscomImportedAccountStats is a chess.com-only endpoint.
+ */
+async function syncChesscomImportedAccountStats(account: ChessAccount): Promise<void> {
+  if (account.platform !== 'chesscom') return;
+  try {
+    const fetched = await fetchChesscomImportedAccountStats(account.displayName);
+    if (!fetched) return;
+    const merged = { ...(account.speedStats ?? {}), ...fetched };
+    await updateAccount(account.id, { speedStats: merged });
+  } catch {
+    // Swallow: a failed account-stats fetch must never break account sync.
   }
 }
 
@@ -205,7 +249,9 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
     }
   }
   await recordAccountSync(account.id, newest, oldest, filterKey);
+  await recordSyncFilterMemory(account, options.rated, options.speeds);
   await syncChesscomLifetimeBest(account);
+  await syncChesscomImportedAccountStats(account);
 
   return {
     accountId: account.id,
@@ -372,6 +418,84 @@ export async function syncAccountGamesOlder(
   };
 }
 
+export interface AccountSyncBackfillOptions extends AccountSyncOptions {
+  /**
+   * Epoch-ms lower bound of the coverage the caller wants after this sync;
+   * 0 means full history. Omit to skip the backward phase entirely (plain
+   * forward sync).
+   */
+  backfillTargetStartMs?: number;
+}
+
+export interface AccountSyncWithBackfillResult {
+  forward: AccountSyncResult;
+  /** Null when no backward phase ran (no target, or coverage already reached it). */
+  older: AccountSyncOlderResult | null;
+  fetchedCount: number;
+  addedCount: number;
+  newGames: ImportedGame[];
+}
+
+
+
+
+
+
+
+
+
+export async function syncAccountGamesWithBackfill(
+  account: ChessAccount,
+  options: AccountSyncBackfillOptions,
+): Promise<AccountSyncWithBackfillResult> {
+  const { backfillTargetStartMs, onProgress, ...forwardOptions } = options;
+  const forward = await syncAccountGames(account, {
+    ...forwardOptions,
+    ...(onProgress ? { onProgress } : {}),
+  });
+
+  const result = (older: AccountSyncOlderResult | null): AccountSyncWithBackfillResult => ({
+    forward,
+    older,
+    fetchedCount: forward.fetchedCount + (older?.fetchedCount ?? 0),
+    addedCount: forward.addedCount + (older?.addedCount ?? 0),
+    newGames: older ? [...forward.newGames, ...older.newGames] : forward.newGames,
+  });
+
+  if (backfillTargetStartMs === undefined) return result(null);
+  const target = Math.max(0, backfillTargetStartMs);
+
+  // The forward phase updated the cursors on disk; the in-memory account is stale.
+  let refreshed = await getAccount(account.id) ?? account;
+
+  // Accounts imported before the oldest-cursor bookkeeping existed have games
+  // but no backward boundary. Derive it from the already-imported games so the
+  // backfill has a cursor to page back from. One IDB games load, same as every
+  // sync phase already performs for dedupe.
+  if (refreshed.oldestGameTimestamp === null) {
+    const existing = await loadExistingGames();
+    const ownGames = existing.filter(g => g.accountId === account.id);
+    const derivedOldest = minTimestamp(refreshed, ownGames);
+    if (derivedOldest !== null) {
+      await recordAccountSync(account.id, null, derivedOldest, null);
+      refreshed = await getAccount(account.id) ?? refreshed;
+    }
+  }
+
+  const oldest = refreshed.oldestGameTimestamp;
+  if (oldest === null || oldest <= target) return result(null);
+
+  // Continue the caller's progress stream across both phases.
+  const forwardCount = forward.fetchedCount;
+  const older = await syncAccountGamesOlder(refreshed, {
+    rated: options.rated,
+    speeds: options.speeds,
+    targetDateStartMs: target,
+    onProgress: count => onProgress?.(forwardCount + count),
+  });
+  return result(older);
+}
+
 function peekAbortError(): Error {
   const error = new Error('Aborted');
   error.name = 'AbortError';
@@ -390,9 +514,25 @@ export interface AccountPeekResult {
   supported: boolean;
   /** New (deduped) games available to sync for the requested speeds. */
   newGameCount: number;
+
+
+
+
+  newGameCountBySpeed: Partial<Record<ImportSpeed, number>>;
   fetchedCount: number;
   cursorTimestamp: number | null;
   usedCursor: boolean;
+}
+
+const PEEK_SPEED_CLASSES: readonly ImportSpeed[] = ['bullet', 'blitz', 'rapid'];
+
+function countBySpeed(games: readonly ImportedGame[]): Partial<Record<ImportSpeed, number>> {
+  const counts: Partial<Record<ImportSpeed, number>> = {};
+  for (const game of games) {
+    const speed = PEEK_SPEED_CLASSES.find(s => s === game.timeClass);
+    if (speed) counts[speed] = (counts[speed] ?? 0) + 1;
+  }
+  return counts;
 }
 
 
@@ -407,6 +547,7 @@ export async function peekAccountSync(account: ChessAccount, options: AccountPee
     accountId: account.id,
     supported: false,
     newGameCount: 0,
+    newGameCountBySpeed: {},
     fetchedCount: 0,
     cursorTimestamp: cursor,
     usedCursor: false,
@@ -437,6 +578,7 @@ export async function peekAccountSync(account: ChessAccount, options: AccountPee
     accountId: account.id,
     supported: true,
     newGameCount: newGames.length,
+    newGameCountBySpeed: countBySpeed(newGames),
     fetchedCount: fetched.length,
     cursorTimestamp: cursor,
     usedCursor: true,

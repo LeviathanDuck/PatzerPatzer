@@ -67,7 +67,9 @@ import {
   currentImportDateRangeConfig, importSyncFilterKey,
   type ImportSpeed, type ImportDateRange,
 } from '../import/filters';
-import { syncAccountGames, peekAccountSync, type AccountSyncResult } from '../import/accountSync';
+import { syncAccountGamesWithBackfill, peekAccountSync, type AccountSyncWithBackfillResult } from '../import/accountSync';
+import { fetchChesscomSpeedTotals } from '../import/chesscom';
+import { fetchLichessSpeedTotals } from '../import/lichess';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
@@ -523,6 +525,25 @@ function renderLibraryPage(redraw: () => void): VNode {
 
 
 
+function syncBackfillTargetStartMs(): number {
+  const range = sessionDateRange();
+  if (range === null) return 0;
+  if (range === 'custom') {
+    const from = sessionCustomFrom();
+    if (!from) return 0;
+    const ts = Date.parse(`${from}T00:00:00Z`);
+    return Number.isNaN(ts) ? 0 : ts;
+  }
+  const entry = (SESSION_DATE_RANGE_OPTIONS as readonly { value: string; days: number }[]).find(o => o.value === range);
+  return entry ? Date.now() - entry.days * 86_400_000 : 0;
+}
+
+
+
+
+
+
+
 async function runAccountSync(account: ChessAccount, redraw: () => void): Promise<void> {
   if (_accountSyncRunningId !== null) return;
   const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
@@ -533,10 +554,11 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
   _accountSyncErrors.delete(account.id);
   redraw();
   try {
-    const result: AccountSyncResult = await syncAccountGames(account, {
+    const result: AccountSyncWithBackfillResult = await syncAccountGamesWithBackfill(account, {
       rated: importFilters.rated,
       speeds: importFilters.speeds,
       syncDateRange: currentImportDateRangeConfig(),
+      backfillTargetStartMs: syncBackfillTargetStartMs(),
       onProgress: count => {
         _accountSyncMessages.set(account.id, `Fetched ${count} game${count === 1 ? '' : 's'}...`);
         redraw();
@@ -550,9 +572,11 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
     if (activeCollection()?.id === `account:${account.id}`) {
       await openAccountResearch(refreshedAccount, redraw);
     }
+    const olderAdded = result.older?.addedCount ?? 0;
     _accountSyncMessages.set(account.id, result.addedCount === 0
       ? 'No new games to import'
-      : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}`);
+      : `Imported ${result.addedCount} new game${result.addedCount === 1 ? '' : 's'}${
+          olderAdded > 0 ? ` (${olderAdded} older)` : ''}`);
   } catch (err) {
     _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Sync failed.');
   } finally {
@@ -1581,12 +1605,62 @@ function renderImportWorkflow(redraw: () => void): VNode {
   ]);
 }
 
+
+let _researchTotals: Partial<Record<ImportSpeed, number>> | null = null;
+let _researchTotalsLoading = false;
+let _researchTotalsKey = '';
+let _researchTotalsGen = 0;
+let _researchTotalsTimer: ReturnType<typeof setTimeout> | null = null;
+
+
+
+
+
+
+function ensureResearchTotals(redraw: () => void): void {
+  const src = importSource();
+  const username = importUsername().trim();
+  if (src === 'pgn' || !username) {
+    _researchTotalsKey = '';
+    _researchTotals = null;
+    _researchTotalsLoading = false;
+    return;
+  }
+  const key = `${src}|${username.toLowerCase()}`;
+  if (_researchTotalsKey === key) return;
+  _researchTotalsKey = key;
+  _researchTotals = null;
+  _researchTotalsLoading = true;
+  const gen = ++_researchTotalsGen;
+  if (_researchTotalsTimer !== null) clearTimeout(_researchTotalsTimer);
+  _researchTotalsTimer = setTimeout(() => {
+    _researchTotalsTimer = null;
+    const fetchTotals = src === 'chesscom' ? fetchChesscomSpeedTotals : fetchLichessSpeedTotals;
+    void fetchTotals(username)
+      .then(totals => {
+        if (_researchTotalsGen !== gen) return;
+        _researchTotals = totals;
+        _researchTotalsLoading = false;
+        redraw();
+      })
+      .catch(() => {
+        if (_researchTotalsGen !== gen) return;
+        _researchTotalsLoading = false;
+        redraw();
+      });
+  }, 400);
+}
+
 function renderDetailsStep(redraw: () => void): VNode {
   const src = importSource();
   const color = importColor();
   const err = importError();
   const speeds = importSpeeds();
   const dateRange = importDateRange();
+  ensureResearchTotals(redraw);
+  const researchTotalsSum = _researchTotals
+    ? Object.values(_researchTotals).reduce((sum, n) => sum + (n ?? 0), 0)
+    : 0;
 
   const sections: (VNode | null)[] = [];
   const focusUsernameInput = (elm: Element | undefined): void => {
@@ -1704,13 +1778,15 @@ function renderDetailsStep(redraw: () => void): VNode {
     sections.push(h('div.header__panel-divider'));
     sections.push(h('div.header__panel-section', [
       h('div.header__panel-label', 'Time control'),
+      _researchTotalsLoading ? h('p.header__panel-hint', 'Checking games…') : null,
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: speeds.size === 0 },
           on: { click: () => { setImportSpeeds(new Set()); redraw(); } },
-        }, 'All'),
-        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
-          h('button.header__pill', {
+        }, _researchTotals && researchTotalsSum > 0 ? `All · ${researchTotalsSum.toLocaleString()}` : 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) => {
+          const total = _researchTotals?.[value];
+          return h('button.header__pill', {
             class: { active: speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -1719,8 +1795,8 @@ function renderDetailsStep(redraw: () => void): VNode {
               setImportSpeeds(s);
               redraw();
             } },
-          }, label),
-        ),
+          }, total !== undefined ? `${label} · ${total.toLocaleString()}` : label);
+        }),
       ]),
     ]));
 
@@ -4496,7 +4572,7 @@ function renderTreeEvalControls(redraw: () => void): VNode {
       }, active ? [
         h('img.openings__tree-eval-activity-icon', {
           attrs: {
-            src: '/images/loading-icons/loading.gif',
+            src: '/images/loading-icons/loading-still.png',
             alt: '',
           },
         }),

@@ -124,6 +124,10 @@ export const SETTINGS_LIVE_APPLY_GROUPS: readonly SettingsLiveApplyGroup[] = Obj
     keys: [
       'patzer.postGameSummaryOpen',
       'patzer.evalGraphHeightPct',
+      'patzer.evalGraphTheme',
+      'patzer.evalGraphTooltip',
+      'patzer.evalGraphGuides',
+      'patzer.evalGraphRingMarker',
     ],
     handlerId: 'analysis-panel.reload-recommended',
     status: 'reload-recommended',

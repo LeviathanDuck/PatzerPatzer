@@ -108,7 +108,11 @@ export function openingPreview(game: ImportedGame): OpeningPreview | null {
   return preview;
 }
 
-function formatMovePreview(sanMoves: string[]): string {
+
+
+
+
+export function formatMovePreview(sanMoves: string[]): string {
   const parts: string[] = [];
   for (let i = 0; i < sanMoves.length; i++) {
     const san = sanMoves[i];
@@ -126,12 +130,15 @@ function formatMovePreview(sanMoves: string[]): string {
 
 export interface GameTimestamp {
   display:    string;
+
+  dateLabel:  string | null;
+
+  timeLabel:  string | null;
   iso:        string | null;
   sourceLabel: string | null;
 }
 
 export interface GameExtras {
-  ratingDiff:      { white: number | null; black: number | null };
   rated:           boolean | null;
   timeControlLabel: string | null;
   timestamp:       GameTimestamp;
@@ -183,7 +190,10 @@ function computeTimestamp(game: ImportedGame): GameTimestamp {
     const d = new Date(parsed.epochMs);
     const timeLabel = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     const dateLabel = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    return { display: `${timeLabel} · ${dateLabel}`, iso: parsed.iso, sourceLabel: sourcePlatformLabel(game) };
+    return {
+      display: `${timeLabel} · ${dateLabel}`, dateLabel, timeLabel,
+      iso: parsed.iso, sourceLabel: sourcePlatformLabel(game),
+    };
   }
 
   // No parseable game time: fall back to a readable date-only label (never a bare ISO string).
@@ -193,23 +203,20 @@ function computeTimestamp(game: ImportedGame): GameTimestamp {
     const dateLabel = Number.isNaN(d.getTime())
       ? dateOnly
       : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    return { display: dateLabel, iso: null, sourceLabel: sourcePlatformLabel(game) };
+    return { display: dateLabel, dateLabel, timeLabel: null, iso: null, sourceLabel: sourcePlatformLabel(game) };
   }
 
-  return { display: '–', iso: null, sourceLabel: null };
+  return { display: '–', dateLabel: null, timeLabel: null, iso: null, sourceLabel: null };
 }
 
 function computeGameExtras(game: ImportedGame): GameExtras {
   return {
-    ratingDiff: {
-      white: parseRatingDiff(game.pgn, 'WhiteRatingDiff'),
-      black: parseRatingDiff(game.pgn, 'BlackRatingDiff'),
-    },
     rated:            parseRatedFlag(game.pgn),
     timeControlLabel: parseTimeControlLabel(game.pgn),
     timestamp:        computeTimestamp(game),
   };
 }
+
 
 
 
@@ -229,6 +236,47 @@ export function formatDelta(delta: number): string {
   return '±0';
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function resolveRatingDeltas(
+  game: ImportedGame,
+  accountColor: 'white' | 'black' | null,
+): { white: number | null; black: number | null } {
+  const headerWhite = parseRatingDiff(game.pgn, 'WhiteRatingDiff');
+  const headerBlack = parseRatingDiff(game.pgn, 'BlackRatingDiff');
+  if (accountColor === 'white') {
+    return {
+      white: game.ratingDelta ?? headerWhite,
+      black: game.opponentRatingDelta ?? headerBlack,
+    };
+  }
+  if (accountColor === 'black') {
+    return {
+      white: game.opponentRatingDelta ?? headerWhite,
+      black: game.ratingDelta ?? headerBlack,
+    };
+  }
+  return { white: headerWhite, black: headerBlack };
+}
+
 // ---------------------------------------------------------------------------
 // Board thumbnail — CSS grid of 64 squares using the current piece set's existing CSS custom
 // properties (---white-pawn etc., set on <body> by applyPieceSet in board/cosmetics.ts), NOT a
@@ -236,6 +284,12 @@ export function formatDelta(delta: number): string {
 // container; an IntersectionObserver installed in the insert hook calls thumbnailFen() and
 // builds the squares via direct DOM writes only once the row actually scrolls into view, so
 // offscreen rows never parse PGN (CR-2/CR-4).
+//
+// Square coloring/texture is NOT drawn per-square here: `.grr__thumb-grid` reuses the same
+// `body[data-board=...] cg-board::before` selector group as the main board (main.scss), so the
+// active board theme's own image renders as one continuous background behind the squares — same
+// mechanism applyBoardTheme() (board/cosmetics.ts) already drives, so future themes work
+// automatically. The squares below only host piece elements.
 // ---------------------------------------------------------------------------
 
 const ROLE_BY_LETTER: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
@@ -255,7 +309,9 @@ function expandFenBoard(fen: string): (string | null)[][] {
   });
 }
 
-// rows[0] = rank 8 ... rows[7] = rank 1 (standard FEN row order).
+// rows[0] = rank 8 ... rows[7] = rank 1 (standard FEN row order). Square color/texture comes from
+// the active board theme's background image on the grid container (main.scss), not from a
+// per-square class here — see the file-header comment above.
 function populateThumbnailGrid(container: HTMLElement, fen: string, flipped: boolean): void {
   const rows = expandFenBoard(fen);
   const frag = document.createDocumentFragment();
@@ -264,11 +320,9 @@ function populateThumbnailGrid(container: HTMLElement, fen: string, flipped: boo
     for (let displayCol = 0; displayCol < 8; displayCol++) {
       const rankIdx = flipped ? 7 - displayRow : displayRow;
       const fileIdx = flipped ? 7 - displayCol : displayCol;
-      const rankNumber = 8 - rankIdx; // 1..8
 
       const square = document.createElement('div');
-      const isDark = (fileIdx + rankNumber) % 2 === 0;
-      square.className = `grr__thumb-sq ${isDark ? '--dark' : '--light'}`;
+      square.className = 'grr__thumb-sq';
 
       const code = rows[rankIdx]?.[fileIdx];
       if (code) {
@@ -491,6 +545,10 @@ function computeTags(reviewState: ReviewControlState, inputs: RichRowTagInputs):
 }
 
 
+
+
+
+
 export function renderTagArea(
   reviewState: ReviewControlState,
   inputs: RichRowTagInputs,
@@ -514,10 +572,74 @@ export function renderTagArea(
   ]);
 }
 
-// ---------------------------------------------------------------------------
-// Player blocks — opponent always first, imported account always second. No color tint on the
-// account's username; a color chip next to each name shows the color that player had.
-// ---------------------------------------------------------------------------
+
+
+
+
+
+export function renderReviewedChip(reviewState: ReviewControlState): VNode | null {
+  return reviewState.kind === 'reviewed' ? h('span.grr__chip.--reviewed', '✓ Reviewed') : null;
+}
+
+
+
+
+
+
+export function renderLibraryChip(addLibrary: { onAdd: () => void } | null | undefined): VNode {
+  return h('button.grr__chip.--library', {
+    attrs: {
+      type:  'button',
+      disabled: !addLibrary,
+      title: addLibrary ? 'Add to Study Library' : 'Study Library add flow is not available yet',
+    },
+    on: { click: (e: Event) => { e.stopPropagation(); addLibrary?.onAdd(); } },
+  }, '+ Library');
+}
+
+function renderRichChipsRow(
+  reviewState: ReviewControlState,
+  tacticIcons: RichRowIcon[],
+  addLibrary: { onAdd: () => void } | null | undefined,
+): VNode {
+  const reviewed = reviewState.kind === 'reviewed';
+  return h('div.grr__chips', [
+    renderReviewedChip(reviewState),
+    reviewed && tacticIcons.length > 0
+      ? h('span.grr__chip-icons', tacticIcons.map(icon =>
+          h('span.grr__icon.' + icon.cls, { attrs: { title: icon.title } }, icon.glyph)))
+      : null,
+    renderLibraryChip(addLibrary),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+export type PlayerDotClass = 'win' | 'loss' | 'draw' | 'unknown';
+
+
+
+
+
+
+
+
+export function playerDotClass(
+  role: 'opponent' | 'account',
+  result: 'win' | 'loss' | 'draw' | null,
+): PlayerDotClass {
+  if (result === null) return 'unknown';
+  if (result === 'draw') return 'draw';
+  if (role === 'account') return result;
+  return result === 'win' ? 'loss' : 'win';
+}
 
 interface PlayerBlockOpts {
   variant:  'opponent' | 'account';
@@ -528,21 +650,43 @@ interface PlayerBlockOpts {
   accuracy: number | null | undefined;
 }
 
-function renderPlayerBlock(opts: PlayerBlockOpts): VNode {
+function renderMatchupCell(opts: PlayerBlockOpts): VNode {
   const deltaNode = opts.delta !== null
     ? h('span.grr__delta', { class: { '--gain': opts.delta > 0, '--loss': opts.delta < 0 } }, formatDelta(opts.delta))
     : null;
 
+  // Opponent's name never truncates (Global rule); account name is the one allowed to shrink —
+  // enforced in main.scss via the grid column tracks (opponent: auto/content-sized, account:
+  // minmax(0, 1fr)), not by omitting overflow styling here.
   return h('div.grr__player.--' + opts.variant, [
-    h('div.grr__player-line', [
-      h('span.grr__player-name', opts.name),
-      opts.rating !== undefined ? h('span.grr__player-rating', String(opts.rating)) : null,
-      deltaNode,
-      opts.color ? h('span.color-chip.--' + opts.color) : null,
-    ]),
-    opts.accuracy !== null && opts.accuracy !== undefined
-      ? h('div.grr__accuracy', `accuracy ${Math.round(opts.accuracy)}%`)
-      : null,
+    h('span.grr__player-name', opts.name),
+    opts.rating !== undefined ? h('span.grr__player-rating', String(opts.rating)) : null,
+    deltaNode,
+    opts.color ? h('span.color-chip.--' + opts.color) : null,
+  ]);
+}
+
+function renderAccuracyCell(variant: 'opponent' | 'account', accuracy: number | null | undefined): VNode | null {
+  if (accuracy === null || accuracy === undefined) return null;
+  return h('div.grr__accuracy.--' + variant, [
+    h('span.grr__accuracy-value', `${Math.round(accuracy)}%`),
+    h('span.grr__accuracy-label', ' accuracy'),
+  ]);
+}
+
+function renderMatchupGrid(opp: PlayerBlockOpts, acct: PlayerBlockOpts): VNode {
+  const hasAccuracy = (opp.accuracy !== null && opp.accuracy !== undefined)
+    || (acct.accuracy !== null && acct.accuracy !== undefined);
+
+  return h('div.grr__matchup', [
+    renderMatchupCell(opp),
+    h('span.grr__vs-pill', 'vs'),
+    renderMatchupCell(acct),
+    ...(hasAccuracy ? [
+      renderAccuracyCell('opponent', opp.accuracy),
+      h('span.grr__accuracy-divider'),
+      renderAccuracyCell('account', acct.accuracy),
+    ] : []),
   ]);
 }
 
@@ -559,7 +703,17 @@ function accountLabel(game: ImportedGame, userColor: 'white' | 'black' | null): 
 }
 
 // ---------------------------------------------------------------------------
-// Opening line — opening name (semibold) + first ~5 mainline SAN moves + total move count.
+// Icon-font glyphs — real codepoints from the bundled lichess.woff2 (public/font/lichess.woff2,
+// same private-use characters as lichess-org/lila's ui/lib/src/licon.ts), never emoji.
+// ---------------------------------------------------------------------------
+
+const BOOK_GLYPH          = ''; // licon.Book
+const CLOCK_GLYPH         = ''; // licon.Clock
+const EXTERNAL_LINK_GLYPH = ''; // licon.ExternalArrow
+
+// ---------------------------------------------------------------------------
+// Opening line — book icon + opening name (semibold) + first ~5 mainline SAN moves + total move
+// count.
 // ---------------------------------------------------------------------------
 
 function renderOpeningLine(game: ImportedGame): VNode {
@@ -573,6 +727,7 @@ function renderOpeningLine(game: ImportedGame): VNode {
   if (totalMoves) trailingParts.push(`${totalMoves} move${totalMoves === 1 ? '' : 's'}`);
 
   return h('div.grr__opening', { attrs: { title: [openingName, ...trailingParts].filter(Boolean).join(' — ') } }, [
+    h('span.grr__opening-icon', { attrs: { 'data-icon': BOOK_GLYPH } }),
     openingName ? h('span.grr__opening-name', openingName) : null,
     trailingParts.length > 0 ? h('span.grr__opening-moves', trailingParts.join(' · ')) : null,
   ]);
@@ -592,20 +747,51 @@ export const TIME_CLASS_ICON: Record<string, { glyph: string; cls: string }> = {
 // Study import / no time control — licon.Book, distinct glyph + color from every timed class.
 export const NO_CLOCK_ICON = { glyph: '', cls: '--no-clock' };
 
-function renderMetaRow(game: ImportedGame, extras: GameExtras): VNode {
-  const icon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
-  const label = game.timeClass
-    ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1)
-    : 'Study import · No clock';
-  const ratedLabel = extras.rated === true ? 'Rated' : extras.rated === false ? 'Casual' : null;
-  const tooltip = [extras.timestamp.iso, extras.timestamp.sourceLabel].filter(Boolean).join(' · ');
+/** Base time in seconds from a raw PGN `TimeControl` label (e.g. "180+2" → 180); increment omitted. */
+function parseTimeControlBase(timeControlLabel: string | null): number | null {
+  if (!timeControlLabel) return null;
+  const match = timeControlLabel.match(/^(\d+)/);
+  const digits = match?.[1];
+  return digits !== undefined ? parseInt(digits, 10) : null;
+}
 
-  return h('div.grr__meta', [
-    h('span.grr__tc-icon.' + icon.cls, { attrs: { 'data-icon': icon.glyph, title: label } }),
-    h('span.grr__tc-label', label),
-    extras.timeControlLabel ? h('span.grr__tc-control', extras.timeControlLabel) : null,
-    ratedLabel ? h('span.grr__rated.' + (ratedLabel === 'Rated' ? '--rated' : '--casual'), ratedLabel) : null,
-    h('span.grr__timestamp', { attrs: { title: tooltip || extras.timestamp.display } }, extras.timestamp.display),
+function metaRow(glyph: string | null, iconCls: string, text: string, tooltip?: string): VNode {
+  return h('div.grr__rail-meta-row', tooltip ? { attrs: { title: tooltip } } : {}, [
+    h('span.grr__rail-meta-icon' + (iconCls ? '.' + iconCls : ''), glyph ? { attrs: { 'data-icon': glyph } } : {}),
+    h('span.grr__rail-meta-text', text),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: string | null | undefined): VNode {
+  const icon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
+  const tcLabel = game.timeClass
+    ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1)
+    : 'Study import';
+  const baseSeconds = parseTimeControlBase(extras.timeControlLabel);
+  const tcText = baseSeconds !== null ? `${tcLabel} ${baseSeconds}` : tcLabel;
+  const ratedLabel = extras.rated === true ? 'Rated' : extras.rated === false ? 'Casual' : null;
+  const tcTooltip = ratedLabel ? `${tcText} · ${ratedLabel}` : tcText;
+  const tsTooltip = [extras.timestamp.iso, extras.timestamp.sourceLabel].filter(Boolean).join(' · ');
+
+  return h('div.grr__rail-meta', [
+    metaRow(icon.glyph, icon.cls, tcText, tcTooltip),
+    extras.timestamp.dateLabel ? metaRow(null, '', extras.timestamp.dateLabel, tsTooltip) : null,
+    extras.timestamp.timeLabel ? metaRow(CLOCK_GLYPH, '', extras.timestamp.timeLabel, tsTooltip) : null,
+    sourceUrl ? h('a.grr__rail-meta-row.grr__rail-ext-link', {
+      attrs: { href: sourceUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+      on:    { click: (e: Event) => e.stopPropagation() },
+    }, [
+      h('span.grr__rail-meta-icon', { attrs: { 'data-icon': EXTERNAL_LINK_GLYPH } }),
+    ]) : null,
   ]);
 }
 
@@ -630,6 +816,11 @@ export interface RichGameRowDeps {
   reviewState:  ReviewControlState;
   reviewOpts?:  ReviewControlOpts;
   icons?:       RichRowIconInputs;
+
+
+
+
+
   tags?:        RichRowTagInputs;
   /** Present + non-null when a Study Library add flow is wired up; omitted/null renders disabled. */
   addLibrary?:  { onAdd: () => void } | null;
@@ -639,6 +830,8 @@ export interface RichGameRowDeps {
    */
   secondaryActions?: RichRowSecondaryAction[];
   onSelectRow?: (game: ImportedGame, e: MouseEvent) => void;
+  /** External source-platform link (Chess.com/Lichess), rendered as the rail meta stack's last row. */
+  sourceUrl?:   string | null;
 }
 
 /** Exported so the compact-density feed (view.ts) can reuse the same markup/styling. */
@@ -658,42 +851,47 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
 
   const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
   const acctRating = userColor === 'white' ? game.whiteRating : userColor === 'black' ? game.blackRating : undefined;
-  const oppDelta = userColor === 'white' ? extras.ratingDiff.black : userColor === 'black' ? extras.ratingDiff.white : null;
-  const acctDelta = userColor === 'white' ? extras.ratingDiff.white : userColor === 'black' ? extras.ratingDiff.black : null;
+  const deltas = resolveRatingDeltas(game, userColor);
+  const oppDelta = userColor === 'white' ? deltas.black : userColor === 'black' ? deltas.white : null;
+  const acctDelta = userColor === 'white' ? deltas.white : userColor === 'black' ? deltas.black : null;
   const oppColorChip = userColor === 'white' ? 'black' : userColor === 'black' ? 'white' : null;
 
   const icons = computeIcons(deps.reviewState, deps.icons ?? {});
+  const tacticIcons = icons.filter(icon => icon.cls === '--missed-tactic' || icon.cls === '--missed-mate');
+
+
+
+
+
+
 
   return h('div.grr', {
     class: { selected: deps.selected },
     on:    { click: (e: MouseEvent) => deps.onSelectRow?.(game, e) },
   }, [
+
+
+
+
+
     renderThumbnail(game, resultCls, userColor === 'black'),
     h('div.grr__body', [
-      h('div.grr__players', [
-        renderPlayerBlock({
-          variant: 'opponent', name: opponentLabel(game, userColor), rating: oppRating,
-          color: oppColorChip, delta: oppDelta, accuracy: deps.accuracy?.opp,
-        }),
-        renderPlayerBlock({
-          variant: 'account', name: accountLabel(game, userColor) ?? '–', rating: acctRating,
-          color: userColor, delta: acctDelta, accuracy: deps.accuracy?.user,
-        }),
-      ]),
+      renderMatchupGrid(
+        { variant: 'opponent', name: opponentLabel(game, userColor), rating: oppRating,
+          color: oppColorChip, delta: oppDelta, accuracy: deps.accuracy?.opp },
+        { variant: 'account', name: accountLabel(game, userColor) ?? '–', rating: acctRating,
+          color: userColor, delta: acctDelta, accuracy: deps.accuracy?.user },
+      ),
+      h('hr.grr__hairline'),
       renderOpeningLine(game),
-      h('div.grr__footer', [
-        renderTagArea(deps.reviewState, deps.tags ?? {}, deps.addLibrary),
-        renderMetaRow(game, extras),
-      ]),
+      renderRichChipsRow(deps.reviewState, tacticIcons, deps.addLibrary),
     ]),
-    h('div.grr__side', [
-      icons.length > 0
-        ? h('div.grr__icons', icons.map(icon => h('span.grr__icon.' + icon.cls, { attrs: { title: icon.title } }, icon.glyph)))
-        : null,
+    h('div.grr__rail', [
       h('div.grr__review-group', [
         renderReviewControl(deps.reviewState, deps.reviewOpts),
         renderSecondaryActions(deps.secondaryActions ?? []),
       ]),
+      renderRailMeta(game, extras, deps.sourceUrl),
     ]),
   ]);
 }

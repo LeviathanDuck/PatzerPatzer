@@ -22,7 +22,6 @@ import { reviewDotsUserOnly, setReviewDotsUserOnly } from '../board/cosmetics';
 import { analysisComplete } from '../engine/reviewStatus';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import {
-  isLichessCompareAdminSessionActive,
   openLichessCompareFlow,
   closeLichessCompareFlow,
   renderLichessComparePanel,
@@ -217,8 +216,7 @@ export function renderActionMenu(): VNode | null {
 
 
 
-  const canCompareWithLichess =
-    isLichessCompareAdminSessionActive() && !!deps.hasCompletedReviewForSelectedGame?.();
+  const canCompareWithLichess = !!deps.hasCompletedReviewForSelectedGame?.();
 
 
   if (_actionMenuSubView === 'mistake-detection') {

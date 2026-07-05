@@ -3,8 +3,16 @@
 
 import { h, type VNode } from 'snabbdom';
 import { evalWinChances, type MoveLabel } from '../engine/winchances';
+import { getEvalCacheRevision } from '../engine/ctrl';
 import { labelForReviewEval } from './deepenedEval';
-import { buildAcplDataset, createAcplChart, getAcplChart, updateAcplChart } from './acplChart';
+import {
+  getEvalGraphGuides,
+  getEvalGraphRingMarker,
+  getEvalGraphTheme,
+  getEvalGraphTooltip,
+  resetEvalGraphSettingsRuntimeForDataManagement,
+  type EvalGraphTheme,
+} from './graphSettings';
 import type { TreeNode } from '../tree/types';
 import type { ReviewEngineMetadata } from '../idb/index';
 
@@ -173,7 +181,66 @@ export function computeLichessStyleGameAccuracy(
   return { white, black };
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface SummaryCacheEntry {
+  root:         TreeNode | undefined;
+  leaf:         TreeNode | undefined;
+  length:       number;
+  evalRev:      number;
+  reviewEngine: ReviewEngineMetadata | undefined;
+  result:       AnalysisSummary | null;
+}
+let summaryCache: SummaryCacheEntry | null = null;
+
 export function computeAnalysisSummary(
+  mainline:  TreeNode[],
+  evalCache: EvalCache,
+  reviewEngine?: ReviewEngineMetadata,
+): AnalysisSummary | null {
+  const root    = mainline[0];
+  const leaf    = mainline[mainline.length - 1];
+  const evalRev = getEvalCacheRevision();
+
+  const cached = summaryCache;
+  if (
+    cached &&
+    cached.root === root &&
+    cached.leaf === leaf &&
+    cached.length === mainline.length &&
+    cached.evalRev === evalRev &&
+    cached.reviewEngine === reviewEngine
+  ) {
+    return cached.result;
+  }
+
+  const result = computeAnalysisSummaryUncached(mainline, evalCache, reviewEngine);
+  summaryCache = { root, leaf, length: mainline.length, evalRev, reviewEngine, result };
+  return result;
+}
+
+function computeAnalysisSummaryUncached(
   mainline:  TreeNode[],
   evalCache: EvalCache,
   reviewEngine?: ReviewEngineMetadata,
@@ -445,9 +512,10 @@ export function renderEvalBar(
 }
 
 // --- Evaluation graph ---
-// Interactive graph: chart.js line chart adapted from lichess-org/lila's acpl chart —
-// see src/analyse/acplChart.ts for the chart construction/dataset/update logic.
-// Background (mobile) graph: unchanged hand-rolled SVG (no charting library).
+// Adapted from lichess-org/lila: ui/chart/src/acpl.ts (concept)
+// Pure SVG, no charting library. X = move index, Y = white-perspective win chances.
+// Theme finish (mountain/ember/glass) and detail toggles (guides, ring marker, tooltip) are read
+// from graphSettings.ts at render time — see renderEvalGraph below.
 // Data source: evalCache (same normalized white-perspective values used for move labels).
 
 const GRAPH_W = 600;
@@ -466,6 +534,58 @@ export function setEvalGraphHeightPct(value: number): void {
 
 export function resetAnalysisViewSettingsRuntimeForDataManagement(): void {
   graphHeightPct = GRAPH_HEIGHT_MIN;
+  evalGraphScrubPointerId = null;
+  evalGraphLastScrubPath = null;
+  resetEvalGraphSettingsRuntimeForDataManagement();
+}
+
+let evalGraphScrubPointerId: number | null = null;
+let evalGraphLastScrubPath: string | null = null;
+
+interface BgPt { x: number; y: number; path: string; }
+
+interface Pt {
+  x:       number;
+  y:       number;
+  path:    string;
+  label:   MoveLabel | null;
+  hasMate: boolean;
+  ply:     number;
+  san:     string | undefined;
+}
+
+
+
+const LABEL_DOT_COLORS: Record<MoveLabel, string> = {
+  blunder:     'hsl(0,69%,60%)',
+  mistake:     'hsl(41,100%,45%)',
+  inaccuracy:  'hsl(202,78%,62%)',
+};
+const MATE_DOT_COLOR = 'hsl(307,80%,70%)';
+
+function dotColorFor(pt: Pt): string {
+  if (pt.hasMate) return MATE_DOT_COLOR;
+  return pt.label ? LABEL_DOT_COLORS[pt.label] : '#d85000';
+}
+
+/** Catmull-Rom → cubic-Bezier path string through `pts`, used by the ember theme for the trace
+ *  and fill top edge. Straight-segment rendering elsewhere in the app is untouched. */
+function catmullRomPath(pts: readonly { x: number; y: number }[]): string {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M${pts[0]!.x},${pts[0]!.y} L${pts[1]!.x},${pts[1]!.y}`;
+  let d = `M${pts[0]!.x},${pts[0]!.y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i]!;
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = pts[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2.x},${p2.y}`;
+  }
+  return d;
 }
 
 export function renderEvalGraph(
@@ -478,9 +598,16 @@ export function renderEvalGraph(
   userOnly:    boolean,
   bg?:         boolean,
   reviewEngine?: ReviewEngineMetadata,
+  _evalCacheRevision = 0,
 ): VNode {
   const n = mainline.length - 1; // non-root move count
   const renderedGraphHeight = Math.round((GRAPH_H * graphHeightPct) / 100);
+  // svgH: the Y coordinate range used inside the SVG.
+  // In non-bg mode we match the viewBox height to the rendered pixel height so that
+  // scaleY = renderedGraphHeight / renderedGraphHeight = 1 — this keeps circle markers
+  // circular regardless of graph height. In bg mode the SVG is CSS-sized (height:100%)
+  // so we keep the fixed 80-unit coordinate space to preserve its fill geometry.
+  const svgH = bg ? GRAPH_H : renderedGraphHeight;
 
   if (n < 2) {
     // Background mode: render nothing when there is no data — empty transparent div
@@ -506,39 +633,71 @@ export function renderEvalGraph(
     ]);
   }
 
+  const shouldShowReviewAnnotation = (nodePly: number): boolean => {
+    if (!userOnly || userColor === null) return true;
+    const isWhiteMove = nodePly % 2 === 1;
+    return (userColor === 'white' && isWhiteMove) || (userColor === 'black' && !isWhiteMove);
+  };
+
+  const pts: (Pt | null)[] = [];
+  let path = '';
+  for (let i = 1; i <= n; i++) {
+    const node = mainline[i]!;
+    path += node.id;
+    const parentPath   = path.slice(0, -2);
+    const cached       = evalCache.get(path);
+    const parentCached = evalCache.get(parentPath);
+    const wc = cached?.mate === 0
+      ? (node.fen.split(' ')[1] === 'b' ? 1 : -1)
+      : (cached !== undefined ? evalWinChances(cached) : undefined);
+    if (wc !== undefined) {
+      const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
+      const label = !playedBest && shouldShowReviewAnnotation(node.ply)
+        ? labelForReviewEval(cached, playedBest, true, reviewEngine)
+        : null;
+      pts.push({
+        x: ((i - 1) / (n - 1)) * GRAPH_W,
+        y: ((1 - wc) / 2) * svgH, // wc=+1 → top, wc=0 → middle, wc=−1 → bottom
+        path,
+        label,
+        hasMate: cached?.mate !== undefined,
+        ply: node.ply,
+        san: node.san,
+      });
+    } else {
+      pts.push(null);
+    }
+  }
+
+  const valid = pts.filter((p): p is Pt => p !== null);
+
+  if (valid.length < 2) {
+    if (bg) return h('div.eval-graph.eval-graph--bg');
+    return h('div.eval-graph', [
+      h('div.eval-graph__empty', 'Analyze game to see graph.'),
+    ]);
+  }
+
   // --- Background (mobile) graph — unchanged hand-rolled SVG implementation. ---
   // Renders behind the mobile controls bar; no pointer interaction (see .eval-graph--bg CSS).
   if (bg) {
-    interface BgPt { x: number; y: number; path: string; }
-    const pts: (BgPt | null)[] = [];
-    let path = '';
-    for (let i = 1; i <= n; i++) {
-      const node = mainline[i]!;
-      path += node.id;
-      const cached = evalCache.get(path);
-      const wc = cached?.mate === 0
-        ? (node.fen.split(' ')[1] === 'b' ? 1 : -1)
-        : (cached !== undefined ? evalWinChances(cached) : undefined);
-      pts.push(wc !== undefined
-        ? { x: ((i - 1) / (n - 1)) * GRAPH_W, y: ((1 - wc) / 2) * GRAPH_H, path }
-        : null);
-    }
-    const valid = pts.filter((p): p is BgPt => p !== null);
-    if (valid.length < 2) return h('div.eval-graph.eval-graph--bg');
-
+    const bgPts: BgPt[] = valid.map(p => ({ x: p.x, y: p.y, path: p.path }));
     const cy = GRAPH_H / 2;
     const svgNodes: VNode[] = [];
-    const polyPts = [
-      `${valid[0]!.x},${GRAPH_H}`,
-      ...valid.map(p => `${p.x},${p.y}`),
-      `${valid[valid.length - 1]!.x},${GRAPH_H}`,
-    ].join(' ');
 
     // Center line (eval = 0) — pushed first so it renders behind the fill polygon and trace.
     svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: '0.6' } }));
-    svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(255,255,255,0.35)', stroke: 'none' } }));
+    svgNodes.push(h('polygon', { attrs: {
+      points: [
+        `${bgPts[0]!.x},${GRAPH_H}`,
+        ...bgPts.map(p => `${p.x},${p.y}`),
+        `${bgPts[bgPts.length - 1]!.x},${GRAPH_H}`,
+      ].join(' '),
+      fill: 'rgba(255,255,255,0.35)',
+      stroke: 'none',
+    } }));
     svgNodes.push(h('polyline', { attrs: {
-      points: valid.map(p => `${p.x},${p.y}`).join(' '),
+      points: bgPts.map(p => `${p.x},${p.y}`).join(' '),
       fill: 'none',
       stroke: '#d85000',
       'stroke-width': 1.5,
@@ -547,7 +706,7 @@ export function renderEvalGraph(
       'stroke-linecap': 'round',
     } }));
 
-    const curPt = valid.find(p => p.path === currentPath);
+    const curPt = bgPts.find(p => p.path === currentPath);
     if (curPt) {
       svgNodes.push(h('line', { attrs: {
         x1: curPt.x, y1: 0, x2: curPt.x, y2: GRAPH_H,
@@ -569,40 +728,264 @@ export function renderEvalGraph(
     ]);
   }
 
-  // --- Interactive graph — chart.js, adapted from lichess-org/lila's acpl chart. ---
-  // buildAcplDataset is called here only to gate the empty state; the canvas hooks below
-  // rebuild it again at chart-creation/update time (cheap — a few hundred points at most).
-  const dataset = buildAcplDataset(mainline, evalCache, userColor, userOnly, reviewEngine);
-  if (dataset.points.length < 2) {
-    return h('div.eval-graph', [
-      h('div.eval-graph__empty', 'Analyze game to see graph.'),
-    ]);
+
+  const theme: EvalGraphTheme = getEvalGraphTheme();
+  const guides = getEvalGraphGuides();
+  const ringMarker = getEvalGraphRingMarker();
+  const tooltipEnabled = getEvalGraphTooltip();
+  const hoverColor = theme === 'glass' ? '#d85000' : '#aaa';
+
+  const cy = svgH / 2;
+  const svgNodes: VNode[] = [];
+  const defs: VNode[] = [];
+
+  const hideHover = (container: Element | null): void => {
+    const hl = container?.querySelector('[data-hover]') as SVGLineElement | null;
+    if (hl) hl.setAttribute('opacity', '0');
+    const tip = container?.querySelector('.eval-graph__tooltip') as HTMLElement | null;
+    if (tip) tip.style.opacity = '0';
+  };
+  const showHover = (container: Element | null, pt: Pt | null): void => {
+    const hl = container?.querySelector('[data-hover]') as SVGLineElement | null;
+    if (!hl || !pt) return;
+    hl.setAttribute('x1', String(pt.x));
+    hl.setAttribute('x2', String(pt.x));
+    hl.setAttribute('opacity', '0.55');
+    if (!tooltipEnabled) return;
+    const tip = container?.querySelector('.eval-graph__tooltip') as HTMLElement | null;
+    if (!tip) return;
+    const turn = Math.ceil(pt.ply / 2);
+    const dots = pt.ply % 2 === 1 ? '.' : '…';
+    const moveText = `${turn}${dots} ${pt.san ?? ''}`;
+    const cached = evalCache.get(pt.path);
+    const scoreText = cached ? formatScore(cached) : '';
+    tip.textContent = '';
+    tip.append(document.createTextNode(`${moveText}  ${scoreText}`));
+    if (pt.label) {
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = ` ${pt.label[0]!.toUpperCase()}${pt.label.slice(1)}`;
+      labelSpan.style.color = LABEL_DOT_COLORS[pt.label];
+      tip.appendChild(labelSpan);
+    }
+    tip.style.opacity = '1';
+    const containerEl = container as HTMLElement | null;
+    const containerWidth = containerEl?.clientWidth ?? GRAPH_W;
+    const rawLeft = (pt.x / GRAPH_W) * containerWidth;
+    const tipWidth = tip.offsetWidth || 80;
+    const left = Math.max(4, Math.min(containerWidth - tipWidth - 4, rawLeft - tipWidth / 2));
+    tip.style.left = `${left}px`;
+  };
+  const nearestPointForClientX = (svg: SVGSVGElement | null, clientX: number): Pt | null => {
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width <= 0) return null;
+    const graphX = Math.max(0, Math.min(GRAPH_W, ((clientX - rect.left) / rect.width) * GRAPH_W));
+    let nearest = valid[0]!;
+    let nearestDist = Math.abs(nearest.x - graphX);
+    for (let i = 1; i < valid.length; i++) {
+      const pt = valid[i]!;
+      const dist = Math.abs(pt.x - graphX);
+      if (dist < nearestDist) {
+        nearest = pt;
+        nearestDist = dist;
+      }
+    }
+    return nearest;
+  };
+  const updateHoverAndMaybeScrub = (target: EventTarget | null, clientX: number, scrub: boolean): void => {
+    const svg = target instanceof SVGElement
+      ? (target.ownerSVGElement ?? (target as SVGSVGElement))
+      : null;
+    const pt = nearestPointForClientX(svg, clientX);
+    showHover(svg?.parentElement ?? null, pt);
+    if (scrub && pt && pt.path !== evalGraphLastScrubPath) {
+      evalGraphLastScrubPath = pt.path;
+      navigate(pt.path);
+    }
+  };
+
+  // Bottom-anchored polygon points, shared by mountain/glass (straight segments).
+  const polyPts = [
+    `${valid[0]!.x},${svgH}`,
+    ...valid.map(p => `${p.x},${p.y}`),
+    `${valid[valid.length - 1]!.x},${svgH}`,
+  ].join(' ');
+  const linePts = valid.map(p => `${p.x},${p.y}`).join(' ');
+
+  // --- Guides / centerline (drawn first when off, so it sits behind the fill) ---
+  if (!guides) {
+    svgNodes.push(h('line', { attrs: { x1: 0, y1: cy, x2: GRAPH_W, y2: cy, stroke: '#999', 'stroke-width': 1, opacity: '1' } }));
   }
 
-  const chartOptions = { userColor, userOnly, reviewEngine, onNavigate: navigate };
+  // --- Fill + trace, per theme ---
+  if (theme === 'mountain') {
+    defs.push(h('linearGradient', {
+      attrs: { id: 'eval-graph-mountain-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
+    }, [
+      h('stop', { attrs: { offset: '0%', 'stop-color': 'rgba(255,255,255,0.92)' } }),
+      h('stop', { attrs: { offset: '100%', 'stop-color': 'rgba(255,255,255,0.66)' } }),
+    ]));
+    svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'url(#eval-graph-mountain-fill)', stroke: 'none' } }));
+    svgNodes.push(h('polyline', { attrs: {
+      points: linePts, fill: 'none', stroke: '#d85000', 'stroke-width': 1.5,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    } }));
+  } else if (theme === 'ember') {
+    defs.push(h('linearGradient', {
+      attrs: { id: 'eval-graph-ember-fill', x1: '0', y1: '0', x2: '0', y2: '1' },
+    }, [
+      h('stop', { attrs: { offset: '0%', 'stop-color': 'rgba(255,243,233,0.9)' } }),
+      h('stop', { attrs: { offset: '100%', 'stop-color': 'rgba(255,243,233,0.6)' } }),
+    ]));
+    defs.push(h('filter', {
+      attrs: { id: 'eval-graph-ember-glow', x: '-20%', y: '-20%', width: '140%', height: '140%' },
+    }, [
+      h('feGaussianBlur', { attrs: { stdDeviation: '3.2' } }),
+    ]));
+    const smoothTrace = catmullRomPath(valid);
+    const smoothFill = `${smoothTrace} L${valid[valid.length - 1]!.x},${svgH} L${valid[0]!.x},${svgH} Z`;
+    svgNodes.push(h('path', { attrs: { d: smoothFill, fill: 'url(#eval-graph-ember-fill)', stroke: 'none' } }));
+    svgNodes.push(h('path', { attrs: {
+      d: smoothTrace, fill: 'none', stroke: '#d85000', 'stroke-width': 2,
+      opacity: '0.65', filter: 'url(#eval-graph-ember-glow)',
+    } }));
+    svgNodes.push(h('path', { attrs: {
+      d: smoothTrace, fill: 'none', stroke: '#d85000', 'stroke-width': 2,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    } }));
+  } else { // glass
+    svgNodes.push(h('polygon', { attrs: { points: polyPts, fill: 'rgba(255,255,255,0.07)', stroke: 'none' } }));
+    svgNodes.push(h('polyline', { attrs: {
+      points: linePts, fill: 'none', stroke: '#e8e8e8', 'stroke-width': 1.75,
+      'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+    } }));
+  }
+
+  // --- Guides drawn above the fill when enabled ---
+  if (guides) {
+    const guideTop = ((1 - 0.5) / 2) * svgH;    // wc = +0.5
+    const guideBottom = ((1 - -0.5) / 2) * svgH; // wc = -0.5
+    svgNodes.push(h('line', { attrs: { x1: 0, y1: guideTop, x2: GRAPH_W, y2: guideTop, stroke: 'rgba(255,255,255,0.06)', 'stroke-width': 1 } }));
+    svgNodes.push(h('line', { attrs: { x1: 0, y1: guideBottom, x2: GRAPH_W, y2: guideBottom, stroke: 'rgba(255,255,255,0.06)', 'stroke-width': 1 } }));
+    svgNodes.push(h('line', {
+      attrs: {
+        x1: 0, y1: cy, x2: GRAPH_W, y2: cy,
+        stroke: 'rgba(130,130,130,0.55)', 'stroke-width': 1, 'stroke-dasharray': '3 4',
+      },
+    }));
+  }
+
+  // Vertical bar at current move (drawn before dots so dots render on top)
+  const curPt = valid.find(p => p.path === currentPath);
+  if (curPt) {
+    if (ringMarker) {
+      svgNodes.push(h('line', { attrs: {
+        x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
+        stroke: '#4a9', 'stroke-width': 1.25, opacity: '0.8',
+      } }));
+    } else {
+      svgNodes.push(h('line', { attrs: {
+        x1: curPt.x, y1: 0, x2: curPt.x, y2: svgH,
+        stroke: '#4a8', 'stroke-width': 1, opacity: '0.55',
+      } }));
+    }
+  }
+
+  // Hover indicator line
+  svgNodes.push(h('line', {
+    attrs: {
+      'data-hover': '1',
+      x1: 0, y1: 0, x2: 0, y2: svgH,
+      stroke: hoverColor, 'stroke-width': 1.5, opacity: '0',
+      'pointer-events': 'none',
+    },
+  }));
+
+  // Label dots — only for classified moves (blunder/mistake/inaccuracy) or mate opportunities.
+  // The current position renders its own marker below instead of a themed label dot.
+  const dotR = theme === 'glass' ? 3.5 : 3;
+  for (const pt of valid) {
+    if (pt.path === currentPath) continue;
+    if (!pt.hasMate && !pt.label) continue;
+    svgNodes.push(h('circle', { attrs: {
+      cx: pt.x, cy: pt.y,
+      r: dotR,
+      fill: dotColorFor(pt),
+      stroke: '#111',
+      'stroke-width': 2,
+      'pointer-events': 'none',
+    } }));
+  }
+
+  // Current-position marker — ring style (on) or original filled-dot style (off).
+  if (curPt) {
+    if (ringMarker) {
+      svgNodes.push(h('circle', { attrs: {
+        cx: curPt.x, cy: curPt.y, r: 4, fill: 'none', stroke: '#4a9', 'stroke-width': 2, 'pointer-events': 'none',
+      } }));
+      svgNodes.push(h('circle', { attrs: {
+        cx: curPt.x, cy: curPt.y, r: 1.4, fill: '#fff', stroke: 'none', 'pointer-events': 'none',
+      } }));
+    } else {
+      svgNodes.push(h('circle', { attrs: {
+        cx: curPt.x, cy: curPt.y, r: 3.5, fill: '#4a8', stroke: '#fff', 'stroke-width': 1, 'pointer-events': 'none',
+      } }));
+    }
+  }
+
+  // Full-width interaction layer.
+  svgNodes.push(h('rect', {
+    attrs: { x: 0, y: 0, width: GRAPH_W, height: svgH, fill: 'transparent' },
+    on: {
+      pointerdown: (e: PointerEvent) => {
+        evalGraphScrubPointerId = e.pointerId;
+        evalGraphLastScrubPath = currentPath;
+        (e.currentTarget as SVGGraphicsElement).setPointerCapture?.(e.pointerId);
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, true);
+        e.preventDefault();
+      },
+      pointermove: (e: PointerEvent) => {
+        updateHoverAndMaybeScrub(e.currentTarget, e.clientX, evalGraphScrubPointerId === e.pointerId);
+      },
+      pointerup: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        (e.currentTarget as SVGGraphicsElement).releasePointerCapture?.(e.pointerId);
+      },
+      pointercancel: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId === e.pointerId) {
+          evalGraphScrubPointerId = null;
+          evalGraphLastScrubPath = null;
+        }
+        hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement?.parentElement ?? null);
+      },
+      pointerleave: (e: PointerEvent) => {
+        if (evalGraphScrubPointerId !== e.pointerId) hideHover((e.currentTarget as SVGGraphicsElement).ownerSVGElement?.parentElement ?? null);
+      },
+    },
+  }));
+
   const reviewEngineText = reviewEngine
     ? `${reviewEngine.engineName} · ${reviewEngine.strengthLabel} · depth ${reviewEngine.reviewDepth}`
     : null;
 
   return h('div.eval-graph', {
-    attrs: { style: `height:${renderedGraphHeight}px` },
+    on: {
+      mouseleave: (e: MouseEvent) => hideHover(e.currentTarget as Element),
+    },
   }, [
-    h('canvas', {
-      hook: {
-        insert: (vnode) => {
-          createAcplChart(vnode.elm as HTMLCanvasElement, mainline, evalCache, currentPath, chartOptions);
-        },
-        update: (_old, vnode) => {
-          const canvas = vnode.elm as HTMLCanvasElement;
-          const existing = getAcplChart(canvas);
-          if (existing) updateAcplChart(existing, mainline, evalCache, currentPath, chartOptions);
-          else createAcplChart(canvas, mainline, evalCache, currentPath, chartOptions);
-        },
-        destroy: (vnode) => {
-          getAcplChart(vnode.elm as HTMLCanvasElement)?.destroy();
-        },
-      },
-    }),
+    h('svg', { attrs: {
+      // viewBox matches the rendered pixel height so scaleY = 1, keeping circle
+      // markers circular at any graph height. scaleX still stretches to fill
+      // container width, which is the intended horizontal-fill behavior.
+      viewBox: `0 0 ${GRAPH_W} ${svgH}`,
+      width: '100%',
+      height: renderedGraphHeight,
+      preserveAspectRatio: 'none',
+    } }, [...(defs.length ? [h('defs', defs)] : []), ...svgNodes]),
+    tooltipEnabled ? h('div.eval-graph__tooltip') : null,
     ...(reviewEngineText ? [h('div.eval-graph__review-engine', reviewEngineText)] : []),
     h('div.eval-graph__resize-handle', {
       attrs: {
@@ -646,10 +1029,6 @@ function bindEvalGraphResize(handle: HTMLElement, redraw: () => void): void {
       const delta = pos[1] - startPos[1];
       setEvalGraphHeightPct(startHeight + delta);
       redraw();
-      // Chart.js's own ResizeObserver picks up the container height change, but nudge it
-      // explicitly so the canvas tracks the drag with no visible lag (interactive graph only).
-      const canvas = handle.parentElement?.querySelector('canvas');
-      if (canvas) getAcplChart(canvas)?.resize();
     };
 
     document.body.classList.add('resizing');

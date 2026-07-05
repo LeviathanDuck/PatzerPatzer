@@ -22,6 +22,22 @@ export type AccountCategory = 'mine' | 'opponent' | 'study' | (string & {});
  */
 export type AccountSection = 'research' | 'study' | 'archive';
 
+/**
+ * One speed's current/best rating and W/L/D record snapshot from chess.com's
+ * `/pub/player/{user}/stats` endpoint (spec item 16). Mirrors the shape
+ * `fetchChesscomImportedAccountStats()` (src/import/profiles.ts) normalizes,
+ * duplicated here rather than imported so this module stays free of a
+ * dependency on src/import, matching how `lifetimeBest` already duplicates
+ * its speed union instead of importing it from src/import/chesscom.ts.
+ */
+export interface ChessAccountSpeedStat {
+  currentRating?: number;
+  bestRating?: number;
+  wins?: number;
+  losses?: number;
+  draws?: number;
+}
+
 export interface ChessAccount {
   /** Canonical id: `${platform}:${lowercased username}`. */
   id: string;
@@ -51,6 +67,15 @@ export interface ChessAccount {
    * prompt's lifetime-rating fetch. Declared here only — not yet populated.
    */
   lifetimeBest?: Partial<Record<'rapid' | 'blitz' | 'classical' | 'daily', number>>;
+
+
+
+
+
+
+
+
+  speedStats?: Partial<Record<'rapid' | 'blitz' | 'bullet' | 'daily', ChessAccountSpeedStat>>;
   /** Date.now() when profile fields such as displayName/category last changed. */
   profileUpdatedAt?: number;
   /** Date.now() when the account was first registered. */
@@ -81,6 +106,15 @@ export interface ChessAccount {
    * Null until the first successful import.
    */
   syncFilterKey: string | null;
+
+
+
+
+
+
+  lastSyncSpeeds?: string[];
+
+  lastSyncRated?: boolean;
 }
 
 export function accountId(platform: AccountPlatform, username: string): string {

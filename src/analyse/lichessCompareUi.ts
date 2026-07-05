@@ -13,6 +13,8 @@
 
 
 
+
+
 import { h, type VNode } from 'snabbdom';
 import {
   buildCanonicalReviewAuditSnapshot,
@@ -27,21 +29,6 @@ import {
   type LichessNormalizedGame,
 } from './lichessCompare';
 import { loadAnalysisFromIdb } from '../idb';
-import { getRemoteSyncIdentitySnapshot } from '../sync/remoteSync';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Admin gate
-// ─────────────────────────────────────────────────────────────────────────────
-
-
-
-
-const ADMIN_USER_KEY_ALLOWLIST: ReadonlySet<string> = new Set(['agent-access-admin', 'admin-beta']);
-
-export function isLichessCompareAdminSessionActive(): boolean {
-  const identityLabel = getRemoteSyncIdentitySnapshot().identityLabel;
-  return identityLabel !== null && ADMIN_USER_KEY_ALLOWLIST.has(identityLabel);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State

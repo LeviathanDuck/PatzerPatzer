@@ -58,6 +58,13 @@ export interface RetroChoiceCountSummary {
   total: number;
   categories: readonly RetroChoiceCount[];
   presets: readonly RetroChoiceCount[];
+
+
+
+
+
+
+  configPreview?: RetroConfigPreviewSummary | null;
 }
 
 export const RETRO_CHOICE_CATEGORIES: readonly RetroChoiceCategory[] = [
@@ -208,4 +215,70 @@ export function summarizeRetroChoiceCounts(
 
 export function formatRetroChoiceLossPercent(loss: number): string {
   return `${Math.round(Math.max(0, loss) * 100)}%`;
+}
+
+
+
+
+
+
+
+
+export type RetroConfigPreviewFamilyId =
+  | 'sensitivity'
+  | 'missed-mate'
+  | 'collapse'
+  | 'defensive'
+  | 'punish';
+
+export interface RetroConfigPreviewMove {
+  ply: number;
+  san:  string;
+}
+
+export interface RetroConfigFamilyPreview {
+  id:    RetroConfigPreviewFamilyId;
+  count: number;
+  moves: readonly RetroConfigPreviewMove[];
+}
+
+export interface RetroConfigPreviewSummary {
+  total:    number;
+  families: readonly RetroConfigFamilyPreview[];
+}
+
+const RETRO_CONFIG_PREVIEW_FAMILY_IDS: readonly RetroConfigPreviewFamilyId[] = [
+  'sensitivity', 'missed-mate', 'collapse', 'defensive', 'punish',
+];
+
+/**
+ * Which settings-panel family a candidate currently belongs to.
+ * Precedence mirrors getRetroChoiceCandidateCategoryId above: isMissedMate wins
+ * first (a missed mate that also cleared the loss floor is still surfaced under
+ * Missed Mates, matching retro.ts's own "always included" framing), then the
+ * candidate's reason.code, else the core sensitivity gate ('swing').
+ */
+function retroConfigPreviewFamilyOf(candidate: RetroCandidate): RetroConfigPreviewFamilyId {
+  if (candidate.isMissedMate) return 'missed-mate';
+  if (candidate.reason.code === 'collapse')  return 'collapse';
+  if (candidate.reason.code === 'defensive') return 'defensive';
+  if (candidate.reason.code === 'punish')    return 'punish';
+  return 'sensitivity';
+}
+
+/**
+ * Build the Mistake Detection settings panel's live move preview directly from an
+ * already-built RetroCandidate[] -- a pure bucket-and-sort of candidates that
+ * buildRetroCandidates (retro.ts) already produced for the current retroConfig.
+ */
+export function buildRetroConfigPreview(candidates: readonly RetroCandidate[]): RetroConfigPreviewSummary {
+  const families = RETRO_CONFIG_PREVIEW_FAMILY_IDS.map(id => {
+    const moves = candidates
+      .filter(c => retroConfigPreviewFamilyOf(c) === id)
+      .slice()
+      .sort((a, b) => a.ply - b.ply)
+      .map(c => ({ ply: c.ply, san: c.playedMoveSan }));
+    return { id, count: moves.length, moves };
+  });
+  return { total: candidates.length, families };
 }

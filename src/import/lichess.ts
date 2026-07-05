@@ -86,6 +86,31 @@ export function lichessGameTimestamp(pgn: string): number | undefined {
   return Number.isNaN(ts) ? undefined : ts;
 }
 
+/** Parse a PGN RatingDiff header value (e.g. "+8", "-5") into a signed integer. */
+function parseRatingDiff(s: string | undefined): number | undefined {
+  if (s === undefined) return undefined;
+  const n = parseInt(s, 10);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+
+
+
+
+
+
+
+
+
+function lichessExplicitRatedFlag(pgn: string, requestedRatedOnly: boolean): boolean | undefined {
+  if (requestedRatedOnly) return true;
+  const event = parsePgnHeader(pgn, 'Event');
+  if (!event) return undefined;
+  if (/^rated\s/i.test(event)) return true;
+  if (/^casual\s/i.test(event)) return false;
+  return undefined;
+}
+
 /**
  * Overlap margin subtracted from the sync cursor when fetching incrementally,
  * so games in progress during the previous import are not missed. Overlapping
@@ -192,6 +217,37 @@ export async function fetchLichessGames(
     // Canonical id: platform game id makes re-imports dedupe by construction.
     // Local-counter fallback keeps games importable when Site cannot be parsed.
     const gameId = lichessGameId(pgn);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const whiteRatingDiff = parseRatingDiff(parsePgnHeader(pgn, 'WhiteRatingDiff'));
+    const blackRatingDiff = parseRatingDiff(parsePgnHeader(pgn, 'BlackRatingDiff'));
+    const lowerUsername = username.toLowerCase();
+    const isImportedWhite = white?.toLowerCase() === lowerUsername;
+    const isImportedBlack = black?.toLowerCase() === lowerUsername;
+    const ratingDelta = isImportedWhite ? whiteRatingDiff : isImportedBlack ? blackRatingDiff : undefined;
+    const opponentRatingDelta = isImportedWhite ? blackRatingDiff : isImportedBlack ? whiteRatingDiff : undefined;
+    const termination = parsePgnHeader(pgn, 'Termination');
+    const variant = parsePgnHeader(pgn, 'Variant');
+    const rawTimeControl = parsePgnHeader(pgn, 'TimeControl');
+    const ratedFlag = lichessExplicitRatedFlag(pgn, rated);
+    const timestampMs = lichessGameTimestamp(pgn);
+    const startTime = timestampMs !== undefined ? Math.floor(timestampMs / 1000) : undefined;
+
     result.push({
       id:               gameId ? `lichess:${gameId}` : nextGameId(),
       pgn,
@@ -207,10 +263,48 @@ export async function fetchLichessGames(
       ...(eco ? { eco } : {}),
       ...(whiteRating !== undefined ? { whiteRating } : {}),
       ...(blackRating !== undefined ? { blackRating } : {}),
+      ...(ratingDelta !== undefined ? { ratingDelta } : {}),
+      ...(opponentRatingDelta !== undefined ? { opponentRatingDelta } : {}),
+      ...(termination ? { termination } : {}),
+      ...(variant ? { variant } : {}),
+      ...(rawTimeControl ? { timeControl: rawTimeControl } : {}),
+      ...(ratedFlag !== undefined ? { rated: ratedFlag } : {}),
+      ...(startTime !== undefined ? { startTime } : {}),
     });
     onProgress?.(result.length);
   }
   return result;
+}
+
+const LICHESS_SPEED_PERF_KEYS: readonly ImportSpeed[] = ['bullet', 'blitz', 'rapid'];
+
+
+
+
+
+
+export async function fetchLichessSpeedTotals(
+  username: string,
+): Promise<Partial<Record<ImportSpeed, number>> | null> {
+  let res: Response;
+  try {
+    res = await fetch(`https://lichess.org/api/user/${encodeURIComponent(username)}`);
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let data: { perfs?: Record<string, { games?: unknown }> };
+  try {
+    data = await res.json() as { perfs?: Record<string, { games?: unknown }> };
+  } catch {
+    return null;
+  }
+  const totals: Partial<Record<ImportSpeed, number>> = {};
+  for (const speed of LICHESS_SPEED_PERF_KEYS) {
+    const games = data.perfs?.[speed]?.games;
+    if (typeof games === 'number' && Number.isFinite(games)) totals[speed] = games;
+  }
+  return Object.keys(totals).length > 0 ? totals : null;
 }
 
 export async function importLichess(callbacks: ImportCallbacks): Promise<void> {

@@ -17,6 +17,13 @@ import { record, Severity } from '../diagnostics';
 
 const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
 
+// Chess.com API etiquette asks clients to identify themselves. Browsers treat
+// `User-Agent` as a forbidden header name and silently drop it from `fetch()`,
+// so this has no effect on in-browser requests today, but it is honored by
+// any non-browser runtime (e.g. this adapter's Node-based tests) and costs
+// nothing to include for when a server-side path exists.
+const CHESSCOM_USER_AGENT = 'PatzerPro/1.0 (+https://patzerpro.com; game import)';
+
 function errorClass(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;
 }
@@ -48,7 +55,7 @@ async function fetchChesscomResponse(
 ): Promise<Response> {
   const startedAt = Date.now();
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: { 'User-Agent': CHESSCOM_USER_AGENT } });
     if (!res.ok && options.recordHttpErrors !== false) {
       recordChesscomImportEvent(failureMessage, Severity.Error, {
         requestClass,
@@ -117,6 +124,53 @@ function normalizeChesscomResult(whiteResult: string, blackResult: string): stri
   if (whiteResult === 'win') return '1-0';
   if (blackResult === 'win') return '0-1';
   return '1/2-1/2';
+}
+
+/** Minimal shape of a chess.com archive game object relevant to delta computation. */
+interface ChesscomRawGameForDelta {
+  rules?: string;
+  time_class?: string;
+  rated?: boolean;
+  end_time?: number;
+  white?: { username?: string; rating?: number };
+  black?: { username?: string; rating?: number };
+}
+
+
+
+
+
+
+
+
+
+function computeOwnRatingDeltas(
+  rawGames: ChesscomRawGameForDelta[],
+  username: string,
+): Map<number, number> {
+  const lowerUsername = username.toLowerCase();
+  // Sort indices by end_time (ascending) so the "previous" game per time
+  // class is chronologically correct regardless of archive fetch order.
+  const orderedIndices = rawGames
+    .map((_, i) => i)
+    .filter(i => typeof rawGames[i]!.end_time === 'number')
+    .sort((a, b) => rawGames[a]!.end_time! - rawGames[b]!.end_time!);
+
+  const lastRatingByClass = new Map<string, number>();
+  const deltas = new Map<number, number>();
+  for (const i of orderedIndices) {
+    const raw = rawGames[i]!;
+    if (raw.rules !== 'chess' || !raw.rated || !raw.time_class || raw.time_class === 'daily') continue;
+    const isWhite = raw.white?.username?.toLowerCase() === lowerUsername;
+    const isBlack = raw.black?.username?.toLowerCase() === lowerUsername;
+    if (!isWhite && !isBlack) continue;
+    const ownRating = isWhite ? raw.white?.rating : raw.black?.rating;
+    if (typeof ownRating !== 'number' || !Number.isFinite(ownRating)) continue;
+    const previous = lastRatingByClass.get(raw.time_class);
+    if (previous !== undefined) deltas.set(i, ownRating - previous);
+    lastRatingByClass.set(raw.time_class, ownRating);
+  }
+  return deltas;
 }
 
 export async function fetchChesscomGames(
@@ -232,7 +286,13 @@ export async function fetchChesscomGames(
     rawGames.push(...(data.games ?? []));
   }
 
-  // 3. Normalize: standard, no daily, apply filters — newest first
+  // 4. Compute the imported account's own rating delta per time class across
+  // the whole fetched batch, ahead of the per-game filter loop below, so a
+  // game excluded from `result` by a speed/rated display filter still counts
+  // toward the true "previous rated game" baseline for its time class.
+  const ownRatingDeltas = computeOwnRatingDeltas(rawGames, username);
+
+  // 5. Normalize: standard, no daily, apply filters — newest first
   const result: ImportedGame[] = [];
   for (let i = rawGames.length - 1; i >= 0; i--) {
     const raw = rawGames[i];
@@ -268,6 +328,30 @@ export async function fetchChesscomGames(
     // Canonical id: platform game id makes re-imports dedupe by construction.
     // Local-counter fallback keeps games importable when no game URL parses.
     const gameId = chesscomGameId(raw, pgn);
+
+
+
+    const platformAccuracies = raw.accuracies && (typeof raw.accuracies.white === 'number' || typeof raw.accuracies.black === 'number')
+      ? {
+          ...(typeof raw.accuracies.white === 'number' ? { white: raw.accuracies.white } : {}),
+          ...(typeof raw.accuracies.black === 'number' ? { black: raw.accuracies.black } : {}),
+        }
+      : undefined;
+    const whiteResultCode = typeof raw.white?.result === 'string' ? raw.white.result : undefined;
+    const blackResultCode = typeof raw.black?.result === 'string' ? raw.black.result : undefined;
+    const termination = parsePgnHeader(pgn, 'Termination');
+    const uuid = typeof raw.uuid === 'string' ? raw.uuid : undefined;
+    const finalFen = typeof raw.fen === 'string' ? raw.fen : undefined;
+    const openingUrl = typeof raw.eco === 'string' ? raw.eco : undefined;
+    const variant = typeof raw.rules === 'string' ? raw.rules : undefined;
+    const rawTimeControl = typeof raw.time_control === 'string' ? raw.time_control : undefined;
+    const ratedFlag = typeof raw.rated === 'boolean' ? raw.rated : undefined;
+    const startTime = typeof raw.start_time === 'number' ? raw.start_time : undefined;
+    const endTime = typeof raw.end_time === 'number' ? raw.end_time : undefined;
+    const tournamentUrl = typeof raw.tournament === 'string' ? raw.tournament : undefined;
+    const matchUrl = typeof raw.match === 'string' ? raw.match : undefined;
+    const ratingDelta = ownRatingDeltas.get(i);
+
     result.push({
       id:               gameId ? `chesscom:${gameId}` : nextGameId(),
       pgn,
@@ -283,6 +367,21 @@ export async function fetchChesscomGames(
       ...(eco ? { eco } : {}),
       ...(whiteRating !== undefined ? { whiteRating } : {}),
       ...(blackRating !== undefined ? { blackRating } : {}),
+      ...(platformAccuracies ? { platformAccuracies } : {}),
+      ...(whiteResultCode ? { whiteResultCode } : {}),
+      ...(blackResultCode ? { blackResultCode } : {}),
+      ...(termination ? { termination } : {}),
+      ...(uuid ? { uuid } : {}),
+      ...(finalFen ? { finalFen } : {}),
+      ...(openingUrl ? { openingUrl } : {}),
+      ...(variant ? { variant } : {}),
+      ...(rawTimeControl ? { timeControl: rawTimeControl } : {}),
+      ...(ratedFlag !== undefined ? { rated: ratedFlag } : {}),
+      ...(startTime !== undefined ? { startTime } : {}),
+      ...(endTime !== undefined ? { endTime } : {}),
+      ...(tournamentUrl ? { tournamentUrl } : {}),
+      ...(matchUrl ? { matchUrl } : {}),
+      ...(ratingDelta !== undefined ? { ratingDelta } : {}),
     });
     onProgress?.(result.length);
   }
@@ -335,6 +434,55 @@ export async function fetchChesscomLifetimeBest(
     }
   }
   return Object.keys(lifetimeBest).length > 0 ? lifetimeBest : null;
+}
+
+
+const CHESSCOM_SPEED_STAT_KEYS: Record<string, ImportSpeed> = {
+  chess_bullet: 'bullet',
+  chess_blitz: 'blitz',
+  chess_rapid: 'rapid',
+};
+
+interface ChesscomRecord { win?: unknown; loss?: unknown; draw?: unknown }
+
+function recordTotal(record: ChesscomRecord | undefined): number | null {
+  if (!record) return null;
+  const parts = [record.win, record.loss, record.draw];
+  if (!parts.some(v => typeof v === 'number')) return null;
+  return parts.reduce<number>((sum, v) => sum + (typeof v === 'number' && Number.isFinite(v) ? v : 0), 0);
+}
+
+
+
+
+
+
+export async function fetchChesscomSpeedTotals(
+  username: string,
+): Promise<Partial<Record<ImportSpeed, number>> | null> {
+  let res: Response;
+  try {
+    res = await fetchChesscomResponse(
+      `${CHESSCOM_BASE}/${username.toLowerCase()}/stats`,
+      'speed-totals',
+      'Chess.com speed totals fetch failed',
+    );
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  let data: Record<string, { record?: ChesscomRecord }>;
+  try {
+    data = await res.json() as Record<string, { record?: ChesscomRecord }>;
+  } catch {
+    return null;
+  }
+  const totals: Partial<Record<ImportSpeed, number>> = {};
+  for (const [statKey, speed] of Object.entries(CHESSCOM_SPEED_STAT_KEYS)) {
+    const total = recordTotal(data[statKey]?.record);
+    if (total !== null) totals[speed] = total;
+  }
+  return Object.keys(totals).length > 0 ? totals : null;
 }
 
 export async function importChesscom(callbacks: ImportCallbacks): Promise<void> {

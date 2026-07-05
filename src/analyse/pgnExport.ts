@@ -16,9 +16,6 @@ import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
-const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
-const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
-
 // --- Injected deps ---
 
 let _getCtrl:           () => AnalyseCtrl                        = () => { throw new Error('pgnExport not initialised'); };
@@ -225,20 +222,8 @@ function formatReviewPositionProgress(done: number, total: number): string | nul
   return `${analyzed}/${total} positions analyzed`;
 }
 
-function renderReviewProgressIcon(state: 'active' | 'still'): VNode {
-  return h('img.review-progress-icon', {
-    class: { 'review-progress-icon--still': state === 'still' },
-    attrs: {
-      src: state === 'active' ? REVIEW_PROGRESS_LOADING_SRC : REVIEW_PROGRESS_STILL_SRC,
-      alt: '',
-      'aria-hidden': 'true',
-    },
-  });
-}
-
-function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VNode {
+function renderReviewProgressLabel(label: string): VNode {
   return h('span.review-progress-label', [
-    renderReviewProgressIcon(state),
     h('span.review-progress-label__text', label),
   ]);
 }
@@ -322,7 +307,7 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   // Mirrors the inline completion indicator in Lichess retro mode controls.
   const statusLine = reviewProgress.active && runningProgressLabel
     ? h('div.analyse-review-controls__status', [
-        renderReviewProgressLabel(runningProgressLabel, 'active'),
+        renderReviewProgressLabel(runningProgressLabel),
       ])
     : null;
 

@@ -40,10 +40,14 @@ import {
   renderRichGameRow,
   renderReviewControl,
   renderSecondaryActions,
-  renderTagArea,
+  renderReviewedChip,
+  renderLibraryChip,
+  playerDotClass,
   gameExtras,
   formatDelta,
+  resolveRatingDeltas,
   openingPreview,
+  formatMovePreview,
   TIME_CLASS_ICON,
   NO_CLOCK_ICON,
   type GameExtras,
@@ -154,15 +158,19 @@ export function gameSourceUrl(game: ImportedGame): string | undefined {
   return undefined;
 }
 
-/**
- * Shared structured row children for compact game lists (header panel + underboard).
- * Fields: result dot · opponent name · date · time class icon · badges.
- */
-// Returns a badge (or null) reflecting the severity of missed moments.
+
+
+
+
+
+
+// Returns the tactic-icon glyph(s) for Line 1's right side (or null), reusing richRow.ts's
+// glyph/severity convention (`!`x1-3 orange missed-tactic, `#` purple missed-mate) instead of the
+// old "M?!" text badge, per the approved V4 icon spec.
 // - Swing/collapse severity maps to ! count via LOSS_THRESHOLDS (same thresholds as per-move glyphs).
-// - Missed forced mate shows a separate purple M?! badge.
+// - Missed forced mate shows a separate `#` glyph.
 // - Falls back to a single ! when moment detail is unavailable (e.g. previous-session IDB restore).
-function renderMissedBadge(gameId: string, hasMissedTactic: boolean): VNode | null {
+function renderCompactTacticIcons(gameId: string, hasMissedTactic: boolean): VNode | null {
   if (!hasMissedTactic) return null;
 
   const moments = getMissedMoments(gameId);
@@ -175,18 +183,18 @@ function renderMissedBadge(gameId: string, hasMissedTactic: boolean): VNode | nu
     : worstLoss >= LOSS_THRESHOLDS.inaccuracy ? 1
     : 0;
 
-  const badges: (VNode | null)[] = [];
+  const icons: (VNode | null)[] = [];
   if (hasMate) {
-    badges.push(h('span.grl__badge.--missed-mate', { attrs: { title: 'Missed forced mate' } }, 'M?!'));
+    icons.push(h('span.grr__icon.--missed-mate', { attrs: { title: 'Missed forced mate' } }, '#'));
   }
   if (exclamCount > 0) {
-    badges.push(h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!'.repeat(exclamCount)));
+    icons.push(h('span.grr__icon.--missed-tactic', { attrs: { title: 'Missed tactic' } }, '!'.repeat(exclamCount)));
   } else if (!hasMate) {
     // No rich data (IDB-restored from a previous session) — show single fallback !
-    badges.push(h('span.grl__badge.--warn', { attrs: { title: 'Missed tactic' } }, '!'));
+    icons.push(h('span.grr__icon.--missed-tactic', { attrs: { title: 'Missed tactic' } }, '!'));
   }
 
-  return h('span.grl__missed-indicators', badges);
+  return h('span.grl__tactic-icons', icons);
 }
 
 function importedAccountColor(game: ImportedGame): 'white' | 'black' | null {
@@ -204,6 +212,11 @@ function compressTimestamp(display: string): string {
   const year = new Date().getFullYear();
   return display.replace(new RegExp(`,\\s*${year}$`), '');
 }
+
+
+
+
+
 
 
 
@@ -233,25 +246,33 @@ export function renderCompactGameRow(
   const openingLabel = game.opening?.trim() || null;
   const pgnExtras: GameExtras = gameExtras(game);
 
-  const resultCls = result === 'win'  ? 'grl__result--win'
-    : result === 'loss' ? 'grl__result--loss'
-    : result === 'draw' ? 'grl__result--draw'
-    : 'grl__result--unknown';
 
-  // Line 1 -- opponent (chip + rating + delta REQUIRED) -> vs -> imported account (delta), each
-  // followed by inline accuracy once Game Review data exists (Phase 1 design, compact section).
+
+
+  const deltas = resolveRatingDeltas(game, userColor);
+
+
+
+
+  const oppDotCls  = playerDotClass('opponent', result);
+  const acctDotCls = playerDotClass('account', result);
+
+  // Line 1 -- per-player dot + name (chip + rating + delta) -> vs pill -> imported account (dot +
+  // name + chip + rating + delta), each followed by inline accuracy once Game Review data exists
+  // (V4 design, desktop compact section). Opponent NEVER truncates; account shrinks first (CSS).
   const oppColor  = userColor === 'white' ? 'black' : userColor === 'black' ? 'white' : null;
   const oppChip   = oppColor ? h('span.color-chip.--' + oppColor) : null;
   const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
-  const oppDelta  = userColor === 'white' ? pgnExtras.ratingDiff.black : userColor === 'black' ? pgnExtras.ratingDiff.white : null;
+  const oppDelta  = userColor === 'white' ? deltas.black : userColor === 'black' ? deltas.white : null;
   const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== undefined
     ? h('span.grl__accuracy', `${Math.round(accuracy.opp)}%`)
     : null;
 
   const acctColor  = importedAccountColor(game);
+  const acctChip   = acctColor ? h('span.color-chip.--' + acctColor) : null;
   const acctName   = game.importedUsername?.trim() || null;
   const acctRating = acctColor === 'white' ? game.whiteRating : acctColor === 'black' ? game.blackRating : undefined;
-  const acctDelta  = acctColor === 'white' ? pgnExtras.ratingDiff.white : acctColor === 'black' ? pgnExtras.ratingDiff.black : null;
+  const acctDelta  = userColor === 'white' ? deltas.white : userColor === 'black' ? deltas.black : null;
   const acctAccNode = accuracy?.user !== null && accuracy?.user !== undefined
     ? h('span.grl__accuracy', `${Math.round(accuracy.user)}%`)
     : null;
@@ -259,64 +280,73 @@ export function renderCompactGameRow(
   const renderDelta = (delta: number | null): VNode | null => delta === null ? null
     : h('span.grl__delta', { class: { '--gain': delta > 0, '--loss': delta < 0 } }, formatDelta(delta));
 
+  // Tactic icons on Line 1's right side (V4) — reuses richRow.ts's glyph/severity convention.
+  const tacticIcons = renderCompactTacticIcons(game.id, hasMissedTactic);
+
   const line1 = h('div.grl__line1', [
-    h('span.grl__result.' + resultCls, '●'),
     h('div.grl__matchup', [
-      h('span.grl__opponent-block', [
+      h('span.grl__player.--opponent', [
+        h('span.grl__dot.--' + oppDotCls),
         h('span.grl__name', opponent),
         oppRating !== undefined ? h('span.grl__rating', String(oppRating)) : null,
         renderDelta(oppDelta),
         oppChip,
         oppAccNode,
       ]),
-      h('span.grl__account-line', [
-        h('span.grl__vs', 'vs'),
+      h('span.grr__vs-pill', 'vs'),
+      h('span.grl__player.--account', [
+        h('span.grl__dot.--' + acctDotCls),
         h('span.grl__name.--account', acctName ?? game.id),
         acctRating !== undefined ? h('span.grl__rating', String(acctRating)) : null,
         renderDelta(acctDelta),
+        acctChip,
         acctAccNode,
       ]),
     ]),
+    tacticIcons,
   ]);
 
-  // Line 2 -- opening + move count (ellipsizes first) times colored time-class icon times compressed
-  // timestamp (right).
+  // Line 2 -- opening strip (subtle background) + tertiary Reviewed/+Library status chips (only
+  // when a caller opts in via `extras`) + compressed timestamp + colored time-class icon. The
+  // Reviewed label never sits on Line 1 (V4 rule).
   const preview = openingPreview(game);
   const totalMoves = preview ? Math.ceil(preview.totalPlies / 2) : null;
   const moveCountLabel = totalMoves !== null ? `${totalMoves} move${totalMoves === 1 ? '' : 's'}` : null;
+  const sanPreviewLabel = preview && preview.sanMoves.length > 0 ? formatMovePreview(preview.sanMoves) : null;
   const tcIcon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
   const tcTitle = game.timeClass ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1) : 'Study import · No clock';
   const tsTooltip = [pgnExtras.timestamp.iso, pgnExtras.timestamp.sourceLabel].filter(Boolean).join(' · ') || pgnExtras.timestamp.display;
 
-  const line2 = h('div.grl__line2', [
-    h('span.grl__opening', { attrs: { title: [openingLabel, moveCountLabel].filter(Boolean).join(' — ') } }, [
-      openingLabel ? h('span.grl__opening-name', openingLabel) : null,
-      moveCountLabel ? h('span.grl__opening-moves', moveCountLabel) : null,
-    ]),
-    h('span.grl__tc-icon.' + tcIcon.cls, { attrs: { 'data-icon': tcIcon.glyph, title: tcTitle } }),
-    h('span.grl__timestamp', { attrs: { title: tsTooltip } }, compressTimestamp(pgnExtras.timestamp.display)),
-  ]);
-
-  // Line 3 (space permitting) -- tags: Add Library (grey, low weight) first, then highest-priority
-  // available tags, overflow +N. Only rendered when a caller opts in via `extras` (games-list
-  // surfaces); the header import list and Study library divergence list omit it and keep their
-  // existing two-field layout.
-  const line3 = extras?.reviewState !== undefined
-    ? renderTagArea(extras.reviewState, extras.tags ?? {}, extras.addLibrary)
-    : null;
-
-  // The "Analyzed" ✓ badge is redundant once a caller opts into the review control + Reviewed
-  // tag (extras.reviewState) — those already state reviewed status prominently. Consumers that
-  // omit extras (header import list, Study library divergence list) have no other reviewed
-  // indicator, so they keep the badge.
-  const showAnalyzedBadge = isAnalyzed && extras?.reviewState === undefined;
-  const badges = (isNewImport || showAnalyzedBadge || hasMissedTactic) ? h('span.grl__badges', [
-    isNewImport ? h('span.grl__badge.--new', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
-    showAnalyzedBadge ? h('span.grl__badge.--ok', { attrs: { title: 'Analyzed' } }, '✓') : null,
-    renderMissedBadge(game.id, hasMissedTactic),
+  // Tertiary "Reviewed · + Library" status chips — reuses richRow.ts's shared chip renderers (no
+  // duplicate Reviewed/addLibrary logic) so styling matches the full-view card exactly. Gated on
+  // `extras` the same way the retired Line 3 tag area was, so the header import list and Study
+  // library divergence list (which omit extras) keep their existing two-line layout.
+  const statusChips = extras?.reviewState !== undefined ? h('div.grr__chips', [
+    renderReviewedChip(extras.reviewState),
+    extras.reviewState.kind === 'reviewed' ? h('span.grl__status-sep', '·') : null,
+    renderLibraryChip(extras.addLibrary),
   ]) : null;
 
-  return [line1, line2, line3, badges];
+  // The "Analyzed" ✓ badge is redundant once a caller opts into the review control + Reviewed
+  // chip (extras.reviewState) — those already state reviewed status prominently. Consumers that
+  // omit extras (header import list, Study library divergence list) have no other reviewed
+  // indicator, so they keep the badge — on Line 2, never Line 1 (V4 rule applies to both).
+  const showAnalyzedBadge = isAnalyzed && extras?.reviewState === undefined;
+
+  const line2 = h('div.grl__line2', [
+    h('div.grl__opening', { attrs: { title: [openingLabel, sanPreviewLabel, moveCountLabel].filter(Boolean).join(' — ') } }, [
+      openingLabel ? h('span.grl__opening-name', openingLabel) : null,
+      sanPreviewLabel ? h('span.grl__opening-san', sanPreviewLabel) : null,
+      moveCountLabel ? h('span.grl__opening-moves', moveCountLabel) : null,
+    ]),
+    statusChips,
+    isNewImport ? h('span.grl__badge.--new', { attrs: { title: 'Newly imported' } }, 'NEW') : null,
+    showAnalyzedBadge ? h('span.grl__badge.--ok', { attrs: { title: 'Analyzed' } }, '✓') : null,
+    h('span.grl__timestamp', { attrs: { title: tsTooltip } }, compressTimestamp(pgnExtras.timestamp.display)),
+    h('span.grl__tc-icon.' + tcIcon.cls, { attrs: { 'data-icon': tcIcon.glyph, title: tcTitle } }),
+  ]);
+
+  return [line1, line2];
 }
 
 // ---------------------------------------------------------------------------
@@ -1656,10 +1686,13 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               addLibrary:  null,
               ...(secondaryActions.length > 0 ? { secondaryActions } : {}),
               onSelectRow: (g, e) => handleGameRowClick(g, visible, e, deps, () => selectAnalysisGame(g, deps)),
+              sourceUrl:   srcUrl ?? null,
             };
+
+
+
             return h('li', { class: reviewRunWaveClasses(queueItem) }, [
               renderRichGameRow(game, rowDeps),
-              srcLink,
             ]);
           }
 
@@ -1858,6 +1891,7 @@ function renderRichRowsFeed(
       addLibrary:  null,
       ...(secondaryActions.length > 0 ? { secondaryActions } : {}),
       onSelectRow: (g, e) => handleGameRowClick(g, games, e, deps, () => selectAnalysisGame(g, deps)),
+      sourceUrl:   deps.gameSourceUrl(game) ?? null,
     };
     return renderRichGameRow(game, rowDeps);
   }));

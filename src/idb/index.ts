@@ -3,7 +3,7 @@
 // Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts
 
 import type { ImportedGame } from '../import/types';
-import type { ChessAccount } from '../accounts';
+import type { ChessAccount, AccountPlatform } from '../accounts';
 import type { PuzzleCandidate, TreeNode } from '../tree/types';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
@@ -536,13 +536,65 @@ export interface StoredGameRecord {
   accountId:        string | null;
   importedAt:       number;
   updatedAt:        number;
+
+
+
+
+
+
+
+
+
+  platformAccuracies?: { white?: number; black?: number } | null;
+  whiteResultCode?:    string | null;
+  blackResultCode?:    string | null;
+  termination?:        string | null;
+  uuid?:               string | null;
+  finalFen?:           string | null;
+  openingUrl?:         string | null;
+  variant?:            string | null;
+  timeControl?:        string | null;
+  rated?:              boolean | null;
+  startTime?:          number | null;
+  endTime?:            number | null;
+  tournamentUrl?:      string | null;
+  matchUrl?:           string | null;
+  ratingDelta?:        number | null;
+  opponentRatingDelta?: number | null;
+}
+
+// --- Player profiles ---
+
+
+
+
+
+
+
+
+
+
+export interface PlayerProfileRecord {
+  /** `${platform}:${lowercased username}`. */
+  key:          string;
+  platform:     AccountPlatform;
+  /** Lowercased canonical username. */
+  username:     string;
+  /** Avatar image URL only — never an image blob (owner decision). */
+  avatarUrl?:   string;
+  /** ISO country code, uppercased. */
+  countryCode?: string;
+  /** Public display name (chess.com `name`; lichess `title`/`realName`). */
+  displayName?: string;
+  /** Date.now() of the last successful fetch. */
+  fetchedAt:    number;
 }
 
 // --- DB connection ---
 
 export const DB_NAME = 'patzer-pro';
 
-export const DB_VERSION = 24;
+export const DB_VERSION = 25;
 
 let _idb: IDBDatabase | undefined;
 
@@ -715,6 +767,11 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   const repertoireScanRunsStore = ensureStore(db, event, 'repertoire-scan-runs', { keyPath: 'runId' });
   ensureIndex(repertoireScanRunsStore, 'lifecycleState', 'lifecycleState', { unique: false });
   ensureIndex(repertoireScanRunsStore, 'updatedAt', 'updatedAt', { unique: false });
+
+
+
+
+  ensureStore(db, event, 'player-profiles', { keyPath: 'key' });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -1065,6 +1122,26 @@ export async function deleteDiagnosticReportDraft(draftId: string): Promise<void
   await txDone(tx, 'delete');
 }
 
+
+
+export async function putPlayerProfile(profile: PlayerProfileRecord): Promise<void> {
+  const db = await openGameDb();
+  const tx = db.transaction('player-profiles', 'readwrite');
+  tx.objectStore('player-profiles').put(profile);
+  await txDone(tx);
+}
+
+export async function getPlayerProfile(key: string): Promise<PlayerProfileRecord | undefined> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('player-profiles', 'readonly')
+      .objectStore('player-profiles')
+      .get(key);
+    req.onsuccess = () => resolve(req.result as PlayerProfileRecord | undefined);
+    req.onerror = () => reject(recordReqFailure(req, 'player-profiles', 'read', key));
+  });
+}
+
 export async function replaceDiagnosticAggregates(
   kind: DiagnosticAggregateKind,
   aggregates: DiagnosticAggregate[],
@@ -1120,7 +1197,7 @@ export async function getDiagnosticAggregates(kind?: DiagnosticAggregateKind): P
 // --- Game library ---
 
 /** Convert an ImportedGame (optional fields) to a StoredGameRecord (nullable fields). */
-function importedGameToRecord(game: ImportedGame): StoredGameRecord {
+export function importedGameToRecord(game: ImportedGame): StoredGameRecord {
   return {
     id:               game.id,
     pgn:              game.pgn,
@@ -1138,6 +1215,23 @@ function importedGameToRecord(game: ImportedGame): StoredGameRecord {
     accountId:        game.accountId        ?? null,
     importedAt:       game.importedAt       ?? Date.now(),
     updatedAt:        Date.now(),
+
+    platformAccuracies: game.platformAccuracies ?? null,
+    whiteResultCode:    game.whiteResultCode    ?? null,
+    blackResultCode:    game.blackResultCode    ?? null,
+    termination:        game.termination        ?? null,
+    uuid:               game.uuid               ?? null,
+    finalFen:           game.finalFen           ?? null,
+    openingUrl:         game.openingUrl         ?? null,
+    variant:            game.variant            ?? null,
+    timeControl:        game.timeControl        ?? null,
+    rated:              game.rated              ?? null,
+    startTime:          game.startTime          ?? null,
+    endTime:            game.endTime            ?? null,
+    tournamentUrl:      game.tournamentUrl      ?? null,
+    matchUrl:           game.matchUrl           ?? null,
+    ratingDelta:        game.ratingDelta        ?? null,
+    opponentRatingDelta: game.opponentRatingDelta ?? null,
   };
 }
 
@@ -1211,7 +1305,7 @@ export async function saveNavStateToIdb(selectedId: string | null, path: string)
 }
 
 /** Convert a stored per-game record back to the ImportedGame shape used at runtime. */
-function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame {
+export function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame {
   const game: ImportedGame = { id: record.id, pgn: record.pgn };
   if (record.white            !== null) game.white            = record.white;
   if (record.black            !== null) game.black            = record.black;
@@ -1226,6 +1320,27 @@ function storedGameRecordToImportedGame(record: StoredGameRecord): ImportedGame 
   if (record.importedUsername !== null) game.importedUsername = record.importedUsername;
   if (record.accountId        !== null && record.accountId !== undefined) game.accountId = record.accountId;
   game.importedAt = record.importedAt;
+
+
+  if (record.platformAccuracies !== null && record.platformAccuracies !== undefined) {
+    game.platformAccuracies = record.platformAccuracies;
+  }
+  if (record.whiteResultCode !== null && record.whiteResultCode !== undefined) game.whiteResultCode = record.whiteResultCode;
+  if (record.blackResultCode !== null && record.blackResultCode !== undefined) game.blackResultCode = record.blackResultCode;
+  if (record.termination     !== null && record.termination     !== undefined) game.termination     = record.termination;
+  if (record.uuid            !== null && record.uuid            !== undefined) game.uuid            = record.uuid;
+  if (record.finalFen        !== null && record.finalFen        !== undefined) game.finalFen        = record.finalFen;
+  if (record.openingUrl      !== null && record.openingUrl      !== undefined) game.openingUrl      = record.openingUrl;
+  if (record.variant         !== null && record.variant         !== undefined) game.variant         = record.variant;
+  if (record.timeControl     !== null && record.timeControl     !== undefined) game.timeControl     = record.timeControl;
+  if (record.rated           !== null && record.rated           !== undefined) game.rated           = record.rated;
+  if (record.startTime       !== null && record.startTime       !== undefined) game.startTime       = record.startTime;
+  if (record.endTime         !== null && record.endTime         !== undefined) game.endTime         = record.endTime;
+  if (record.tournamentUrl   !== null && record.tournamentUrl   !== undefined) game.tournamentUrl   = record.tournamentUrl;
+  if (record.matchUrl        !== null && record.matchUrl        !== undefined) game.matchUrl        = record.matchUrl;
+  if (record.ratingDelta     !== null && record.ratingDelta     !== undefined) game.ratingDelta     = record.ratingDelta;
+  if (record.opponentRatingDelta !== null && record.opponentRatingDelta !== undefined) game.opponentRatingDelta = record.opponentRatingDelta;
+
   return game;
 }
 

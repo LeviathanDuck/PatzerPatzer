@@ -13,6 +13,7 @@ import {
   type BoardAnimationSpeed,
 } from './animation';
 import { resetBoardSoundRuntimeForDataManagement } from './sound';
+import { renderToggleRow } from '../ui';
 
 // --- Board wheel navigation ---
 const BOARD_WHEEL_NAV_KEY = 'boardWheelNavEnabled';
@@ -143,6 +144,8 @@ export function clearBoardLocalData(): void {
   localStorage.removeItem(PIECE_SET_KEY);
   localStorage.removeItem(BOARD_WHEEL_NAV_KEY);
   localStorage.removeItem(REVIEW_DOTS_USER_ONLY_KEY);
+  localStorage.removeItem(GAMES_LIST_PREVIEW_ENABLED_KEY);
+  localStorage.removeItem(GAMES_LIST_PREVIEW_SIZE_KEY);
   clearBoardAnimationLocalData();
   for (const prop of Object.keys(FILTER_DEFAULTS)) {
     localStorage.removeItem(FILTER_LS_PREFIX + prop);
@@ -164,6 +167,45 @@ export function resetFilters(): void {
   for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) setFilter(prop, def);
 }
 
+
+
+
+
+
+
+
+const GAMES_LIST_PREVIEW_ENABLED_KEY = 'gamesListBoardPreviewEnabled';
+export let gamesListBoardPreviewEnabled: boolean =
+  localStorage.getItem(GAMES_LIST_PREVIEW_ENABLED_KEY) !== 'false';
+
+const GAMES_LIST_PREVIEW_SIZE_KEY = 'gamesListBoardPreviewSize';
+const GAMES_LIST_PREVIEW_SIZE_DEFAULT = 136;
+const GAMES_LIST_PREVIEW_SIZE_MIN = 112;
+const GAMES_LIST_PREVIEW_SIZE_MAX = 200;
+export let gamesListBoardPreviewSize: number = (() => {
+  const stored = localStorage.getItem(GAMES_LIST_PREVIEW_SIZE_KEY);
+  const n = stored !== null ? parseInt(stored, 10) : NaN;
+  return !isNaN(n) && n >= GAMES_LIST_PREVIEW_SIZE_MIN && n <= GAMES_LIST_PREVIEW_SIZE_MAX
+    ? n : GAMES_LIST_PREVIEW_SIZE_DEFAULT;
+})();
+
+function applyGamesListBoardPreview(enabled: boolean, size: number): void {
+  document.body.classList.toggle('games-board-preview-off', !enabled);
+  document.body.style.setProperty('---games-board-preview-size', enabled ? `${size}px` : '0px');
+}
+
+export function setGamesListBoardPreviewEnabled(enabled: boolean): void {
+  gamesListBoardPreviewEnabled = enabled;
+  localStorage.setItem(GAMES_LIST_PREVIEW_ENABLED_KEY, String(enabled));
+  applyGamesListBoardPreview(enabled, gamesListBoardPreviewSize);
+}
+
+export function setGamesListBoardPreviewSize(size: number): void {
+  gamesListBoardPreviewSize = size;
+  localStorage.setItem(GAMES_LIST_PREVIEW_SIZE_KEY, String(size));
+  applyGamesListBoardPreview(gamesListBoardPreviewEnabled, size);
+}
+
 export function resetBoardSettingsRuntimeForDataManagement(): void {
   boardWheelNavEnabled = BOARD_WHEEL_NAV_DEFAULT;
   reviewDotsUserOnly = true;
@@ -171,6 +213,9 @@ export function resetBoardSettingsRuntimeForDataManagement(): void {
   applyBoardZoom(boardZoom);
   applyBoardThemeRuntimeOnly(BOARD_THEME_DEFAULT);
   applyPieceSetRuntimeOnly(PIECE_SET_DEFAULT);
+  gamesListBoardPreviewEnabled = true;
+  gamesListBoardPreviewSize = GAMES_LIST_PREVIEW_SIZE_DEFAULT;
+  applyGamesListBoardPreview(gamesListBoardPreviewEnabled, gamesListBoardPreviewSize);
   for (const [prop, def] of Object.entries(FILTER_DEFAULTS)) {
     boardFilters[prop] = def;
     document.body.style.setProperty(`---${prop}`, def.toString());
@@ -287,6 +332,32 @@ export function renderBoardSettings(redraw: () => void): VNode {
         ]),
       ),
     ),
+
+
+
+    h('div.board-settings__label', 'Games List'),
+    h('div.board-settings__toggle-row',
+      renderToggleRow(
+        'games-board-preview', 'Games list board preview', gamesListBoardPreviewEnabled,
+        (v) => { setGamesListBoardPreviewEnabled(v); redraw(); },
+      ),
+    ),
+    h('div.board-settings__slider-row', [
+      h('label', 'Preview size'),
+      h('input', {
+        attrs: {
+          type: 'range', min: GAMES_LIST_PREVIEW_SIZE_MIN, max: GAMES_LIST_PREVIEW_SIZE_MAX, step: 1,
+          value: gamesListBoardPreviewSize, disabled: !gamesListBoardPreviewEnabled,
+        },
+        on: {
+          input: (e: Event) => {
+            setGamesListBoardPreviewSize(parseInt((e.target as HTMLInputElement).value, 10));
+            redraw();
+          },
+        },
+      }),
+      h('span.board-settings__slider-val', `${gamesListBoardPreviewSize}px`),
+    ]),
   ]);
 }
 
@@ -294,6 +365,7 @@ export function renderBoardSettings(redraw: () => void): VNode {
 applyBoardZoom(boardZoom);
 applyBoardTheme(boardTheme);
 applyPieceSet(pieceSet);
+applyGamesListBoardPreview(gamesListBoardPreviewEnabled, gamesListBoardPreviewSize);
 for (const [prop, value] of Object.entries(boardFilters)) {
   document.body.style.setProperty(`---${prop}`, value.toString());
 }

@@ -3,14 +3,16 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
-import { chesscom, importChesscom } from '../import/chesscom';
-import { lichess, importLichess } from '../import/lichess';
+import { chesscom, fetchChesscomSpeedTotals, importChesscom } from '../import/chesscom';
+import { fetchLichessSpeedTotals, lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
   currentImportDateRangeConfig,
+  importRangeStartMsFor,
   importSyncFilterKey,
   type ImportDateRange,
+  type ImportSpeed,
 } from '../import/filters';
 import {
   boardWheelNavEnabled,
@@ -39,7 +41,12 @@ import { missedMomentConfig, setMissedMomentConfig } from '../engine/tactics';
 import { retroConfig, setRetroConfig, RETRO_CONFIG_DEFAULTS, type RetroConfig } from '../analyse/retroConfig';
 import {
   RETRO_CHOICE_SEVERITY_PRESETS,
+  formatRetroChoiceLossPercent,
   type RetroChoiceCountSummary,
+  type RetroChoiceSeverityPresetId,
+  type RetroConfigFamilyPreview,
+  type RetroConfigPreviewFamilyId,
+  type RetroConfigPreviewSummary,
 } from '../analyse/retroChoice';
 import type { FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
@@ -69,8 +76,16 @@ import { syncRatedLadder } from '../puzzles/puzzleDb';
 import { writeHashRoute, type Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
 import { serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
+import { renderEvalGraphSettings } from '../analyse/graphSettings';
 import { accountId, getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
-import { syncAccountGames, syncAccountGamesOlder, type AccountSyncResult } from '../import/accountSync';
+import {
+  peekAccountSync,
+  syncAccountGamesOlder,
+  syncAccountGamesWithBackfill,
+  type AccountPeekResult,
+  type AccountSyncWithBackfillResult,
+} from '../import/accountSync';
+import { enqueueAccountRescan } from '../import/enrichment';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import {
   getVisibleReleaseIdentity,
@@ -90,8 +105,12 @@ let importPlatform: ImportPlatform = 'chesscom';
 let showImportPanel  = false;
 let showGlobalMenu   = false;
 let showBoardSettings     = false;
+let showEvalGraphSettings = false;
 let showDetectionModal    = false;
 let showRetroModal        = false;
+
+
+let retroSensitivityCustomOpen = false;
 let showReleaseDetails    = false;
 let releaseCopyMessage    = '';
 let showLoginModal        = false;
@@ -106,6 +125,21 @@ let headerOlderSyncRunning = false;
 let headerOlderSyncMessage: string | null = null;
 let headerOlderSyncError: string | null = null;
 let headerOlderSyncTargetDate = '';
+
+let headerRescanRunning = false;
+let headerRescanMessage: string | null = null;
+let headerRescanError: string | null = null;
+
+let headerPeek: AccountPeekResult | null = null;
+let headerPeekLoading = false;
+let headerPeekKey = '';
+let headerPeekGen = 0;
+
+let headerTotals: Partial<Record<ImportSpeed, number>> | null = null;
+let headerTotalsLoading = false;
+let headerTotalsKey = '';
+let headerTotalsGen = 0;
+let headerTotalsTimer: ReturnType<typeof setTimeout> | null = null;
 
 const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
   { value: 'mine',     label: 'Mine'     },
@@ -169,8 +203,7 @@ export function openRetroModal(redraw: () => void): void {
 const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
 const REMOTE_SYNC_WARNING_ICON = '⚠';
-const REVIEW_PROGRESS_LOADING_SRC = '/images/loading-icons/loading.gif';
-const REVIEW_PROGRESS_STILL_SRC = '/images/loading-icons/loading-still.png';
+const HEADER_STATUS_STILL_SRC = '/images/loading-icons/loading-still.png';
 
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
@@ -595,20 +628,8 @@ function formatReviewPositionProgress(positionsAnalyzed: number, totalPositions:
   return `${analyzed}/${totalPositions} positions analyzed`;
 }
 
-function renderReviewProgressIcon(state: 'active' | 'still'): VNode {
-  return h('img.review-progress-icon', {
-    class: { 'review-progress-icon--still': state === 'still' },
-    attrs: {
-      src: state === 'active' ? REVIEW_PROGRESS_LOADING_SRC : REVIEW_PROGRESS_STILL_SRC,
-      alt: '',
-      'aria-hidden': 'true',
-    },
-  });
-}
-
-function renderReviewProgressLabel(label: string, state: 'active' | 'still'): VNode {
+function renderReviewProgressLabel(label: string): VNode {
   return h('span.review-progress-label', [
-    renderReviewProgressIcon(state),
     h('span.review-progress-label__text', label),
   ]);
 }
@@ -734,7 +755,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   const breakerPaused = lifecycleState === 'breaker-paused';
   const staleNotice = summary.stale || lifecycleState === 'stale';
   const storageFailureNotice = summary.storageHealth !== 'ok';
-  const active  = running || paused || completionNotice || storageFailureNotice || breakerPaused;
+  const active  = running || paused || storageFailureNotice || breakerPaused;
 
   // Surface engine init failure as an explicit error state even when no game
   // is actively running (so the queue never shows a perpetual spinner).
@@ -744,7 +765,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         class: { active: showReviewMenu },
         attrs: { title: 'Engine unavailable — review queue halted' },
         on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-      }, [renderReviewProgressLabel('Engine error', 'still')]),
+      }, [renderReviewProgressLabel('Engine error')]),
       showReviewMenu ? h('div.review-menu__backdrop', {
         on: { click: () => { showReviewMenu = false; redraw(); } },
       }) : null,
@@ -770,7 +791,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       h('button.review-menu__trigger', {
         class: { active: false },
         attrs: { title: 'Review engine loading…', disabled: true },
-      }, [renderReviewProgressLabel('Engine loading…', 'active')]),
+      }, [renderReviewProgressLabel('Engine loading…')]),
     ]);
   }
 
@@ -812,10 +833,6 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       ? `Review stalled · ${activeProgressLabel}`
     : paused
       ? `Review paused · ${activeProgressLabel}`
-    : lifecycleState === 'batch-complete'
-      ? `Batch complete ${summary.done}/${summary.total}`
-    : lifecycleState === 'no-more-eligible-games'
-      ? 'Review complete'
     : summary
         ? `Reviewing ${activeProgressLabel}`
         : 'Reviewing…';
@@ -833,13 +850,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       ? 'Review interrupted after reload - resume manually'
     : staleNotice
       ? 'No recent review progress detected'
-    : lifecycleState === 'batch-complete'
-      ? 'Review batch complete'
-    : lifecycleState === 'no-more-eligible-games'
-      ? 'No matching games left to review'
     : 'Bulk Review settings';
-  const progressIconState: 'active' | 'still' =
-    running && !pausedOrStalled && !failedStatus && !storageFailure ? 'active' : 'still';
 
   return h('div.review-menu', [
     h('button.review-menu__trigger', {
@@ -854,7 +865,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         showReviewMenu = !showReviewMenu;
         redraw();
       } },
-    }, [renderReviewProgressLabel(reviewTriggerLabel, progressIconState)]),
+    }, [renderReviewProgressLabel(reviewTriggerLabel)]),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
       on: { click: () => { showReviewMenu = false; redraw(); } },
@@ -934,7 +945,6 @@ function renderReviewMenu(redraw: () => void): VNode | null {
                 positionProgressRemaining > 0
                   ? `${positionProgress} · ${positionProgressRemaining} position${positionProgressRemaining === 1 ? '' : 's'} remaining`
                   : positionProgress,
-                progressIconState,
               ),
             ])
           : null,
@@ -1355,7 +1365,7 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
       } },
     }, [
       busyVisible ? h('img.sync-menu__spinner', {
-        attrs: { src: REVIEW_PROGRESS_LOADING_SRC, alt: '', 'aria-hidden': 'true' },
+        attrs: { src: HEADER_STATUS_STILL_SRC, alt: '', 'aria-hidden': 'true' },
       }) : null,
       h('span.sync-menu__trigger-label', triggerLabel),
     ]),
@@ -1430,6 +1440,7 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
 function closeGlobalMenu(redraw: () => void): void {
   showGlobalMenu    = false;
   showBoardSettings = false;
+  showEvalGraphSettings = false;
   showReleaseDetails = false;
   releaseCopyMessage = '';
   redraw();
@@ -1605,12 +1616,83 @@ export interface RetroConfigBodyOptions {
 }
 
 
+
+
+
+const RETRO_SENSITIVITY_PRESET_LABELS: Readonly<Record<RetroChoiceSeverityPresetId, string>> = {
+  'all-mistake-moments': 'Inaccuracies & worse (5%)',
+  'mistakes-or-worse':   'Mistakes & worse (10%)',
+  'blunders-only':       'Blunders only (15%)',
+};
+
+const RETRO_PREVIEW_CHIP_CAP = 12;
+
+// "12. Qe2" / "31… Rxd4" -- fullmove number + SAN, mover-side ellipsis convention.
+// Matches the existing convention in src/analyse/lichessCompareUi.ts renderMistakeMoments.
+function formatRetroPreviewMoveChip(move: { ply: number; san: string }): string {
+  const moveNumber = Math.max(1, Math.ceil(move.ply / 2));
+  const sideMark = move.ply % 2 === 1 ? '.' : '…';
+  return `${moveNumber}${sideMark} ${move.san}`;
+}
+
+function findRetroPreviewFamily(
+  preview: RetroConfigPreviewSummary | null,
+  id: RetroConfigPreviewFamilyId,
+): RetroConfigFamilyPreview | null {
+  return preview?.families.find(f => f.id === id) ?? null;
+}
+
+// Renders the qualifying-move chips for one family, capped with a "+N more" tail.
+// `family` is null when there is no live preview available for the current game
+// (caller decides whether/where to show the single unreviewed-game guidance line
+// instead of calling this at all).
+function renderRetroPreviewChips(family: RetroConfigFamilyPreview | null, emptyLabel: string): VNode | null {
+  if (!family) return null;
+  if (family.moves.length === 0) return h('p.detection-modal__preview-empty', emptyLabel);
+  const shown = family.moves.slice(0, RETRO_PREVIEW_CHIP_CAP);
+  const extra = family.moves.length - shown.length;
+  return h('div.detection-modal__chip-row', [
+    ...shown.map((move, i) =>
+      h('span.detection-modal__chip', { key: `${move.ply}-${move.san}-${i}` }, formatRetroPreviewMoveChip(move))),
+    ...(extra > 0 ? [h('span.detection-modal__chip.detection-modal__chip--more', `+${extra} more`)] : []),
+  ]);
+}
+
+
+
+function retroCollapseRuleText(cfg: RetroConfig): string {
+  return `You were clearly winning (≥${formatRetroChoiceLossPercent(cfg.collapseWcFloor)}) and one move ` +
+    `dropped your winning chances by ≥${formatRetroChoiceLossPercent(cfg.collapseDropMin)}.`;
+}
+
+function retroDefensiveRuleText(cfg: RetroConfig): string {
+  return `You were worse off (≤${formatRetroChoiceLossPercent(cfg.defensiveWcCeiling)}) and missed a move ` +
+    `at least ${formatRetroChoiceLossPercent(cfg.defensiveSalvageMin)} better than the one you played.`;
+}
+
+function retroPunishRuleText(cfg: RetroConfig): string {
+  return `Your opponent blundered (≥${formatRetroChoiceLossPercent(cfg.punishOpponentSwingMin)} swing) and ` +
+    `your reply gave ≥${formatRetroChoiceLossPercent(cfg.punishExploitDropMin)} back.`;
+}
+
+function retroMissedMateRuleText(cfg: RetroConfig): string {
+  return cfg.missedMateDistance > 0
+    ? `A forced mate in ≤${cfg.missedMateDistance} was available and not played — always included.`
+    : 'Disabled — raise this above 0 to flag missed forced mates.';
+}
+
+
 export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBodyOptions = {}): VNode[] {
   const cfg = retroConfig;
   const selectedTone = FEEDBACK_TONE_OPTIONS.find(o => o.value === cfg.feedbackTone) ?? FEEDBACK_TONE_OPTIONS[0]!;
   const countSummary = options.countSummary ?? null;
+  const configPreview = countSummary?.configPreview ?? null;
   const idPrefix = options.idPrefix ?? 'retro-config';
   const feedbackToneLabelId = `${idPrefix}-feedback-tone-label`;
+  const matchesSensitivityPreset = RETRO_CHOICE_SEVERITY_PRESETS.some(
+    p => p.generationLossThreshold === cfg.minLossThreshold,
+  );
+  const isSensitivityCustom = retroSensitivityCustomOpen || !matchesSensitivityPreset;
   const isDefault =
     cfg.minLossThreshold      === RETRO_CONFIG_DEFAULTS.minLossThreshold &&
     cfg.missedMateDistance    === RETRO_CONFIG_DEFAULTS.missedMateDistance &&
@@ -1657,74 +1739,88 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
       )),
     ]),
 
+
+
     h('div.detection-modal__row', [
       h('div.detection-modal__row-header', [
-        h('span.detection-modal__label', 'Severity Presets'),
+        h('span.detection-modal__label', 'Sensitivity'),
         countSummary
           ? h('span.detection-modal__value', `${countSummary.total} selected`)
           : null,
       ].filter(Boolean) as VNode[]),
       h('p.detection-modal__desc',
-        'Use the same severity labels as the Learn From Your Mistakes choice page. Counts update for the current game as settings change.'),
-      h('div.detection-modal__preset-grid', RETRO_CHOICE_SEVERITY_PRESETS.map(preset => {
-        const active = cfg.minLossThreshold === preset.generationLossThreshold;
-        const count = countSummary?.presets.find(p => p.id === preset.id)?.count;
-        return h('button.detection-modal__preset-option', {
-          class: { 'is-active': active },
-          attrs: {
-            type: 'button',
-            title: `${preset.label}: ${preset.helper}`,
-          },
-          on: { click: () => {
-            setRetroConfig({ minLossThreshold: preset.generationLossThreshold });
-            redraw();
-          }},
-        }, [
-          h('span.detection-modal__preset-label', preset.label),
-          h('span.detection-modal__preset-helper', preset.helper),
-          count !== undefined
-            ? h('span.detection-modal__preset-count', `${count}`)
-            : null,
-        ].filter(Boolean) as VNode[]);
-      })),
-    ]),
-
-    // minLossThreshold — continuous 1–25% slider
-    h('div.detection-modal__row', [
-      h('div.detection-modal__row-header', [
-        h('span.detection-modal__label', 'Minimum Severity'),
-        h('span.detection-modal__value', `loss ≥ ${Math.round(cfg.minLossThreshold * 100)}%`),
-      ]),
-      h('p.detection-modal__desc',
-        'Minimum win-chance loss to include a move as a candidate. ' +
-        'Drag left for more candidates, right for fewer. Lichess parity: 5%. Patzer default: 10%.'),
-      h('div.detection-modal__severity-slider', [
-        h('input.severity-range', {
-          attrs: { type: 'range', min: 1, max: 25, step: 1,
-                   value: Math.round(cfg.minLossThreshold * 100) },
-          on: {
-            input: (e: Event) => {
-              const pct = parseInt((e.target as HTMLInputElement).value, 10);
-              setRetroConfig({ minLossThreshold: pct / 100 });
+        'How small a mistake counts as a learning moment. Uses the same severity labels as the ' +
+        'Learn From Your Mistakes choice page. Counts update for the current game as settings change.'),
+      h('div.detection-modal__preset-grid.detection-modal__preset-grid--sensitivity', [
+        ...RETRO_CHOICE_SEVERITY_PRESETS.map(preset => {
+          const active = !isSensitivityCustom && cfg.minLossThreshold === preset.generationLossThreshold;
+          const count = countSummary?.presets.find(p => p.id === preset.id)?.count;
+          const label = RETRO_SENSITIVITY_PRESET_LABELS[preset.id];
+          return h('button.detection-modal__preset-option', {
+            class: { 'is-active': active },
+            attrs: { type: 'button', title: label },
+            on: { click: () => {
+              retroSensitivityCustomOpen = false;
+              setRetroConfig({ minLossThreshold: preset.generationLossThreshold });
               redraw();
-            },
-          },
+            }},
+          }, [
+            h('span.detection-modal__preset-label', label),
+            count !== undefined
+              ? h('span.detection-modal__preset-count', `${count}`)
+              : null,
+          ].filter(Boolean) as VNode[]);
         }),
-        h('span.severity-divider--inaccuracy', { attrs: { title: 'Inaccuracy: loss ≥ 5%' } }),
-        h('span.severity-divider--mistake',    { attrs: { title: 'Lichess default / Mistake: loss ≥ 10%' } }),
-        h('span.severity-divider--blunder',    { attrs: { title: 'Blunder: loss ≥ 15%' } }),
-        h('span.detection-modal__default-mark', {
-          attrs: { style: 'left: 37.5%', title: 'Lichess default: loss ≥ 10%' },
-        }),
-        h('div.detection-modal__severity-ticks', [
-          h('span', '1%'),
-          h('span', 'Inaccuracy'),
-          h('span', 'Mistake'),
-          h('span', 'Blunder'),
-          h('span', '25%'),
+        h('button.detection-modal__preset-option', {
+          class: { 'is-active': isSensitivityCustom },
+          attrs: { type: 'button', title: 'Set a custom loss percentage' },
+          on: { click: () => { retroSensitivityCustomOpen = true; redraw(); } },
+        }, [
+          h('span.detection-modal__preset-label', 'Custom…'),
         ]),
       ]),
-    ]),
+      ...(isSensitivityCustom ? [
+        h('div.detection-modal__row-header', [
+          h('span.detection-modal__label', 'Custom Threshold'),
+          h('span.detection-modal__value', `loss ≥ ${formatRetroChoiceLossPercent(cfg.minLossThreshold)}`),
+        ]),
+        h('div.detection-modal__severity-slider', [
+          h('input.severity-range', {
+            attrs: { type: 'range', min: 1, max: 25, step: 1,
+                     value: Math.round(cfg.minLossThreshold * 100) },
+            on: {
+              input: (e: Event) => {
+                const pctValue = parseInt((e.target as HTMLInputElement).value, 10);
+                setRetroConfig({ minLossThreshold: pctValue / 100 });
+                redraw();
+              },
+            },
+          }),
+          h('span.severity-divider--inaccuracy', { attrs: { title: 'Inaccuracy: loss ≥ 5%' } }),
+          h('span.severity-divider--mistake',    { attrs: { title: 'Lichess default / Mistake: loss ≥ 10%' } }),
+          h('span.severity-divider--blunder',    { attrs: { title: 'Blunder: loss ≥ 15%' } }),
+          h('span.detection-modal__default-mark', {
+            attrs: { style: 'left: 37.5%', title: 'Lichess default: loss ≥ 10%' },
+          }),
+          h('div.detection-modal__severity-ticks', [
+            h('span', '1%'),
+            h('span', 'Inaccuracy'),
+            h('span', 'Mistake'),
+            h('span', 'Blunder'),
+            h('span', '25%'),
+          ]),
+        ]),
+      ] : []),
+      countSummary
+        ? h('p.detection-modal__preview-total', `This game: ${countSummary.total} moments`)
+        : null,
+      configPreview
+        ? renderRetroPreviewChips(
+            findRetroPreviewFamily(configPreview, 'sensitivity'),
+            'No qualifying moves at the current sensitivity.',
+          )
+        : h('p.detection-modal__preview-empty', 'Run a Game Review to preview which moves qualify.'),
+    ].filter((n): n is VNode => n !== null)),
 
     // missedMateDistance — slider
     h('div.detection-modal__row', [
@@ -1733,9 +1829,7 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         h('span.detection-modal__value',
           cfg.missedMateDistance === 0 ? 'off' : `in ${cfg.missedMateDistance}`),
       ]),
-      h('p.detection-modal__desc',
-        'Flag a move when a forced mate of this distance (or shorter) was available but not played. ' +
-        'Lichess default: mate in 3. Set to 0 to disable this category entirely.'),
+      h('p.detection-modal__desc', retroMissedMateRuleText(cfg)),
       h('div.detection-modal__slider-wrap', [
         h('input', {
           attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
@@ -1751,21 +1845,25 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
           attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
         }),
       ]),
-    ]),
+      cfg.missedMateDistance > 0
+        ? renderRetroPreviewChips(
+            findRetroPreviewFamily(configPreview, 'missed-mate'),
+            'No missed forced mates in this game.',
+          )
+        : null,
+    ].filter((n): n is VNode => n !== null)),
 
     // ── Collapse (blown win) family ──────────────────────────────────
     h('div.detection-modal__row', [
       h('div.detection-modal__row-header', [
         h('span.detection-modal__label', 'Blown Wins'),
       ]),
-      h('p.detection-modal__desc',
-        'Flag positions where you were clearly winning but squandered the advantage. ' +
-        'Reuses the same thresholds as the engine\'s collapse detection.'),
+      h('p.detection-modal__desc', retroCollapseRuleText(cfg)),
       renderToggleRow('detection-collapse', 'Enabled', cfg.collapseEnabled, (v) => { setRetroConfig({ collapseEnabled: v }); redraw(); }),
       ...(cfg.collapseEnabled ? [
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Win Chance Floor'),
-          h('span.detection-modal__value', cfg.collapseWcFloor.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.collapseWcFloor)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1775,7 +1873,7 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Minimum Drop'),
-          h('span.detection-modal__value', cfg.collapseDropMin.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.collapseDropMin)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1783,21 +1881,24 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
             on: { input: (e: Event) => { setRetroConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
+        renderRetroPreviewChips(
+          findRetroPreviewFamily(configPreview, 'collapse'),
+          'No qualifying moves at the current settings.',
+        ),
       ] : []),
-    ]),
+    ].filter((n): n is VNode => n !== null)),
 
     // ── Defensive resource family ────────────────────────────────────
     h('div.detection-modal__row', [
       h('div.detection-modal__row-header', [
         h('span.detection-modal__label', 'Missed Defenses'),
       ]),
-      h('p.detection-modal__desc',
-        'Flag positions where you were losing but had a significantly better defensive move available.'),
+      h('p.detection-modal__desc', retroDefensiveRuleText(cfg)),
       renderToggleRow('detection-defensive', 'Enabled', cfg.defensiveEnabled, (v) => { setRetroConfig({ defensiveEnabled: v }); redraw(); }),
       ...(cfg.defensiveEnabled ? [
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Position Ceiling'),
-          h('span.detection-modal__value', cfg.defensiveWcCeiling.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.defensiveWcCeiling)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1807,7 +1908,7 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Salvage Gap'),
-          h('span.detection-modal__value', cfg.defensiveSalvageMin.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.defensiveSalvageMin)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1815,21 +1916,24 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
             on: { input: (e: Event) => { setRetroConfig({ defensiveSalvageMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
+        renderRetroPreviewChips(
+          findRetroPreviewFamily(configPreview, 'defensive'),
+          'No qualifying moves at the current settings.',
+        ),
       ] : []),
-    ]),
+    ].filter((n): n is VNode => n !== null)),
 
     // ── Punish-the-blunder family ────────────────────────────────────
     h('div.detection-modal__row', [
       h('div.detection-modal__row-header', [
         h('span.detection-modal__label', 'Missed Punishments'),
       ]),
-      h('p.detection-modal__desc',
-        'Flag positions where the opponent blundered but you failed to exploit the mistake.'),
+      h('p.detection-modal__desc', retroPunishRuleText(cfg)),
       renderToggleRow('detection-punish', 'Enabled', cfg.punishEnabled, (v) => { setRetroConfig({ punishEnabled: v }); redraw(); }),
       ...(cfg.punishEnabled ? [
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Opponent Swing'),
-          h('span.detection-modal__value', cfg.punishOpponentSwingMin.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.punishOpponentSwingMin)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1839,7 +1943,7 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__row-header', [
           h('span.detection-modal__label', 'Exploit Drop'),
-          h('span.detection-modal__value', cfg.punishExploitDropMin.toFixed(2)),
+          h('span.detection-modal__value', formatRetroChoiceLossPercent(cfg.punishExploitDropMin)),
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
@@ -1847,8 +1951,12 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
             on: { input: (e: Event) => { setRetroConfig({ punishExploitDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
+        renderRetroPreviewChips(
+          findRetroPreviewFamily(configPreview, 'punish'),
+          'No qualifying moves at the current settings.',
+        ),
       ] : []),
-    ]),
+    ].filter((n): n is VNode => n !== null)),
 
     // Reset row
     !isDefault ? h('div.detection-modal__row', [
@@ -2043,6 +2151,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       on: { click: () => {
         showGlobalMenu    = !showGlobalMenu;
         showBoardSettings = false;
+        showEvalGraphSettings = false;
         if (!showGlobalMenu) {
           showReleaseDetails = false;
           releaseCopyMessage = '';
@@ -2056,7 +2165,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
     }) : null,
 
     showGlobalMenu ? h('div.global-menu__dropdown', {
-      class: { 'board-open': showBoardSettings },
+      class: { 'board-open': showBoardSettings || showEvalGraphSettings },
     }, [
       h('button.global-menu__item', {
         attrs: { type: 'button', title: 'Report an issue with the current page' },
@@ -2152,6 +2261,15 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
       showBoardSettings ? renderBoardSettings(redraw) : null,
 
+      h('div.global-menu__item.global-menu__item--has-sub', {
+        on: { click: () => { showEvalGraphSettings = !showEvalGraphSettings; redraw(); } },
+      }, [
+        h('span', 'Eval Graph'),
+        h('span.global-menu__arrow', showEvalGraphSettings ? '▾' : '›'),
+      ]),
+
+      showEvalGraphSettings ? renderEvalGraphSettings(redraw) : null,
+
       renderSyncIdentityFooter(),
       renderReleaseIdentityFooter(redraw),
     ]) : null,
@@ -2238,7 +2356,7 @@ function renderHeaderAccountControl(
       key: `input-${importPlatform}`,
       attrs: {
         type: 'search',
-        placeholder: importPlatform === 'chesscom' ? 'Enter your Chess.com username' : 'Enter your Lichess username',
+        placeholder: importPlatform === 'chesscom' ? 'Username Chess.com' : 'Username Lichess',
         disabled: loading,
         autocomplete: 'off',
         spellcheck: false,
@@ -2249,17 +2367,17 @@ function renderHeaderAccountControl(
           const v = (e.target as HTMLInputElement).value;
           if (importPlatform === 'chesscom') chesscom.username = v;
           else lichess.username = v;
+
+          if (showImportPanel) ensureHeaderTotals(redraw);
           syncImportCategory(redraw);
         },
         keydown: (e: KeyboardEvent) => {
           const currentUsername = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
           if (e.key !== 'Enter' || !currentUsername.trim() || loading) return;
-          if (importFilters.importCategory === null) {
-            showImportPanel = true;
-            redraw();
-          } else {
-            submitImport();
-          }
+
+
+          showImportPanel = true;
+          redraw();
         },
       },
     });
@@ -2313,6 +2431,181 @@ function renderHeaderAccountControl(
   ]);
 }
 
+
+const HEADER_PEEK_SPEEDS: readonly ImportSpeed[] = SPEED_OPTIONS.map(o => o.value);
+
+
+
+
+
+
+function ensureHeaderTotals(redraw: () => void): void {
+  const username = (importPlatform === 'chesscom' ? chesscom.username : lichess.username).trim();
+  if (!username) {
+    headerTotalsKey = '';
+    headerTotals = null;
+    headerTotalsLoading = false;
+    return;
+  }
+  const key = `${importPlatform}|${username.toLowerCase()}`;
+  if (headerTotalsKey === key) return;
+  headerTotalsKey = key;
+  headerTotals = null;
+  headerTotalsLoading = true;
+  const gen = ++headerTotalsGen;
+  if (headerTotalsTimer !== null) clearTimeout(headerTotalsTimer);
+  headerTotalsTimer = setTimeout(() => {
+    headerTotalsTimer = null;
+    const fetchTotals = importPlatform === 'chesscom' ? fetchChesscomSpeedTotals : fetchLichessSpeedTotals;
+    void fetchTotals(username)
+      .then(totals => {
+        if (headerTotalsGen !== gen) return;
+        headerTotals = totals;
+        headerTotalsLoading = false;
+        redraw();
+      })
+      .catch(() => {
+        if (headerTotalsGen !== gen) return;
+        headerTotalsLoading = false;
+        redraw();
+      });
+  }, 400);
+}
+
+
+
+
+
+
+function prefillAccountSyncFilters(account: ChessAccount): void {
+  if (account.lastSyncSpeeds !== undefined) {
+    importFilters.speeds = new Set(
+      account.lastSyncSpeeds.filter((s): s is ImportSpeed => HEADER_PEEK_SPEEDS.some(v => v === s)),
+    );
+  }
+  if (account.lastSyncRated !== undefined) importFilters.rated = account.lastSyncRated;
+}
+
+
+
+
+
+
+
+function ensureHeaderPeek(account: ChessAccount, redraw: () => void): void {
+  if (account.newestGameTimestamp === null) { headerPeek = null; return; }
+  const key = `${account.id}|${account.newestGameTimestamp}|${importFilters.rated}`;
+  if (headerPeekKey === key) return;
+  headerPeekKey = key;
+  headerPeekLoading = true;
+  headerPeek = null;
+  const gen = ++headerPeekGen;
+  void peekAccountSync(account, { rated: importFilters.rated, speeds: new Set(HEADER_PEEK_SPEEDS) })
+    .then(res => {
+      if (headerPeekGen !== gen) return;
+      headerPeek = res;
+      headerPeekLoading = false;
+      redraw();
+    })
+    .catch(() => {
+      if (headerPeekGen !== gen) return;
+      headerPeekLoading = false;
+      redraw();
+    });
+}
+
+
+function resetHeaderPeek(): void {
+  headerPeekKey = '';
+  headerPeek = null;
+  headerPeekLoading = false;
+}
+
+
+
+
+
+
+async function runHeaderAccountSync(account: ChessAccount, deps: HeaderDeps): Promise<void> {
+  const { redraw } = deps;
+  if (headerSyncRunning || headerOlderSyncRunning) return;
+  const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
+  const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
+  const needsFallback = account.newestGameTimestamp === null || filterMismatch;
+  headerSyncRunning = true;
+  headerSyncMessage = null;
+  headerSyncError = null;
+  redraw();
+  try {
+    const result: AccountSyncWithBackfillResult = await syncAccountGamesWithBackfill(account, {
+      rated: importFilters.rated,
+      speeds: importFilters.speeds,
+      syncDateRange: currentImportDateRangeConfig(),
+      backfillTargetStartMs: importRangeStartMsFor(currentImportDateRangeConfig()) ?? 0,
+      onProgress: count => {
+        headerSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
+        redraw();
+      },
+      ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
+    });
+    const syncOutcome = deps.onSyncGames(result.newGames);
+    deps.refreshAccounts();
+    resetHeaderPeek();
+    if (result.addedCount === 0) {
+      headerSyncMessage = 'No new games to import';
+    } else {
+      const olderAdded = result.older?.addedCount ?? 0;
+      headerSyncMessage = `Imported ${syncOutcome.addedCount} new game${syncOutcome.addedCount === 1 ? '' : 's'}${
+        olderAdded > 0 ? ` (${olderAdded} older)` : ''}`;
+    }
+  } catch (err) {
+    headerSyncError = err instanceof Error ? err.message : 'Sync failed.';
+  } finally {
+    headerSyncRunning = false;
+    redraw();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function runHeaderAccountRescan(account: ChessAccount, deps: HeaderDeps): void {
+  if (headerRescanRunning) return;
+  headerRescanRunning = true;
+  headerRescanMessage = null;
+  headerRescanError = null;
+  deps.redraw();
+  try {
+    const summary = enqueueAccountRescan(
+      { platform: account.platform, username: account.username },
+      deps.importedGames,
+      // No display surface for merged fields yet (Track B: data-capture
+      // only) — the caller has nothing to patch into view.
+      { onGameUpdated: () => {} },
+    );
+    headerRescanMessage = summary.gamesConsidered === 0
+      ? 'No previously-imported games to refresh.'
+      : `Refreshing ${summary.gamesConsidered} game${summary.gamesConsidered === 1 ? '' : 's'} across ${
+          summary.monthsQueued} month${summary.monthsQueued === 1 ? '' : 's'} in the background…`;
+  } catch (err) {
+    headerRescanError = err instanceof Error ? err.message : 'Refresh failed to start.';
+  } finally {
+    headerRescanRunning = false;
+    deps.redraw();
+  }
+}
+
 function renderSyncMenu(
   account: ChessAccount,
   deps: HeaderDeps,
@@ -2320,38 +2613,8 @@ function renderSyncMenu(
   const { redraw } = deps;
   const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
   const filterMismatch = account.newestGameTimestamp !== null && account.syncFilterKey !== filterKey;
-  const needsFallback = account.newestGameTimestamp === null || filterMismatch;
-  const runSync = async (): Promise<void> => {
-    if (headerSyncRunning || headerOlderSyncRunning) return;
-    headerSyncRunning = true;
-    headerSyncMessage = null;
-    headerSyncError = null;
-    redraw();
-    try {
-      const result: AccountSyncResult = await syncAccountGames(account, {
-        rated: importFilters.rated,
-        speeds: importFilters.speeds,
-        syncDateRange: currentImportDateRangeConfig(),
-        onProgress: count => {
-          headerSyncMessage = `Fetched ${count} game${count === 1 ? '' : 's'}...`;
-          redraw();
-        },
-        ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
-      });
-      const syncOutcome = deps.onSyncGames(result.newGames);
-      deps.refreshAccounts();
-      if (result.addedCount === 0) {
-        headerSyncMessage = 'No new games to import';
-      } else {
-        headerSyncMessage = `Imported ${syncOutcome.addedCount} new game${syncOutcome.addedCount === 1 ? '' : 's'}`;
-      }
-    } catch (err) {
-      headerSyncError = err instanceof Error ? err.message : 'Sync failed.';
-    } finally {
-      headerSyncRunning = false;
-      redraw();
-    }
-  };
+  ensureHeaderPeek(account, redraw);
+  const runSync = (): Promise<void> => runHeaderAccountSync(account, deps);
 
   const runOlderSync = async (): Promise<void> => {
     if (headerOlderSyncRunning || headerSyncRunning) return;
@@ -2441,8 +2704,9 @@ function renderSyncMenu(
           class: { active: importFilters.speeds.size === 0 },
           on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
         }, 'All'),
-        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
-          h('button.header__pill', {
+        ...SPEED_OPTIONS.map(({ value, label, icon }) => {
+          const newCount = headerPeek?.newGameCountBySpeed[value] ?? 0;
+          return h('button.header__pill', {
             class: { active: importFilters.speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -2451,18 +2715,16 @@ function renderSyncMenu(
               importFilters.speeds = s;
               redraw();
             }},
-          }, label)
-        ),
+          }, newCount > 0 ? `${label} · ${newCount}` : label);
+        }),
       ]),
-      ...(needsFallback ? [
-        h('div.header__panel-label.--mt', 'Period'),
-        h('div.header__panel-row', DATE_RANGE_OPTIONS.map(({ value, label }) =>
-          h('button.header__pill', {
-            class: { active: importFilters.dateRange === value },
-            on: { click: () => { importFilters.dateRange = value as ImportDateRange; redraw(); } },
-          }, label),
-        )),
-      ] : []),
+      h('div.header__panel-label.--mt', 'Period'),
+      h('div.header__panel-row', DATE_RANGE_OPTIONS.map(({ value, label }) =>
+        h('button.header__pill', {
+          class: { active: importFilters.dateRange === value },
+          on: { click: () => { importFilters.dateRange = value as ImportDateRange; redraw(); } },
+        }, label),
+      )),
       h('div.header__panel-row.--mt', [
         h('label.header__panel-check', [
           h('input', {
@@ -2474,6 +2736,12 @@ function renderSyncMenu(
       ]),
     ]),
     h('div.header__panel-section', [
+      headerPeekLoading ? h('p.header__panel-hint', 'Checking for new games…')
+        : headerPeek?.supported
+        ? h('p.header__panel-hint', headerPeek.newGameCount > 0
+            ? `Sync in ${headerPeek.newGameCount} new game${headerPeek.newGameCount === 1 ? '' : 's'}`
+            : 'Up to date')
+        : null,
       headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
       headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
       h('button.header__panel-btn', {
@@ -2537,6 +2805,27 @@ function renderSyncMenu(
         ? 'Load back to date'
         : 'Load older games'),
     ]),
+
+
+    account.platform === 'chesscom'
+      ? h('div.header__panel-divider')
+      : null,
+    account.platform === 'chesscom'
+      ? h('div.header__panel-section', [
+          h('div.header__panel-label', 'Platform data'),
+          h('p.header__panel-hint',
+            'Chess.com sometimes finishes analyzing a game after it was imported. Refresh to pull in newly available data (like accuracies) for already-imported games.'),
+          headerRescanError ? h('div.header__panel-error', headerRescanError) : null,
+          headerRescanMessage ? h('p.header__panel-hint', headerRescanMessage) : null,
+          h('button.header__panel-btn', {
+            attrs: {
+              disabled: headerRescanRunning,
+              title: 'Re-check already-imported games for newly available platform data',
+            },
+            on: { click: () => runHeaderAccountRescan(account, deps) },
+          }, headerRescanRunning ? 'Refreshing...' : 'Refresh platform data'),
+        ])
+      : null,
   ]);
 }
 
@@ -2591,10 +2880,28 @@ export function renderHeader(deps: HeaderDeps): VNode {
     redraw();
   };
 
+
+
+
+  const startSyncNow = (): void => {
+    if (selectedMineAccount === null) return;
+    prefillAccountSyncFilters(selectedMineAccount);
+    openSyncDashboard();
+    void runHeaderAccountSync(selectedMineAccount, deps);
+  };
+
   const hasActiveFilters =
     importFilters.speeds.size > 0 ||
     importFilters.dateRange !== '1month' ||
     !importFilters.rated;
+
+
+
+  if (showImportPanel && !accountModeActive) ensureHeaderTotals(redraw);
+
+  const totalsSum = headerTotals
+    ? Object.values(headerTotals).reduce((sum, n) => sum + (n ?? 0), 0)
+    : 0;
 
   const panel = showImportPanel && accountModeActive && selectedMineAccount !== null
     ? renderSyncMenu(selectedMineAccount, deps)
@@ -2635,13 +2942,15 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     h('div.header__panel-section', [
       h('div.header__panel-label', 'Time control'),
+      headerTotalsLoading ? h('p.header__panel-hint', 'Checking games…') : null,
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importFilters.speeds.size === 0 },
           on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
-        }, 'All'),
-        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
-          h('button.header__pill', {
+        }, headerTotals && totalsSum > 0 ? `All · ${totalsSum.toLocaleString()}` : 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) => {
+          const total = headerTotals?.[value];
+          return h('button.header__pill', {
             class: { active: importFilters.speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -2650,8 +2959,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
               importFilters.speeds = s;
               redraw();
             }},
-          }, label)
-        ),
+          }, total !== undefined ? `${label} · ${total.toLocaleString()}` : label);
+        }),
       ]),
 
       h('div.header__panel-label.--mt', 'Period'),
@@ -2687,6 +2996,28 @@ export function renderHeader(deps: HeaderDeps): VNode {
         ]),
       ]),
 
+    ]),
+
+    h('div.header__panel-divider'),
+
+
+
+
+    h('div.header__panel-section', [
+      error ? h('div.header__panel-error', error) : null,
+      h('button.header__panel-btn', {
+        attrs: {
+          disabled: loading || !username.trim() || importFilters.importCategory === null,
+          ...(importFilters.importCategory === null && username.trim()
+            ? { title: 'Choose an account category (Mine / Opponent / Study) first' }
+            : {}),
+        },
+        on: { click: doImport },
+      }, loading
+        ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0
+            ? ` (${importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount})`
+            : ''}`
+        : 'Import games'),
     ]),
 
     h('div.header__panel-divider'),
@@ -2754,26 +3085,18 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     h('div.header__search', { key: 'header-search' }, [
       h('div.header__bar', [
-        h('button.header__platform-toggle', {
-          attrs: {
-            title: accountModeActive ? platformLabel(importPlatform) : importPlatform === 'chesscom' ? 'Switch to Lichess' : 'Switch to Chess.com',
-            disabled: accountModeActive,
-          },
-          on: { click: () => { importPlatform = importPlatform === 'chesscom' ? 'lichess' : 'chesscom'; syncImportCategory(redraw); redraw(); } },
-        }, importPlatform === 'chesscom' ? 'Chess.com' : 'Lichess'),
-
         renderHeaderAccountControl(deps.accounts, selectedMineAccount, loading || headerSyncRunning, doImport, redraw),
 
         h('button.header__import', {
           attrs: {
-            disabled: accountModeActive
-              ? headerSyncRunning
-              : loading || !username.trim() || importFilters.importCategory === null,
-            ...(!accountModeActive && importFilters.importCategory === null && username.trim()
-              ? { title: 'Choose an account category (Mine / Opponent / Study) in the filters panel (▾) first' }
-              : {}),
+            disabled: accountModeActive ? headerSyncRunning : loading,
+            title: accountModeActive
+              ? 'Sync new games for this account'
+              : 'Choose platform, filters, and import',
           },
-          on: { click: accountModeActive ? openSyncDashboard : doImport },
+
+
+          on: { click: accountModeActive ? startSyncNow : () => { showImportPanel = true; redraw(); } },
         }, accountModeActive
           ? (headerSyncRunning ? 'Syncing...' : 'Sync')
           : loading

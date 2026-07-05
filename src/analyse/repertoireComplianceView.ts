@@ -114,6 +114,50 @@ export function analysisMainlinePathForPly(mainline: readonly TreeNode[], ply: n
   return sawMove ? path : '';
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface JumpPathCacheEntry {
+  root:   TreeNode | undefined;
+  leaf:   TreeNode | undefined;
+  length: number;
+  paths:  Map<number, string | null>;
+}
+let jumpPathCache: JumpPathCacheEntry | null = null;
+
+function cachedMainlinePathForPly(mainline: readonly TreeNode[], ply: number | null): string | null {
+  if (ply === null || !Number.isFinite(ply)) return null;
+  const root = mainline[0];
+  const leaf = mainline[mainline.length - 1];
+  if (
+    !jumpPathCache ||
+    jumpPathCache.root !== root ||
+    jumpPathCache.leaf !== leaf ||
+    jumpPathCache.length !== mainline.length
+  ) {
+    jumpPathCache = { root, leaf, length: mainline.length, paths: new Map() };
+  }
+  const cached = jumpPathCache.paths.get(ply);
+  if (cached !== undefined) return cached;
+  const path = analysisMainlinePathForPly(mainline, ply);
+  jumpPathCache.paths.set(ply, path);
+  return path;
+}
+
 export interface LoadAnalysisRepertoireComplianceRowsInput {
   game: ImportedGame;
   sources: readonly RepertoireSource[];
@@ -376,7 +420,7 @@ function saveAnalysisRepertoireLineToOrp(
 function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAnalysisRepertoireComplianceInput): VNode | null {
   const record = row.record;
   if (record.status !== 'diverged' || record.category === null) return null;
-  const jumpPath = analysisMainlinePathForPly(input.mainline, record.firstDivergencePly);
+  const jumpPath = cachedMainlinePathForPly(input.mainline, record.firstDivergencePly);
   const categoryLabel = repertoireDivergenceCategoryLabel(record.category);
   const jumpTitle = jumpPath === null
     ? 'Divergence node is not available in the current mainline'
