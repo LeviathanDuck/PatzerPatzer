@@ -5782,12 +5782,6 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
 function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode | null {
   if (!explorerCtrl.enabled) return null;
   return h('div.openings__explorer', [
-    h('div.openings__explorer-header', [
-      h('button.openings__explorer-gear', {
-        attrs: { title: 'Configure explorer', 'aria-label': 'Configure explorer' },
-        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-      }, '\u2699\uFE0F'),
-    ]),
     renderExplorerDbTabs(node, redraw),
     explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw),
   ]);
@@ -5818,6 +5812,17 @@ function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void, 
       attrs: { title: 'Show Repertoire explorer', 'aria-label': 'Show Repertoire explorer' },
       on: { click: () => setDb('repertoire') },
     }, 'Repertoire'),
+    // Config gear shares the right end of the tabs row; swaps to a close glyph
+    // while the config panel is open.
+    // Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts button.fbt.toconf
+    h('button.openings__explorer-gear', {
+      class: { active: explorerCtrl.configOpen },
+      attrs: {
+        title: explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
+        'aria-label': explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
+      },
+      on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
+    }, explorerCtrl.configOpen ? '✕' : '⚙'),
   ]);
 }
 
@@ -6183,12 +6188,6 @@ export function renderAnalysisExplorerSection(
   const isMasters = explorerCtrl.config.db === 'masters';
 
   return h('div.openings__explorer', [
-    h('div.openings__explorer-header', [
-      h('button.openings__explorer-gear', {
-        attrs: { title: 'Configure explorer', 'aria-label': 'Configure explorer' },
-        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-      }, '\u2699\uFE0F'),
-    ]),
     renderExplorerDbTabs(null, redraw, restoreAnalysisExplorerAutoShapes),
     explorerCtrl.configOpen
       ? renderExplorerConfigPanel(redraw)

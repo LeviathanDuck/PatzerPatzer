@@ -123,6 +123,9 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
       : reviewProgress.active
         ? `Reviewing ${reviewProgress.done}/${reviewProgress.total}…`
         : 'Engine on';
+  // Active-process statuses (loading, reviewing) get a live tint; idle labels stay gray.
+  const statusActive = visibleEngineEnabled
+    && (!engineEnabled || !engineReady || reviewProgress.active);
 
   // Thin bar along the top of the ceval panel.
   // Progress bar along the top: fills left-to-right while searching, stays solid at 100% when done.
@@ -173,7 +176,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
     // Engine name + status info (flex: 2 1 auto, small text)
     h('div.engine', [
       engineLabel,
-      h('span.info', statusText),
+      h('span.info', { class: { 'info--active': statusActive } }, statusText),
     ]),
 
     // Settings gear — mirrors button.settings-gear positioning
