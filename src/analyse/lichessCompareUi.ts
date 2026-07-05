@@ -15,6 +15,15 @@
 
 
 
+
+
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import {
   buildCanonicalReviewAuditSnapshot,
@@ -29,6 +38,7 @@ import {
   type LichessNormalizedGame,
 } from './lichessCompare';
 import { loadAnalysisFromIdb } from '../idb';
+import { getRemoteSyncToken } from '../sync/remoteSync';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State
@@ -45,11 +55,19 @@ interface PasteState {
   note?: string;
   error?: string;
 }
+interface ImportingState { phase: 'importing'; gameId: string; pgn: string }
+interface ImportedState {
+  phase: 'imported';
+  gameId: string;
+  pgn: string;
+  lichessId: string;
+  lichessUrl: string;
+}
 interface ReportState {
   phase: 'report';
   gameId: string;
   pgn: string;
-  isLichessGame: boolean;
+  lichessId?: string;
   report: ComparisonReport;
   markdown: string;
 }
@@ -67,8 +85,15 @@ type LichessCompareState =
   | FetchingState
   | ComparingState
   | PasteState
+  | ImportingState
+  | ImportedState
   | ReportState
   | ErrorState;
+
+// Session-only map from Patzer gameId to the game imported on Lichess for it, so re-opening the
+// panel (or the "no analysis yet" retry) goes straight to fetch instead of re-importing. Never
+// persisted (no IDB/sync writes in this panel's v1 scope).
+const _importedGames = new Map<string, { id: string; url: string }>();
 
 let _state: LichessCompareState = { phase: 'closed' };
 let _redraw: (() => void) | null = null;
@@ -105,7 +130,12 @@ export function openLichessCompareFlow(input: { gameId: string; pgn: string; red
   const { gameId, pgn } = input;
   if (gameId.startsWith('lichess:')) {
     setState({ phase: 'fetching', gameId, pgn });
-    void runLichessFetchFlow(gameId, pgn, token);
+    void runLichessFetchFlow(gameId, pgn, gameId.slice('lichess:'.length), token);
+    return;
+  }
+  const imported = _importedGames.get(gameId);
+  if (imported) {
+    setState({ phase: 'imported', gameId, pgn, lichessId: imported.id, lichessUrl: imported.url });
   } else {
     setState({ phase: 'paste', gameId, pgn, text: '' });
   }
@@ -120,11 +150,10 @@ function openPasteFallback(gameId: string, pgn: string, note: string | undefined
 
 
 
-async function runLichessFetchFlow(gameId: string, pgn: string, token: number): Promise<void> {
-  const strippedId = gameId.slice('lichess:'.length);
+async function runLichessFetchFlow(gameId: string, pgn: string, lichessId: string, token: number): Promise<void> {
   let data: unknown;
   try {
-    const response = await fetch(`https://lichess.org/game/export/${strippedId}?evals=true`, {
+    const response = await fetch(`https://lichess.org/game/export/${lichessId}?evals=true`, {
       headers: { Accept: 'application/json' },
     });
     if (!response.ok) {
@@ -172,7 +201,108 @@ async function runLichessFetchFlow(gameId: string, pgn: string, token: number): 
     return;
   }
 
-  await runComparePipeline(gameId, pgn, normalized, true, token);
+  await runComparePipeline(gameId, pgn, normalized, lichessId, token);
+}
+
+
+
+
+
+
+
+
+const BOOK_IMPORT_RELAY_ENDPOINT = '/api/patzer-sync/book-import.php';
+const LICHESS_IMPORT_URL = 'https://lichess.org/api/import';
+
+function parseImportResponse(data: unknown): { id: string; url: string } {
+  const record = (typeof data === 'object' && data !== null ? data : {}) as Record<string, unknown>;
+  const id = typeof record.id === 'string' ? record.id.trim() : '';
+  if (!id) throw new Error('Lichess import response did not include a game id.');
+  const url = typeof record.url === 'string' && record.url.trim() ? record.url : `https://lichess.org/${id}`;
+  return { id, url };
+}
+
+async function importViaRelay(pgn: string, syncToken: string): Promise<{ id: string; url: string } | null> {
+  let response: Response;
+  try {
+    response = await fetch(BOOK_IMPORT_RELAY_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${syncToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ pgn }),
+    });
+  } catch {
+    return null; // relay unreachable — fall back to anonymous import.
+  }
+  if (!response.ok) return null; // not connected / expired / upstream failure — fall back.
+  try {
+    return parseImportResponse(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+async function importAnonymously(pgn: string): Promise<{ id: string; url: string }> {
+  const response = await fetch(LICHESS_IMPORT_URL, {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+    body: new URLSearchParams({ pgn }),
+  });
+  if (!response.ok) throw new Error(`Lichess import failed (HTTP ${response.status}).`);
+  return parseImportResponse(await response.json());
+}
+
+export function startSendToLichess(): void {
+  const state = _state;
+  if (state.phase !== 'paste' && state.phase !== 'error') return;
+  const { gameId, pgn } = state;
+  const token = _requestToken;
+  guardedSetState(token, { phase: 'importing', gameId, pgn });
+  void runImportFlow(gameId, pgn, token);
+}
+
+async function runImportFlow(gameId: string, pgn: string, token: number): Promise<void> {
+  const syncToken = getRemoteSyncToken().trim();
+  const localDevHost = window.location.hostname === 'localhost'
+    || window.location.hostname === '127.0.0.1'
+    || window.location.hostname === '[::1]'
+    || window.location.hostname === '::1';
+
+  let imported: { id: string; url: string };
+  try {
+    const viaRelay = syncToken && !localDevHost ? await importViaRelay(pgn, syncToken) : null;
+    imported = viaRelay ?? await importAnonymously(pgn);
+  } catch (error) {
+    openPasteFallback(
+      gameId, pgn,
+      `Could not send the game to Lichess (${errorMessage(error)}). Paste a Lichess PGN export with evals instead.`,
+      token,
+    );
+    return;
+  }
+
+  _importedGames.set(gameId, imported);
+  if (token === _requestToken) window.open(imported.url, '_blank', 'noopener');
+  guardedSetState(token, {
+    phase: 'imported',
+    gameId,
+    pgn,
+    lichessId: imported.id,
+    lichessUrl: imported.url,
+  });
+}
+
+export function fetchImportedAnalysis(): void {
+  const state = _state;
+  if (state.phase !== 'imported' && state.phase !== 'error' && state.phase !== 'paste') return;
+  const imported = _importedGames.get(state.gameId);
+  if (!imported) return;
+  const token = _requestToken;
+  guardedSetState(token, { phase: 'fetching', gameId: state.gameId, pgn: state.pgn });
+  void runLichessFetchFlow(state.gameId, state.pgn, imported.id, token);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,7 +329,7 @@ export function submitPaste(): void {
     setState({ ...state, error: errorMessage(error) });
     return;
   }
-  void runComparePipeline(gameId, pgn, normalized, false, _requestToken);
+  void runComparePipeline(gameId, pgn, normalized, undefined, _requestToken);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -210,7 +340,7 @@ async function runComparePipeline(
   gameId: string,
   pgn: string,
   lichessNormalized: LichessNormalizedGame,
-  isLichessGame: boolean,
+  lichessId: string | undefined,
   token: number,
 ): Promise<void> {
   guardedSetState(token, { phase: 'comparing', gameId, pgn });
@@ -239,7 +369,7 @@ async function runComparePipeline(
       phase: 'report',
       gameId,
       pgn,
-      isLichessGame,
+      ...(lichessId !== undefined ? { lichessId } : {}),
       report,
       markdown: renderComparisonReportMarkdown(report),
     });
@@ -289,6 +419,10 @@ export function renderLichessComparePanel(): VNode | null {
       return renderBusyPanel('Fetching Lichess analysis…');
     case 'comparing':
       return renderBusyPanel('Comparing…');
+    case 'importing':
+      return renderBusyPanel('Sending game to Lichess…');
+    case 'imported':
+      return renderImportedPanel(_state);
     case 'paste':
       return renderPastePanel(_state);
     case 'error':
@@ -306,26 +440,65 @@ function renderBusyPanel(label: string): VNode {
 }
 
 function renderPastePanel(state: PasteState): VNode {
+  const imported = _importedGames.get(state.gameId);
   return h('div.lichess-compare__paste', [
     state.note ? h('p.lichess-compare__note', state.note) : null,
-    h('p.lichess-compare__desc', 'Paste a Lichess PGN export with evals (Lichess game page → Download → PGN, with evaluations) below.'),
+    h('p.lichess-compare__desc',
+      'Send this game to Lichess to request its computer analysis there, or paste a Lichess PGN export with evals (Lichess game page → Download → PGN, with evaluations) below.'),
     h('textarea.lichess-compare__textarea', {
       attrs: { rows: 10, placeholder: '[Event "?"]\n\n1. e4 { [%eval 0.2] } e5 ...' },
       on: { input: (e: Event) => updatePasteText((e.target as HTMLTextAreaElement).value) },
     }),
     state.error ? h('p.lichess-compare__error', state.error) : null,
     h('div.lichess-compare__actions', [
+      imported
+        ? h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch analysis & compare')
+        : h('button.lichess-compare__btn', { on: { click: () => startSendToLichess() } }, 'Send to Lichess'),
       h('button.lichess-compare__btn', { on: { click: () => submitPaste() } }, 'Compare'),
       h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Cancel'),
     ]),
   ].filter((n): n is VNode => n !== null));
 }
 
+function renderImportedPanel(state: ImportedState): VNode {
+  return h('div.lichess-compare__paste', [
+    h('p.lichess-compare__desc',
+      'Game sent to Lichess. On the Lichess game page, click "Request computer analysis" (you must be signed in on lichess.org), wait for the analysis to finish, then fetch it here. Note: Lichess imported games are public.'),
+    h('p.lichess-compare__note', [
+      h('a.lichess-compare__open-link', {
+        attrs: { href: state.lichessUrl, target: '_blank', rel: 'noopener' },
+      }, 'Open on Lichess ↗'),
+    ]),
+    h('div.lichess-compare__actions', [
+      h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch analysis & compare'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        on: { click: () => openPasteFallback(state.gameId, state.pgn, undefined, _requestToken) },
+      }, 'Paste export instead'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Cancel'),
+    ]),
+  ]);
+}
+
 function renderErrorPanel(state: ErrorState): VNode {
+  const isLichessGame = state.gameId.startsWith('lichess:');
+  const imported = _importedGames.get(state.gameId);
   return h('div.lichess-compare__error-panel', [
     h('h3', state.title),
     h('p', state.message),
+    imported
+      ? h('p.lichess-compare__note', [
+          h('a.lichess-compare__open-link', {
+            attrs: { href: imported.url, target: '_blank', rel: 'noopener' },
+          }, 'Open on Lichess ↗'),
+        ])
+      : null,
     h('div.lichess-compare__actions', [
+      imported
+        ? h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch again')
+        : null,
+      !imported && !isLichessGame && state.canPaste
+        ? h('button.lichess-compare__btn', { on: { click: () => startSendToLichess() } }, 'Send to Lichess')
+        : null,
       state.canPaste
         ? h('button.lichess-compare__btn', {
             on: { click: () => openPasteFallback(state.gameId, state.pgn, undefined, _requestToken) },
@@ -333,7 +506,7 @@ function renderErrorPanel(state: ErrorState): VNode {
         : null,
       h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Close'),
     ].filter((n): n is VNode => n !== null)),
-  ]);
+  ].filter((n): n is VNode => n !== null));
 }
 
 // Judged-ply vocabulary shared by both sides for the Mistake moments comparison below.
@@ -348,7 +521,6 @@ function isJudgedMomentRow(row: ComparisonReport['topDivergentRows'][number]): b
 
 function renderReportPanel(state: ReportState): VNode {
   const { report, markdown } = state;
-  const strippedId = state.gameId.startsWith('lichess:') ? state.gameId.slice('lichess:'.length) : state.gameId;
 
   return h('div.lichess-compare__report', [
     h('div.lichess-compare__header', [
@@ -362,9 +534,9 @@ function renderReportPanel(state: ReportState): VNode {
         h('span.lichess-compare__stat',
           `Best-move match: ${report.bestMoveAgreement.exactRate !== undefined ? `${(report.bestMoveAgreement.exactRate * 100).toFixed(0)}%` : 'n/a'}`),
       ]),
-      state.isLichessGame
+      state.lichessId !== undefined
         ? h('a.lichess-compare__open-link', {
-            attrs: { href: `https://lichess.org/${strippedId}`, target: '_blank', rel: 'noopener' },
+            attrs: { href: `https://lichess.org/${state.lichessId}`, target: '_blank', rel: 'noopener' },
           }, 'Open on Lichess ↗')
         : null,
     ].filter((n): n is VNode => n !== null)),

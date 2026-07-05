@@ -490,7 +490,18 @@ export function buildArrowShapes(): DrawShape[] {
   const koOverlay = buildKoOverlayShape(ctrl.node.fen);
   if (koOverlay) shapes.push(koOverlay);
 
+
+  shapes.push(...(_extraAutoShapesProvider?.() ?? []));
+
   return shapes;
+}
+
+// Extra auto-shape provider seam — lets a feature module (e.g. analysis practice) merge
+// its own shapes into the shared auto-shape pipeline without owning cg.setAutoShapes.
+// Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts practice hint/hover shape merge.
+let _extraAutoShapesProvider: (() => DrawShape[]) | null = null;
+export function setExtraAutoShapesProvider(fn: (() => DrawShape[]) | null): void {
+  _extraAutoShapesProvider = fn;
 }
 
 export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean }): DrawShape[] {

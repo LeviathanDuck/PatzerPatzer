@@ -24,24 +24,64 @@ let _getSelectedGameId: () => string | null                      = () => null;
 let _clearGameAnalysis: (gameId: string) => void                 = () => {};
 let _redraw:            () => void                               = () => {};
 
+// Legacy NAG ids the importer renders into node.glyphs ($1-$6); mirrors
+// LEGACY_RENDERED_NAG_IDS in src/tree/pgn.ts. Used to avoid double-emitting a NAG
+// that is present both as a rendered glyph and as a raw imported nag.
+const LEGACY_RENDERED_NAG_IDS = new Set([1, 2, 3, 4, 5, 6]);
+
+/**
+ * NAG tokens for a node: authored/rendered glyphs first, then raw imported NAGs that
+ * have no rendered-glyph representation. Mirrors the study serializer + import split.
+ */
+function renderNagTokens(node: TreeNode): string[] {
+  const emitted = new Set<number>();
+  const tokens: string[] = [];
+  for (const g of node.glyphs ?? []) {
+    if (emitted.has(g.id)) continue;
+    emitted.add(g.id);
+    tokens.push(`$${g.id}`);
+  }
+  for (const id of node.nags ?? []) {
+    if (emitted.has(id) || LEGACY_RENDERED_NAG_IDS.has(id)) continue;
+    emitted.add(id);
+    tokens.push(`$${id}`);
+  }
+  return tokens;
+}
+
+// PGN comment text must not contain braces — strip them like lila's PgnDump sanitizer.
+function sanitizeCommentText(text: string): string {
+  return text.replace(/[{}]/g, '').trim();
+}
+
+/**
+ * Comment block for a node. User comments are always emitted (they are part of the
+ * game record and must survive Save-to-Library, which exports in plain mode);
+ * [%eval]/[%clk] synthesis is annotated-mode only.
+ */
 function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boolean): string | null {
-  if (!annotated) return null;
   const commentParts: string[] = [];
-  const ev = evalCache.get(path);
-  if (ev) {
-    if (ev.mate !== undefined) {
-      commentParts.push(`[%eval #${ev.mate}]`);
-    } else if (ev.cp !== undefined) {
-      const pawns = (ev.cp / 100).toFixed(2);
-      commentParts.push(`[%eval ${pawns}]`);
+  if (annotated) {
+    const ev = evalCache.get(path);
+    if (ev) {
+      if (ev.mate !== undefined) {
+        commentParts.push(`[%eval #${ev.mate}]`);
+      } else if (ev.cp !== undefined) {
+        const pawns = (ev.cp / 100).toFixed(2);
+        commentParts.push(`[%eval ${pawns}]`);
+      }
+    }
+    if (node.clock !== undefined) {
+      const total = Math.round(node.clock / 100);
+      const hrs = Math.floor(total / 3600);
+      const m   = Math.floor((total % 3600) / 60);
+      const s   = total % 60;
+      commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
     }
   }
-  if (node.clock !== undefined) {
-    const total = Math.round(node.clock / 100);
-    const hrs = Math.floor(total / 3600);
-    const m   = Math.floor((total % 3600) / 60);
-    const s   = total % 60;
-    commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
+  for (const c of node.comments ?? []) {
+    const text = sanitizeCommentText(c.text);
+    if (text) commentParts.push(text);
   }
   return commentParts.length > 0 ? `{ ${commentParts.join(' ')} }` : null;
 }
@@ -67,22 +107,33 @@ function renderPgnLine(
 
     parts.push(node.san ?? '?');
 
-    const comment = renderAnnotatedComment(node, path, annotated);
-    if (comment) {
-      parts.push(comment);
-      needsMoveNum = isWhite;
-    } else {
-      needsMoveNum = false;
-    }
+    // NAG tokens ($N) between the move and its comment block — standard PGN order,
+    // mirrors serializeStudyNode in src/study/studyDetailCtrl.ts.
+    const nagTokens = renderNagTokens(node);
+    parts.push(...nagTokens);
 
-    for (const variation of pendingSiblingVariations) {
+    const comment = renderAnnotatedComment(node, path, annotated);
+    if (comment) parts.push(comment);
+
+    // A RAV is an alternative to the move that PRECEDES it, so variations must be
+    // emitted after the mainline move they replace ("1. e4 e5 (1... c5)"), never
+    // before it — chessops silently drops variations emitted ahead of the reply.
+    const flushedVariations = pendingSiblingVariations;
+    for (const variation of flushedVariations) {
       parts.push(`(${renderPgnLine(variation.node, variation.path, annotated)})`);
     }
-    pendingSiblingVariations = [];
+    // Queue this node's side lines: they are alternatives to node.children[0] and are
+    // flushed right after that move is emitted on the next iteration.
+    pendingSiblingVariations = node.children
+      .slice(1)
+      .map(child => ({ node: child, path: path + child.id }));
 
-    for (const child of node.children.slice(1)) {
-      parts.push(`(${renderPgnLine(child, path + child.id, annotated)})`);
-    }
+    // Any annotation or variation between moves means the following black move
+    // restates its number.
+    needsMoveNum =
+      (comment !== null || nagTokens.length > 0 || flushedVariations.length > 0)
+        ? isWhite
+        : false;
 
     const next: TreeNode | undefined = node.children[0];
     if (!next) break;

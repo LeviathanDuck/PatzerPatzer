@@ -226,6 +226,10 @@ function renderMoveSpanMemo(
   const isActive        = path === currentPath;
   const isContextActive = contextMenuPath === path;
   const isWorstMiss      = worstMissPath !== undefined && path === worstMissPath;
+
+
+
+  const glyphKey = node.glyphs ? node.glyphs.map(g => g.id).join(',') : '';
   const sel = onToggleBookmark ? 'move-wrap' : 'move';
   // No explicit key: these rows sit in a flat children array alongside unkeyed siblings
   // (index/interrupt/move.empty placeholders emitted by renderColumnNodes/renderInlineNodes).
@@ -238,7 +242,7 @@ function renderMoveSpanMemo(
     isContextActive, onContextMenu, isWorstMiss, bookmarkedPaths, onToggleBookmark,
     showReviewLabels, missedMomentConfig.missedMateMaxN,
     options?.renderRawNags, options?.reviewEngine,
-    evalCacheRevision,
+    evalCacheRevision, glyphKey,
   ]);
 }
 

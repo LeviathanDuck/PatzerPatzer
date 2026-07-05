@@ -26,12 +26,21 @@ import {
   closeLichessCompareFlow,
   renderLichessComparePanel,
 } from './lichessCompareUi';
+import { renderStrengthSelector } from '../engine/strengthView';
+import {
+  practiceActive,
+  practiceStrengthConfig,
+  practiceStrengthLevel,
+  setPracticeStrengthLevel,
+  startPractice,
+  stopPractice,
+} from './practice/practiceCtrl';
 
 // --- Action-menu open/close state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
 
 let _actionMenuOpen = false;
-let _actionMenuSubView: null | 'mistake-detection' | 'lichess-compare' = null;
+let _actionMenuSubView: null | 'mistake-detection' | 'lichess-compare' | 'practice' = null;
 
 export function isActionMenuOpen(): boolean {
   return _actionMenuOpen;
@@ -73,6 +82,9 @@ interface AnalysisControlsDeps {
 
 
   hasCompletedReviewForSelectedGame?: () => boolean;
+
+
+  onTogglePractice?: () => void;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -198,6 +210,7 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
 const ICON_FLIP   = '\ue020'; // licon.ChasingArrows — flip board
 const ICON_RETRO  = '\ue05c'; // licon.Bullseye       — learn from your mistakes
+const ICON_PRACTICE = '\ue05c'; // licon.Bullseye — practice with computer (same icon as lila)
 
 
 
@@ -229,6 +242,24 @@ export function renderActionMenu(): VNode | null {
         countSummary: deps.getRetroConfigCountSummary?.() ?? null,
         idPrefix: 'analysis-retro-config',
       })),
+    ]);
+  }
+
+
+
+
+  if (_actionMenuSubView === 'practice') {
+    return h('div.action-menu', [
+      h('button.action-menu__back-btn', {
+        on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
+      }, '← Back'),
+      h('h2', 'Practice vs. Computer'),
+      h('div.action-menu__subpanel', [
+        renderStrengthSelector(practiceStrengthLevel(), (level) => {
+          setPracticeStrengthLevel(level);
+          deps.redraw();
+        }),
+      ]),
     ]);
   }
 
@@ -312,6 +343,32 @@ export function renderActionMenu(): VNode | null {
         attrs: { title: 'Configure mistake detection thresholds' },
         on: { click: () => { _actionMenuSubView = 'mistake-detection'; deps.redraw(); } },
       }, 'Mistake Detection'),
+    ]),
+
+
+
+
+    h('h2', 'Practice vs. Computer'),
+    h('div.action-menu__tools', [
+      h('button', {
+        class: { active: practiceActive() },
+        attrs: {
+          'data-icon': ICON_PRACTICE,
+          title: practiceActive()
+            ? 'Stop playing against the computer'
+            : 'Play this position against the computer',
+        },
+        on: { click: () => {
+          if (deps.onTogglePractice) deps.onTogglePractice();
+          else if (practiceActive()) stopPractice();
+          else startPractice();
+          close();
+        } },
+      }, practiceActive() ? 'Stop practice' : 'Practice vs. Computer'),
+      h('button', {
+        attrs: { title: 'Choose the computer opponent strength' },
+        on: { click: () => { _actionMenuSubView = 'practice'; deps.redraw(); } },
+      }, `Strength: ${practiceStrengthConfig().label}`),
     ]),
 
 

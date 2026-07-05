@@ -4525,7 +4525,15 @@ function reviewQueueItemViewFromEntry(
 
 export function getReviewQueueItems(): ReviewQueueItemView[] {
   const active = activeQueueEntry();
-  if (!activeReviewRun) {
+  // A run manifest in a terminal state (cancelled, batch-complete, or exhausted) is not
+  // resumable — reviewRunProgressState() is the same "is this run still live/appendable"
+  // predicate activeReviewRunCanAcceptSourceAppend() already uses. Without this check, a
+  // cancelled run's un-nulled activeReviewRun kept synthesizing "pending"/isFuture rows for
+  // every remaining source game from sourceGameIds below, even though cancelBulkReview() had
+  // already emptied `queue` — rows stayed stuck showing "Queued · wave N of M" forever
+  // (BUG-2026-07-05-006). A genuinely resumable manifest (paused/interrupted/stale/etc.)
+  // still falls through to the reconstruction below so resume-after-reload keeps working.
+  if (!activeReviewRun || reviewRunProgressState(activeReviewRun) === 'complete') {
     return sortByActiveBatchOrder(queue, entry => entry.game.id)
       .filter(entry => entry.status !== 'complete')
       .map(entry => reviewQueueItemViewFromEntry(entry, active, 0));

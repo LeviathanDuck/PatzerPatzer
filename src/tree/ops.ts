@@ -4,7 +4,7 @@
 // e.g. "a1b2c3" means: child "a1" → child "b2" → child "c3"
 // head(path) = first 2 chars, tail(path) = everything after first 2 chars
 
-import type { TreeNode, TreePath } from './types';
+import type { Glyph, TreeComment, TreeNode, TreePath } from './types';
 
 // --- Path helpers (mirrored from lichess-org/lila: ui/lib/src/tree/path.ts) ---
 
@@ -120,6 +120,47 @@ export function deleteNodeAt(root: TreeNode, path: TreePath): void {
 export function pruneVariations(node: TreeNode): void {
   if (node.children.length > 1) node.children = [node.children[0]!];
   if (node.children[0]) pruneVariations(node.children[0]);
+}
+
+/**
+ * Upsert a comment on the node at path, matching by comment id.
+ * An empty (whitespace-only) comment text deletes the comment instead.
+ * Mirrors lichess-org/lila: ui/lib/src/tree/tree.ts setCommentAt.
+ */
+export function setCommentAt(root: TreeNode, comment: TreeComment, path: TreePath): void {
+  if (!comment.text.trim()) {
+    deleteCommentAt(root, comment.id, path);
+    return;
+  }
+  const node = nodeAtPath(root, path);
+  if (!node) return;
+  node.comments = node.comments ?? [];
+  const existing = node.comments.find(c => c.id === comment.id);
+  if (existing) existing.text = comment.text;
+  else node.comments.push(comment);
+}
+
+/**
+ * Delete the comment with the given id from the node at path.
+ * Mirrors lichess-org/lila: ui/lib/src/tree/tree.ts deleteCommentAt.
+ */
+export function deleteCommentAt(root: TreeNode, id: string, path: TreePath): void {
+  const node = nodeAtPath(root, path);
+  if (!node?.comments) return;
+  const remaining = node.comments.filter(c => c.id !== id);
+  if (remaining.length) node.comments = remaining;
+  else delete node.comments;
+}
+
+/**
+ * Replace the full glyph list on the node at path.
+ * Mirrors lichess-org/lila: ui/lib/src/tree/tree.ts setGlyphsAt.
+ */
+export function setGlyphsAt(root: TreeNode, glyphs: Glyph[], path: TreePath): void {
+  const node = nodeAtPath(root, path);
+  if (!node) return;
+  if (glyphs.length) node.glyphs = glyphs;
+  else delete node.glyphs;
 }
 
 /**

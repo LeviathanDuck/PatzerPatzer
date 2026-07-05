@@ -68,8 +68,6 @@ import {
   type ImportSpeed, type ImportDateRange,
 } from '../import/filters';
 import { syncAccountGamesWithBackfill, peekAccountSync, type AccountSyncWithBackfillResult } from '../import/accountSync';
-import { fetchChesscomSpeedTotals } from '../import/chesscom';
-import { fetchLichessSpeedTotals } from '../import/lichess';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
@@ -1640,49 +1638,15 @@ function renderImportWorkflow(redraw: () => void): VNode {
 }
 
 
-let _researchTotals: Partial<Record<ImportSpeed, number>> | null = null;
-let _researchTotalsLoading = false;
-let _researchTotalsKey = '';
-let _researchTotalsGen = 0;
-let _researchTotalsTimer: ReturnType<typeof setTimeout> | null = null;
 
+let _importRedrawTimer: ReturnType<typeof setTimeout> | null = null;
 
-
-
-
-
-function ensureResearchTotals(redraw: () => void): void {
-  const src = importSource();
-  const username = importUsername().trim();
-  if (src === 'pgn' || !username) {
-    _researchTotalsKey = '';
-    _researchTotals = null;
-    _researchTotalsLoading = false;
-    return;
-  }
-  const key = `${src}|${username.toLowerCase()}`;
-  if (_researchTotalsKey === key) return;
-  _researchTotalsKey = key;
-  _researchTotals = null;
-  _researchTotalsLoading = true;
-  const gen = ++_researchTotalsGen;
-  if (_researchTotalsTimer !== null) clearTimeout(_researchTotalsTimer);
-  _researchTotalsTimer = setTimeout(() => {
-    _researchTotalsTimer = null;
-    const fetchTotals = src === 'chesscom' ? fetchChesscomSpeedTotals : fetchLichessSpeedTotals;
-    void fetchTotals(username)
-      .then(totals => {
-        if (_researchTotalsGen !== gen) return;
-        _researchTotals = totals;
-        _researchTotalsLoading = false;
-        redraw();
-      })
-      .catch(() => {
-        if (_researchTotalsGen !== gen) return;
-        _researchTotalsLoading = false;
-        redraw();
-      });
-  }, 400);
+function scheduleImportRedraw(redraw: () => void): void {
+  if (_importRedrawTimer !== null) clearTimeout(_importRedrawTimer);
+  _importRedrawTimer = setTimeout(() => {
+    _importRedrawTimer = null;
+    redraw();
+  }, 250);
 }
 
 function renderDetailsStep(redraw: () => void): VNode {
@@ -1691,10 +1655,6 @@ function renderDetailsStep(redraw: () => void): VNode {
   const err = importError();
   const speeds = importSpeeds();
   const dateRange = importDateRange();
-  ensureResearchTotals(redraw);
-  const researchTotalsSum = _researchTotals
-    ? Object.values(_researchTotals).reduce((sum, n) => sum + (n ?? 0), 0)
-    : 0;
 
   const sections: (VNode | null)[] = [];
   const focusUsernameInput = (elm: Element | undefined): void => {
@@ -1738,14 +1698,14 @@ function renderDetailsStep(redraw: () => void): VNode {
           'data-form-type': 'other',
         },
         props: { value: importUsername() },
-        on: { input: (e: Event) => { setImportUsername((e.target as HTMLInputElement).value); redraw(); } },
+        on: { input: (e: Event) => { setImportUsername((e.target as HTMLInputElement).value); scheduleImportRedraw(redraw); } },
         hook: { insert: vnode => focusUsernameInput(vnode.elm as Element | undefined) },
       }),
     ]) : h('div.header__panel-section', [
       h('div.header__panel-label', 'Paste PGN or upload file'),
       h('textarea.header__pgn-input', {
         attrs: { placeholder: 'Paste PGN text here\u2026', rows: '6' },
-        on: { input: (e: Event) => { setImportUsername((e.target as HTMLTextAreaElement).value); redraw(); } },
+        on: { input: (e: Event) => { setImportUsername((e.target as HTMLTextAreaElement).value); scheduleImportRedraw(redraw); } },
       }),
       h('div.header__pgn-file-upload', {
         on: {
@@ -1812,15 +1772,13 @@ function renderDetailsStep(redraw: () => void): VNode {
     sections.push(h('div.header__panel-divider'));
     sections.push(h('div.header__panel-section', [
       h('div.header__panel-label', 'Time control'),
-      _researchTotalsLoading ? h('p.header__panel-hint', 'Checking games…') : null,
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: speeds.size === 0 },
           on: { click: () => { setImportSpeeds(new Set()); redraw(); } },
-        }, _researchTotals && researchTotalsSum > 0 ? `All · ${researchTotalsSum.toLocaleString()}` : 'All'),
-        ...SPEED_OPTIONS.map(({ value, label, icon }) => {
-          const total = _researchTotals?.[value];
-          return h('button.header__pill', {
+        }, 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
+          h('button.header__pill', {
             class: { active: speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -1829,8 +1787,8 @@ function renderDetailsStep(redraw: () => void): VNode {
               setImportSpeeds(s);
               redraw();
             } },
-          }, total !== undefined ? `${label} · ${total.toLocaleString()}` : label);
-        }),
+          }, label),
+        ),
       ]),
     ]));
 

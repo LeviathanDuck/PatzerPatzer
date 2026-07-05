@@ -1547,13 +1547,13 @@ export function renderGameList(deps: GamesViewDeps): VNode {
             attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
           }, `Review ${listSelectedCount}`)
         : null,
-      visible.length > 1
+      pageGames.length > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
-              const { batchGames, sourceContext } = fixedVisibleListReviewRunStart(visible, 'date', 'desc');
+              const { batchGames, sourceContext } = fixedVisibleListReviewRunStart(pageGames, 'date', 'desc');
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: 'Analyze all visible games sequentially' },
+            attrs: { title: 'Analyze the games on this page sequentially' },
           }, 'Review All')
         : null,
     ]),
@@ -1628,6 +1628,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
     toolbar,
     queueSummary
       ? h('div.game-list__queue-status', {
+          class: {
+            '--active': queueSummary.running,
+            '--stalled': queueSummary.paused || queueSummary.lifecycleState === 'stale',
+          },
           hook: {
             insert: () => bindQueueHealthStatus(deps.redraw),
             destroy: unbindQueueHealthStatus,
@@ -1654,8 +1658,12 @@ export function renderGameList(deps: GamesViewDeps): VNode {
             queueSummary.skipped > 0 ? `${queueSummary.skipped} skipped` : null,
             queueSummary.paused ? 'paused' : null,
           ].filter(Boolean).join(' · ');
-          const base = `Reviewing ${queueSummary.done} / ${queueSummary.total} games${details ? ` · ${details}` : ''}…`;
-          return elapsed ? `${base} Elapsed ${elapsed}` : base;
+          const suffix = `games${details ? ` · ${details}` : ''}…${elapsed ? ` Elapsed ${elapsed}` : ''}`;
+          return [
+            'Reviewing ',
+            h('span.game-list__queue-counter', `${queueSummary.done} / ${queueSummary.total}`),
+            ` ${suffix}`,
+          ];
         })())
       : null,
     visible.length === 0
@@ -1950,6 +1958,15 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
 
 
 
+  const totalPages = Math.max(1, Math.ceil(games.length / GAMES_PAGE_SIZE));
+  if (gamesPage >= totalPages) gamesPage = totalPages - 1;
+  if (gamesPage < 0) gamesPage = 0;
+  const pageStart = gamesPage * GAMES_PAGE_SIZE;
+  const pageGames = games.slice(pageStart, pageStart + GAMES_PAGE_SIZE);
+
+
+
+
 
   const filterBar = h('div.games-view__controls', [
     // Account lens
@@ -2011,13 +2028,13 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
             attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` },
           }, `Review Selected (${selectedGameIds.size})`)
         : null,
-      games.length > 1
+      pageGames.length > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
-              const { batchGames, sourceContext } = visibleListReviewRunStart(games);
+              const { batchGames, sourceContext } = visibleListReviewRunStart(pageGames);
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: 'Analyze all visible games sequentially' },
+            attrs: { title: 'Analyze the games on this page sequentially' },
           }, 'Review All')
         : null,
     ]),
@@ -2315,13 +2332,6 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       ]),
     ]);
   }
-
-  // Pagination: clamp page to valid range, slice filtered games.
-  const totalPages = Math.max(1, Math.ceil(games.length / GAMES_PAGE_SIZE));
-  if (gamesPage >= totalPages) gamesPage = totalPages - 1;
-  if (gamesPage < 0) gamesPage = 0;
-  const pageStart = gamesPage * GAMES_PAGE_SIZE;
-  const pageGames = games.slice(pageStart, pageStart + GAMES_PAGE_SIZE);
 
   const paginationBar = totalPages > 1 ? h('div.games-view__pagination', [
     h('button.games-view__page-btn', {

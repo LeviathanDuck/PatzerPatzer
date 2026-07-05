@@ -3,8 +3,8 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
-import { chesscom, fetchChesscomSpeedTotals, importChesscom } from '../import/chesscom';
-import { fetchLichessSpeedTotals, lichess, importLichess } from '../import/lichess';
+import { chesscom, importChesscom } from '../import/chesscom';
+import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
 import {
   importFilters, SPEED_OPTIONS, DATE_RANGE_OPTIONS,
@@ -137,12 +137,6 @@ let headerPeekLoading = false;
 let headerPeekKey = '';
 let headerPeekGen = 0;
 
-let headerTotals: Partial<Record<ImportSpeed, number>> | null = null;
-let headerTotalsLoading = false;
-let headerTotalsKey = '';
-let headerTotalsGen = 0;
-let headerTotalsTimer: ReturnType<typeof setTimeout> | null = null;
-
 const CATEGORY_OPTIONS: readonly { value: AccountCategory; label: string }[] = [
   { value: 'mine',     label: 'Mine'     },
   { value: 'opponent', label: 'Opponent' },
@@ -165,6 +159,18 @@ function currentImportAccountKey(): string {
  * For new usernames, default the first personal account to Mine and later
  * accounts to Opponent.
  */
+
+
+let categorySyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSyncImportCategory(redraw: () => void): void {
+  if (categorySyncTimer !== null) clearTimeout(categorySyncTimer);
+  categorySyncTimer = setTimeout(() => {
+    categorySyncTimer = null;
+    syncImportCategory(redraw);
+  }, 400);
+}
+
 function syncImportCategory(redraw: () => void): void {
   const key = currentImportAccountKey();
   if (key === categorySyncKey) return;
@@ -2586,8 +2592,8 @@ function renderHeaderAccountControl(
           if (importPlatform === 'chesscom') chesscom.username = v;
           else lichess.username = v;
 
-          if (showImportPanel) ensureHeaderTotals(redraw);
-          syncImportCategory(redraw);
+
+          scheduleSyncImportCategory(redraw);
         },
         keydown: (e: KeyboardEvent) => {
           const currentUsername = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
@@ -2651,44 +2657,6 @@ function renderHeaderAccountControl(
 
 
 const HEADER_PEEK_SPEEDS: readonly ImportSpeed[] = SPEED_OPTIONS.map(o => o.value);
-
-
-
-
-
-
-function ensureHeaderTotals(redraw: () => void): void {
-  const username = (importPlatform === 'chesscom' ? chesscom.username : lichess.username).trim();
-  if (!username) {
-    headerTotalsKey = '';
-    headerTotals = null;
-    headerTotalsLoading = false;
-    return;
-  }
-  const key = `${importPlatform}|${username.toLowerCase()}`;
-  if (headerTotalsKey === key) return;
-  headerTotalsKey = key;
-  headerTotals = null;
-  headerTotalsLoading = true;
-  const gen = ++headerTotalsGen;
-  if (headerTotalsTimer !== null) clearTimeout(headerTotalsTimer);
-  headerTotalsTimer = setTimeout(() => {
-    headerTotalsTimer = null;
-    const fetchTotals = importPlatform === 'chesscom' ? fetchChesscomSpeedTotals : fetchLichessSpeedTotals;
-    void fetchTotals(username)
-      .then(totals => {
-        if (headerTotalsGen !== gen) return;
-        headerTotals = totals;
-        headerTotalsLoading = false;
-        redraw();
-      })
-      .catch(() => {
-        if (headerTotalsGen !== gen) return;
-        headerTotalsLoading = false;
-        redraw();
-      });
-  }, 400);
-}
 
 
 
@@ -3130,14 +3098,6 @@ export function renderHeader(deps: HeaderDeps): VNode {
     importFilters.dateRange !== '1month' ||
     !importFilters.rated;
 
-
-
-  if (showImportPanel && !accountModeActive) ensureHeaderTotals(redraw);
-
-  const totalsSum = headerTotals
-    ? Object.values(headerTotals).reduce((sum, n) => sum + (n ?? 0), 0)
-    : 0;
-
   const panel = showImportPanel && accountModeActive && selectedMineAccount !== null
     ? renderSyncMenu(selectedMineAccount, deps)
     : showImportPanel ? h('div.header__panel', [
@@ -3177,15 +3137,13 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     h('div.header__panel-section', [
       h('div.header__panel-label', 'Time control'),
-      headerTotalsLoading ? h('p.header__panel-hint', 'Checking games…') : null,
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importFilters.speeds.size === 0 },
           on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
-        }, headerTotals && totalsSum > 0 ? `All · ${totalsSum.toLocaleString()}` : 'All'),
-        ...SPEED_OPTIONS.map(({ value, label, icon }) => {
-          const total = headerTotals?.[value];
-          return h('button.header__pill', {
+        }, 'All'),
+        ...SPEED_OPTIONS.map(({ value, label, icon }) =>
+          h('button.header__pill', {
             class: { active: importFilters.speeds.has(value) },
             attrs: { 'data-icon': icon },
             on: { click: () => {
@@ -3194,8 +3152,8 @@ export function renderHeader(deps: HeaderDeps): VNode {
               importFilters.speeds = s;
               redraw();
             }},
-          }, total !== undefined ? `${label} · ${total.toLocaleString()}` : label);
-        }),
+          }, label),
+        ),
       ]),
 
       h('div.header__panel-label.--mt', 'Period'),
