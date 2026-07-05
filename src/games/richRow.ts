@@ -243,6 +243,52 @@ export function formatDelta(delta: number): string {
 
 
 
+export function estimateEloRatingDelta(playerRating: number, opponentRating: number, score: 0 | 0.5 | 1): number {
+  const expected = 1 / (1 + 10 ** ((opponentRating - playerRating) / 400));
+  return Math.round(16 * (score - expected));
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function fillMissingDeltaByEstimate(
+  game: ImportedGame,
+  deltas: { white: number | null; black: number | null },
+): { white: number | null; black: number | null } {
+  const oneKnown = (deltas.white === null) !== (deltas.black === null);
+  if (!oneKnown) return deltas;
+  if (game.rated === false) return deltas;
+  if (game.whiteRating === undefined || game.blackRating === undefined) return deltas;
+  const whiteScore: 0 | 0.5 | 1 | null =
+    game.result === '1-0' ? 1 : game.result === '0-1' ? 0 : game.result?.includes('1/2') ? 0.5 : null;
+  if (whiteScore === null) return deltas;
+
+  if (deltas.white === null) {
+    const blackPreRating = game.blackRating - deltas.black!;
+    return { ...deltas, white: estimateEloRatingDelta(game.whiteRating, blackPreRating, whiteScore) };
+  }
+  const whitePreRating = game.whiteRating - deltas.white;
+  const blackScore = (1 - whiteScore) as 0 | 0.5 | 1;
+  return { ...deltas, black: estimateEloRatingDelta(game.blackRating, whitePreRating, blackScore) };
+}
+
+
+
+
+
+
+
+
+
 
 
 
@@ -263,18 +309,18 @@ export function resolveRatingDeltas(
   const headerWhite = parseRatingDiff(game.pgn, 'WhiteRatingDiff');
   const headerBlack = parseRatingDiff(game.pgn, 'BlackRatingDiff');
   if (accountColor === 'white') {
-    return {
+    return fillMissingDeltaByEstimate(game, {
       white: game.ratingDelta ?? headerWhite,
       black: game.opponentRatingDelta ?? headerBlack,
-    };
+    });
   }
   if (accountColor === 'black') {
-    return {
+    return fillMissingDeltaByEstimate(game, {
       white: game.opponentRatingDelta ?? headerWhite,
       black: game.ratingDelta ?? headerBlack,
-    };
+    });
   }
-  return { white: headerWhite, black: headerBlack };
+  return fillMissingDeltaByEstimate(game, { white: headerWhite, black: headerBlack });
 }
 
 

@@ -4,7 +4,9 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import type { Color } from 'chessops/types';
 import { renderToggleRow } from '../ui';
+import { writeHashRoute } from '../router';
 import type { AnalyseCtrl } from './ctrl';
 import type { RetroChoiceCountSummary } from './retroChoice';
 import { renderRetroConfigBody } from '../header/index';
@@ -85,6 +87,18 @@ interface AnalysisControlsDeps {
 
 
   onTogglePractice?: () => void;
+
+  getOrientation?: () => Color;
+}
+
+
+
+
+function editorRouteFromPosition(fen: string, orientation: Color): string {
+  const params = new URLSearchParams();
+  params.set('fen', fen);
+  if (orientation === 'black') params.set('color', 'black');
+  return `#/editor?${params.toString()}`;
 }
 
 let _deps: AnalysisControlsDeps | null = null;
@@ -299,6 +313,18 @@ export function renderActionMenu(): VNode | null {
         attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },
         on:    { click: () => { deps.onFlipBoard(); close(); } },
       }, 'Flip board'),
+
+      // Board Editor — mirrors lichess-org/lila: actionMenu.ts Board editor link
+      // (`?fen=&color=`), seeded with the current node's position and orientation.
+      h('button', {
+        attrs: { title: 'Open this position in the Board Editor' },
+        on: { click: () => {
+          const fen = deps.getCtrl().node.fen;
+          const boardOrientation = deps.getOrientation?.() ?? 'white';
+          writeHashRoute(editorRouteFromPosition(fen, boardOrientation));
+          close();
+        } },
+      }, 'Board Editor'),
 
       h('button', {
         attrs: { title: 'Report an issue with the Analysis page' },

@@ -68,6 +68,7 @@ import {
   type ImportSpeed, type ImportDateRange,
 } from '../import/filters';
 import { syncAccountGamesWithBackfill, peekAccountSync, type AccountSyncWithBackfillResult } from '../import/accountSync';
+import { enqueueImportEnrichment } from '../import/enrichment';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
@@ -567,6 +568,15 @@ async function runAccountSync(account: ChessAccount, redraw: () => void): Promis
       },
       ...(needsFallback ? { fallbackDateRange: currentImportDateRangeConfig() } : {}),
     });
+
+
+
+
+
+
+    if (result.newGames.length > 0) {
+      enqueueImportEnrichment(result.newGames, { onGameEnriched: () => redraw() });
+    }
     invalidateImportedSpeeds(account.id);
     resetAccountPeek(account.id);
     const refreshedAccounts = await refreshRegistryAccounts(redraw);

@@ -8,9 +8,11 @@ import {
   type RemoteSyncVersionStorage,
 } from './versionMetadata';
 import {
+  countDurableVersionedOutboxEntries,
   dueDurableVersionedOutboxEntries,
+  getDurableVersionedOutboxEntriesByOpId,
   markDurableVersionedOutboxAttemptStarted,
-  readDurableVersionedOutbox,
+  readDurableVersionedOutboxWindow,
   recordDurableVersionedOutboxFailure,
   removeDurableVersionedOutboxEntries,
   type DurableRetryOutboxEntry,
@@ -100,7 +102,12 @@ export interface VersionedOutboxDrainOptions {
 }
 
 export interface VersionedOutboxDrainBatchProgress {
-  /** Fixed for the whole drain call: the count of entries due at the start (the operation total). */
+  /**
+   * Fixed for the whole drain call: the operation total. On the legacy full-read path this is the
+   * count of entries due at the start; on the keyed windowed path (BUG-2026-07-05-008) it is the
+   * total queued-entry count at pass start — a superset of due, since an exact due count would
+   * itself require the full-store scan the windowed path exists to avoid.
+   */
   attempted: number;
   accepted: number;
   conflicts: number;
@@ -256,9 +263,8 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
   const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? DEFAULT_MAX_DRAIN_ATTEMPTS));
   const counts: Record<string, number> = {};
 
-  let due = await dueDurableVersionedOutboxEntries(options.outboxStorage, now);
-  const capped = due.filter(entry => entry.attemptCount >= maxAttempts);
-  if (capped.length > 0) {
+  const quarantineCapped = async (capped: DurableRetryOutboxEntry[]): Promise<void> => {
+    if (capped.length === 0) return;
     await removeDurableVersionedOutboxEntries(options.outboxStorage, capped.map(entry => entry.opId));
     mergeCounts(counts, 'quarantined', capped.length);
     await notifyPermanentRejection(options, capped, capped.map(entry => ({
@@ -269,19 +275,12 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       retryable: false,
       message: `Removed from the sync outbox after ${entry.attemptCount} failed attempts.`,
     })));
-    due = due.filter(entry => entry.attemptCount < maxAttempts);
-  }
-  if (due.length === 0) {
-    const queued = (await readDurableVersionedOutbox(options.outboxStorage)).length;
-    if (queued > 0) counts.queued = queued;
-    return { success: true, counts };
-  }
+  };
 
-  counts.attempted = due.length;
   const reportBatchProgress = async (): Promise<void> => {
     if (!options.onBatchProgress) return;
     try {
-      const remaining = (await readDurableVersionedOutbox(options.outboxStorage)).length;
+      const remaining = await countDurableVersionedOutboxEntries(options.outboxStorage);
       options.onBatchProgress({
         attempted: counts.attempted ?? 0,
         accepted: counts.accepted ?? 0,
@@ -294,7 +293,14 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       // Progress reporting must never interrupt the drain.
     }
   };
-  for (const batch of chunks(due, batchSize)) {
+
+  // The keyed windowed path (BUG-2026-07-05-008) never materializes the whole outbox: it scans
+  // opId-ordered windows of `batchSize` raw rows, filters each window down to due entries, and
+  // processes them with the same batch body as the legacy path. Storages without the keyed read
+  // methods (legacy storages, test fakes) keep the original one-getAll-then-chunk behavior.
+  const windowed = Boolean(options.outboxStorage.readEntriesRange && options.outboxStorage.getEntries);
+
+  const processBatch = async (batch: DurableRetryOutboxEntry[]): Promise<{ sendFailed: boolean; error?: string }> => {
     const opIds = batch.map(entry => entry.opId);
     await markDurableVersionedOutboxAttemptStarted(options.outboxStorage, opIds, { now });
 
@@ -315,7 +321,7 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       mergeCounts(counts, 'queued', batch.length);
       mergeCounts(counts, 'backedOff', batch.length);
       await reportBatchProgress();
-      return { success: false, error: message, counts };
+      return { sendFailed: true, error: message };
     }
 
     const acceptedByOpId = new Map(response.accepted.map(item => [item.opId, item]));
@@ -479,9 +485,68 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       mergeCounts(counts, 'backedOff', failedOpIds.length);
     }
     await reportBatchProgress();
+    return { sendFailed: false };
+  };
+
+  if (windowed) {
+    // Denominator for progress: total queued rows at pass start (see the attempted field doc).
+    // Assigned to counts lazily so a pass that finds nothing due reports the same counts shape
+    // as the legacy path (bare `queued`, no `attempted`, onBatchProgress never invoked).
+    const denominator = await countDurableVersionedOutboxEntries(options.outboxStorage);
+    let afterOpId: string | null = null;
+    while (true) {
+      const window = await readDurableVersionedOutboxWindow(options.outboxStorage, afterOpId, batchSize);
+      if (window.scannedCount === 0) break;
+      afterOpId = window.lastScannedOpId;
+      let due = window.entries.filter(entry => entry.nextAttemptAt <= now);
+      const capped = due.filter(entry => entry.attemptCount >= maxAttempts);
+      if (capped.length > 0) {
+        await quarantineCapped(capped);
+        due = due.filter(entry => entry.attemptCount < maxAttempts);
+      }
+      // Ordering safety: the legacy path's enqueuedAt sort guaranteed a delete was sent before an
+      // upsert it blocks (blockedByOpId). The opId scan order gives no such guarantee, so a due
+      // entry whose blocking delete still exists in the outbox is deferred to a later pass — it
+      // drains after the blocker is accepted and removed.
+      const blockerIds = Array.from(new Set(
+        due.filter(entry => entry.blockedByOpId).map(entry => entry.blockedByOpId as string),
+      ));
+      if (blockerIds.length > 0) {
+        const present = new Set(
+          (await getDurableVersionedOutboxEntriesByOpId(options.outboxStorage, blockerIds)).map(entry => entry.opId),
+        );
+        const deferred = due.filter(entry => entry.blockedByOpId && present.has(entry.blockedByOpId));
+        if (deferred.length > 0) {
+          mergeCounts(counts, 'deferredBlocked', deferred.length);
+          due = due.filter(entry => !(entry.blockedByOpId && present.has(entry.blockedByOpId)));
+        }
+      }
+      if (due.length === 0) continue;
+      if (counts.attempted === undefined) counts.attempted = denominator;
+      const outcome = await processBatch(due);
+      if (outcome.sendFailed) {
+        return { success: false, ...(outcome.error ? { error: outcome.error } : {}), counts };
+      }
+    }
+  } else {
+    let due = await dueDurableVersionedOutboxEntries(options.outboxStorage, now);
+    const capped = due.filter(entry => entry.attemptCount >= maxAttempts);
+    if (capped.length > 0) {
+      await quarantineCapped(capped);
+      due = due.filter(entry => entry.attemptCount < maxAttempts);
+    }
+    if (due.length > 0) {
+      counts.attempted = due.length;
+      for (const batch of chunks(due, batchSize)) {
+        const outcome = await processBatch(batch);
+        if (outcome.sendFailed) {
+          return { success: false, ...(outcome.error ? { error: outcome.error } : {}), counts };
+        }
+      }
+    }
   }
 
-  const queued = (await readDurableVersionedOutbox(options.outboxStorage)).length;
+  const queued = await countDurableVersionedOutboxEntries(options.outboxStorage);
   if (queued > 0) counts.queued = queued;
   return { success: (counts.failed ?? 0) === 0 && (counts.metadataWriteFailed ?? 0) === 0, counts };
 }

@@ -55,6 +55,7 @@ import {
   addRemoteSyncIssue,
   beginRemoteSyncOperation,
   clearRemoteSyncIssue,
+  clearRestoredRemoteSyncOperations,
   completeRemoteSyncOperation,
   createRemoteSyncProgressStore,
   deriveRemoteSyncProgressSnapshot,
@@ -1411,12 +1412,26 @@ function persistRemoteSyncProgressDenominators(): void {
   }
 }
 
+// Restored denominators are a boot-time display hint, not real operations: a real begin() of the
+// same kind supersedes its hint (progress.ts), and any hint whose kind never resumes is expired
+// here so a killed session's ghost operation cannot read as active forever (BUG-2026-07-05-009).
+const RESTORED_SYNC_PROGRESS_TTL_MS = 30_000;
+
 function loadPersistedRemoteSyncProgressDenominators(): void {
   try {
     const raw = sessionStorage.getItem(SYNC_PROGRESS_SESSION_KEY);
     const persisted = restoreRemoteSyncProgressOperations(raw);
     if (persisted.length === 0) return;
     remoteSyncProgressStore = seedRemoteSyncProgressStoreFromPersisted(remoteSyncProgressStore, persisted);
+    if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+      window.setTimeout(() => {
+        const cleared = clearRestoredRemoteSyncOperations(remoteSyncProgressStore);
+        if (cleared === remoteSyncProgressStore) return;
+        remoteSyncProgressStore = cleared;
+        persistRemoteSyncProgressDenominators();
+        scheduleRemoteSyncProgressEmit();
+      }, RESTORED_SYNC_PROGRESS_TTL_MS);
+    }
   } catch {
     // Denominator restore is a reload convenience only; it must never block sync.
   }

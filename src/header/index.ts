@@ -48,7 +48,7 @@ import {
   type RetroConfigPreviewFamilyId,
   type RetroConfigPreviewSummary,
 } from '../analyse/retroChoice';
-import type { FeedbackTone } from '../feedback/severity';
+import { classifySeverity, getTierMeta, type FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
 import {
@@ -1877,7 +1877,15 @@ function renderRetroPreviewChips(family: RetroConfigFamilyPreview | null, emptyL
   const extra = family.moves.length - shown.length;
   return h('div.detection-modal__chip-row', [
     ...shown.map((move, i) =>
-      h('span.detection-modal__chip', { key: `${move.ply}-${move.san}-${i}` }, formatRetroPreviewMoveChip(move))),
+      h('span.detection-modal__chip', { key: `${move.ply}-${move.san}-${i}` }, [
+        formatRetroPreviewMoveChip(move),
+
+
+
+        h('span.detection-modal__chip-loss', {
+          attrs: { style: `color: ${getTierMeta(classifySeverity(move.loss, false)).color}` },
+        }, `−${Math.round(move.loss * 100)}%`),
+      ])),
     ...(extra > 0 ? [h('span.detection-modal__chip.detection-modal__chip--more', `+${extra} more`)] : []),
   ]);
 }

@@ -234,6 +234,8 @@ export type RetroConfigPreviewFamilyId =
 export interface RetroConfigPreviewMove {
   ply: number;
   san:  string;
+
+  loss: number;
 }
 
 export interface RetroConfigFamilyPreview {
@@ -277,7 +279,7 @@ export function buildRetroConfigPreview(candidates: readonly RetroCandidate[]): 
       .filter(c => retroConfigPreviewFamilyOf(c) === id)
       .slice()
       .sort((a, b) => a.ply - b.ply)
-      .map(c => ({ ply: c.ply, san: c.playedMoveSan }));
+      .map(c => ({ ply: c.ply, san: c.playedMoveSan, loss: c.loss }));
     return { id, count: moves.length, moves };
   });
   return { total: candidates.length, families };

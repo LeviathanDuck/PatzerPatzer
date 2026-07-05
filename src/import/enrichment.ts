@@ -662,6 +662,58 @@ export function enqueueImportEnrichment(
   runQueue();
 }
 
+/** Default cap for one opponent-delta backfill sweep — see enqueueOpponentDeltaBackfill. */
+const DEFAULT_BACKFILL_LIMIT = 200;
+
+export interface OpponentDeltaBackfillOptions extends EnrichmentOptions {
+  /** Maximum games one sweep may enqueue (newest first). Defaults to DEFAULT_BACKFILL_LIMIT. */
+  limit?: number;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function enqueueOpponentDeltaBackfill(
+  games: readonly ImportedGame[],
+  callbacks: EnrichmentCallbacks,
+  options: OpponentDeltaBackfillOptions = {},
+): number {
+  const limit = options.limit ?? DEFAULT_BACKFILL_LIMIT;
+  const candidates = games.filter(game => {
+    if (game.source !== 'chesscom' || !game.importedUsername) return false;
+    if (game.opponentRatingDelta !== undefined) return false;
+    if (!game.rated || !game.timeClass || game.timeClass === 'daily') return false;
+    if (game.endTime === undefined || !game.uuid) return false;
+    const white = game.white?.toLowerCase();
+    const black = game.black?.toLowerCase();
+    const opponent = white === game.importedUsername ? game.black
+      : black === game.importedUsername ? game.white
+      : undefined;
+    return opponent !== undefined && opponent.toLowerCase() !== game.importedUsername;
+  });
+  const selected = candidates
+    .slice()
+    .sort((a, b) => (b.endTime ?? 0) - (a.endTime ?? 0))
+    .slice(0, limit);
+  if (selected.length > 0) enqueueImportEnrichment(selected, callbacks, options);
+  return selected.length;
+}
+
 /**
  * Test-only helper: resolves once the in-memory queue has fully drained.
  * Production/UI code must never await this — the entire point of the queue

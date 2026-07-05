@@ -54,6 +54,12 @@ export function bindKeyboardHandlers(deps: {
     const tag = (e.target as HTMLElement).tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+
+
+
+
+    if (current().name === 'editor') return;
+
     // Puzzle round keyboard navigation.
     // Adapted from lichess-org/lila: ui/puzzle/src/control.ts prev/next/first/last
     if (current().name === 'puzzle-round' && getActiveRoundCtrl()) {

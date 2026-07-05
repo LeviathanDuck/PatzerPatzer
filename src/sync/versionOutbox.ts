@@ -60,6 +60,22 @@ export interface DurableVersionedOutboxStorage {
    */
   deleteEntries?(opIds: readonly string[]): Promise<void>;
   putEntries?(entries: readonly DurableRetryOutboxEntry[]): Promise<void>;
+  /**
+   * Optional keyed/counted READ fast paths (BUG-2026-07-05-008). S-1 gave writes keyed paths but
+   * left every read a full-store getAll; at ~20k payload-bearing entries the drain's per-batch
+   * bookkeeping (attempt stamping, failure stamping, progress counting) materialized the whole
+   * outbox 2-3 times per 100-item batch and froze the tab. These let the drain touch only the
+   * rows it needs. Same optionality contract as the write fast paths: legacy storages and test
+   * fakes that omit them keep working through the full-read fallbacks below.
+   */
+  countEntries?(): Promise<number>;
+  getEntries?(opIds: readonly string[]): Promise<unknown[]>;
+  /**
+   * Cursor window over the store in opId key order: up to `limit` raw rows with opId strictly
+   * greater than `afterOpId` (null starts from the first key). Lets the drain scan the queue in
+   * batch-sized windows instead of one full getAll.
+   */
+  readEntriesRange?(afterOpId: string | null, limit: number): Promise<unknown[]>;
 
 
 
@@ -349,6 +365,82 @@ export async function readDurableVersionedOutbox(
   return sortEntries(entries);
 }
 
+/**
+ * Queue size without materializing entries: storage `count()` when available, full-read length
+ * otherwise. The keyed count includes raw rows that normalizeEntry would drop; that skew is
+ * acceptable for progress denominators/remaining counts, which is all this feeds.
+ */
+export async function countDurableVersionedOutboxEntries(
+  storage: DurableVersionedOutboxStorage = defaultDurableVersionedOutboxStorage()
+): Promise<number> {
+  if (storage.countEntries) return storage.countEntries();
+  return (await readDurableVersionedOutbox(storage)).length;
+}
+
+/** Keyed normalized reads for specific opIds, falling back to a full read + filter. */
+export async function getDurableVersionedOutboxEntriesByOpId(
+  storage: DurableVersionedOutboxStorage,
+  opIds: readonly string[]
+): Promise<DurableRetryOutboxEntry[]> {
+  if (opIds.length === 0) return [];
+  if (storage.getEntries) {
+    const raw = await storage.getEntries(opIds);
+    return sortEntries(raw
+      .map(normalizeEntry)
+      .filter((entry): entry is DurableRetryOutboxEntry => entry !== null));
+  }
+  const ids = new Set(opIds);
+  return (await readDurableVersionedOutbox(storage)).filter(entry => ids.has(entry.opId));
+}
+
+export interface DurableVersionedOutboxWindow {
+  /** Normalized entries in this window, in opId key order. */
+  entries: DurableRetryOutboxEntry[];
+  /** Raw opId of the last row scanned (normalized or not); pass back as `afterOpId` to continue. */
+  lastScannedOpId: string | null;
+  /** Raw rows scanned in this window; 0 means the scan reached the end of the store. */
+  scannedCount: number;
+}
+
+/**
+ * Reads one opId-ordered window of up to `limit` rows starting strictly after `afterOpId`
+ * (BUG-2026-07-05-008). The fallback for storages without `readEntriesRange` reads everything
+ * once and slices — only test fakes and legacy storages take that path.
+ */
+export async function readDurableVersionedOutboxWindow(
+  storage: DurableVersionedOutboxStorage,
+  afterOpId: string | null,
+  limit: number
+): Promise<DurableVersionedOutboxWindow> {
+  const cappedLimit = Math.max(1, Math.floor(limit));
+  let raw: unknown[];
+  if (storage.readEntriesRange) {
+    raw = await storage.readEntriesRange(afterOpId, cappedLimit);
+  } else {
+    const all = (await storage.readEntries())
+      .filter((value): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value))
+      .filter(value => typeof value.opId === 'string')
+      // Code-unit order, matching IDB string-key order and the `>` continuation comparison below.
+      .sort((left, right) => {
+        const a = left.opId as string;
+        const b = right.opId as string;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
+    const startIndex = afterOpId === null
+      ? 0
+      : all.findIndex(value => (value.opId as string) > afterOpId);
+    raw = startIndex === -1 ? [] : all.slice(startIndex, startIndex + cappedLimit);
+  }
+  const entries = raw
+    .map(normalizeEntry)
+    .filter((entry): entry is DurableRetryOutboxEntry => entry !== null);
+  const last = raw.length > 0 ? raw[raw.length - 1] : null;
+  const lastScannedOpId = last && typeof last === 'object' && typeof (last as Record<string, unknown>).opId === 'string'
+    ? ((last as Record<string, unknown>).opId as string)
+    : afterOpId;
+  return { entries, lastScannedOpId, scannedCount: raw.length };
+}
+
 export async function writeDurableVersionedOutbox(
   storage: DurableVersionedOutboxStorage,
   entries: readonly DurableRetryOutboxEntry[]
@@ -431,6 +523,18 @@ export async function markDurableVersionedOutboxAttemptStarted(
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
   return withDurableOutboxLock(async () => {
+    // Keyed path (BUG-2026-07-05-008): touch only the target opIds instead of materializing the
+    // whole payload-bearing outbox to stamp one batch. Returns just the updated entries; the
+    // drain ignores the return value and the legacy full-read path below keeps its full-set
+    // return for storages/tests without the keyed methods.
+    if (storage.getEntries && storage.putEntries) {
+      const targets = (await storage.getEntries(opIds))
+        .map(normalizeEntry)
+        .filter((entry): entry is DurableRetryOutboxEntry => entry !== null && ids.has(entry.opId));
+      const changed = targets.map(entry => ({ ...entry, lastAttemptAt: now }));
+      if (changed.length > 0) await storage.putEntries(changed);
+      return sortEntries(changed);
+    }
     const entries = await readDurableVersionedOutbox(storage);
     const changed: DurableRetryOutboxEntry[] = [];
     const next = entries.map(entry => {
@@ -452,19 +556,32 @@ export async function recordDurableVersionedOutboxFailure(
 ): Promise<DurableRetryOutboxEntry[]> {
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
+  const failedEntry = (entry: DurableRetryOutboxEntry): DurableRetryOutboxEntry => {
+    const attemptCount = entry.attemptCount + 1;
+    return {
+      ...entry,
+      attemptCount,
+      lastAttemptAt: now,
+      nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
+      lastError: error,
+    };
+  };
   return withDurableOutboxLock(async () => {
+    // Keyed path (BUG-2026-07-05-008): same shape as markDurableVersionedOutboxAttemptStarted —
+    // read-modify-write only the failed opIds, never the whole outbox.
+    if (storage.getEntries && storage.putEntries) {
+      const changed = (await storage.getEntries(opIds))
+        .map(normalizeEntry)
+        .filter((entry): entry is DurableRetryOutboxEntry => entry !== null && ids.has(entry.opId))
+        .map(failedEntry);
+      if (changed.length > 0) await storage.putEntries(changed);
+      return sortEntries(changed);
+    }
     const entries = await readDurableVersionedOutbox(storage);
     const changed: DurableRetryOutboxEntry[] = [];
     const next = entries.map(entry => {
       if (!ids.has(entry.opId)) return entry;
-      const attemptCount = entry.attemptCount + 1;
-      const updated = {
-        ...entry,
-        attemptCount,
-        lastAttemptAt: now,
-        nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
-        lastError: error,
-      };
+      const updated = failedEntry(entry);
       changed.push(updated);
       return updated;
     });
@@ -623,6 +740,94 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           const store = tx.objectStore(OUTBOX_STORE_NAME);
           for (const entry of entries) store.put(entry);
         });
+      } finally {
+        db.close();
+      }
+    },
+    // The three keyed read paths below feature-detect the store API they need (count/get/
+    // IDBKeyRange) and fall back to a full getAll: partial IndexedDB shims in the Node test
+    // harnesses only implement getAll/put/delete/clear, and the drain must behave identically —
+    // just without the scaling win — when the fast primitive is missing. Real browsers always
+    // take the keyed branch.
+    async countEntries(): Promise<number> {
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const store = db.transaction(OUTBOX_STORE_NAME, 'readonly').objectStore(OUTBOX_STORE_NAME);
+          if (typeof store.count === 'function') {
+            const request = store.count();
+            request.onerror = () => reject(request.error ?? new Error('Could not count durable RemoteSync outbox entries.'));
+            request.onsuccess = () => resolve(typeof request.result === 'number' ? request.result : 0);
+            return;
+          }
+          const request = store.getAll();
+          request.onerror = () => reject(request.error ?? new Error('Could not count durable RemoteSync outbox entries.'));
+          request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result.length : 0);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async getEntries(opIds: readonly string[]): Promise<unknown[]> {
+      if (opIds.length === 0) return [];
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const tx = db.transaction(OUTBOX_STORE_NAME, 'readonly');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not read durable RemoteSync outbox entries by key.'));
+          const store = tx.objectStore(OUTBOX_STORE_NAME);
+          if (typeof store.get !== 'function') {
+            const ids = new Set(opIds);
+            const request = store.getAll();
+            request.onerror = () => reject(request.error ?? new Error('Could not read durable RemoteSync outbox entries by key.'));
+            request.onsuccess = () => resolve((Array.isArray(request.result) ? request.result : [])
+              .filter(value => !!value && typeof value === 'object' && ids.has((value as Record<string, unknown>).opId as string)));
+            return;
+          }
+          const results: unknown[] = [];
+          let pending = opIds.length;
+          for (const opId of opIds) {
+            const request = store.get(opId);
+            request.onsuccess = () => {
+              if (request.result !== undefined) results.push(request.result);
+              pending -= 1;
+              if (pending === 0) resolve(results);
+            };
+            request.onerror = () => reject(request.error ?? new Error('Could not read a durable RemoteSync outbox entry by key.'));
+          }
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async readEntriesRange(afterOpId: string | null, limit: number): Promise<unknown[]> {
+      const cappedLimit = Math.max(1, Math.floor(limit));
+      const db = await openOutboxDb(dbName);
+      try {
+        const raw = await new Promise<unknown[]>((resolve, reject) => {
+          const store = db.transaction(OUTBOX_STORE_NAME, 'readonly').objectStore(OUTBOX_STORE_NAME);
+          const range = afterOpId !== null && typeof IDBKeyRange !== 'undefined'
+            ? IDBKeyRange.lowerBound(afterOpId, true)
+            : undefined;
+          // getAll with a count bound materializes only this window, in opId key order.
+          const request = store.getAll(range, cappedLimit);
+          request.onerror = () => reject(request.error ?? new Error('Could not read a durable RemoteSync outbox window.'));
+          request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        });
+        // Defensive normalization: re-filter/sort/slice client-side so an environment whose
+        // getAll ignores the range/count arguments still yields correct, TERMINATING windows
+        // (without this, a range-ignoring shim would return the same rows every window and the
+        // drain scan would never advance). Real browsers honor the range, making this a cheap
+        // pass over at most `cappedLimit` already-ordered rows.
+        return raw
+          .filter((value): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value))
+          .filter(value => typeof value.opId === 'string' && (afterOpId === null || (value.opId as string) > afterOpId))
+          .sort((left, right) => {
+            const a = left.opId as string;
+            const b = right.opId as string;
+            return a < b ? -1 : a > b ? 1 : 0;
+          })
+          .slice(0, cappedLimit);
       } finally {
         db.close();
       }

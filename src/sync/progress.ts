@@ -237,7 +237,11 @@ export interface BeginRemoteSyncOperationOptions {
   now?: number;
 }
 
-/** Begins tracking a new operation. Returns the next store plus the id assigned to it. */
+/**
+ * Begins tracking a new operation. Returns the next store plus the id assigned to it.
+ * A real operation supersedes the reload hint of its own kind: the seeded `restored:<kind>`
+ * entry (if any) is removed here, since nothing else ever completes it (BUG-2026-07-05-009).
+ */
 export function beginRemoteSyncOperation(
   store: RemoteSyncProgressStore,
   kind: RemoteSyncOperationKind,
@@ -251,8 +255,11 @@ export function beginRemoteSyncOperation(
     ...(typeof options.total === 'number' ? { total: options.total, done: 0 } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   };
+  const restoredKey = `restored:${kind}`;
+  const operations = { ...store.operations, [opId]: record };
+  if (opId !== restoredKey && operations[restoredKey]?.restored) delete operations[restoredKey];
   return {
-    store: { ...store, operations: { ...store.operations, [opId]: record } },
+    store: { ...store, operations },
     opId,
   };
 }
@@ -438,10 +445,15 @@ export interface RemoteSyncProgressPersisted {
   operations: RemoteSyncProgressPersistedOperation[];
 }
 
-/** Serializes only the operations that have a known denominator (`total`). */
+/**
+ * Serializes only the operations that have a known denominator (`total`). Restored entries are
+ * excluded: persisting a seeded `restored:<kind>` hint back to storage made a killed session's
+ * ghost operation immortal — every subsequent persist re-wrote it, so it survived every reload
+ * in the tab session (BUG-2026-07-05-009). Only live operations earn persistence.
+ */
 export function serializeRemoteSyncProgressStore(store: RemoteSyncProgressStore): string {
   const operations: RemoteSyncProgressPersistedOperation[] = Object.values(store.operations)
-    .filter(op => typeof op.total === 'number')
+    .filter(op => typeof op.total === 'number' && op.restored !== true)
     .map(op => ({
       kind: op.kind,
       total: op.total as number,
@@ -479,6 +491,21 @@ export function restoreRemoteSyncProgressOperations(raw: string | null): RemoteS
   } catch {
     return [];
   }
+}
+
+/**
+ * Removes every still-`restored` entry from the store. No-op when none exist. Used by the
+ * seed-side TTL expiry (BUG-2026-07-05-009): a restored hint whose kind never resumes as a real
+ * operation must not stay "active" forever.
+ */
+export function clearRestoredRemoteSyncOperations(store: RemoteSyncProgressStore): RemoteSyncProgressStore {
+  const restoredIds = Object.entries(store.operations)
+    .filter(([, record]) => record.restored === true)
+    .map(([opId]) => opId);
+  if (restoredIds.length === 0) return store;
+  const operations = { ...store.operations };
+  for (const opId of restoredIds) delete operations[opId];
+  return { ...store, operations };
 }
 
 /**

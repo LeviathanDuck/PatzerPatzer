@@ -342,6 +342,38 @@ function checkState(): void {
   }
 }
 
+
+
+
+
+
+
+
+let _pendingPracticeStart: { fen: string; color: 'white' | 'black' } | null = null;
+
+/** Requests that practice auto-start once a board hydrates on `fen`. Last call wins. */
+export function requestPracticeStartOnNextBoard(fen: string, color: 'white' | 'black'): void {
+  _pendingPracticeStart = { fen, color };
+}
+
+/** Drops any pending practice-start request without starting it (e.g. on route change). */
+export function clearPendingPracticeStart(): void {
+  _pendingPracticeStart = null;
+}
+
+/**
+ * Consumes the pending practice-start request if its FEN matches `fen` exactly, returning the
+ * requested color. Always clears the pending request (one-shot) — a mismatched FEN is a stale
+ * request (e.g. the user navigated away before the from-FEN board hydrated) and is dropped
+ * rather than attached to whatever board happens to be current.
+ */
+export function consumePendingPracticeStart(fen: string): { color: 'white' | 'black' } | null {
+  const pending = _pendingPracticeStart;
+  _pendingPracticeStart = null;
+  if (!pending || pending.fen !== fen) return null;
+  return { color: pending.color };
+}
+
 // --- Lifecycle / integration API (wired in main.ts) ---
 
 /** Start a practice session from the current position. */
