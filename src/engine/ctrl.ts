@@ -140,6 +140,20 @@ export function setEvalPositionOverride(context: EnginePositionContext | null): 
 let _activeOverrideFen: string | null = null;
 export const evalCache = new Map<string, PositionEval>();
 
+
+
+
+
+
+
+
+
+
+
+let evalCacheRevision = 0;
+export function bumpEvalCacheRevision(): void { evalCacheRevision++; }
+export function getEvalCacheRevision(): number { return evalCacheRevision; }
+
 let evalNodeId     = '';
 let evalNodePath   = '';
 let evalNodePly    = 0;
@@ -248,7 +262,7 @@ let       threatEval: PositionEval = {};
 
 export function resetCurrentEval(): void          { currentEval = {}; }
 export function setCurrentEval(ev: PositionEval): void { currentEval = { ...ev }; }
-export function clearEvalCache(): void            { evalCache.clear(); }
+export function clearEvalCache(): void            { evalCache.clear(); bumpEvalCacheRevision(); }
 export function setMultiPv(v: number): void          { multiPv = v; localStorage.setItem('patzer.multiPv', String(v)); }
 export function setAnalysisDepth(v: number): void    { analysisDepth = v; localStorage.setItem('patzer.analysisDepth', String(v)); }
 export function setSearchTime(v: number): void       { searchTime = v; localStorage.setItem('patzer.searchTime', String(v)); }
@@ -828,6 +842,7 @@ function promoteLiveEval(
   const stored = computeLiveEvalPromotion(cached, parentEval, nodePly, evalData);
   if (!stored) return;
   evalCache.set(nodePath, stored);
+  bumpEvalCacheRevision();
   _onLiveEvalImproved?.();
   _onLiveEvalUpdated?.(nodePath, stored);
 }
@@ -1317,6 +1332,7 @@ export function evalPositionSilent(
         }
         if (cached?.label && !stored.label) stored.label = cached.label;
         evalCache.set(nodePath, stored);
+        bumpEvalCacheRevision();
       }
     }
     // Resume live analysis once the silent eval is done.

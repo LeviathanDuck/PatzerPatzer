@@ -1,7 +1,7 @@
 // Move list / tree view rendering.
 // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts
 
-import { h, type VNode } from 'snabbdom';
+import { h, thunk, type VNode } from 'snabbdom';
 import { type MoveLabel } from '../engine/winchances';
 import { labelForReviewEval } from './deepenedEval';
 import { showReviewLabels } from '../engine/ctrl';
@@ -70,22 +70,35 @@ const GLYPH_COLORS: Record<string, string> = {
   'M?!': '#a855f7',           // missed forced mate — purple (matches games-list M?! badge)
 };
 
+
+
+
+
+
+
+
+
+
 function renderMoveSpan(
-  node:              TreeNode,
-  path:              TreePath,
-  parent:            TreeNode,
-  showIndex:         boolean,
-  currentPath:       string,
-  getEval:           EvalLookup,
-  navigate:          (p: string) => void,
-  userColor:         'white' | 'black' | null,
-  userOnly:          boolean,
-  contextMenuPath:   string | null | undefined,
-  onContextMenu:     ((path: string, e: MouseEvent) => void) | undefined,
-  worstMissPath:     string | undefined,
-  bookmarkedPaths?:  Set<string>,
-  onToggleBookmark?: (path: string) => void,
-  options?:          MoveListRenderOptions,
+  node:                 TreeNode,
+  path:                 TreePath,
+  parent:               TreeNode,
+  showIndex:            boolean,
+  isActive:             boolean,
+  getEval:              EvalLookup,
+  navigate:             (p: string) => void,
+  userColor:            'white' | 'black' | null,
+  userOnly:             boolean,
+  isContextActive:      boolean,
+  onContextMenu:        ((path: string, e: MouseEvent) => void) | undefined,
+  isWorstMiss:          boolean,
+  bookmarkedPaths:      Set<string> | undefined,
+  onToggleBookmark:     ((path: string) => void) | undefined,
+  showReviewLabelsFlag: boolean,
+  missedMateMaxN:       number,
+  renderRawNags:        boolean | undefined,
+  reviewEngine:         ReviewEngineMetadata | undefined,
+  _evalCacheRevision:   number,
 ): VNode {
   const cached       = getEval(path);
   const parentCached = getEval(pathInit(path));
@@ -94,7 +107,7 @@ function renderMoveSpan(
   // the stored review stamp, classify from the current loss so the displayed label matches the
   // current eval and the delayed persistence path.
   // Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts moveNode glyph priority.
-  const pgnGlyphs: Glyph[] = options?.renderRawNags
+  const pgnGlyphs: Glyph[] = renderRawNags
     ? (node.nags ?? []).map(nagToGlyph).filter((g): g is Glyph => g !== undefined)
     : (node.glyphs ?? []);
   const playedBest = node.uci !== undefined && node.uci === parentCached?.best;
@@ -106,17 +119,17 @@ function renderMoveSpan(
   const parentMate   = parentCached?.mate;
   const moverHadMate = parentMate !== undefined
     && (isWhiteMove ? parentMate > 0 : parentMate < 0)
-    && Math.abs(parentMate) <= missedMomentConfig.missedMateMaxN
+    && Math.abs(parentMate) <= missedMateMaxN
     && parentCached?.best !== undefined;
   const mateWasLost  = cached?.mate === undefined
     || (isWhiteMove ? (cached.mate <= 0) : (cached.mate >= 0));
-  const isMissedMate = showReviewLabels && !playedBest && moverHadMate && mateWasLost;
+  const isMissedMate = showReviewLabelsFlag && !playedBest && moverHadMate && mateWasLost;
 
   const computedLabel: MoveLabel | null = labelForReviewEval(
     cached,
     playedBest,
-    showReviewLabels && shouldShowReviewAnnotation(userColor, node.ply, userOnly),
-    options?.reviewEngine,
+    showReviewLabelsFlag && shouldShowReviewAnnotation(userColor, node.ply, userOnly),
+    reviewEngine,
   );
   const computedSymbol = isMissedMate ? 'M?!'
     : computedLabel === 'blunder'    ? '??'
@@ -134,7 +147,7 @@ function renderMoveSpan(
   const inner: VNode[] = [];
   if (showIndex) {
     const n = Math.ceil(node.ply / 2);
-    inner.push(h('index', node.ply % 2 === 1 ? `${n}.` : `${n}\u2026`));
+    inner.push(h('index', node.ply % 2 === 1 ? `${n}.` : `${n}…`));
   }
   inner.push(h('san', node.san ?? ''));
   for (const glyph of renderedGlyphs) {
@@ -146,9 +159,9 @@ function renderMoveSpan(
   const isBookmarked = bookmarkedPaths?.has(path) ?? false;
   const moveVnode = h('move', {
     class: {
-      active:           path === currentPath,
-      'context-active': contextMenuPath === path,
-      'worst-miss':     worstMissPath !== undefined && path === worstMissPath,
+      active:           isActive,
+      'context-active': isContextActive,
+      'worst-miss':     isWorstMiss,
       bookmarked:       isBookmarked,
     },
     attrs: { p: path },
@@ -175,6 +188,60 @@ function renderMoveSpan(
   ]);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderMoveSpanMemo(
+  node:              TreeNode,
+  path:              TreePath,
+  parent:            TreeNode,
+  showIndex:         boolean,
+  currentPath:       string,
+  getEval:           EvalLookup,
+  navigate:          (p: string) => void,
+  userColor:         'white' | 'black' | null,
+  userOnly:          boolean,
+  contextMenuPath:   string | null | undefined,
+  onContextMenu:     ((path: string, e: MouseEvent) => void) | undefined,
+  worstMissPath:     string | undefined,
+  bookmarkedPaths:   Set<string> | undefined,
+  onToggleBookmark:  ((path: string) => void) | undefined,
+  options:           MoveListRenderOptions | undefined,
+  evalCacheRevision: number,
+): VNode {
+  const isActive        = path === currentPath;
+  const isContextActive = contextMenuPath === path;
+  const isWorstMiss      = worstMissPath !== undefined && path === worstMissPath;
+  const sel = onToggleBookmark ? 'move-wrap' : 'move';
+  // No explicit key: these rows sit in a flat children array alongside unkeyed siblings
+  // (index/interrupt/move.empty placeholders emitted by renderColumnNodes/renderInlineNodes).
+  // Keeping these thunks unkeyed reconciles them the same (purely positional) way the unthunked
+  // vnodes always were, rather than introducing a new keyed-vs-unkeyed mix into a list that was
+  // never keyed before — the memoization win comes entirely from the thunk's args-equality check
+  // in prepatch, not from a key, so there's no reason to add one here.
+  return thunk(sel, renderMoveSpan, [
+    node, path, parent, showIndex, isActive, getEval, navigate, userColor, userOnly,
+    isContextActive, onContextMenu, isWorstMiss, bookmarkedPaths, onToggleBookmark,
+    showReviewLabels, missedMomentConfig.missedMateMaxN,
+    options?.renderRawNags, options?.reviewEngine,
+    evalCacheRevision,
+  ]);
+}
+
 function renderCommentNodes(node: TreeNode, options: MoveListRenderOptions | undefined): VNode[] {
   if (!options?.showComments || !node.comments?.length) return [];
   return node.comments
@@ -189,27 +256,28 @@ function renderCommentNodes(node: TreeNode, options: MoveListRenderOptions | und
  * Mirrors lichess-org/lila: ui/analyse/src/treeView/inlineView.ts sidelineNodes
  */
 function renderInlineNodes(
-  nodes:             TreeNode[],
-  parentPath:        TreePath,
-  parent:            TreeNode,
-  needsMoveNum:      boolean,
-  currentPath:       string,
-  getEval:           EvalLookup,
-  navigate:          (p: string) => void,
-  userColor:         'white' | 'black' | null,
-  userOnly:          boolean,
-  contextMenuPath:   string | null | undefined,
-  onContextMenu:     ((path: string, e: MouseEvent) => void) | undefined,
-  worstMissPath:     string | undefined,
-  bookmarkedPaths?:  Set<string>,
-  onToggleBookmark?: (path: string) => void,
-  options?:          MoveListRenderOptions,
+  nodes:              TreeNode[],
+  parentPath:         TreePath,
+  parent:             TreeNode,
+  needsMoveNum:       boolean,
+  currentPath:        string,
+  getEval:            EvalLookup,
+  navigate:           (p: string) => void,
+  userColor:          'white' | 'black' | null,
+  userOnly:           boolean,
+  contextMenuPath:    string | null | undefined,
+  onContextMenu:      ((path: string, e: MouseEvent) => void) | undefined,
+  worstMissPath:      string | undefined,
+  bookmarkedPaths:    Set<string> | undefined,
+  onToggleBookmark:   ((path: string) => void) | undefined,
+  options:            MoveListRenderOptions | undefined,
+  evalCacheRevision:  number,
 ): VNode[] {
   if (nodes.length === 0) return [];
   if (nodes.length > 1) {
     return [
       h('lines', nodes.map(node => (
-        h('line', renderInlineNodes([node], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options))
+        h('line', renderInlineNodes([node], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision))
       ))),
     ];
   }
@@ -219,13 +287,13 @@ function renderInlineNodes(
   const out: VNode[] = [];
 
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpan(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+  out.push(renderMoveSpanMemo(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
   out.push(...renderCommentNodes(main, options));
 
   if (main.children.length > 1) {
-    out.push(...renderInlineNodes(main.children, mainPath, main, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+    out.push(...renderInlineNodes(main.children, mainPath, main, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
   } else {
-    out.push(...renderInlineNodes(main.children, mainPath, main, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+    out.push(...renderInlineNodes(main.children, mainPath, main, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
   }
 
   return out;
@@ -251,15 +319,16 @@ function renderColumnNodes(
   navigate:           (p: string) => void,
   userColor:          'white' | 'black' | null,
   userOnly:           boolean,
-  deleteVariation?:   (path: string) => void,
-  contextMenuPath?:   string | null,
-  onContextMenu?:     (path: string, e: MouseEvent) => void,
-  worstMissPath?:     string,
-  foldedVariations?:  Set<string>,
-  onToggleFold?:      (path: string) => void,
-  bookmarkedPaths?:   Set<string>,
-  onToggleBookmark?:  (path: string) => void,
-  options?:           MoveListRenderOptions,
+  deleteVariation:    ((path: string) => void) | undefined,
+  contextMenuPath:    string | null | undefined,
+  onContextMenu:      ((path: string, e: MouseEvent) => void) | undefined,
+  worstMissPath:      string | undefined,
+  foldedVariations:   Set<string> | undefined,
+  onToggleFold:       ((path: string) => void) | undefined,
+  bookmarkedPaths:    Set<string> | undefined,
+  onToggleBookmark:   ((path: string) => void) | undefined,
+  options:            MoveListRenderOptions | undefined,
+  evalCacheRevision:  number,
 ): void {
   if (nodes.length === 0) return;
   const main       = nodes[0]!;
@@ -272,7 +341,7 @@ function renderColumnNodes(
   if (isWhite) out.push(h('index', String(Math.ceil(main.ply / 2))));
 
   // The move — no embedded index for column view.
-  out.push(renderMoveSpan(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options));
+  out.push(renderMoveSpanMemo(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
   const comments = renderCommentNodes(main, options);
 
   // Variations — emit as full-width interrupt block.
@@ -280,7 +349,7 @@ function renderColumnNodes(
   if (variations.length > 0 || comments.length > 0) {
     // Fill the unused black slot with an empty placeholder so the interrupt
     // starts on a new row. Mirrors columnView.ts isWhite && emptyMove().
-    if (isWhite) out.push(h('move.empty', '\u2026'));
+    if (isWhite) out.push(h('move.empty', '…'));
 
     // Fold toggle: triangle button before the lines block.
     // Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts variation fold.
@@ -305,7 +374,7 @@ function renderColumnNodes(
       interruptChildren.push(...comments);
       const varLines = variations.map(v => {
         const varPath = parentPath + v.id;
-        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options);
+        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
         // Variation remove affordance: small × button at start of each non-mainline line.
         // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts deleteNode action.
         if (deleteVariation) {
@@ -329,11 +398,11 @@ function renderColumnNodes(
     // Mirrors columnView.ts isWhite && child.children.length > 0 re-anchor.
     if (isWhite && main.children.length > 0) {
       out.push(h('index', String(Math.ceil(main.ply / 2))));
-      out.push(h('move.empty', '\u2026'));
+      out.push(h('move.empty', '…'));
     }
   }
 
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
 }
 
 /**
@@ -367,14 +436,20 @@ export function renderContextMoves(
   return h(`div.${cls}`, out);
 }
 
-/**
- * Render the full move list for the current game.
- * @param root            - root node of the current game tree
- * @param currentPath     - currently active tree path (for active-move highlight)
- * @param getEval         - eval cache lookup: returns evaluation data for a path, or undefined
- * @param navigate        - called when user clicks a move to navigate to it
- * @param deleteVariation - removes a single variation branch by path
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function renderMoveList(
   root:               TreeNode,
   currentPath:        string,
@@ -391,11 +466,12 @@ export function renderMoveList(
   bookmarkedPaths?:   Set<string>,
   onToggleBookmark?:  (path: string) => void,
   options?:           MoveListRenderOptions,
+  evalCacheRevision = 0,
 ): VNode {
   // div.tview2.tview2-column: flex-wrap grid, index | white | black per row.
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const rootComments = renderCommentNodes(root, options);
   const nodes: VNode[] = rootComments.length > 0 ? [h('interrupt', rootComments)] : [];
-  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options);
+  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
   return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes)]);
 }
