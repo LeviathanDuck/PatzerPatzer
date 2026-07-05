@@ -422,14 +422,29 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
       }, 'Review');
 
     case 'queued':
+
+
+
       return h('span.grr__review.--queued', {
         attrs: { title: `Queued for Bulk Review — wave ${state.wave} of ${state.totalWaves}` },
-      }, `⏲ Queued · wave ${state.wave} of ${state.totalWaves}`);
+      }, [
+        '⏲ Queued · wave ',
+        h('span.grr__review-num', `${state.wave}`),
+        ' of ',
+        h('span.grr__review-num', `${state.totalWaves}`),
+      ]);
 
     case 'running':
+
+
+
+
       return h('div.grr__review.--running', { attrs: { title: 'Analyzing…' } }, [
         h('div.grr__review-fill', { style: { width: `${Math.max(0, Math.min(100, state.percent))}%` } }),
-        h('span.grr__review-label', `Analyzing · ${Math.round(state.percent)}%`),
+        h('span.grr__review-label', [
+          'Analyzing · ',
+          h('span.grr__review-pct', `${Math.round(state.percent)}%`),
+        ]),
       ]);
 
     case 'failed':
