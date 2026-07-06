@@ -1,15 +1,15 @@
 // PGN → move tree (mainline + variations)
 // Adapted from lichess-org/lila: ui/analyse/src/pgnImport.ts
 
-import { makeUci } from 'chessops';
+import { makeSquare, makeUci } from 'chessops';
 import type { Position } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
 import { makeFen } from 'chessops/fen';
-import type { ChildNode, Game, PgnNodeData } from 'chessops/pgn';
+import type { ChildNode, CommentShape, Game, PgnNodeData } from 'chessops/pgn';
 import { parseComment, parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
-import type { Glyph, TimeControl, TreeComment, TreeNode } from './types';
+import type { Glyph, ImportedEval, Shape, TimeControl, TreeComment, TreeNode } from './types';
 
 // Standard NAG (Numeric Annotation Glyph) → Glyph mapping.
 // Adapted from lichess-org/lila: modules/tree/src/main/TreeBuilder.scala glyphs()
@@ -67,13 +67,30 @@ function parseTimeControl(value: string | undefined): TimeControl | undefined {
   };
 }
 
+/**
+ * Converts a chessops CommentShape (numeric squares, to===from encodes a %csl
+ * circle) into Patzer's Shape model (square-name strings, dest omitted for a
+ * highlight) — the same field/shape the Study authoring path already
+ * populates via updateCurrentNodeShapes (src/study/studyDetailCtrl.ts).
+ */
+function chessopsShapeToTreeShape(shape: CommentShape): Shape {
+  const orig = makeSquare(shape.from);
+  return shape.to === shape.from
+    ? { orig, brush: shape.color }
+    : { orig, dest: makeSquare(shape.to), brush: shape.color };
+}
+
 function parseTreeComments(rawComments: readonly string[] | undefined): {
   comments: TreeComment[];
   clockCentis?: number;
   moveTimeCentis?: number;
+  evaluation?: ImportedEval;
+  shapes?: Shape[];
 } {
   let clockCentis: number | undefined;
   let moveTimeCentis: number | undefined;
+  let evaluation: ImportedEval | undefined;
+  const shapes: Shape[] = [];
   const comments = (rawComments ?? []).map((raw, i) => {
     const parsed = parseComment(raw);
     if (parsed.clock !== undefined && clockCentis === undefined) {
@@ -83,6 +100,17 @@ function parseTreeComments(rawComments: readonly string[] | undefined): {
     if (parsed.emt !== undefined && moveTimeCentis === undefined) {
       moveTimeCentis = Math.round(parsed.emt * 100);
     }
+    // [%eval] — first one wins (mirrors clock/emt above); kept verbatim (pawns or
+    // mate, as chessops parsed it) so annotated-mode export can re-emit it
+    // unchanged. Phase 2 T1 contract §4 / BUG-2026-07-05-018.
+    if (parsed.evaluation !== undefined && evaluation === undefined) {
+      evaluation = parsed.evaluation;
+    }
+    // [%csl]/[%cal] — user content (arrows/circles), not engine synthesis;
+    // accumulate across every comment segment on this node.
+    for (const shape of parsed.shapes) {
+      shapes.push(chessopsShapeToTreeShape(shape));
+    }
     return { id: String(i), by: 'pgn' as const, text: parsed.text };
   }).filter(c => c.text.trim().length > 0);
 
@@ -90,6 +118,8 @@ function parseTreeComments(rawComments: readonly string[] | undefined): {
     comments,
     ...(clockCentis !== undefined ? { clockCentis } : {}),
     ...(moveTimeCentis !== undefined ? { moveTimeCentis } : {}),
+    ...(evaluation !== undefined ? { evaluation } : {}),
+    ...(shapes.length > 0 ? { shapes } : {}),
   };
 }
 
@@ -128,7 +158,7 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     ...(pgnNode.data.startingComments ?? []),
     ...(pgnNode.data.comments ?? []),
   ];
-  const { comments, clockCentis, moveTimeCentis } = parseTreeComments(rawComments);
+  const { comments, clockCentis, moveTimeCentis, evaluation, shapes } = parseTreeComments(rawComments);
 
   return {
     id: scalachessCharPair(move), // 2-char id, same scheme as Lichess
@@ -142,6 +172,8 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
     ...(comments.length            ? { comments }            : {}),
     ...(clockCentis !== undefined  ? { clock: clockCentis }  : {}),
     ...(moveTimeCentis !== undefined ? { moveTime: moveTimeCentis } : {}),
+    ...(evaluation !== undefined   ? { importedEval: evaluation } : {}),
+    ...(shapes !== undefined       ? { shapes }              : {}),
   };
 }
 

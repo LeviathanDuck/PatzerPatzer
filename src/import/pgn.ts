@@ -99,6 +99,7 @@ export function importPgn(callbacks: ImportCallbacks): void {
     const game: ImportedGame = {
       id:  nextGameId(),
       pgn: raw,
+      sourcePgn: raw, // write-once (src/import/types.ts) — the pasted text itself is the source
       ...(white ? { white } : {}),
       ...(black ? { black } : {}),
       ...(result ? { result } : {}),

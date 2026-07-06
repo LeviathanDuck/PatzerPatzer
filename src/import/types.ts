@@ -4,6 +4,17 @@
 export interface ImportedGame {
   id: string;
   pgn: string;
+
+
+
+
+
+
+
+
+
+
+  sourcePgn?: string;
   white?: string;
   black?: string;
   result?: string;

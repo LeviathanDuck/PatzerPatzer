@@ -561,6 +561,14 @@ export interface StoredGameRecord {
   matchUrl?:           string | null;
   ratingDelta?:        number | null;
   opponentRatingDelta?: number | null;
+
+
+
+
+
+
+
+  sourcePgn?: string | null;
 }
 
 // --- Player profiles ---
@@ -1238,6 +1246,8 @@ export function importedGameToRecord(game: ImportedGame): StoredGameRecord {
     matchUrl:           game.matchUrl           ?? null,
     ratingDelta:        game.ratingDelta        ?? null,
     opponentRatingDelta: game.opponentRatingDelta ?? null,
+
+    sourcePgn:          game.sourcePgn          ?? null,
   };
 }
 
@@ -1346,6 +1356,9 @@ export function storedGameRecordToImportedGame(record: StoredGameRecord): Import
   if (record.matchUrl        !== null && record.matchUrl        !== undefined) game.matchUrl        = record.matchUrl;
   if (record.ratingDelta     !== null && record.ratingDelta     !== undefined) game.ratingDelta     = record.ratingDelta;
   if (record.opponentRatingDelta !== null && record.opponentRatingDelta !== undefined) game.opponentRatingDelta = record.opponentRatingDelta;
+
+
+  if (record.sourcePgn !== null && record.sourcePgn !== undefined) game.sourcePgn = record.sourcePgn;
 
   return game;
 }

@@ -355,6 +355,7 @@ export async function fetchChesscomGames(
     result.push({
       id:               gameId ? `chesscom:${gameId}` : nextGameId(),
       pgn,
+      sourcePgn:        pgn, // write-once (src/import/types.ts) — chess.com's own archive PGN text
       result:           normalizeChesscomResult(raw.white?.result ?? '', raw.black?.result ?? ''),
       source:           'chesscom',
       importedUsername: username.toLowerCase(),

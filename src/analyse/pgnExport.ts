@@ -4,6 +4,8 @@
 
 import { h, type VNode } from 'snabbdom';
 import { INITIAL_FEN } from 'chessops/fen';
+import { makeComment, type CommentShape, type CommentShapeColor, type Evaluation } from 'chessops/pgn';
+import { parseSquare } from 'chessops/util';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   evalCache,
@@ -15,7 +17,7 @@ import { enqueueAtFront, getQueueSummary, pauseBulkReview } from '../engine/revi
 import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
-import type { TreeNode, TreePath } from '../tree/types';
+import type { Shape, TreeNode, TreePath } from '../tree/types';
 
 // --- Injected deps ---
 
@@ -55,22 +57,68 @@ function sanitizeCommentText(text: string): string {
   return text.replace(/[{}]/g, '').trim();
 }
 
+// Chessops' 4 standard drawable colors — matches the brush values written by both the
+// Study authoring path (src/study/studyDetailView.ts) and PGN import (tree/pgn.ts), so
+// only an unrecognized/missing brush needs a fallback (mirrors the 'green' default used
+// at those same call sites).
+const SHAPE_COLORS = new Set<CommentShapeColor>(['green', 'red', 'yellow', 'blue']);
+
+function toCommentShapeColor(brush: string | undefined): CommentShapeColor {
+  return brush !== undefined && SHAPE_COLORS.has(brush as CommentShapeColor)
+    ? (brush as CommentShapeColor)
+    : 'green';
+}
+
 /**
- * Comment block for a node. User comments are always emitted (they are part of the
- * game record and must survive Save-to-Library, which exports in plain mode);
- * [%eval]/[%clk] synthesis is annotated-mode only.
+ * Converts a Patzer Shape (square-name orig/dest, e.g. "e2") to a chessops
+ * CommentShape (numeric squares, to===from encodes a %csl circle) so
+ * makeComment() can format it. Returns undefined for an unparseable square.
+ */
+function treeShapeToCommentShape(shape: Shape): CommentShape | undefined {
+  const from = parseSquare(shape.orig);
+  if (from === undefined) return undefined;
+  const to = shape.dest !== undefined ? parseSquare(shape.dest) : from;
+  if (to === undefined) return undefined;
+  return { color: toCommentShapeColor(shape.brush), from, to };
+}
+
+/**
+ * %csl/%cal tokens for a node's shapes, built via chessops' own makeComment().
+ * Emitted in BOTH plain and annotated modes — arrows/circles are user content
+ * (drawn during Study authoring or carried in from an imported PGN), not engine
+ * synthesis. Phase 2 T1 persistence/portability contract §4.
+ */
+function renderShapeTokens(shapes: Shape[] | undefined): string {
+  if (!shapes || shapes.length === 0) return '';
+  const converted = shapes
+    .map(treeShapeToCommentShape)
+    .filter((s): s is CommentShape => s !== undefined);
+  return converted.length > 0 ? makeComment({ shapes: converted }) : '';
+}
+
+/**
+ * Comment block for a node. User comments and shapes are always emitted (they are
+ * part of the game record / user content and must survive Save-to-Library, which
+ * exports in plain mode); [%eval]/[%clk] synthesis is annotated-mode only.
  */
 function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boolean): string | null {
   const commentParts: string[] = [];
+
+  const shapeToken = renderShapeTokens(node.shapes);
+  if (shapeToken) commentParts.push(shapeToken);
+
   if (annotated) {
     const ev = evalCache.get(path);
-    if (ev) {
-      if (ev.mate !== undefined) {
-        commentParts.push(`[%eval #${ev.mate}]`);
-      } else if (ev.cp !== undefined) {
-        const pawns = (ev.cp / 100).toFixed(2);
-        commentParts.push(`[%eval ${pawns}]`);
-      }
+    // Live evalCache value wins when present; otherwise fall back to the imported
+    // [%eval] commentary so it survives round-trips instead of vanishing.
+    // Phase 2 T1 contract §4 / BUG-2026-07-05-018.
+    const evaluation: Evaluation | undefined =
+      ev?.mate !== undefined ? { mate: ev.mate } :
+      ev?.cp   !== undefined ? { pawns: ev.cp / 100 } :
+      node.importedEval;
+    if (evaluation) {
+      const evalToken = makeComment({ evaluation });
+      if (evalToken) commentParts.push(evalToken);
     }
     if (node.clock !== undefined) {
       const total = Math.round(node.clock / 100);
@@ -323,6 +371,24 @@ function enqueueSelectedGameForReview(): boolean {
   return true;
 }
 
+export function requestSelectedGameAnalysis(): boolean {
+  const selectedGameId = _getSelectedGameId();
+  if (analysisComplete) {
+    // Re-analyze: clear persisted data and batch state.
+    if (selectedGameId) _clearGameAnalysis(selectedGameId);
+    clearPuzzleCandidates();
+    resetReviewStatusRuntime();
+    syncArrow();
+  }
+  // Always clear the eval cache before starting a review.
+  // The live analysis engine may have populated it at shallow depth; those
+  // values would be reused as-is (skipped in the batch queue), causing the
+  // accuracy formula to operate on noisy low-depth evals and inflate scores.
+  clearEvalCache();
+  resetCurrentEval();
+  return enqueueSelectedGameForReview();
+}
+
 function selectedGameReviewProgress(): { active: boolean; done: number; total: number } {
   const selectedGameId = _getSelectedGameId();
   const summary = getQueueSummary();
@@ -338,7 +404,6 @@ function selectedGameReviewProgress(): { active: boolean; done: number; total: n
 
 export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   const ctrl           = _getCtrl();
-  const selectedGameId = _getSelectedGameId();
   const hasGame        = ctrl.mainline.length > 1;
 
   // Review button content/behavior changes based on state (approved redesign 2026-07-05,
@@ -380,20 +445,7 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
       _redraw();
       return;
     }
-    if (analysisComplete) {
-      // Re-analyze: clear persisted data and batch state.
-      if (selectedGameId) _clearGameAnalysis(selectedGameId);
-      clearPuzzleCandidates();
-      resetReviewStatusRuntime();
-      syncArrow();
-    }
-    // Always clear the eval cache before starting a review.
-    // The live analysis engine may have populated it at shallow depth; those
-    // values would be reused as-is (skipped in the batch queue), causing the
-    // accuracy formula to operate on noisy low-depth evals and inflate scores.
-    clearEvalCache();
-    resetCurrentEval();
-    if (!enqueueSelectedGameForReview()) {
+    if (!requestSelectedGameAnalysis()) {
       console.warn('[review-button] no selected imported game available for priority review enqueue');
     }
     _redraw();

@@ -37,6 +37,23 @@ export interface PvData extends EvalScore {
   moves: string[]; // sequence of UCI moves
 }
 
+// Evaluation commentary captured verbatim from an imported PGN's [%eval] annotation
+// (e.g. a Lichess-exported game/study). Kept in its original pawns/mate shape —
+// NOT converted to EvalScore's cp/mate pair — so annotated-mode export can re-emit
+// it unchanged and a second round-trip stays idempotent. Shape mirrors chessops'
+// pgn.ts Evaluation (EvaluationPawns | EvaluationMate) returned by parseComment().
+export interface ImportedEvalPawns {
+  pawns: number;
+  depth?: number;
+}
+
+export interface ImportedEvalMate {
+  mate: number;
+  depth?: number;
+}
+
+export type ImportedEval = ImportedEvalPawns | ImportedEvalMate;
+
 export interface TreeComment {
   id: string;
   by: string | { id: string; name: string };
@@ -72,6 +89,7 @@ export interface TreeNodeBase {
   fen: Fen;
   eval?: ServerEval;
   ceval?: ClientEval;
+  importedEval?: ImportedEval;
   glyphs?: Glyph[];
   nags?: GlyphId[];
   comments?: TreeComment[];

@@ -345,11 +345,12 @@ function brushCode(brush?: string): string {
   return (brush ? (BRUSH_CODE[brush] ?? 'G') : 'G');
 }
 
-function serializeStudyNode(node: TreeNode, needsMoveNum: boolean): string {
+function serializeStudyNode(node: TreeNode, needsMoveNum: boolean, pendingVariations: TreeNode[] = []): string {
   const parts: string[] = [];
+  const isWhite = node.ply % 2 === 1;
+  let hasOwnAnnotation = false;
 
   if (node.san) {
-    const isWhite = node.ply % 2 === 1;
     const moveNum = Math.ceil(node.ply / 2);
     if (isWhite || needsMoveNum) {
       parts.push(isWhite ? `${moveNum}.` : `${moveNum}...`);
@@ -379,20 +380,30 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean): string {
     if (commentParts.length > 0) {
       parts.push(`{ ${commentParts.join(' ')} }`);
     }
+
+    hasOwnAnnotation = (node.glyphs?.length ?? 0) > 0 || (node.comments?.length ?? 0) > 0 || (node.shapes?.length ?? 0) > 0;
+  }
+
+
+
+
+
+  for (const v of pendingVariations) {
+    const varPgn = serializeStudyNode(v, true);
+    if (varPgn.trim()) parts.push(`( ${varPgn} )`);
   }
 
   if (node.children.length > 0) {
     const [main, ...variations] = node.children;
-    const hasAnnotation = (node.san && ((node.glyphs?.length ?? 0) > 0 || (node.comments?.length ?? 0) > 0 || (node.shapes?.length ?? 0) > 0));
-    const contNeedsNum = (variations.length > 0) || hasAnnotation || (node.san && node.ply % 2 === 0);
-
-    for (const v of variations) {
-      const varPgn = serializeStudyNode(v, true);
-      if (varPgn.trim()) parts.push(`( ${varPgn} )`);
-    }
+    // The following mainline move restates its move number only if something just
+    // intervened in the emitted text (this node's own annotation, or its own
+    // pendingVariations flushed above) AND this node is White — Black's restatement
+    // is conditional, White's move number always shows regardless so it never needs
+    // to restate. Mirrors renderPgnLine's needsMoveNum propagation.
+    const contNeedsNum = (hasOwnAnnotation || pendingVariations.length > 0) && isWhite;
 
     if (main) {
-      parts.push(serializeStudyNode(main, !!contNeedsNum));
+      parts.push(serializeStudyNode(main, contNeedsNum, variations));
     }
   }
 
@@ -401,10 +412,15 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean): string {
 
 export function buildStudyPgn(): string {
   if (!_root || !_study) return '';
+  // Header set follows the Phase 2 T1 persistence/portability contract §2 roster
+  // spirit: White/Black from study metadata when known (carried from the source
+  // PGN's headers at import/save time), else the PGN-spec "?" unknown placeholder.
   const headers: [string, string][] = [
-    ['Event', _study.title],
-    ['Site',  'PatzerPro'],
-    ['Date',  new Date(_study.createdAt).toISOString().slice(0, 10).replace(/-/g, '.')],
+    ['Event',  _study.title],
+    ['Site',   'PatzerPro'],
+    ['Date',   new Date(_study.createdAt).toISOString().slice(0, 10).replace(/-/g, '.')],
+    ['White',  _study.white ?? '?'],
+    ['Black',  _study.black ?? '?'],
     ['Result', '*'],
   ];
   const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');

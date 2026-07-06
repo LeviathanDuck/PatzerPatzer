@@ -251,6 +251,7 @@ export async function fetchLichessGames(
     result.push({
       id:               gameId ? `lichess:${gameId}` : nextGameId(),
       pgn,
+      sourcePgn:        pgn, // write-once (src/import/types.ts) — lichess's own export PGN text
       source:           'lichess',
       importedUsername: username.toLowerCase(),
       accountId:        accountId('lichess', username),
