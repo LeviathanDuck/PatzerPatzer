@@ -211,7 +211,6 @@ export function openRetroModal(redraw: () => void): void {
 const REMOTE_SYNC_TOKEN_KEY = 'chesspatzer.remoteSync.adminSyncToken';
 const REMOTE_SYNC_TOKEN_EVENT = 'chesspatzer:remoteSync-token-changed';
 const REMOTE_SYNC_WARNING_ICON = '⚠';
-const HEADER_STATUS_STILL_SRC = '/images/loading-icons/loading-still.png';
 
 let headerAuthUser: string | null = null;
 let headerAuthIsAdmin = false;
@@ -792,49 +791,57 @@ function reviewTriggerPillState(
 
 interface ReviewPillSpec {
   icon: VNode | null;
+  /** Breathing engine bolt (running state only) — takes the icon slot in place of `icon`. */
+  bolt: boolean;
   numberText: string | null;
-  fillVariant: 'teal' | 'amber' | 'red' | 'shimmer' | null;
-  fillPercent: number;
-  edge: boolean;
+  /** Bottom-edge underline meter color (approved redesign 2026-07-05, round 4 — mirrors
+   * `.grr__review-fill` in `src/games/richRow.ts`); `shimmer` keeps the pre-existing full-height
+   * loading wash unchanged. `null` = no meter (complete/engine-error). */
+  meterVariant: 'green' | 'amber' | 'red' | 'shimmer' | null;
+  meterPercent: number;
 }
 
-
-
-
-
-function reviewTriggerPillSpec(state: ReviewPillState, percent: number, numberText: string): ReviewPillSpec {
+// Meter color families per the round-4 header-pill spec: running = green ("engine" hue),
+// paused/attention (paused, paused-auto, stalled, resume) = amber, failed/breaker/storage = red.
+// The meter is frozen at whatever percent the queue last reported — no separate "frozen" state is
+// needed since `reviewTriggerActiveGamePercent` itself stops advancing while paused/stalled.
+function reviewTriggerPillSpec(
+  state: ReviewPillState, percent: number, numberText: string, completeNumberText: string,
+): ReviewPillSpec {
   switch (state) {
     case 'running':
-      return { icon: null, numberText, fillVariant: 'teal', fillPercent: percent, edge: true };
+      return { icon: null, bolt: true, numberText, meterVariant: 'green', meterPercent: percent };
     case 'paused':
     case 'paused-auto':
-      return { icon: iconPause(), numberText, fillVariant: 'amber', fillPercent: percent, edge: false };
+      return { icon: iconPause(), bolt: false, numberText, meterVariant: 'amber', meterPercent: percent };
     case 'stalled':
-      return { icon: iconExclamation(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+      return { icon: iconExclamation(), bolt: false, numberText, meterVariant: 'amber', meterPercent: percent };
     case 'resume':
-      return { icon: iconPlay(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+      return { icon: iconPlay(), bolt: false, numberText, meterVariant: 'amber', meterPercent: percent };
     case 'failed':
-      return { icon: iconRetry(), numberText, fillVariant: 'red', fillPercent: percent, edge: false };
+      return { icon: iconRetry(), bolt: false, numberText, meterVariant: 'red', meterPercent: percent };
     case 'breaker':
-      return { icon: iconPauseBang(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+      return { icon: iconPauseBang(), bolt: false, numberText, meterVariant: 'red', meterPercent: percent };
     case 'storage':
-      return { icon: iconDatabase(), numberText, fillVariant: null, fillPercent: 0, edge: false };
+      return { icon: iconDatabase(), bolt: false, numberText, meterVariant: 'red', meterPercent: percent };
     case 'complete':
-      return { icon: iconCheck(), numberText: '100%', fillVariant: null, fillPercent: 0, edge: false };
+      // Batch complete flips to the solid navy "done" capsule (same language as the Review
+      // button): check + games done/total, no meter.
+      return { icon: iconCheck(), bolt: false, numberText: completeNumberText, meterVariant: null, meterPercent: 0 };
   }
 }
 
 function renderReviewTriggerPillContent(spec: ReviewPillSpec): VNode[] {
   const children: VNode[] = [];
-  if (spec.fillVariant) {
-    const width = spec.fillVariant === 'shimmer' ? 100 : spec.fillPercent;
-    children.push(h(`div.review-menu__trigger-fill.review-menu__trigger-fill--${spec.fillVariant}`, {
-      class: { 'review-menu__trigger-fill--edge': spec.edge },
+  if (spec.meterVariant) {
+    const width = spec.meterVariant === 'shimmer' ? 100 : Math.max(0, Math.min(100, spec.meterPercent));
+    children.push(h(`div.review-menu__trigger-fill.review-menu__trigger-fill--${spec.meterVariant}`, {
       style: { width: `${width}%` },
     }));
   }
   const inner: VNode[] = [];
-  if (spec.icon) inner.push(spec.icon);
+  if (spec.bolt) inner.push(h('span.review-menu__trigger-bolt.--breathing', '⚡'));
+  else if (spec.icon) inner.push(spec.icon);
   if (spec.numberText !== null) inner.push(h('span.review-menu__trigger-number', spec.numberText));
   children.push(h('span.review-menu__trigger-content', inner));
   return children;
@@ -972,7 +979,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         class: { active: showReviewMenu },
         attrs: { title: engineErrorTitle, 'aria-label': engineErrorTitle },
         on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
-      }, renderReviewTriggerPillContent({ icon: iconCross(), numberText: null, fillVariant: null, fillPercent: 0, edge: false })),
+      }, renderReviewTriggerPillContent({ icon: iconCross(), bolt: false, numberText: null, meterVariant: null, meterPercent: 0 })),
       showReviewMenu ? h('div.review-menu__backdrop', {
         on: { click: () => { showReviewMenu = false; redraw(); } },
       }) : null,
@@ -1000,7 +1007,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         class: { active: false },
         attrs: { title: loadingTitle, 'aria-label': loadingTitle, disabled: true },
       }, renderReviewTriggerPillContent({
-        icon: iconSpinnerArc(), numberText: null, fillVariant: 'shimmer', fillPercent: 100, edge: false,
+        icon: iconSpinnerArc(), bolt: false, numberText: null, meterVariant: 'shimmer', meterPercent: 100,
       })),
     ]);
   }
@@ -1037,7 +1044,8 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   );
   const pillPercent = reviewTriggerActiveGamePercent(summary);
   const pillNumberText = reviewTriggerNumberText(summary, pillPercent);
-  const pillSpec = reviewTriggerPillSpec(pillState, pillPercent, pillNumberText);
+  const pillCompleteNumberText = `${summary.done}/${summary.total}`;
+  const pillSpec = reviewTriggerPillSpec(pillState, pillPercent, pillNumberText, pillCompleteNumberText);
   const pillStateSentence = (() => {
     switch (pillState) {
       case 'breaker':
@@ -1124,7 +1132,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
           : null,
         staleNotice
           ? h('div.review-menu__label.review-menu__label--warning',
-              `No review progress for ${lastProgress ?? 'a while'}. You can pause, cancel, or take over if the owner is unavailable.`)
+              `No analysis progress for ${lastProgress ?? 'a while'}. You can pause, cancel, or take over if the owner is unavailable.`)
           : null,
         lifecycleState === 'batch-complete'
           ? h('div.review-menu__label', 'Batch complete. Dismiss this notice, or Cancel to stop the run.')
@@ -1135,8 +1143,8 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         breakerPaused
           ? h('div.review-menu__label.review-menu__label--error',
               runSummary?.breakerTrippedReason === 'engine-init-failure'
-                ? 'Review paused: the background engine failed to initialize. Reload to retry.'
-                : 'Review paused: 3 consecutive game failures. Investigate before retrying — this usually means a systemic problem, not one bad game.')
+                ? 'Analysis paused: the background engine failed to initialize. Reload to retry.'
+                : 'Analysis paused: 3 consecutive game failures. Investigate before retrying — this usually means a systemic problem, not one bad game.')
           : null,
         failedStatus
           ? h('div.review-menu__label.review-menu__label--error',
@@ -1394,19 +1402,79 @@ function syncBusyIndicatorVisible(snapshot: RemoteSyncProgressSnapshot, redraw: 
   return false;
 }
 
-/** Coarse busy label: stable "Syncing", plus a percentage that only moves in 5% steps when a
- * large determinate operation is running — the trigger text must not tick per event. */
-function formatSyncBusyLabel(snapshot: RemoteSyncProgressSnapshot): string {
-  const driving = snapshot.operations.find(op =>
+/** The one operation "driving" the busy indicator: whichever entry matches the snapshot's
+ * current state with a real (>=100 item) determinate total, falling back to any large
+ * determinate operation. Small/indeterminate operations (e.g. a quick "checking" probe)
+ * intentionally do not count — same threshold the old text label used, reused (not
+ * reinvented) as the "per-item transfer counts are available" signal for the sync pill's
+ * meter/counter (approved redesign 2026-07-05, round 4). */
+function findSyncDrivingOperation(snapshot: RemoteSyncProgressSnapshot): RemoteSyncOperationSummary | undefined {
+  return snapshot.operations.find(op =>
     op.kind === snapshot.state && typeof op.total === 'number' && typeof op.done === 'number' && op.total >= 100,
   ) ?? snapshot.operations.find(op =>
     typeof op.total === 'number' && typeof op.done === 'number' && op.total >= 100,
   );
-  if (driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0) {
-    const pct = Math.min(100, Math.floor((driving.done / driving.total) * 20) * 5);
-    return `Syncing · ${pct}%`;
+}
+
+
+
+
+
+
+
+
+interface SyncPillSpec {
+  /** Arrows breathe only while a transfer is actively visible. */
+  breathing: boolean;
+  glyph: '✓' | '!' | '✕' | null;
+  /** "done/total" item counter — only shown when the driving operation exposes real counts. */
+  countText: string | null;
+  meter: boolean;
+  /** null while `meter` is true means "indeterminate sweep" (no per-item counts available). */
+  meterPercent: number | null;
+}
+
+function syncTriggerPillSpec(
+  severity: 'ok' | 'active' | 'warning' | 'error',
+  busyVisible: boolean,
+  driving: RemoteSyncOperationSummary | undefined,
+): SyncPillSpec {
+  if (severity === 'error') {
+    return { breathing: false, glyph: '✕', countText: null, meter: false, meterPercent: null };
   }
-  return 'Syncing';
+  if (severity === 'warning') {
+    return { breathing: false, glyph: '!', countText: null, meter: false, meterPercent: null };
+  }
+  if (busyVisible) {
+    const hasCounts = driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0;
+    return {
+      breathing: true,
+      glyph: null,
+      countText: hasCounts ? `${driving!.done}/${driving!.total}` : null,
+      meter: true,
+      meterPercent: hasCounts ? Math.round((driving!.done as number / (driving!.total as number)) * 100) : null,
+    };
+  }
+  // Idle/synced — quiet ghost, no numbers.
+  return { breathing: false, glyph: '✓', countText: null, meter: false, meterPercent: null };
+}
+
+function renderSyncTriggerContent(spec: SyncPillSpec): VNode[] {
+  const children: VNode[] = [];
+  if (spec.meter) {
+    children.push(spec.meterPercent === null
+      ? h('div.sync-menu__trigger-fill.sync-menu__trigger-fill--indeterminate')
+      : h('div.sync-menu__trigger-fill.sync-menu__trigger-fill--teal', {
+          style: { width: `${Math.max(0, Math.min(100, spec.meterPercent))}%` },
+        }));
+  }
+  const inner: VNode[] = [
+    h(`span.sync-menu__trigger-arrows${spec.breathing ? '.--breathing' : ''}`, '⇅'),
+  ];
+  if (spec.glyph) inner.push(h('span.sync-menu__trigger-glyph', spec.glyph));
+  if (spec.countText) inner.push(h('span.sync-menu__trigger-count', spec.countText));
+  children.push(h('span.sync-menu__trigger-content', inner));
+  return children;
 }
 
 function renderSyncOperationRow(op: RemoteSyncOperationSummary): VNode {
@@ -1564,15 +1632,19 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
   }
 
   const canQueueLocalLibrary = snapshot.issues.some(issue => issue.reason === 'untracked-local-items');
-  const triggerLabel = snapshot.severity === 'error' ? 'Sync Error'
-    : snapshot.severity === 'warning' ? 'Sync stale'
-    : busyVisible ? formatSyncBusyLabel(snapshot)
-    : 'Synced';
+  const syncPillSpec = syncTriggerPillSpec(snapshot.severity, busyVisible, findSyncDrivingOperation(snapshot));
+  // Same error > warning > busy > idle precedence as syncTriggerPillSpec, restated here only to
+  // pick the BEM state modifier class (no state-logic change).
+  const syncPillState = snapshot.severity === 'error' ? 'error'
+    : snapshot.severity === 'warning' ? 'warning'
+    : busyVisible ? 'syncing'
+    : 'idle';
 
   return h('div.sync-menu', [
     h('button.sync-menu__trigger', {
       class: {
         active: showSyncProgressMenu,
+        [`sync-menu__trigger--${syncPillState}`]: true,
         'sync-severity--active': busyVisible,
         'sync-severity--warning': snapshot.severity === 'warning',
         'sync-severity--error': snapshot.severity === 'error',
@@ -1587,12 +1659,7 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
 
         if (opening) refreshRemoteSyncProgressSnapshot().then(() => redraw()).catch(() => redraw());
       } },
-    }, [
-      busyVisible ? h('img.sync-menu__spinner', {
-        attrs: { src: HEADER_STATUS_STILL_SRC, alt: '', 'aria-hidden': 'true' },
-      }) : null,
-      h('span.sync-menu__trigger-label', triggerLabel),
-    ]),
+    }, renderSyncTriggerContent(syncPillSpec)),
 
     showSyncProgressMenu ? h('div.sync-menu__backdrop', {
       on: { click: () => { showSyncProgressMenu = false; redraw(); } },
