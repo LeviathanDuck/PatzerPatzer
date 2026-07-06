@@ -284,10 +284,119 @@ const ITEM_LIST_DENSITY: ItemListDensity = 'full';
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+function railIcon(children: VNode[]): VNode {
+  return h('svg.lib-rail__icon', {
+    attrs: {
+      viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none',
+      stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      'aria-hidden': 'true', focusable: 'false',
+    },
+  }, children);
+}
+
+function iconLibrarySurface(): VNode {
+  // Open-book glyph for the Library surface.
+  return railIcon([
+    h('path', { attrs: { d: 'M4 5.5C4 4.67 4.67 4 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5v-13z' } }),
+    h('path', { attrs: { d: 'M20 5.5c0-.83-.67-1.5-1.5-1.5H13v16h5.5c.83 0 1.5-.67 1.5-1.5v-13z' } }),
+    h('line', { attrs: { x1: 12, y1: 4, x2: 12, y2: 20 } }),
+  ]);
+}
+
+function iconRepertoireBuilderSurface(): VNode {
+  // Branch glyph — Repertoire Builder grows/merges opening lines.
+  return railIcon([
+    h('line', { attrs: { x1: 6, y1: 3, x2: 6, y2: 15 } }),
+    h('circle', { attrs: { cx: 18, cy: 6, r: 3 } }),
+    h('circle', { attrs: { cx: 6, cy: 18, r: 3 } }),
+    h('path', { attrs: { d: 'M18 9a9 9 0 0 1-9 9' } }),
+  ]);
+}
+
+function iconComplianceToolkitSurface(): VNode {
+  // Shield-check glyph — repertoire divergence/compliance scanning.
+  return railIcon([
+    h('path', { attrs: { d: 'M12 3l7 3v6c0 5-3.5 8.5-7 9c-3.5-.5-7-4-7-9V6z' } }),
+    h('path', { attrs: { d: 'M9 12l2 2 4-4' } }),
+  ]);
+}
+
+function iconOrpSurface(): VNode {
+  // Repeat-loop glyph — Opening Repetition Practice.
+  return railIcon([
+    h('path', { attrs: { d: 'M17 2l4 4-4 4' } }),
+    h('path', { attrs: { d: 'M3 11V9a4 4 0 0 1 4-4h14' } }),
+    h('path', { attrs: { d: 'M7 22l-4-4 4-4' } }),
+    h('path', { attrs: { d: 'M21 13v2a4 4 0 0 1-4 4H3' } }),
+  ]);
+}
+
+type RailSurface = { id: string; label: string; icon: () => VNode; active: boolean; disabled: boolean };
+
+function railSurfaces(): RailSurface[] {
+  return [
+    { id: 'library', label: 'Library', icon: iconLibrarySurface, active: true, disabled: false },
+    { id: 'repertoire-builder', label: 'Repertoire Builder', icon: iconRepertoireBuilderSurface, active: false, disabled: true },
+    { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: iconComplianceToolkitSurface, active: false, disabled: true },
+    { id: 'orp', label: 'Opening Repetition Practice', icon: iconOrpSurface, active: false, disabled: true },
+  ];
+}
+
+function renderRail(): VNode {
+  return h('div.lib-rail', { attrs: { role: 'toolbar', 'aria-label': 'Study Navigator tools', 'aria-orientation': 'vertical' } },
+    railSurfaces().map(surface => h('button.lib-rail__btn', {
+      key: `rail-${surface.id}`,
+      class: { '--active': surface.active },
+      attrs: {
+        type: 'button',
+        title: surface.disabled ? `${surface.label} (coming soon)` : surface.label,
+        'aria-label': surface.disabled ? `${surface.label} (coming soon)` : surface.label,
+        ...(surface.active ? { 'aria-pressed': 'true' } : {}),
+        ...(surface.disabled ? { 'aria-disabled': 'true' } : {}),
+      },
+    }, [surface.icon()])),
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
 let _settingsOpen = false;
 
-function renderAppearanceEntryPoint(redraw: () => void): VNode {
-  return h('div.lib-shell-toolbar', [
+
+
+
+
+
+
+
+
+
+
+
+function renderItemListTempHeader(redraw: () => void, onImportPgnClick: () => void): VNode {
+  return h('div.lib-items-temp-header', [
+    h('button.study-btn.study-btn--import', { on: { click: onImportPgnClick } }, 'Import PGN'),
     h('button.nav-settings-trigger', {
       class: { '--active': _settingsOpen },
       attrs: {
@@ -305,16 +414,19 @@ function renderAppearanceEntryPoint(redraw: () => void): VNode {
 }
 
 /**
- * Render the Study Navigator's composing shell: nav pane (T5-D05) + resize divider + item-list
- * pane (T5-D06), wired with BASIC single-selection over the P1 navigation-index tree.
+ * Render the Study Navigator's composing shell: tool rail (OD-2) + nav pane (T5-D05) + resize
+ * divider + item-list pane (T5-D06, with its own temp header row), wired with BASIC
+ * single-selection over the P1 navigation-index tree.
  *
  * `tree` is the current `studyNavigationTree()` snapshot; `allItems` is the currently-loaded
- * `StudyItem[]` (`allStudies()`) those tree itemIds are resolved against.
+ * `StudyItem[]` (`allStudies()`) those tree itemIds are resolved against. `onImportPgnClick` opens
+ * libraryView.ts's Import PGN modal (its state stays private to that module).
  */
 export function renderNavigatorShell(
   tree: StudyNavigationTree,
   allItems: readonly StudyItem[],
   redraw: () => void,
+  onImportPgnClick: () => void,
 ): VNode {
   // Apply-on-mount + apply-on-every-render (T5-D08): cheap and idempotent (a handful of
   // `document.body.style.setProperty` calls), so re-running it on every redraw — including the
@@ -337,14 +449,22 @@ export function renderNavigatorShell(
   const items = resolveItems(resolveSelectedItemIds(tree, _selection), byId);
   const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw);
 
-  return h('div.lib-shell-wrap', [
-    renderAppearanceEntryPoint(redraw),
-    _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
-    h('div.lib-shell', {
-      attrs: { style: _navDivider.styleDeclaration() },
-    }, [
-      navPane,
-      renderDivider(redraw),
+
+
+
+
+
+
+
+  return h('div.lib-shell', {
+    attrs: { style: _navDivider.styleDeclaration() },
+  }, [
+    renderRail(),
+    navPane,
+    renderDivider(redraw),
+    h('div.lib-items-wrap', [
+      renderItemListTempHeader(redraw, onImportPgnClick),
+      _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
       itemListPane,
     ]),
   ]);

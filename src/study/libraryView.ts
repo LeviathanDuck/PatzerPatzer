@@ -2057,19 +2057,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   // Lazy-load folder data if not yet loaded -- the P1 navigation-index tree needs real folders.
   if (!foldersLoaded()) loadFolders(redraw);
 
+  const openImportModal = () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); };
+
   return h('div.study-page.study-page--dual-pane', [
-    h('div.study-page__header', [
-      h('h1', 'Study Library'),
-      h('div.study-page__header-actions', [
-        h('button.study-btn.study-btn--import', {
-          on: { click: () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); } },
-        }, 'Import PGN'),
-      ]),
-    ]),
-
-
-
-    practiceLoaded() ? renderPracticeDashboard(redraw) : null,
 
 
 
@@ -2077,25 +2067,8 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
 
 
-    renderNavigatorShell(studyNavigationTree(), allStudies(), redraw),
 
-    // Pagination is unchanged (CR-2/CR-3: studies load via IDB cursor pages, never an eager full
-    // scan) -- "Load more" still appends additional pages into the same in-memory studies state
-    // the navigator tree/item-list both read on every render, so a library beyond one page keeps
-    // working exactly as before, just relocated below the shell instead of below the old flat list.
-    hasMore()
-      ? h('div.study-list__load-more', [
-          isLoadingMore()
-            ? h('span.study-list__loading', 'Loading…')
-            : h('button.study-btn.study-btn--load-more', {
-                on: { click: () => {
-                  void loadNextPage(redraw).then(loaded => {
-                    if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
-                  });
-                } },
-              }, 'Load more'),
-        ])
-      : null,
+    renderNavigatorShell(studyNavigationTree(), allStudies(), redraw, openImportModal),
 
 
 
@@ -2105,47 +2078,78 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
 
 
+    h('div.study-page__subordinate', [
 
-    h('div.study-page__bottom-controls', [
-      allStudies().length === 0
-        ? (isSeeding()
-            ? h('span.study-page__seeding', 'Seeding sample studies…')
-            : h('button.study-btn.study-btn--seed', {
-                on: { click: () => { void seedSampleStudies(redraw); } },
-              }, 'Seed sample studies'))
+
+      practiceLoaded() ? renderPracticeDashboard(redraw) : null,
+
+      // Pagination is unchanged (CR-2/CR-3: studies load via IDB cursor pages, never an eager full
+      // scan) -- "Load more" still appends additional pages into the same in-memory studies state
+      // the navigator tree/item-list both read on every render.
+      hasMore()
+        ? h('div.study-list__load-more', [
+            isLoadingMore()
+              ? h('span.study-list__loading', 'Loading…')
+              : h('button.study-btn.study-btn--load-more', {
+                  on: { click: () => {
+                    void loadNextPage(redraw).then(loaded => {
+                      if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
+                    });
+                  } },
+                }, 'Load more'),
+          ])
         : null,
-      h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--repertoire', {
-        class: { 'study-btn--active': _repertoireSectionOpen },
-        attrs: {
-          type: 'button',
-          title: _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
-          'aria-label': _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
-          'aria-expanded': String(_repertoireSectionOpen),
-        },
-        on: { click: () => { _repertoireSectionOpen = !_repertoireSectionOpen; redraw(); } },
-      }, 'Repertoire'),
-      h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--orp', {
-        class: { 'study-btn--active': _orpSectionOpen },
-        attrs: {
-          type: 'button',
-          title: _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
-          'aria-label': _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
-          'aria-expanded': String(_orpSectionOpen),
-        },
-        on: { click: () => { _orpSectionOpen = !_orpSectionOpen; redraw(); } },
-      }, 'Opening Repetition Practice'),
+
+
+
+
+
+
+
+
+
+
+      h('div.study-page__bottom-controls', [
+        allStudies().length === 0
+          ? (isSeeding()
+              ? h('span.study-page__seeding', 'Seeding sample studies…')
+              : h('button.study-btn.study-btn--seed', {
+                  on: { click: () => { void seedSampleStudies(redraw); } },
+                }, 'Seed sample studies'))
+          : null,
+        h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--repertoire', {
+          class: { 'study-btn--active': _repertoireSectionOpen },
+          attrs: {
+            type: 'button',
+            title: _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
+            'aria-label': _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
+            'aria-expanded': String(_repertoireSectionOpen),
+          },
+          on: { click: () => { _repertoireSectionOpen = !_repertoireSectionOpen; redraw(); } },
+        }, 'Repertoire'),
+        h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--orp', {
+          class: { 'study-btn--active': _orpSectionOpen },
+          attrs: {
+            type: 'button',
+            title: _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
+            'aria-label': _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
+            'aria-expanded': String(_orpSectionOpen),
+          },
+          on: { click: () => { _orpSectionOpen = !_orpSectionOpen; redraw(); } },
+        }, 'Opening Repetition Practice'),
+      ]),
+
+
+
+
+
+      _repertoireSectionOpen ? renderRepertoireComplianceSection(redraw) : null,
+      _repertoireSectionOpen ? renderRepertoireSourcesSection(redraw) : null,
+
+
+
+      _orpSectionOpen ? renderOrpSection(redraw) : null,
     ]),
-
-
-
-
-
-    _repertoireSectionOpen ? renderRepertoireComplianceSection(redraw) : null,
-    _repertoireSectionOpen ? renderRepertoireSourcesSection(redraw) : null,
-
-
-
-    _orpSectionOpen ? renderOrpSection(redraw) : null,
 
     _showImportModal ? renderImportModal(redraw) : null,
   ]);
