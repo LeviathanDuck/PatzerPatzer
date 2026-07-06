@@ -519,28 +519,20 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
       ]);
 
     case 'reviewed': {
-      // Navy split capsule (approved redesign 2026-07-05): one action (`opts.onOpenReview`) —
-      // the 34px `↗` cell is a visual affordance of the same click, not a second control. Compact
-      // rows get a simpler tinted navy pill instead of the split-cell treatment (no room for a
-      // dedicated icon cell); it collapses to a near-square icon-only tile via the same
-      // `.grr__review-collapse` container-query mechanism the previous "✓ Reviewed" pill used.
+
+
+
+
+
+
       const title = 'Open in the analysis board';
-      if (opts.compact) {
-        return h('button.grr__review.--reviewed.--compact', {
-          attrs: { type: 'button', title, 'aria-label': title },
-          on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
-        }, [
-          h('span.grr__review-check', '✓'),
-          h('span.grr__review-collapse', ' Review'),
-        ]);
-      }
-      return h('button.grr__review.--reviewed', {
+      return h('button.grr__review.--reviewed' + (opts.compact ? '.--compact' : ''), {
         attrs: { type: 'button', title, 'aria-label': title },
         on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
       }, [
         h('span.grr__review-main', [
           h('span.grr__review-check', '✓'),
-          ' Review',
+          opts.compact ? h('span.grr__review-collapse', ' Review') : ' Review',
         ]),
         h('span.grr__review-icon-cell', { attrs: { 'aria-hidden': 'true' } }, '↗'),
       ]);
