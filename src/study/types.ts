@@ -1,6 +1,8 @@
 
 
 
+import type { SaveFlowGameDestination } from '../save/saveFlowCtrl';
+
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
 
 // Folder entity — persisted to the 'folders' IDB store.
@@ -28,12 +30,40 @@ export interface StudyItem {
   eco?: string;
   opening?: string;
   tags: string[];
-  folders: string[];
+  folders: string[];                // StudyFolder.id membership (P2-LIB-11; name-based pre-2026-07-06 migration — see studyDb.ts planStudyFolderMigration)
   favorite: boolean;
   notes?: string;                  // game-level free-text notes
   bookmarks?: string[];            // TreePath strings for bookmarked positions
   createdAt: number;
   updatedAt: number;
+
+
+
+
+
+
+
+
+
+
+  /**
+   * Study destination section chosen at save time (P2-LIB-2's four sections). Absent for
+   * quick saves — see `uncategorized`.
+   */
+  destination?: SaveFlowGameDestination;
+
+
+
+
+
+
+  purpose?: string;
+  /**
+   * True when this record was saved via the save-flow modal's Quick save escape
+   * (P2-SAVE-2) — filed into the shared Unsorted/General bucket instead of being given a
+   * `destination`.
+   */
+  uncategorized?: boolean;
 }
 
 // Trainable sequence for repetition practice — persisted to the 'practice-lines' IDB store.

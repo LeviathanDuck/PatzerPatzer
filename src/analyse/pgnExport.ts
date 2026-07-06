@@ -18,6 +18,7 @@ import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { Shape, TreeNode, TreePath } from '../tree/types';
+import { buildQuestionnaireSummaryComment, serializeQuestionnaireTags } from './questionnaire/model';
 
 // --- Injected deps ---
 
@@ -257,9 +258,20 @@ export function buildPgn(annotated: boolean): string {
   if (game?.termination) headers.push(['Termination', game.termination]);
 
   if (annotated) headers.push(['Annotator', 'PatzerPro']);
+
+
+
+
+
+
+  if (game?.questionnaire) headers.push(...serializeQuestionnaireTags(game.questionnaire));
+
   const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');
 
+  // The human-readable { Patzer: ... } summary comment (T1 contract §3's dual-home copy) is
+  // emitted immediately before move 1, ahead of the mainline's own move text.
   const parts: string[] = [];
+  if (game?.questionnaire) parts.push(buildQuestionnaireSummaryComment(game.questionnaire));
   const firstNode = ctrl.root.children[0];
   if (firstNode) {
     parts.push(renderPgnLine(

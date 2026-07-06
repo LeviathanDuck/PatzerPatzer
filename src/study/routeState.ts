@@ -10,7 +10,7 @@ export interface StudyRouteState {
   q: string;
   source: StudyRouteSource | null;
   tag: string | null;
-  folder: string | null;
+  folder: string | null;  // StudyFolder.id (P2-LIB-11) — display name is resolved via a lookup, never stored here
   fav: boolean;
   sortKey: StudySortKey;
   sortDir: StudySortDir;
@@ -54,7 +54,7 @@ export interface StudyRouteStateParseResult {
 
 export interface StudyRouteAvailability {
   tags?: Iterable<string>;
-  folders?: Iterable<string>;
+  folders?: Iterable<string>;  // known StudyFolder.id values (P2-LIB-11), not display names
 }
 
 export interface StudyRouteAvailabilityResolution {
@@ -311,6 +311,12 @@ export function studyRouteNeedsFullLibraryScan(state: StudyRouteState): boolean 
   return Boolean(state.q || state.source || state.tag || state.folder || state.fav);
 }
 
+/**
+ * Clears route fields that no longer resolve against the caller-supplied availability sets.
+ * `availability.folders` must be known StudyFolder ids (P2-LIB-11): a pre-migration
+ * `#/study?folder=<name>` link will not match any id and is cleared here via the same
+ * recovery path already used for an unavailable tag — accepted breakage, not silently kept.
+ */
 export function resolveStudyRouteAvailability(
   state: StudyRouteState,
   availability: StudyRouteAvailability,

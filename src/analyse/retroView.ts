@@ -26,6 +26,8 @@ import { evalWinChances } from '../engine/winchances';
 import { retroCandidateToDefinition } from '../puzzles/adapters';
 import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
+import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
+import renderSaveFlowModal from '../save/saveFlowView';
 import type { RetroOutcome } from './retroCtrl';
 import {
   getSeverityFeedback,
@@ -206,6 +208,12 @@ export interface RetroStripDeps {
   onClose:           () => void;
   /** Returns current engine search depth for the progress bar. */
   getEvalDepth?:     () => number | undefined;
+  /**
+   * Opponent's name for the current game, when known. Used to build the
+   * save-flow modal's source context line (e.g. "vs NajdorfNick77").
+   * Undefined when no game is loaded or the user's color/opponent is unknown.
+   */
+  opponentName?:     string;
 }
 
 // Eval progress bar — mirrors lichess-org/lila: retroView.ts renderEvalProgress
@@ -477,13 +485,122 @@ const _savedPaths = new Set<string>();
 // Tracks paths that are currently showing the "Saved!" confirmation, to revert after timeout.
 const _savingConfirm = new Set<string>();
 
+
+
+
+
+
+
+
+let _activeSaveFlow: SaveFlowCtrl | null = null;
+
+// Move-number prefix for a ply, e.g. "24." (white) or "24..." (black).
+function movePrefixLabel(ply: number): string {
+  const moveNumber = Math.max(1, Math.ceil(ply / 2));
+  return ply % 2 === 1 ? `${moveNumber}.` : `${moveNumber}...`;
+}
+
+/**
+ * Builds the save-flow modal's context lines for an LFYM candidate.
+ * `variant` distinguishes the two LFYM save entry points that both render through
+ * renderSaveToLibrary: 'save' is the in-session per-candidate save (P2-LFYM-1, shown on
+ * fail/view), 'force-save' is saving an already-solved puzzle on demand (P2-LFYM-3,
+ * shown on win).
+ */
+function lfymSaveContext(
+  cand: RetroCandidate,
+  variant: 'save' | 'force-save',
+  opponentName: string | undefined,
+): SaveFlowContext {
+  const movePart = `${movePrefixLabel(cand.ply)} ${cand.playedMoveSan}`;
+  const line = opponentName
+    ? `From Learn From Your Mistakes — vs ${opponentName} · ${movePart}`
+    : `From Learn From Your Mistakes — ${movePart}`;
+  const source = variant === 'force-save'
+    ? 'In-session force-save (P2-LFYM-3)'
+    : 'In-session save (P2-LFYM-1)';
+  return { line, source };
+}
+
+/**
+ * Persists a resolved save-flow result onto a fresh puzzle definition built from the
+ * retro candidate. Same underlying persistence as before T2 (puzzle-v1 `definitions`
+ * store via savePuzzleDefinition, plus a first-attempt record via saveAttempt when a
+ * retro outcome is available) — now carrying the categorize-on-save fields
+ * (P2-SAVE-1..4) and LFYM provenance.
+ */
+function persistLfymSaveFlowResult(
+  cand: RetroCandidate,
+  outcome: RetroOutcome | undefined,
+  result: SaveFlowResult,
+  redraw: () => void,
+): void {
+  const def = retroCandidateToDefinition(cand);
+  if (result.mode === 'quick') {
+    def.uncategorized = true;
+  } else if (result.primaryCategory !== undefined) {
+    def.primaryCategory = result.primaryCategory;
+  }
+  if (result.tags.length > 0) def.tags = result.tags;
+  if (result.notes !== undefined) def.saveNotes = result.notes;
+  def.savedFrom = {
+    gameId: cand.gameId,
+    ply: cand.ply,
+    fen: cand.fenBefore,
+    source: 'lfym',
+  };
+  savePuzzleDefinition(def).then(() => {
+    _savedPaths.add(cand.path);
+    _savingConfirm.add(cand.path);
+    redraw();
+    setTimeout(() => { _savingConfirm.delete(cand.path); redraw(); }, 2000);
+    // Persist retro outcome as first-attempt record.
+    if (outcome) {
+      saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
+        console.warn('[retro-save] attempt save failed', e),
+      );
+    }
+  });
+}
+
+// Opens the universal save-flow modal for the current candidate (P2-SAVE-1). The
+// candidate's retro outcome is captured now (not re-read on resolve) so a later state
+// change cannot shift which outcome gets attached to the saved record.
+function openLfymSaveFlow(
+  cand: RetroCandidate,
+  retro: RetroCtrl,
+  variant: 'save' | 'force-save',
+  opponentName: string | undefined,
+  redraw: () => void,
+): void {
+  const outcome = retro.getOutcome(cand.ply);
+  _activeSaveFlow = new SaveFlowCtrl({
+    itemType: 'puzzle',
+    context: lfymSaveContext(cand, variant, opponentName),
+    onResolve: result => {
+      _activeSaveFlow = null;
+      persistLfymSaveFlowResult(cand, outcome, result, redraw);
+    },
+    onCancel: () => {
+      _activeSaveFlow = null;
+      redraw();
+    },
+  }, redraw);
+  redraw();
+}
+
 /**
  * Renders a "Save to Library" / "Saved!" button for the current retro candidate.
  * Shown on win, fail, and view feedback states so the user can persist the exercise.
+ * Clicking opens the universal save-flow modal (P2-SAVE-1) instead of saving directly;
+ * `variant` labels which LFYM ledger entry point this call site is (P2-LFYM-1 in-session
+ * save on fail/view, P2-LFYM-3 force-save on win) in the modal's context line.
  */
 function renderSaveToLibrary(
   cand: RetroCandidate,
   retro: RetroCtrl,
+  variant: 'save' | 'force-save',
+  opponentName: string | undefined,
   redraw: () => void,
 ): VNode {
   const alreadySaved = _savedPaths.has(cand.path);
@@ -496,22 +613,7 @@ function renderSaveToLibrary(
     return h('div.retro-save', h('span.retro-save__confirm', 'Saved!'));
   }
   return h('div.retro-save', h('button.retro-save__btn', {
-    on: { click: () => {
-      const def = retroCandidateToDefinition(cand);
-      const outcome = retro.getOutcome(cand.ply);
-      savePuzzleDefinition(def).then(() => {
-        _savedPaths.add(cand.path);
-        _savingConfirm.add(cand.path);
-        redraw();
-        setTimeout(() => { _savingConfirm.delete(cand.path); redraw(); }, 2000);
-        // Persist retro outcome as first-attempt record.
-        if (outcome) {
-          saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
-            console.warn('[retro-save] attempt save failed', e),
-          );
-        }
-      });
-    }},
+    on: { click: () => openLfymSaveFlow(cand, retro, variant, opponentName, redraw) },
   }, LFYM_MESSAGES[retroConfig.feedbackTone].saveToLibrary));
 }
 
@@ -635,7 +737,7 @@ function renderBulkSaveToLibrary(
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts
  */
 export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
-  const { retro, navigate, redraw, uciToSan, onClose, getEvalDepth } = deps;
+  const { retro, navigate, redraw, uciToSan, onClose, getEvalDepth, opponentName } = deps;
   if (!retro) return null;
 
   const feedback        = retro.feedback();
@@ -733,7 +835,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('strong', strongText),
           renderDualEvalBoxes(retro),
           renderSkipOrView(retro, navigate, redraw),
-          renderSaveToLibrary(cand, retro, redraw),
+          renderSaveToLibrary(cand, retro, 'save', opponentName, redraw),
           h('div.retro-save', h('button.retro-save__btn', { on: { click: () => {
             retro.resetForRetry();
             resetRetroVisibleEngineUi();
@@ -771,7 +873,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
             h('strong', winMsg),
             renderDualEvalBoxes(retro),
             renderReasonNote(cand, wk === 'exact', candBestSan),
-            renderSaveToLibrary(cand, retro, redraw),
+            renderSaveToLibrary(cand, retro, 'force-save', opponentName, redraw),
             h('div.retro-save', h('button.retro-save__btn', { on: { click: () => {
               retro.resetForRetry();
               resetRetroVisibleEngineUi();
@@ -797,7 +899,7 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
             h('em', [msg.viewBestWas + ' ', h('strong', bestSan)]),
             renderDualEvalBoxes(retro),
             renderReasonNote(cand, false, candBestSan),
-            renderSaveToLibrary(cand, retro, redraw),
+            renderSaveToLibrary(cand, retro, 'save', opponentName, redraw),
             h('div.retro-save', h('button.retro-save__btn', { on: { click: () => {
               retro.resetForRetry();
               resetRetroVisibleEngineUi();
@@ -825,4 +927,26 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}
     h('div.retro-feedback.' + feedback, feedbackContent),
   ]);
+}
+
+
+
+
+
+
+
+
+
+export function resetLfymSaveFlow(): void {
+  _activeSaveFlow = null;
+}
+
+/**
+ * Renders the active universal save-flow modal for an LFYM save (P2-SAVE-1), or null
+ * when no save is in progress. Mount this at the app shell root alongside other
+ * always-rendered overlay slots — same idiom as
+ * src/diagnostics/reviewError/submitModal.ts's renderReviewErrorPackageSubmitModal.
+ */
+export function renderActiveLfymSaveFlowModal(): VNode | null {
+  return _activeSaveFlow ? renderSaveFlowModal(_activeSaveFlow) : null;
 }

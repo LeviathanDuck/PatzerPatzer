@@ -69,11 +69,12 @@ import { executeResearchImport } from './import';
 import { openingDataHasMove } from './explorer';
 import { explorerCtrl } from './explorerCtrl';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
-import { renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
+import { clearCevalPositionOverride, renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import {
-  engineEnabled, evalCurrentPosition, currentEval,
+  engineEnabled, evalCurrentPosition,
   buildEngineArrowShapes,
+  visibleEvalForFen,
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
@@ -95,6 +96,10 @@ import {
   type EnginePositionContext,
 } from '../engine/positionContext';
 import { saveOrpLineToLibrary } from '../study/saveAction';
+import { saveStudy } from '../study/studyDb';
+import type { StudyItem } from '../study/types';
+import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
+import renderSaveFlowModal from '../save/saveFlowView';
 import { repertoireSources } from '../study/studyCtrl';
 import { buildRepertoireArrowShapes } from '../repertoire/arrowShapes';
 import {
@@ -1891,7 +1896,7 @@ function renderOpeningTreeTool(
       renderPlayerStrip(collection, 'top'),
       h('div.openings__board-stage', [
         engineEnabled ? h('div.openings__eval-slot', [
-          renderEvalBar(engineEnabled, currentEval, fen),
+          renderEvalBar(engineEnabled, visibleEvalForFen(fen), fen),
         ]) : null,
         h('div.openings__board-wrap', [
           renderOpeningsBoard(node, redraw),
@@ -1906,7 +1911,7 @@ function renderOpeningTreeTool(
       renderOpeningsActionMenu(redraw),
       // Keep the engine override in sync with the current openings position on every render.
       (() => {
-        setCevalPositionOverride(openingsPositionContext(fen));
+        setCevalPositionOverride('openings-live', openingsPositionContext(fen));
         return null;
       })(),
       h('div.openings__right-columns', [
@@ -2020,10 +2025,12 @@ function renderOffTreeIndicator(): VNode | null {
 }
 
 function hasVisibleOpeningEngineLines(): boolean {
-  if (currentEval.cp !== undefined || currentEval.mate !== undefined || currentEval.moves?.length) {
+  const fen = currentOpeningsBoardFen() ?? sessionNode()?.fen ?? '';
+  const visibleEval = fen ? visibleEvalForFen(fen) : {};
+  if (visibleEval.cp !== undefined || visibleEval.mate !== undefined || visibleEval.moves?.length) {
     return true;
   }
-  return currentEval.lines?.some(line =>
+  return visibleEval.lines?.some(line =>
     line.cp !== undefined || line.mate !== undefined || line.moves?.length,
   ) === true;
 }
@@ -2093,7 +2100,7 @@ function renderSessionPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
-        on: { click: () => { _openingsCg = undefined; setCevalPositionOverride(null); closeSession(); redraw(); } },
+        on: { click: () => { _openingsCg = undefined; clearCevalPositionOverride('openings-live'); closeSession(); redraw(); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opening Tree'),
       h('span.openings__session-meta', node
@@ -2109,6 +2116,7 @@ function renderSessionPage(redraw: () => void): VNode {
       // four research tools removed).
       ...renderOpeningTreeTool(collection, node, path, redraw),
     ]),
+    renderActiveOpeningsSaveFlowModal(),
   ]);
 }
 
@@ -2245,6 +2253,121 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
 let _saveLibFeedback: string | null = null;
 let _saveLibFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
+
+
+
+
+
+
+
+
+
+
+let _activeOpeningsSaveFlow: SaveFlowCtrl | null = null;
+
+
+
+function openingsSaveFlowContext(sans: string[]): SaveFlowContext {
+  const moveTail = sans.length > 0 ? sans.slice(-4).join(' ') : '';
+  return {
+    line: moveTail ? `From Opening Tree — ${moveTail}` : 'From Opening Tree — current line',
+    source: 'Save to Library (opening line)',
+  };
+}
+
+function persistOpeningsSaveFlowResult(
+  path: readonly string[],
+  sans: string[],
+  trainAs: 'white' | 'black',
+  collection: ResearchCollection | null,
+  result: SaveFlowResult,
+  redraw: () => void,
+): void {
+  // Opening name and ECO are not yet available from OpeningTreeNode —
+  // ECO lookup is a future task. Pass undefined for both fields.
+  void saveOrpLineToLibrary([...path], sans, trainAs, collection).then(saved => {
+    if (!saved) {
+      // null result here means deriveFens rejected the UCI (the too-short guard already
+      // fired above, so this branch is an invalid-moves failure, not a length issue).
+      _saveLibFeedback = 'Save failed — invalid moves';
+      if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+      _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+      redraw();
+      return undefined;
+    }
+
+    const item: StudyItem = { ...saved.studyItem };
+    if (result.mode === 'quick') {
+      item.uncategorized = true;
+    } else if (result.destination !== undefined) {
+      item.destination = result.destination;
+    }
+    if (result.purpose !== undefined) item.purpose = result.purpose;
+    if (result.notes !== undefined) item.notes = result.notes;
+    if (result.tags.length > 0) item.tags = Array.from(new Set([...item.tags, ...result.tags]));
+
+    return saveStudy(item).then(() => {
+      _saveLibFeedback = 'Saved to Library!';
+      if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+      _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+      redraw();
+    });
+  }).catch((err: unknown) => {
+    const msg = err instanceof Error ? err.message : '';
+    _saveLibFeedback = msg ? `Save failed — ${msg}` : 'Save failed';
+    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+    redraw();
+  });
+}
+
+/** Opens the universal save-flow modal for the current opening line (P2-SAVE-1). */
+function openOpeningsSaveFlow(
+  path: readonly string[],
+  sans: string[],
+  trainAs: 'white' | 'black',
+  collection: ResearchCollection | null,
+  redraw: () => void,
+): void {
+  _activeOpeningsSaveFlow = new SaveFlowCtrl({
+    itemType: 'game',
+    context: openingsSaveFlowContext(sans),
+    onResolve: result => {
+      _activeOpeningsSaveFlow = null;
+      persistOpeningsSaveFlowResult(path, sans, trainAs, collection, result, redraw);
+    },
+    onCancel: () => {
+      _activeOpeningsSaveFlow = null;
+      redraw();
+    },
+  }, redraw);
+  redraw();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+export function resetOpeningsSaveFlow(): void {
+  _activeOpeningsSaveFlow = null;
+}
+
+/**
+ * Renders the active Opening Tree save-flow modal, or null when none is open. Mounted at the
+ * session page root (renderSessionPage) so it overlays regardless of which right-workspace
+ * column/tool is active.
+ */
+function renderActiveOpeningsSaveFlowModal(): VNode | null {
+  return _activeOpeningsSaveFlow ? renderSaveFlowModal(_activeOpeningsSaveFlow) : null;
+}
+
 function handleSaveToLibrary(path: readonly string[], redraw: () => void): void {
   // Guard: canonical helper requires at least 3 half-moves to produce a drillable sequence.
   // Show a specific message rather than silently doing nothing.
@@ -2272,26 +2395,7 @@ function handleSaveToLibrary(path: readonly string[], redraw: () => void): void 
     }
   }
 
-  // Opening name and ECO are not yet available from OpeningTreeNode —
-  // ECO lookup is a future task. Pass undefined for both fields.
-  void saveOrpLineToLibrary([...path], sans, trainAs, collection).then(result => {
-    if (result) {
-      _saveLibFeedback = 'Saved to Library!';
-    } else {
-      // null result here means deriveFens rejected the UCI (the too-short guard already
-      // fired above, so this branch is an invalid-moves failure, not a length issue).
-      _saveLibFeedback = 'Save failed — invalid moves';
-    }
-    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
-    redraw();
-  }).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : '';
-    _saveLibFeedback = msg ? `Save failed — ${msg}` : 'Save failed';
-    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
-    redraw();
-  });
+  openOpeningsSaveFlow(path, sans, trainAs, collection, redraw);
 }
 
 function renderOpeningsMoveList(
@@ -2367,7 +2471,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
       insert: (vnode) => {
         const dests = destsForFen(fen);
         _lastBoardFen = fen;
-        setCevalPositionOverride(openingsPositionContext(fen));
+        setCevalPositionOverride('openings-live', openingsPositionContext(fen));
         if (engineEnabled) evalCurrentPosition();
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
@@ -2580,7 +2684,7 @@ function scheduleNextAnimMove(redraw: () => void, delay = ANIM_MOVE_MS): void {
  */
 function scheduleOpeningsEngineEval(fen: string): void {
   // Immediate: keep the override position current for the stale guard.
-  setCevalPositionOverride(openingsPositionContext(fen));
+  setCevalPositionOverride('openings-live', openingsPositionContext(fen));
   // Immediate: cancel the in-flight search so we don't waste time on a stale FEN.
   stopProtocol();
   // Record the navigation event and schedule eval after the quiet period.
@@ -2668,7 +2772,7 @@ function buildOpeningsAutoShapes(node: OpeningTreeNode | null): DrawShape[] {
     ...(explorerCtrl.enabled && explorerCtrl.config.db === 'repertoire' && !isRapid()
       ? buildRepertoireArrowShapes(repertoireSources(), fen)
       : []),
-    ...(isRapid() ? [] : buildEngineArrowShapes()),
+    ...(isRapid() ? [] : buildEngineArrowShapes(fen ? { fen } : undefined)),
   ];
 }
 

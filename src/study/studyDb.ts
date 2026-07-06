@@ -439,3 +439,154 @@ export async function deleteFolder(id: string): Promise<void> {
     console.warn('[studyDb] deleteFolder failed', e);
   }
 }
+
+
+
+
+
+
+
+
+
+export interface FolderMigrationCollision {
+  name: string;
+  matchCount: number;
+  resolvedFolderId: string;
+}
+
+export interface FolderMigrationPlan {
+  /** StudyItem.id -> rewritten `.folders` array; present only for items that actually changed. */
+  itemUpdates: Map<string, string[]>;
+  /** New StudyFolder records to persist for names with no backing record — the confirmed orphan
+   *  case (a name typed directly into `.folders` with no StudyFolder record ever created). */
+  newFolders: StudyFolder[];
+  /** Name collisions resolved during planning (earliest `createdAt` won), for diagnostics. */
+  collisions: FolderMigrationCollision[];
+}
+
+/**
+ * Pure planning step for the StudyItem.folders name->id migration (P2-LIB-11). Given the
+ * currently-persisted folder records and a batch of study items, computes which items need
+ * their `.folders` array rewritten from names to ids, which brand-new StudyFolder records must
+ * be synthesized for orphaned names, and which name collisions were resolved. Never drops a
+ * membership entry: an unmatched name always synthesizes a folder; a name matching two or more
+ * records resolves to the earliest-created match, deterministically, never a silent guess.
+ *
+ * Idempotent and self-detecting: an entry that already equals a known folder id is left alone,
+ * so re-running against already-migrated items returns an empty plan (no IDB writes needed) —
+ * this also means it is safe to call on every library load rather than gated behind a one-time
+ * flag, which self-heals any name-based entry a not-yet-updated caller creates later (T5-D02
+ * finishes repointing every UI call site at ids).
+ */
+export function planStudyFolderMigration(
+  items: readonly StudyItem[],
+  existingFolders: readonly StudyFolder[],
+  now: number = Date.now(),
+): FolderMigrationPlan {
+  const knownIds = new Set(existingFolders.map(f => f.id));
+  const byName = new Map<string, StudyFolder[]>();
+  for (const f of existingFolders) {
+    const list = byName.get(f.name);
+    if (list) list.push(f); else byName.set(f.name, [f]);
+  }
+
+  const itemUpdates = new Map<string, string[]>();
+  const newFolders: StudyFolder[] = [];
+  const collisions: FolderMigrationCollision[] = [];
+  let synthSeq = 0;
+
+  const resolveName = (name: string): string => {
+    const matches = byName.get(name);
+    if (!matches || matches.length === 0) {
+      const synthesized: StudyFolder = {
+        id:        `folder_${now}_${synthSeq++}`,
+        name,
+        createdAt: now,
+        updatedAt: now,
+      };
+      byName.set(name, [synthesized]);
+      knownIds.add(synthesized.id);
+      newFolders.push(synthesized);
+      return synthesized.id;
+    }
+    if (matches.length === 1) return matches[0]!.id;
+    const earliest = [...matches].sort((a, b) => a.createdAt - b.createdAt)[0]!;
+    collisions.push({ name, matchCount: matches.length, resolvedFolderId: earliest.id });
+    return earliest.id;
+  };
+
+  for (const item of items) {
+
+
+
+
+
+    const itemFolders = item.folders ?? [];
+    if (itemFolders.length === 0) continue;
+    if (itemFolders.every(entry => knownIds.has(entry))) continue;
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const entry of itemFolders) {
+      const id = knownIds.has(entry) ? entry : resolveName(entry);
+      if (!seen.has(id)) { seen.add(id); next.push(id); }
+    }
+    itemUpdates.set(item.id, next);
+  }
+
+  return { itemUpdates, newFolders, collisions };
+}
+
+function recordFolderMigrationCollision(collision: FolderMigrationCollision): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Warn,
+    source: 'study/studyDb',
+    sourceTag: 'folder-migration-name-collision',
+    message: 'folder-migration-name-collision',
+    metadata: {
+      name: collision.name,
+      matchCount: collision.matchCount,
+      resolvedFolderId: collision.resolvedFolderId,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+/**
+ * Apply a FolderMigrationPlan: persist synthesized folder records, log any collisions, then
+ * rewrite + persist each affected StudyItem. Mutates `items` in place by index (same shape
+ * callers already keep for in-memory study lists).
+ */
+export async function applyStudyFolderMigrationPlan(
+  items: StudyItem[],
+  plan: FolderMigrationPlan,
+): Promise<void> {
+  for (const folder of plan.newFolders) {
+    await saveFolder(folder);
+  }
+  for (const collision of plan.collisions) {
+    recordFolderMigrationCollision(collision);
+  }
+  for (let i = 0; i < items.length; i++) {
+    const nextFolders = plan.itemUpdates.get(items[i]!.id);
+    if (!nextFolders) continue;
+    const migrated: StudyItem = { ...items[i]!, folders: nextFolders };
+    items[i] = migrated;
+    await saveStudy(migrated);
+  }
+}
+
+/**
+ * Plan and apply the folder-ID migration for a batch of already-loaded StudyItems in one call.
+ * Returns the folder list the caller should hold onto afterward (existingFolders plus any newly
+ * synthesized records) — callers keep this as their in-memory folder state.
+ */
+export async function migrateStudyFolders(
+  items: StudyItem[],
+  existingFolders: readonly StudyFolder[],
+): Promise<StudyFolder[]> {
+  const plan = planStudyFolderMigration(items, existingFolders);
+  if (plan.newFolders.length === 0 && plan.itemUpdates.size === 0) return [...existingFolders];
+  await applyStudyFolderMigrationPlan(items, plan);
+  return [...existingFolders, ...plan.newFolders];
+}

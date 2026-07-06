@@ -3,7 +3,7 @@
 // Adapted from lichess-org/lila: ui/study/src/studyCtrl.ts state model.
 
 import { parsePgn } from 'chessops/pgn';
-import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb } from './studyDb';
+import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders } from './studyDb';
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
@@ -44,6 +44,7 @@ import {
   type StudyRouteState,
 } from './routeState';
 import type { StudyItem, TrainableSequence, PositionProgress, StudyFolder } from './types';
+import { StudyNavigationIndex, type StudyNavigationTree } from './navigationIndexProvider';
 import type { ImportedGame } from '../import/types';
 import { isAccountRepertoireSource, type RepertoireAccountFilters, type RepertoireMatchRecord, type RepertoireSide, type RepertoireSource } from '../repertoire';
 import {
@@ -186,8 +187,13 @@ let _repertoireComplianceReportFilters: RepertoireComplianceReportFilters = {
 
 let _folders:           StudyFolder[] = [];
 let _foldersLoaded:     boolean       = false;
-let _activeFolderName:  string | null = null;  // null = "All Studies"
+let _activeFolderId:    string | null = null;  // StudyFolder.id (P2-LIB-11); null = "All Studies"
 let _sidebarCollapsed:  boolean       = false;
+
+// --- Navigation index (Phase 2 T5-D04) ---
+// Derived adapter/index layer over _studies/_folders (see navigationIndexProvider.ts) — never a
+// second source of truth for study/folder data itself.
+const _studyNavigationIndex = new StudyNavigationIndex();
 
 // --- Annotation search index ---
 // Keyed by study id. Value is a lowercased concatenation of: notes, tags, PGN comments.
@@ -297,10 +303,16 @@ export function resetRepertoireComplianceReportFilters(): void {
 // Folder sidebar accessors
 export function folders(): StudyFolder[]          { return _folders; }
 export function foldersLoaded(): boolean          { return _foldersLoaded; }
-export function activeFolderName(): string | null { return _activeFolderName; }
+export function activeFolderId(): string | null   { return _activeFolderId; }
 export function sidebarCollapsed(): boolean       { return _sidebarCollapsed; }
-export function setActiveFolderName(name: string | null): void { _activeFolderName = name; }
+export function setActiveFolderId(id: string | null): void { _activeFolderId = id; }
 export function toggleSidebar(): void             { _sidebarCollapsed = !_sidebarCollapsed; }
+
+/** Derived sections -> nested folders -> items tree (P2-LIB-2 IA) over the currently loaded
+ * studies/folders. Synchronous and rebuildable; never blocks on background classification. */
+export function studyNavigationTree(): StudyNavigationTree {
+  return _studyNavigationIndex.buildTree(_studies, _folders);
+}
 
 // Multi-select accessors
 export function selectedIds(): ReadonlySet<string>  { return _selectedIds; }
@@ -346,12 +358,18 @@ export async function bulkDeleteStudies(): Promise<void> {
   _lastSelectedIdx = -1;
 }
 
-export async function bulkAddToFolder(folderName: string): Promise<void> {
+/**
+ * Add every selected study to the given folder by id (idempotent — skips studies already a
+ * member). P2-LIB-11: membership is id-keyed, so callers must already hold a real
+ * StudyFolder.id — the library-view bulk menu lists folders() records directly, never
+ * free-text names, so no name resolution happens here.
+ */
+export async function bulkAddToFolder(folderId: string): Promise<void> {
   const ids = Array.from(_selectedIds);
   for (const id of ids) {
     const study = _studies.find(s => s.id === id);
-    if (study && !study.folders.includes(folderName)) {
-      await updateStudy({ id, folders: [...study.folders, folderName] });
+    if (study && !study.folders.includes(folderId)) {
+      await updateStudy({ id, folders: [...study.folders, folderId] });
     }
   }
 }
@@ -361,15 +379,6 @@ export async function bulkSetFavorite(fav: boolean): Promise<void> {
   for (const id of ids) {
     await updateStudy({ id, favorite: fav });
   }
-}
-
-// Computed from all studies — unique sorted folder names.
-export function studyFolders(): string[] {
-  const folders = new Set<string>();
-  for (const s of _studies) {
-    for (const f of s.folders) folders.add(f);
-  }
-  return Array.from(folders).sort();
 }
 
 // Computed from all studies — unique sorted tag names.
@@ -399,7 +408,7 @@ export function studyLibraryRouteSnapshot(pages: number = loadedStudyPageCount()
     q:       _search,
     source:  _filterSrc as StudyRouteState['source'],
     tag:     _filterTag,
-    folder:  _activeFolderName,
+    folder:  _activeFolderId,
     fav:     _filterFav,
     sortKey: _sortKey,
     sortDir: _sortDir,
@@ -412,18 +421,19 @@ function applyStudyLibraryRouteState(state: StudyRouteState): void {
   _search = state.q;
   _filterSrc = state.source;
   _filterTag = state.tag;
-  _activeFolderName = state.folder;
+  _activeFolderId = state.folder;
   _filterFav = state.fav;
   _sortKey = state.sortKey;
   _sortDir = state.sortDir;
   _viewMode = state.view;
 }
 
-function studyFolderRouteNames(): string[] {
-  const names = new Set<string>();
-  for (const folder of _folders) names.add(folder.name);
-  for (const name of studyFolders()) names.add(name);
-  return Array.from(names);
+// Known StudyFolder ids (P2-LIB-11) — the availability set resolveStudyRouteAvailability
+// validates the route's `folder` param against. _folders already carries a record for every
+// id referenced by a loaded StudyItem (T5-D01's migration never leaves an id orphaned), so no
+// separate scan over _studies is needed here.
+function knownFolderIds(): string[] {
+  return _folders.map(f => f.id);
 }
 
 // --- CRUD ---
@@ -437,12 +447,16 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
   _page = 0;
   const dir: IDBCursorDirection = _sortDir === 'desc' ? 'prev' : 'next';
   const sortIdx = _sortKey === 'title' ? 'createdAt' : _sortKey;
-  return getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(items => {
+  return getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(async items => {
     _hasMore  = items.length > PAGE_SIZE;
     _studies  = _hasMore ? items.slice(0, PAGE_SIZE) : items;
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
+    if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded   = true;
     _indexDirty = true;
+    // initStudyLibrary loads one paginated page (CR-2/CR-3) — a partial batch, so this can only
+    // ever add/update the navigation index, never prune it (see navigationIndexProvider.ts).
+    _studyNavigationIndex.noteItemsLoaded(_studies);
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
@@ -455,14 +469,18 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
 }
 
 function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Promise<void> {
-  return listStudies().then(items => {
+  return listStudies().then(async items => {
     _studies = items;
     _hasMore = false;
     _loadingMore = false;
     _page = Math.max(0, requestedPages - 1);
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
+    if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded = true;
     _indexDirty = true;
+    // listStudies() is exhaustive (full-library-scan route), so this is the one load point safe
+    // to also prune stale cached navigation-index records via reconcileAll.
+    void _studyNavigationIndex.reconcileAll(_studies);
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
@@ -487,12 +505,16 @@ export function loadNextPage(redraw: () => void): Promise<boolean> {
   redraw();
   const dir: IDBCursorDirection = _sortDir === 'desc' ? 'prev' : 'next';
   const sortIdx = _sortKey === 'title' ? 'createdAt' : _sortKey;
-  return getStudiesPaginated(sortIdx, dir, _page * PAGE_SIZE, PAGE_SIZE + 1).then(items => {
+  return getStudiesPaginated(sortIdx, dir, _page * PAGE_SIZE, PAGE_SIZE + 1).then(async items => {
     _hasMore     = items.length > PAGE_SIZE;
     _loadingMore = false;
-    _studies     = [..._studies, ...(_hasMore ? items.slice(0, PAGE_SIZE) : items)];
+    const nextBatch = _hasMore ? items.slice(0, PAGE_SIZE) : items;
+    if (_foldersLoaded) _folders = await migrateStudyFolders(nextBatch, _folders);
+    _studies     = [..._studies, ...nextBatch];
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     _indexDirty  = true;
+    // Only the newly-loaded page needs (re)classification — a partial batch, add/update only.
+    _studyNavigationIndex.noteItemsLoaded(nextBatch);
     redraw();
     return true;
   }).catch(e => {
@@ -514,20 +536,38 @@ export function resetPagination(redraw: () => void): Promise<void> {
   return initStudyLibrary(redraw);
 }
 
-/**
- * Load persisted StudyFolder entities from IDB.
- * Called once at library init. Safe to call multiple times.
- */
+let _loadFoldersPromise: Promise<void> | null = null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function loadFolders(redraw: () => void): Promise<void> {
   if (_foldersLoaded) return Promise.resolve();
-  return listFolders().then(items => {
+  if (_loadFoldersPromise) return _loadFoldersPromise;
+  _loadFoldersPromise = listFolders().then(async items => {
     _folders      = items;
     _foldersLoaded = true;
+    if (_studies.length > 0) _folders = await migrateStudyFolders(_studies, _folders);
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
-    _foldersLoaded = true;
+    // Deliberately do not latch `_foldersLoaded` here: leaving it false lets a later call
+    // retry (below, `_loadFoldersPromise` is cleared regardless of outcome) instead of
+    // permanently freezing folders as an empty, unmigrated list after one transient failure.
+  }).finally(() => {
+    _loadFoldersPromise = null;
   });
+  return _loadFoldersPromise;
 }
 
 function replaceRepertoireSourceInMemory(source: RepertoireSource): void {
@@ -834,7 +874,7 @@ export function hydrateStudyLibraryRoute(query: string, redraw: () => void): voi
 
     const availability = resolveStudyRouteAvailability(studyLibraryRouteSnapshot(parsed.state.pages), {
       tags: studyTags(),
-      folders: studyFolderRouteNames(),
+      folders: knownFolderIds(),
     });
     if (availability.invalidParams.length > 0) {
       applyStudyLibraryRouteState(availability.state);
@@ -874,26 +914,49 @@ function nextFolderId(): string {
 }
 
 /**
- * Create a new top-level folder with the given name.
+ * Resolve a folder display name to its StudyFolder.id, synthesizing (and persisting) a new
+ * top-level folder record if no folder with that name exists yet. This is the one remaining
+ * name-based entry point post-T5-D02: addStudyToFolderByName, backing the library row's
+ * free-text "+ folder" input, where a name is genuinely all the caller has. Every other
+ * mutation (bulkAddToFolder, moveStudyToFolder, the folder sidebar) takes a StudyFolder.id
+ * directly (P2-LIB-11). Duplicate-name matches resolve to the earliest-created record, the
+ * same deterministic rule the batch migration (studyDb.ts planStudyFolderMigration) uses.
+ */
+async function resolveOrCreateFolderIdByName(name: string): Promise<string> {
+  const matches = _folders.filter(f => f.name === name);
+  if (matches.length === 1) return matches[0]!.id;
+  if (matches.length > 1) {
+    return [...matches].sort((a, b) => a.createdAt - b.createdAt)[0]!.id;
+  }
+  const now = Date.now();
+  const folder: StudyFolder = { id: nextFolderId(), name, createdAt: now, updatedAt: now };
+  await saveFolder(folder);
+  _folders = [..._folders, folder];
+  return folder.id;
+}
+
+/**
+ * Create a new folder with the given name, optionally nested under a parent folder.
  * Saves to IDB and updates in-memory folder list.
  */
-export async function createFolder(name: string): Promise<void> {
+export async function createFolder(name: string, parentId?: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) return;
   const now = Date.now();
-  const folder: import('./types').StudyFolder = {
+  const folder: StudyFolder = {
     id:        nextFolderId(),
     name:      trimmed,
     createdAt: now,
     updatedAt: now,
   };
+  if (parentId) folder.parentId = parentId;
   await saveFolder(folder);
   _folders = [..._folders, folder];
 }
 
 /**
- * Rename a folder by id.
- * Also renames the folder name stored in every StudyItem that references the old name.
+ * Rename a folder by id. Membership is id-keyed (P2-LIB-11), so this is exactly one
+ * StudyFolder write — no StudyItem needs to change; every membership survives the rename.
  */
 export async function renameFolder(id: string, newName: string): Promise<void> {
   const trimmed = newName.trim();
@@ -904,41 +967,54 @@ export async function renameFolder(id: string, newName: string): Promise<void> {
   const updated = { ...old, name: trimmed, updatedAt: Date.now() };
   _folders = [..._folders.slice(0, idx), updated, ..._folders.slice(idx + 1)];
   await saveFolder(updated);
-  // Rename inline folder references on all in-memory studies and persist each.
-  const affected = _studies.filter(s => s.folders.includes(old.name));
-  for (const study of affected) {
-    const newFolders = study.folders.map(f => f === old.name ? trimmed : f);
-    await updateStudy({ id: study.id, folders: newFolders });
-  }
 }
 
 /**
- * Add a study to a folder by name (idempotent — skips if already in folder).
- * Used by drag-and-drop to assign a study to a folder without replacing existing assignments.
+ * Add a study to a folder by id (idempotent — skips if already in folder). Used by
+ * drag-and-drop to assign a study to a folder without replacing existing assignments
+ * (P2-LIB-8: folders are collections, adding never removes another membership). Membership
+ * is id-keyed (P2-LIB-11); the drop target already supplies a real StudyFolder.id, so no name
+ * resolution happens here — see addStudyToFolderByName for the free-text-name entry point.
  */
-export async function moveStudyToFolder(studyId: string, folderName: string): Promise<void> {
+export async function moveStudyToFolder(studyId: string, folderId: string): Promise<void> {
   const study = _studies.find(s => s.id === studyId);
   if (!study) return;
-  if (study.folders.includes(folderName)) return;
-  await updateStudy({ id: studyId, folders: [...study.folders, folderName] });
+  if (study.folders.includes(folderId)) return;
+  await updateStudy({ id: studyId, folders: [...study.folders, folderId] });
+}
+
+/**
+ * Add a study to a folder by display name, synthesizing (and persisting) a new top-level
+ * folder record if no folder with that name exists yet (idempotent — skips if already a
+ * member). Backs the library row's free-text "+ folder" input (libraryView.ts), the one
+ * remaining Study-library entry point where a user genuinely types a name rather than
+ * picking an existing StudyFolder record. Fixes the T5-D01-flagged bug where that input wrote
+ * the raw name straight into StudyItem.folders, bypassing id resolution entirely.
+ */
+export async function addStudyToFolderByName(studyId: string, name: string): Promise<void> {
+  const study = _studies.find(s => s.id === studyId);
+  if (!study) return;
+  const folderId = await resolveOrCreateFolderIdByName(name);
+  if (study.folders.includes(folderId)) return;
+  await updateStudy({ id: studyId, folders: [...study.folders, folderId] });
 }
 
 /**
  * Delete a folder entity by id.
- * Removes the folder name from any study that references it.
+ * Removes the folder id from any study that references it (P2-LIB-11: membership is id-keyed).
  */
 export async function removeFolderEntity(id: string): Promise<void> {
   const folder = _folders.find(f => f.id === id);
   if (!folder) return;
   _folders = _folders.filter(f => f.id !== id);
   await deleteFolderFromIdb(id);
-  // Remove folder name from all studies that reference it.
-  const affected = _studies.filter(s => s.folders.includes(folder.name));
+  // Remove this folder's id from all studies that reference it.
+  const affected = _studies.filter(s => s.folders.includes(folder.id));
   for (const study of affected) {
-    await updateStudy({ id: study.id, folders: study.folders.filter(f => f !== folder.name) });
+    await updateStudy({ id: study.id, folders: study.folders.filter(f => f !== folder.id) });
   }
   // Clear active folder filter if it was the deleted folder.
-  if (_activeFolderName === folder.name) _activeFolderName = null;
+  if (_activeFolderId === folder.id) _activeFolderId = null;
 }
 
 export async function updateStudy(partial: Partial<StudyItem> & { id: string }): Promise<void> {
@@ -947,18 +1023,21 @@ export async function updateStudy(partial: Partial<StudyItem> & { id: string }):
   const updated: StudyItem = { ..._studies[idx]!, ...partial, updatedAt: Date.now() };
   _studies = [..._studies.slice(0, idx), updated, ..._studies.slice(idx + 1)];
   _indexDirty = true;
+  _studyNavigationIndex.noteItemsLoaded([updated]);
   await saveStudy(updated);
 }
 
 export async function deleteStudy(id: string): Promise<void> {
   _studies = _studies.filter(s => s.id !== id);
   _indexDirty = true;
+  void _studyNavigationIndex.noteItemRemoved(id);
   await deleteStudyFromIdb(id);
 }
 
 export function addStudy(item: StudyItem): void {
   _studies = [item, ..._studies];
   _indexDirty = true;
+  _studyNavigationIndex.noteItemsLoaded([item]);
 }
 
 // --- Filter + sort helpers ---
@@ -966,11 +1045,14 @@ export function addStudy(item: StudyItem): void {
 function applyFilters(items: StudyItem[]): StudyItem[] {
   // Rebuild annotation index if studies have changed since last search.
   if (_search) rebuildAnnotationIndex();
+  // StudyItem.folders and _activeFolderId are both StudyFolder.id values (P2-LIB-11), so
+  // membership is a direct id comparison — no name lookup, and no ambiguity between two
+  // folders that happen to share a display name.
   return items.filter(s => {
     if (_filterFav && !s.favorite) return false;
     if (_filterTag  && !s.tags.includes(_filterTag))    return false;
     if (_filterSrc  && s.source !== _filterSrc)         return false;
-    if (_activeFolderName && !s.folders.includes(_activeFolderName)) return false;
+    if (_activeFolderId && !s.folders.includes(_activeFolderId)) return false;
     if (_search) {
       const q = _search.toLowerCase();
       // Search title + players (fast path)
@@ -1053,6 +1135,7 @@ export async function importPgnToLibrary(pgnText: string): Promise<number> {
   await Promise.all(items.map(item => saveStudy(item)));
   _studies    = [...items, ..._studies];
   _indexDirty = true;
+  _studyNavigationIndex.noteItemsLoaded(items);
   return items.length;
 }
 

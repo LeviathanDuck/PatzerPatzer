@@ -9,6 +9,8 @@
 
 
 
+import type { SaveFlowPuzzleCategory } from '../save/saveFlowCtrl';
+
 // --- Puzzle source distinction ---
 
 /** Top-level puzzle origin. Discriminates the two V1 puzzle families. */
@@ -79,6 +81,52 @@ export interface UserLibraryPuzzleDefinition extends PuzzleDefinitionBase {
   tags?: string[];
   /** Full PGN of the source game, when available. */
   sourcePgn?: string;
+
+  // --- Universal save-flow fields (Phase 2 T2, P2-SAVE-1..4) ---
+  // Populated when this record was saved through the categorize-on-save modal
+  // (src/save/saveFlowCtrl.ts + saveFlowView.ts). Absent on definitions saved
+  // before T2, or via paths that do not yet route through the component.
+
+  /**
+   * The single required category chosen at save time, from the locked
+   * eight-label list (P2-SAVE-4). Absent for quick saves — see `uncategorized`.
+   */
+  primaryCategory?: SaveFlowPuzzleCategory;
+  /**
+   * Free-text note captured in the save-flow modal at save time (why this
+   * position is worth practicing). Distinct from `notes` above, which is a
+   * separate, pre-existing field with its own (currently unwired) call sites.
+   */
+  saveNotes?: string;
+  /**
+   * True when this record was saved via the save-flow modal's Quick save
+   * escape (P2-SAVE-2) — filed into the shared uncategorized bucket instead
+   * of being given a primaryCategory.
+   */
+  uncategorized?: boolean;
+  /**
+   * Provenance of a save-flow-routed save. Distinct from sourceGameId/
+   * sourcePath/sourceReason above, which predate the universal save-flow
+   * component and are also written by the manual context-menu
+   * puzzle-creation paths (main.ts createPuzzleFromSolution/createPuzzleFromStart).
+   */
+  savedFrom?: PuzzleSaveProvenance;
+}
+
+
+
+
+
+
+
+
+
+
+export interface PuzzleSaveProvenance {
+  gameId: string | null;
+  ply?: number;
+  fen?: string;
+  source: 'lfym' | 'puzzle-round';
 }
 
 /**

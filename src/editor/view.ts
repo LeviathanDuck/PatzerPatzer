@@ -25,6 +25,8 @@ import { saveCurrentToLibrary } from '../study/saveAction';
 import { writeHashRoute } from '../router';
 import { showToast } from '../ui/toast';
 import { requestPracticeStartOnNextBoard } from '../analyse/practice/practiceCtrl';
+import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
+import renderSaveFlowModal from '../save/saveFlowView';
 
 const ROLES: Role[] = ['king', 'queen', 'rook', 'bishop', 'knight', 'pawn'];
 
@@ -228,22 +230,96 @@ function presetSelect(ctrl: EditorCtrl, state: EditorState): VNode {
   );
 }
 
-// Saves the edited position to the Study Library and opens the newly created item.
-// Mirrors lila's studyButton (a form POST to /study/as that redirects to the created study);
-// Patzer's Study Library is local/PGN-seeded, so this saves via saveCurrentToLibrary and then
-// navigates the hash route to #/study/<id> to land on the saved position.
-async function saveEditorPositionToStudy(legalFen: string): Promise<void> {
-  try {
-    const item = await saveCurrentToLibrary(buildFromPositionPgn(legalFen), {
-      source: 'manual',
-      title: 'Board Editor position',
-      tags: ['editor'],
-    });
-    writeHashRoute(`#/study/${item.id}`);
-  } catch (error) {
-    console.warn('[editor] save to Study Library failed', error);
-    showToast('Could not save to Study Library');
+
+
+
+
+
+
+
+
+
+
+
+
+let _activeEditorSaveFlow: SaveFlowCtrl | null = null;
+
+function editorSaveFlowContext(): SaveFlowContext {
+  return {
+    line: 'From Board Editor — save this position',
+    source: 'Board Editor — "to Study" action (internal update)',
+  };
+}
+
+/**
+ * Persists a resolved save-flow result. Keeps building the from-position PGN and the base
+ * source/title/tags exactly as before this task, then layers the categorization fields
+ * (destination/purpose/notes/uncategorized) from the modal onto the same single
+ * saveCurrentToLibrary() write before navigating to the created item.
+ */
+function persistEditorSaveFlowResult(legalFen: string, result: SaveFlowResult, redraw: () => void): void {
+  const baseTags = ['editor'];
+  const metadata: Parameters<typeof saveCurrentToLibrary>[1] = {
+    source: 'manual',
+    title: 'Board Editor position',
+    tags: baseTags,
+  };
+  if (result.mode === 'quick') {
+    metadata.uncategorized = true;
+  } else if (result.destination !== undefined) {
+    metadata.destination = result.destination;
   }
+  if (result.purpose !== undefined) metadata.purpose = result.purpose;
+  if (result.notes !== undefined) metadata.notes = result.notes;
+  if (result.tags.length > 0) metadata.tags = [...baseTags, ...result.tags];
+
+  saveCurrentToLibrary(buildFromPositionPgn(legalFen), metadata)
+    .then(item => {
+      writeHashRoute(`#/study/${item.id}`);
+    })
+    .catch(error => {
+      console.warn('[editor] save to Study Library failed', error);
+      showToast('Could not save to Study Library');
+      redraw();
+    });
+}
+
+/** Opens the universal save-flow modal for the "to Study" action (P2-SAVE-1). */
+function openEditorSaveFlow(legalFen: string, redraw: () => void): void {
+  _activeEditorSaveFlow = new SaveFlowCtrl({
+    itemType: 'game',
+    context: editorSaveFlowContext(),
+    onResolve: result => {
+      _activeEditorSaveFlow = null;
+      persistEditorSaveFlowResult(legalFen, result, redraw);
+    },
+    onCancel: () => {
+      _activeEditorSaveFlow = null;
+      redraw();
+    },
+  }, redraw);
+  redraw();
+}
+
+
+
+
+
+
+
+
+
+
+export function resetEditorSaveFlow(): void {
+  _activeEditorSaveFlow = null;
+}
+
+/**
+ * Renders the active "to Study" save-flow modal, or null when none is open. Mounted inside
+ * renderEditor()'s own returned tree rather than a main.ts overlay slot (see comment above).
+ */
+function renderActiveEditorSaveFlowModal(): VNode | null {
+  return _activeEditorSaveFlow ? renderSaveFlowModal(_activeEditorSaveFlow) : null;
 }
 
 
@@ -339,7 +415,7 @@ function actionsRow(ctrl: EditorCtrl, state: EditorState): VNode {
         on: {
           click: () => {
             if (!legalFen) return;
-            void saveEditorPositionToStudy(legalFen);
+            openEditorSaveFlow(legalFen, ctrl.redraw);
           },
         },
       },
@@ -443,5 +519,6 @@ export default function renderEditor(ctrl: EditorCtrl): VNode {
     h('div.main-board', [renderChessground(ctrl)]),
     sparePieces(ctrl, color, 'bottom'),
     h('div.board-editor__tools', [controls(ctrl, state), inputs(ctrl, state.fen)]),
+    renderActiveEditorSaveFlowModal(),
   ]);
 }

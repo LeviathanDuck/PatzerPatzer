@@ -1,6 +1,8 @@
 // Shared types and utilities for game import adapters.
 // ImportedGame will move to src/games/library.ts in the Step 9 extraction.
 
+import type { QuestionnaireAnswers } from '../analyse/questionnaire/model';
+
 export interface ImportedGame {
   id: string;
   pgn: string;
@@ -97,6 +99,22 @@ export interface ImportedGame {
 
 
   opponentRatingDelta?: number;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  questionnaire?: QuestionnaireAnswers;
 }
 
 /** Callbacks injected by main.ts so adapters don't depend on application state. */

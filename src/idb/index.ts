@@ -7,6 +7,7 @@ import type { ChessAccount, AccountPlatform } from '../accounts';
 import type { PuzzleCandidate, TreeNode } from '../tree/types';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
+import { parseQuestionnaireFromPgn } from '../analyse/questionnaire/model';
 import type { GameSummary } from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncItem, RemoteSyncStoreName } from '../sync/remoteSync';
@@ -1360,6 +1361,16 @@ export function storedGameRecordToImportedGame(record: StoredGameRecord): Import
 
   if (record.sourcePgn !== null && record.sourcePgn !== undefined) game.sourcePgn = record.sourcePgn;
 
+
+
+
+
+
+  if (record.pgn.includes('[PatzerStudied')) {
+    const questionnaire = parseQuestionnaireFromPgn(record.pgn);
+    if (questionnaire) game.questionnaire = questionnaire;
+  }
+
   return game;
 }
 
@@ -1480,6 +1491,38 @@ export async function loadGamePgn(gameId: string): Promise<string | undefined> {
     });
   } catch (e) {
     console.warn('[idb] loadGamePgn failed', e);
+    return undefined;
+  }
+}
+
+
+
+
+
+
+
+
+export async function loadGameFacetSourceFromIdb(gameId: string): Promise<
+  Pick<StoredGameRecord, 'white' | 'black' | 'result' | 'opening' | 'importedUsername'> | undefined
+> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('games', 'readonly').objectStore('games').get(gameId);
+      req.onsuccess = () => {
+        const record = req.result as StoredGameRecord | undefined;
+        resolve(record ? {
+          white: record.white,
+          black: record.black,
+          result: record.result,
+          opening: record.opening,
+          importedUsername: record.importedUsername,
+        } : undefined);
+      };
+      req.onerror = () => reject(recordReqFailure(req, 'games', 'read', gameId));
+    });
+  } catch (e) {
+    console.warn('[idb] loadGameFacetSourceFromIdb failed', e);
     return undefined;
   }
 }

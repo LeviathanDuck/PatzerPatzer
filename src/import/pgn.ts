@@ -4,6 +4,7 @@ import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, pa
 import { pgnToTree } from '../tree/pgn';
 import { classifyOpening } from '../openings/eco';
 import { record, Severity } from '../diagnostics';
+import { parseQuestionnaireFromPgn } from '../analyse/questionnaire/model';
 
 export const pgnState = {
   input: '',
@@ -96,6 +97,10 @@ export function importPgn(callbacks: ImportCallbacks): void {
     }
     const whiteRating = parseRating(parsePgnHeader(raw, 'WhiteElo'));
     const blackRating = parseRating(parsePgnHeader(raw, 'BlackElo'));
+
+
+
+    const questionnaire = raw.includes('[PatzerStudied') ? parseQuestionnaireFromPgn(raw) : undefined;
     const game: ImportedGame = {
       id:  nextGameId(),
       pgn: raw,
@@ -109,6 +114,7 @@ export function importPgn(callbacks: ImportCallbacks): void {
       ...(eco ? { eco } : {}),
       ...(whiteRating !== undefined ? { whiteRating } : {}),
       ...(blackRating !== undefined ? { blackRating } : {}),
+      ...(questionnaire ? { questionnaire } : {}),
       // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     pgnState.error = null;

@@ -7,13 +7,13 @@ import {
   studies, allStudies, isLoaded,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
-  studyTags, studyFolders, updateStudy, deleteStudy, importPgnToLibrary,
+  studyTags, updateStudy, deleteStudy, importPgnToLibrary,
   practiceLoaded, dueCount, dueCountForStudy,
   reviewSequences, learnSequences, loadPracticeData,
   hasMore, isLoadingMore, loadNextPage, loadedStudyPageCount,
-  folders, foldersLoaded, activeFolderName, sidebarCollapsed,
-  setActiveFolderName, toggleSidebar, loadFolders,
-  createFolder, renameFolder, removeFolderEntity, moveStudyToFolder,
+  folders, foldersLoaded, activeFolderId, sidebarCollapsed,
+  setActiveFolderId, toggleSidebar, loadFolders,
+  createFolder, renameFolder, removeFolderEntity, moveStudyToFolder, addStudyToFolderByName,
   selectedIds, isSelected, selectionCount, clearSelection,
   handleStudyClick, bulkDeleteStudies, bulkAddToFolder, bulkSetFavorite,
   viewMode, setViewMode, resetPagination, studyLibraryRouteSnapshot,
@@ -1263,7 +1263,7 @@ function renderRepertoireComplianceSection(redraw: () => void): VNode {
 
 // --- Row rendering ---
 
-function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode {
+function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folderNameById: Map<string, string>): VNode {
   const isEditingTitle = _editingTitleId === item.id;
   const isEditingTag   = _editingTagId === item.id;
   const selected       = isSelected(item.id);
@@ -1287,7 +1287,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
           e.dataTransfer.setData('text/plain', item.id);
         }
       },
-      dragend: () => { _draggingStudyId = null; _dragOverFolderName = null; redraw(); },
+      dragend: () => { _draggingStudyId = null; _dragOverFolderId = null; redraw(); },
     },
   }, [
     // Selection checkbox
@@ -1427,17 +1427,20 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
         h('div.study-row__folder-row', [
           h('label.study-row__folder-label', 'Folder'),
           item.folders.length > 0
-            ? h('div.study-row__folder-list', item.folders.map(f =>
-                h('span.study-folder', [
-                  f,
+            ? h('div.study-row__folder-list', item.folders.map(f => {
+                // item.folders holds StudyFolder.id values (P2-LIB-11); resolve to the current
+                // display name here rather than rendering the raw id.
+                const label = folderNameById.get(f) ?? f;
+                return h('span.study-folder', { key: f }, [
+                  label,
                   h('button.study-folder__remove', {
-                    attrs: { title: `Remove folder "${f}"`, 'aria-label': `Remove folder "${f}"` },
+                    attrs: { title: `Remove folder "${label}"`, 'aria-label': `Remove folder "${label}"` },
                     on: { click: () => {
                       void updateStudy({ id: item.id, folders: item.folders.filter(x => x !== f) }).then(redraw);
                     } },
                   }, '×'),
-                ])
-              ))
+                ]);
+              }))
             : null,
           _editingFolderId === item.id
             ? h('input.study-folder__input', {
@@ -1446,9 +1449,12 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void): VNode
                 on: {
                   input: (e: Event) => { _editingFolderValue = (e.target as HTMLInputElement).value; },
                   blur: () => {
-                    const f = _editingFolderValue.trim();
-                    if (f && !item.folders.includes(f)) {
-                      void updateStudy({ id: item.id, folders: [...item.folders, f] }).then(redraw);
+                    // Free-text folder name (P2-LIB-11): resolved to (or synthesizes) a stable
+                    // StudyFolder.id through the ctrl, never written into item.folders as a raw
+                    // name — this was the T5-D01-flagged orphan-creation bug.
+                    const name = _editingFolderValue.trim();
+                    if (name) {
+                      void addStudyToFolderByName(item.id, name).then(redraw);
                     }
                     _editingFolderId    = null;
                     _editingFolderValue = '';
@@ -1487,25 +1493,25 @@ let _renamingFolderId: string | null = null;
 let _renamingFolderValue = '';
 
 // --- Drag-and-drop state ---
-let _draggingStudyId: string | null   = null;
-let _dragOverFolderName: string | null = null;
+let _draggingStudyId: string | null = null;
+let _dragOverFolderId: string | null = null;
 
-// DnD drop handlers for a folder drop target identified by name.
-function folderDropHandlers(folderName: string, redraw: () => void) {
+// DnD drop handlers for a folder drop target identified by its stable id (P2-LIB-11).
+function folderDropHandlers(folderId: string, redraw: () => void) {
   return {
     dragover: (e: DragEvent) => {
       e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-      if (_dragOverFolderName !== folderName) { _dragOverFolderName = folderName; redraw(); }
+      if (_dragOverFolderId !== folderId) { _dragOverFolderId = folderId; redraw(); }
     },
     dragleave: () => {
-      if (_dragOverFolderName === folderName) { _dragOverFolderName = null; redraw(); }
+      if (_dragOverFolderId === folderId) { _dragOverFolderId = null; redraw(); }
     },
     drop: (e: DragEvent) => {
       e.preventDefault();
       const studyId = e.dataTransfer?.getData('text/plain') ?? _draggingStudyId;
-      _dragOverFolderName = null;
-      if (studyId) void moveStudyToFolder(studyId, folderName).then(redraw);
+      _dragOverFolderId = null;
+      if (studyId) void moveStudyToFolder(studyId, folderId).then(redraw);
     },
   };
 }
@@ -1513,15 +1519,6 @@ function folderDropHandlers(folderName: string, redraw: () => void) {
 // --- Folder sidebar ---
 
 function renderFolderSidebar(redraw: () => void): VNode {
-  // Merge IDB-persisted folders with inline folder names from studies (backward compat).
-  const persistedNames = new Set(folders().map(f => f.name));
-  const inlineNames    = studyFolders().filter(n => !persistedNames.has(n));
-  // All known folder names in display order: persisted (sorted by name) + orphaned inline names
-  const allNames: string[] = [
-    ...folders().map(f => f.name).sort(),
-    ...inlineNames.sort(),
-  ];
-
   return h('div.study-sidebar', [
     h('div.study-sidebar__header', [
       h('span.study-sidebar__title', 'Folders'),
@@ -1532,16 +1529,18 @@ function renderFolderSidebar(redraw: () => void): VNode {
     ]),
     sidebarCollapsed() ? null : h('div.study-sidebar__folders', [
       h('button.study-sidebar__folder', {
-        class: { active: activeFolderName() === null },
+        class: { active: activeFolderId() === null },
         on: { click: () => {
-          setActiveFolderName(null);
+          setActiveFolderId(null);
           writeStudyLibraryRoute({ folder: null }, { resetPages: true });
           resetStudyLibraryLens(redraw);
           redraw();
         } },
       }, 'All Studies'),
 
-      // Persisted folder entries (with rename + delete controls)
+      // Folder entries (with rename + delete controls). Every StudyFolder record is real and
+      // id-addressable (P2-LIB-11) — there is no more "orphaned inline name" case to merge in
+      // separately; T5-D01's migration guarantees a backing record for every membership id.
       ...folders().map(folder => {
         const isRenaming = _renamingFolderId === folder.id;
         return h('div.study-sidebar__folder-row', { key: folder.id }, [
@@ -1566,18 +1565,18 @@ function renderFolderSidebar(redraw: () => void): VNode {
               })
             : h('button.study-sidebar__folder', {
                 class: {
-                  active:       activeFolderName() === folder.name,
-                  'drag-over':  _dragOverFolderName === folder.name,
+                  active:       activeFolderId() === folder.id,
+                  'drag-over':  _dragOverFolderId === folder.id,
                 },
                 on: {
                   click: () => {
-                    const nextFolder = activeFolderName() === folder.name ? null : folder.name;
-                    setActiveFolderName(nextFolder);
+                    const nextFolder = activeFolderId() === folder.id ? null : folder.id;
+                    setActiveFolderId(nextFolder);
                     writeStudyLibraryRoute({ folder: nextFolder }, { resetPages: true });
                     resetStudyLibraryLens(redraw);
                     redraw();
                   },
-                  ...folderDropHandlers(folder.name, redraw),
+                  ...folderDropHandlers(folder.id, redraw),
                 },
               }, folder.name),
           h('div.study-sidebar__folder-actions', [
@@ -1602,24 +1601,6 @@ function renderFolderSidebar(redraw: () => void): VNode {
           ]),
         ]);
       }),
-
-      // Orphaned inline folder names (in studies but no entity)
-      ...inlineNames.map(name =>
-        h('button.study-sidebar__folder', {
-          key: `inline-${name}`,
-          class: { active: activeFolderName() === name, 'drag-over': _dragOverFolderName === name },
-          on: {
-            click: () => {
-              const nextFolder = activeFolderName() === name ? null : name;
-              setActiveFolderName(nextFolder);
-              writeStudyLibraryRoute({ folder: nextFolder }, { resetPages: true });
-              resetStudyLibraryLens(redraw);
-              redraw();
-            },
-            ...folderDropHandlers(name, redraw),
-          },
-        }, name)
-      ),
 
       // New folder input or button
       _newFolderMode
@@ -1775,10 +1756,9 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
   const count = selectionCount();
   if (count === 0) return null;
 
-  const allFolderNames = [
-    ...folders().map(f => f.name),
-    ...studyFolders().filter(n => !folders().some(f => f.name === n)),
-  ].sort();
+  // Sorted by display name, but each entry is addressed by its stable id (P2-LIB-11) so two
+  // folders sharing a name remain independently selectable.
+  const bulkFolders = [...folders()].sort((a, b) => a.name.localeCompare(b.name));
 
   return h('div.study-bulk-bar', [
     h('span.study-bulk-bar__count', `${count} selected`),
@@ -1792,18 +1772,19 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
         void bulkSetFavorite(false).then(redraw);
       } },
     }, '☆ Unfavorite'),
-    allFolderNames.length > 0
+    bulkFolders.length > 0
       ? h('div.study-bulk-bar__folder-wrap', [
           h('button.study-bulk-bar__btn', {
             on: { click: () => { _bulkFolderMenuOpen = !_bulkFolderMenuOpen; redraw(); } },
           }, 'Add to folder ▾'),
-          _bulkFolderMenuOpen ? h('div.study-bulk-bar__folder-menu', allFolderNames.map(name =>
+          _bulkFolderMenuOpen ? h('div.study-bulk-bar__folder-menu', bulkFolders.map(folder =>
             h('button.study-bulk-bar__folder-item', {
+              key: folder.id,
               on: { click: () => {
                 _bulkFolderMenuOpen = false;
-                void bulkAddToFolder(name).then(redraw);
+                void bulkAddToFolder(folder.id).then(redraw);
               } },
-            }, name)
+            }, folder.name)
           )) : null,
         ])
       : null,
@@ -1959,6 +1940,9 @@ export function renderStudyLibrary(redraw: () => void): VNode {
   if (!foldersLoaded()) loadFolders(redraw);
 
   const items = studies();
+  // id -> display name lookup for rendering item.folders chips (P2-LIB-11: membership is
+  // id-keyed, folder name is display-only and resolved here rather than stored on the item).
+  const folderNameById = new Map(folders().map(f => [f.id, f.name]));
   const libraryMainNodes = isRepertoireSourceBrowseOpen()
     ? [renderRepertoireSourceBrowse(redraw)]
     : [
@@ -1983,7 +1967,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
             ])
           : viewMode() === 'grid'
             ? h('div.study-grid', items.map((item, idx) => renderStudyCard(item, idx, redraw)))
-            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw))),
+            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw, folderNameById))),
 
         hasMore()
           ? h('div.study-list__load-more', [

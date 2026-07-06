@@ -7,8 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import { h, type VNode } from 'snabbdom';
-import { renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
-import { protocol as sharedProtocol, engineEnabled, engineReady as sharedEngineReady, multiPv, analysisDepth,
+import { clearCevalPositionOverride, renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
+import { engineEnabled, engineReady as sharedEngineReady, evalCurrentPosition,
   showEngineArrows, setShowEngineArrows, showArrowLabels, setShowArrowLabels, syncArrow,
 } from '../engine/ctrl';
 import { explorerCtrl } from '../openings/explorerCtrl';
@@ -39,7 +39,7 @@ import {
   type ActiveSession,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
-import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta } from './types';
+import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSaveProvenance, UserLibraryPuzzleDefinition } from './types';
 import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
@@ -51,6 +51,12 @@ import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
 import { savePuzzleToLibrary } from '../study/saveAction';
+import { saveStudy } from '../study/studyDb';
+import type { StudyItem } from '../study/types';
+import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult, type SaveFlowPuzzleCategory } from '../save/saveFlowCtrl';
+import renderSaveFlowModal from '../save/saveFlowView';
+import { groupByAutomaticFacets, type GeneralLensGameSource } from '../save/generalLens';
+import { loadGameFacetSourceFromIdb } from '../idb';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { writeHashRoute } from '../router';
 
@@ -275,7 +281,7 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
   // Clear puzzle engine position override when back on library page.
-  setCevalPositionOverride(null);
+  clearCevalPositionOverride('puzzle-post-solve');
   _lastPuzzleEngineFen = '';
 
   const listState = getPuzzleListState();
@@ -452,6 +458,71 @@ function renderPuzzleListRow(
   }, cells);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const _generalLensGameFacetCache = new Map<string, GeneralLensGameSource | null>();
+const _generalLensPendingFetches = new Set<string>();
+
+/**
+ * Synchronous GeneralLensGameLookup backed by a small per-session cache. Returns undefined (which
+ * resolves to the Unknown bucket) until the async IDB read resolves, then calls `redraw` so the
+ * group re-renders with real facets — the same fetch-then-cache-then-redraw idiom already used
+ * elsewhere in this file (e.g. the round-save "Saved!" feedback timers above).
+ */
+function lookupGeneralLensGame(gameId: string, redraw: () => void): GeneralLensGameSource | undefined {
+  const cached = _generalLensGameFacetCache.get(gameId);
+  if (cached !== undefined) return cached ?? undefined;
+  if (!_generalLensPendingFetches.has(gameId)) {
+    _generalLensPendingFetches.add(gameId);
+    void loadGameFacetSourceFromIdb(gameId).then(source => {
+      _generalLensGameFacetCache.set(gameId, source ?? null);
+      _generalLensPendingFetches.delete(gameId);
+      redraw();
+    }).catch(() => {
+      _generalLensGameFacetCache.set(gameId, null);
+      _generalLensPendingFetches.delete(gameId);
+    });
+  }
+  return undefined;
+}
+
+/**
+ * Renders the grouped "General" bucket for Quick-saved user-library puzzles, or null when empty.
+ * Exported (only) so scripts/test-general-lens-surfacing-smoke.mjs can headless-DOM-smoke the
+ * surfacing hook directly, without depending on the full puzzle ctrl.ts/engine/board bootstrap
+ * renderPuzzleLibrary's route entry point requires.
+ */
+export function renderGeneralBucket(defs: UserLibraryPuzzleDefinition[], redraw: () => void): VNode | null {
+  if (defs.length === 0) return null;
+  const groups = groupByAutomaticFacets(defs, gameId => lookupGeneralLensGame(gameId, redraw));
+  return h('div.puzzle-list__general', [
+    h('div.puzzle-list__general-head', [
+      h('h3', 'General'),
+      h('span.puzzle-list__count', `${defs.length} quick-saved`),
+    ]),
+    ...groups.map(group => h('div.puzzle-list__general-group', [
+      h('div.puzzle-list__general-group-head', [
+        h('span.puzzle-list__general-group-label', group.label),
+        h('span.puzzle-list__count', `${group.items.length}`),
+      ]),
+      ...group.items.map(def => renderPuzzleListRow(def, redraw)),
+    ])),
+  ]);
+}
+
 /** Inline browse pane — renders inside the sidebar so the board stays visible. */
 function renderInlineBrowsePane(
   ls: PuzzleListState,
@@ -468,8 +539,14 @@ function renderInlineBrowsePane(
     return renderImportedSessionBuilder(ls, redraw);
   }
 
-  // User library: puzzle-row list (unchanged)
+
+
   const hasMore = ls.visible.length < ls.filtered.length;
+  const generalVisible = ls.visible.filter(
+    (def): def is UserLibraryPuzzleDefinition => def.sourceKind === 'user-library' && def.uncategorized === true,
+  );
+  const generalIds = new Set(generalVisible.map(def => def.id));
+  const categorizedVisible = ls.visible.filter(def => !generalIds.has(def.id));
   return h('aside.puzzle__side.puzzle-library__sidebar.puzzle-list', [
     h('div.puzzle-list__header', [
       h('a.puzzle-list__back', {
@@ -487,7 +564,8 @@ function renderInlineBrowsePane(
             h('span.puzzle-list__row-themes', 'Reason'),
             h('span.puzzle-list__row-moves', 'Moves'),
           ]),
-          ...ls.visible.map(def => renderPuzzleListRow(def, redraw)),
+          ...categorizedVisible.map(def => renderPuzzleListRow(def, redraw)),
+          renderGeneralBucket(generalVisible, redraw),
           hasMore
             ? h('button.button.puzzle-list__load-more', {
                 on: { click: () => loadMorePuzzles(redraw) },
@@ -877,10 +955,81 @@ let _puzzleInfoExpanded = false;
 let _puzzleSaveLibFeedback: string | null = null;
 let _puzzleSaveLibTimer: ReturnType<typeof setTimeout> | null = null;
 
-function handlePuzzleSaveToLibrary(rc: PuzzleRoundCtrl, redraw: () => void): void {
-  const fen = rc.definition.startFen;
-  const moves = rc.definition.solutionLine;
-  void savePuzzleToLibrary(fen, moves).then(() => {
+
+
+
+
+
+
+
+
+
+
+
+let _activePuzzleRoundSaveFlow: SaveFlowCtrl | null = null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface PuzzleRoundSaveExtras {
+  sourcePuzzleId?: string;
+  primaryCategory?: SaveFlowPuzzleCategory;
+  saveNotes?: string;
+  uncategorized?: boolean;
+  savedFrom?: PuzzleSaveProvenance;
+}
+
+/** Save-flow modal context line for a round-screen puzzle save. */
+function puzzleRoundSaveContext(def: PuzzleDefinition, outcome: 'solved' | 'failed'): SaveFlowContext {
+  const identity = def.sourceKind === 'imported-lichess'
+    ? `Lichess puzzle — rated ${def.rating}`
+    : (def.title ?? `Puzzle ${def.id}`);
+  return {
+    line: `From puzzle round — ${identity}`,
+    source: outcome === 'solved' ? 'Round result — solved' : 'Round result — failed',
+  };
+}
+
+/**
+ * Persists a resolved save-flow result. Keeps calling savePuzzleToLibrary() unchanged (same
+ * PGN-building + StudyItem creation as before this task) so the destination store and its
+ * base shape stay exactly as today, then layers the categorization + provenance fields onto
+ * the created record via one additional saveStudy() write (already-exported from
+ * src/study/studyDb.ts — not a study-file edit) before the "Saved!" confirmation fires.
+ */
+function persistPuzzleRoundSaveFlowResult(
+  def: PuzzleDefinition,
+  result: SaveFlowResult,
+  redraw: () => void,
+): void {
+  const sourceGameId = def.sourceKind === 'user-library' ? def.sourceGameId : undefined;
+
+  void savePuzzleToLibrary(def.startFen, def.solutionLine).then(item => {
+    const linked: StudyItem & PuzzleRoundSaveExtras = {
+      ...item,
+      sourcePuzzleId: def.id,
+      savedFrom: { gameId: sourceGameId ?? null, fen: def.startFen, source: 'puzzle-round' },
+    };
+    if (sourceGameId !== undefined) linked.sourceGameId = sourceGameId;
+    if (result.mode === 'quick') {
+      linked.uncategorized = true;
+    } else if (result.primaryCategory !== undefined) {
+      linked.primaryCategory = result.primaryCategory;
+    }
+    if (result.tags.length > 0) linked.tags = Array.from(new Set([...item.tags, ...result.tags]));
+    if (result.notes !== undefined) linked.saveNotes = result.notes;
+    return saveStudy(linked);
+  }).then(() => {
     _puzzleSaveLibFeedback = 'Saved to Library!';
     if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
     _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
@@ -891,6 +1040,46 @@ function handlePuzzleSaveToLibrary(rc: PuzzleRoundCtrl, redraw: () => void): voi
     _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
     redraw();
   });
+}
+
+/** Opens the universal save-flow modal for the current round's puzzle (P2-SAVE-1). */
+function openPuzzleRoundSaveFlow(def: PuzzleDefinition, outcome: 'solved' | 'failed', redraw: () => void): void {
+  _activePuzzleRoundSaveFlow = new SaveFlowCtrl({
+    itemType: 'puzzle',
+    context: puzzleRoundSaveContext(def, outcome),
+    onResolve: result => {
+      _activePuzzleRoundSaveFlow = null;
+      persistPuzzleRoundSaveFlowResult(def, result, redraw);
+    },
+    onCancel: () => {
+      _activePuzzleRoundSaveFlow = null;
+      redraw();
+    },
+  }, redraw);
+  redraw();
+}
+
+
+
+
+
+
+
+
+
+
+
+export function resetPuzzleRoundSaveFlow(): void {
+  _activePuzzleRoundSaveFlow = null;
+}
+
+/**
+ * Renders the active round-screen save-flow modal, or null when none is open. Mounted inside
+ * renderPuzzleRound()'s own returned tree (this module's route root) rather than a main.ts
+ * overlay slot, since the round view is always the one live tree while a round is open.
+ */
+function renderActivePuzzleRoundSaveFlowModal(): VNode | null {
+  return _activePuzzleRoundSaveFlow ? renderSaveFlowModal(_activePuzzleRoundSaveFlow) : null;
 }
 
 function renderPuzzleInfo(def: PuzzleDefinition, redraw: () => void): VNode {
@@ -1207,7 +1396,7 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
         : h('button.button.button-empty.puzzle__save-lib', {
             attrs: { title: 'Save this puzzle to the Study Library' },
-            on: { click: () => { handlePuzzleSaveToLibrary(rc, redraw); } },
+            on: { click: () => { openPuzzleRoundSaveFlow(rc.definition, 'solved', redraw); } },
           }, '\uD83D\uDCDA Save to Library'),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
@@ -1274,7 +1463,7 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
         : h('button.button.button-empty.puzzle__save-lib', {
             attrs: { title: 'Save this puzzle to the Study Library' },
-            on: { click: () => { handlePuzzleSaveToLibrary(rc, redraw); } },
+            on: { click: () => { openPuzzleRoundSaveFlow(rc.definition, 'failed', redraw); } },
           }, '\uD83D\uDCDA Save to Library'),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
@@ -1767,7 +1956,7 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
   const puzzleFen = puzzlePosition.currentFen;
 
   // Set position override so the shared ceval view renders for the puzzle position.
-  setCevalPositionOverride(puzzlePosition);
+  setCevalPositionOverride('puzzle-post-solve', puzzlePosition);
 
   // If the shared engine is on during an active solve, mark this round as assisted.
   if (engineEnabled && rc.mode !== 'view') rc.notifyEngineUsedDuringSolve();
@@ -1780,8 +1969,8 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
       requestAnimationFrame(() => {
-        sharedProtocol.setPositionContext(rc.currentEnginePositionContext('puzzle-engine-view'));
-        sharedProtocol.go(analysisDepth, multiPv);
+        setCevalPositionOverride('puzzle-post-solve', rc.currentEnginePositionContext('puzzle-engine-view'));
+        evalCurrentPosition();
       });
     }
   } else if (!rc.puzzleEngineEnabled) {
@@ -2067,5 +2256,6 @@ export function renderPuzzleRound(redraw: () => void): VNode {
         rc ? renderFeedbackPanel(rc, redraw) : null,
       ]),
     ]),
+    renderActivePuzzleRoundSaveFlowModal(),
   ]);
 }
