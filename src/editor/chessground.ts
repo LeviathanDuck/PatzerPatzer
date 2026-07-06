@@ -13,6 +13,7 @@ import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { Key, MouchEvent } from '@lichess-org/chessground/types';
 import { eventPosition, opposite } from '@lichess-org/chessground/util';
 import { h, type VNode } from 'snabbdom';
+import { bindBoardResizeHandle } from '../board/index';
 import type EditorCtrl from './ctrl';
 
 // Mirrors lila's editor board config exactly: free movement for both colors, no
@@ -166,12 +167,27 @@ function bindFlipKey(ctrl: EditorCtrl): () => void {
 export default function renderChessground(ctrl: EditorCtrl): VNode {
   let unbindFlipKey: (() => void) | undefined;
   return h('div.cg-wrap', {
+    // Keyed by the owning EditorCtrl's instance id (BUG-2026-07-05-015 root fix): without a key,
+    // Snabbdom matches this node to the previous render purely by selector+position, so a second
+    // #/editor render that swaps in a brand-new EditorCtrl (e.g. a raced re-render, or navigating
+    // directly between two #/editor URLs) would be treated as "the same node" and never re-run
+    // `insert`/`destroy` — leaving the new ctrl's `chessground` field permanently unassigned while
+    // the rest of the editor's controls get rebound to it. Keying by instanceId forces a proper
+    // destroy-then-insert (unmount the stale board, mount a fresh one) whenever the ctrl instance
+    // actually changes, while still reusing the same DOM/Chessground across redraws that keep the
+    // same ctrl (the common case: piece placement, preset select, FEN paste, etc.).
+    key: ctrl.instanceId,
     hook: {
       insert: vnode => {
         const el = vnode.elm as HTMLElement;
         ctrl.chessground = makeChessground(el, makeConfig(ctrl));
         bindEvents(el, ctrl);
         unbindFlipKey = bindFlipKey(ctrl);
+        // Reuses the shared board-resize handle (src/board/index.ts), the same
+        // mechanism the analysis, puzzle, and opening-tree boards use: drag corner
+        // writes the global ---board-scale zoom var, which ---editor-board-size
+        // already consumes (src/styles/main.scss).
+        bindBoardResizeHandle(el);
       },
       destroy: () => {
         ctrl.chessground?.destroy();

@@ -315,13 +315,31 @@ export function renderActionMenu(): VNode | null {
 
       // Board Editor — mirrors lichess-org/lila: actionMenu.ts Board editor link
       // (`?fen=&color=`), seeded with the current node's position and orientation.
+      //
+      // Uses closeActionMenu() directly instead of the shared close() helper (BUG-2026-07-05-015):
+      // close() also calls deps.redraw(), which schedules an immediate rAF-based re-render of the
+      // CURRENT (analysis) route. That re-render can win the race against the async native
+      // `hashchange` event that writeHashRoute() below is about to fire and land first, rendering
+      // the #/editor route and constructing+mounting a real EditorCtrl/Chessground BEFORE
+      // main.ts's router onChange handler (which unconditionally drops the module-level
+      // `editorCtrl` on every real navigation) runs its own patch. That handler then builds a
+      // SECOND EditorCtrl from scratch, but Snabbdom's keyless positional diff sees a
+      // structurally-identical vnode tree and reuses the already-mounted `div.cg-wrap` DOM node
+      // without re-running its `insert` hook (no `update` hook exists to resync it either) — so
+      // the second (now "live") EditorCtrl's `chessground` field is left permanently undefined
+      // while every editor button/input gets rebound to it. Clear/Flip/etc. then silently no-op:
+      // EditorCtrl.setFen() skips `chessground.set()` and EditorCtrl.getBoard() falls back to the
+      // stale seeded FEN forever. Dropping the redundant redraw() here removes the race: the
+      // upcoming route change's own re-render (triggered by the hashchange handler) is the only
+      // render that constructs an EditorCtrl, so exactly one gets created and its Chessground
+      // mounts normally, matching a direct/bare `#/editor` visit.
       h('button', {
         attrs: { title: 'Open this position in the Board Editor' },
         on: { click: () => {
           const fen = deps.getCtrl().node.fen;
           const boardOrientation = deps.getOrientation?.() ?? 'white';
           writeHashRoute(editorRouteFromPosition(fen, boardOrientation));
-          close();
+          closeActionMenu();
         } },
       }, 'Board Editor'),
 

@@ -76,8 +76,20 @@ const CASTLING_SQUARES = {
   black: { king: 'e8', rookK: 'h8', rookQ: 'a8' },
 } as const;
 
+// Assigns each EditorCtrl a unique identity so its mounted Chessground can be keyed to the
+// exact controller instance (see chessground.ts renderChessground) rather than to vnode
+// position/shape. main.ts constructs a fresh EditorCtrl on every real route (re-)entry into
+// #/editor (route.query re-parse) while keeping the same instance across in-editor redraws —
+// but two same-shaped `#/editor` renders in a row (e.g. a duplicate/raced render, or navigating
+// from one #/editor URL straight to another) produce structurally-identical vnode trees.
+// Snabbdom's keyless positional diff would then treat the old and new `div.cg-wrap` as "the same
+// node" and skip its insert/destroy hooks entirely, leaving the new EditorCtrl's `chessground`
+// field permanently unset while every button/input gets rebound to it (BUG-2026-07-05-015).
+let editorCtrlInstanceCounter = 0;
+
 export default class EditorCtrl {
   chessground: CgApi | undefined;
+  readonly instanceId: number = ++editorCtrlInstanceCounter;
 
   selected: Selected = 'pointer';
   orientation: Color;

@@ -3,6 +3,7 @@
 // ui/analyse/src/view/controls.ts (review button logic)
 
 import { h, type VNode } from 'snabbdom';
+import { INITIAL_FEN } from 'chessops/fen';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   evalCache,
@@ -160,13 +161,21 @@ export function initPgnExport(deps: {
 
 // --- PGN building ---
 
-/**
- * Build a PGN string from the current move tree.
- * annotated=true adds { [%eval X.XX] [%clk h:mm:ss] } comments after each
- * move — exact same format Lichess uses in exported PGNs.
- * Adapted from lichess-org/lila: modules/analyse/src/main/Annotator.scala
- * and modules/tree/src/main/Info.scala pgnComment
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function buildPgn(annotated: boolean): string {
   const ctrl           = _getCtrl();
   const importedGames  = _getImportedGames();
@@ -177,10 +186,28 @@ export function buildPgn(annotated: boolean): string {
     ['Event',  '?'],
     ['Site',   'PatzerPro'],
     ['Date',   game?.date ?? '????.??.??'],
+    ['Round',  '?'],
     ['White',  game?.white ?? '?'],
     ['Black',  game?.black ?? '?'],
     ['Result', game?.result ?? '*'],
   ];
+
+  // [FEN] + [SetUp "1"] are MANDATORY and unconditional whenever the tree's root
+  // position is not the standard start — omitting them is round-trip-breaking
+  // (BUG-2026-07-05-017): re-importing the exported PGN would silently replay
+  // from the standard start instead of the actual root position.
+  const rootFen = ctrl.root.fen;
+  if (rootFen !== INITIAL_FEN) {
+    headers.push(['FEN', rootFen], ['SetUp', '1']);
+  }
+
+  if (game?.eco)         headers.push(['ECO', game.eco]);
+  if (game?.opening)     headers.push(['Opening', game.opening]);
+  if (game?.timeControl) headers.push(['TimeControl', game.timeControl]);
+  if (game?.whiteRating) headers.push(['WhiteElo', String(game.whiteRating)]);
+  if (game?.blackRating) headers.push(['BlackElo', String(game.blackRating)]);
+  if (game?.termination) headers.push(['Termination', game.termination]);
+
   if (annotated) headers.push(['Annotator', 'PatzerPro']);
   const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');
 
