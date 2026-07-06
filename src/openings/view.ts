@@ -23,8 +23,7 @@ import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from '../board/arr
 import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore, renderEvalBar } from '../analyse/evalView';
-import type { TreeComment, TreeNode } from '../tree/types';
-import { nagToGlyph } from '../tree/pgn';
+import type { TreeNode } from '../tree/types';
 import { accountSection, updateAccount, type ChessAccount, type AccountSection, type AccountCategory } from '../accounts';
 import { deleteImportedAccountAndGames } from '../sync/dataManagement';
 import { computeAccountCardStats, PRIMARY_CARD_SPEEDS, type AccountCardStats, type AccountSpeedStat } from './accountCardStats';
@@ -52,15 +51,10 @@ import {
   importCustomFrom, setImportCustomFrom, importCustomTo, setImportCustomTo,
   importRated, setImportRated, importMaxGames, setImportMaxGames,
   setImportStep, setImportSource, setImportUsername, setImportColor,
-  resetImport, activeTool, setActiveTool, getCollectionSummary, getPrepReportViewModel,
-  getStyleViewModel,
-  practiceSession, startPractice, stopPractice,
-  recordPracticeMove, setPracticeOpponentSource,
+  resetImport,
   deviationResults, deviationLoading, deviationProgress, deviationTotal,
   startDeviationScan, recencyMode, setRecencyMode,
 } from './ctrl';
-import { planOpponentTurn } from './practice';
-import type { OpeningsTool } from './types';
 import {
   SPEED_OPTIONS, DATE_RANGE_OPTIONS,
   importFilters,
@@ -72,18 +66,8 @@ import { enqueueImportEnrichment } from '../import/enrichment';
 import type { ResearchCollection, ResearchGame, ResearchSource } from './types';
 import type { OpeningTreeNode, SampleGameMatch } from './tree';
 import { executeResearchImport } from './import';
-import {
-  ExplorerBookAuthError,
-  isExplorerBookAuthError,
-  type OpeningMoveStats,
-  type ExplorerDb,
-  type TablebaseData,
-  type TablebaseMoveStats,
-  type TablebaseCategory,
-  openingDataHasMove,
-} from './explorer';
-import { explorerCtrl, MAX_EXPLORER_DEPTH } from './explorerCtrl';
-import { ALL_SPEEDS, ALL_RATINGS, ALL_MODES } from './explorerConfig';
+import { openingDataHasMove } from './explorer';
+import { explorerCtrl } from './explorerCtrl';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { renderCeval, renderPvBox, renderEngineSettings, setCevalPositionOverride } from '../ceval/view';
 import { renderMoveNavBar } from '../analyse/analysisControls';
@@ -105,49 +89,22 @@ import {
   setTreeEvalEnabled,
   type TreeEvalEntry,
 } from './treeEval';
-import { playMoveWithDelay, cancelPlayMove } from '../engine/playMove';
-import { STRENGTH_LEVELS } from '../engine/types';
-import { renderStrengthSelector } from '../engine/strengthView';
-import { setPlayStrengthLevel, getPlayStrengthLevel } from '../engine/ctrl';
 import {
   contextFromRootAndMoves,
   fenOnlyPositionContext,
   type EnginePositionContext,
 } from '../engine/positionContext';
-import {
-  computeOpponentRepertoireProfile, computePrepReport, computePrepReportLines,
-  computeLikelyLineModule, computeWeaknessModule, computePrepNotes,
-  computeTerminationProfile, computeGameLengthProfile,
-  computeOpeningRecommendations, buildPracticeCandidates,
-  MIN_COLLECTION_SIZE, MIN_RELIABLE_SAMPLE, isCollectionSmall, isStatReliable,
-  type PrepLine, type LikelyLineEntry, type StyleViewModel,
-} from './analytics';
-import { detectTrapPatterns } from './traps';
 import { saveOrpLineToLibrary } from '../study/saveAction';
-import {
-  repertoireSources,
-  repertoireSourcesLoaded,
-  repertoireSourcesError,
-  loadRepertoireSources,
-  setRepertoireSourceEnabled,
-  ensureRepertoireAccountSourceBuilds,
-} from '../study/studyCtrl';
-import {
-  buildRepertoireExplorerModel,
-  repertoireSourceSideBadge,
-  type RepertoireExplorerLinePosition,
-  type RepertoireExplorerPositionAnnotation,
-  type RepertoireExplorerPriorMatch,
-  type RepertoireExplorerSourceGroup,
-} from '../repertoire/explorerViewModel';
-import { isAccountRepertoireSource, repertoireAccountFilterSummary } from '../repertoire';
+import { repertoireSources } from '../study/studyCtrl';
 import { buildRepertoireArrowShapes } from '../repertoire/arrowShapes';
-import { clearLichessApiLoginData, requestBookLogin } from '../auth/lichessBookAuth';
 import {
   markNav, currentGenerationToken, isGenerationCurrent, onSettle, isRapid,
 } from './scheduler';
+import { renderExplorerDbTabs, renderExplorerConfigPanel, renderExplorerPanel } from './explorerView';
 
-let _openingsCg: CgApi | undefined;
+// Exported (read-only usage) so explorerView.ts can resolve the openings board for
+// explorer/repertoire move-row hover interactions without duplicating board-mount state.
+export let _openingsCg: CgApi | undefined;
 let _lastOpeningsAutoShapesHash: string | null = null;
 
 
@@ -157,7 +114,6 @@ let _showTreeArrows: boolean = true;
 function showTreeArrows(): boolean { return _showTreeArrows; }
 function toggleTreeArrows(): void { _showTreeArrows = !_showTreeArrows; }
 let _lastBoardFen: string = '';
-let _lastBoardPractice: boolean = false;
 const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 // Tracks the FEN when the user has played a legal off-tree move in browse mode.
 // null = board is showing the current sessionNode().fen (in-tree position).
@@ -339,18 +295,6 @@ function openingsPositionContext(fen: string, surface = 'openings-live'): Engine
   );
 }
 
-function practicePlayPositionContext(
-  session: NonNullable<ReturnType<typeof practiceSession>>,
-  node: OpeningTreeNode,
-): EnginePositionContext {
-  return contextFromRootAndMoves({
-    initialFen: session.startFen,
-    moves: session.moveHistory,
-    currentFen: node.fen,
-    surface: 'opening-practice-play',
-    path: session.moveHistory.join('/'),
-  });
-}
 let _sampleRenderPathKey = '';
 let _sampleRenderLimit = 25;
 let _samplePreviewGameId: string | null = null;
@@ -417,9 +361,6 @@ const _accountSyncErrors = new Map<string, string>();
 const _accountCardStats = new Map<string, AccountCardStats>();
 const _accountCardStatsLoading = new Set<string>();
 const _accountCardStatsError = new Set<string>();
-let _bookAuthNotice = '';
-let _repertoireExplorerNotice = '';
-let _expandedRepertoireAnnotationKey: string | null = null;
 
 // Icon codepoints reused from analysisControls.ts conventions.
 // Adapted from lichess-org/lila: ui/lib/src/licon.ts
@@ -467,7 +408,7 @@ function renderRouteRecoveryBanner(): VNode | null {
 function renderRouteLoadingPage(): VNode {
   return h('div.openings', [
     h('div.openings__header', [
-      h('h1.openings__title', 'Opponent Research'),
+      h('h1.openings__title', 'Opening Tree'),
     ]),
     h('div.openings__body', [
       h('div.openings__loading', 'Restoring opening tree\u2026'),
@@ -482,7 +423,7 @@ function renderLibraryPage(redraw: () => void): VNode {
     void loadSavedCollections(redraw);
     return h('div.openings', [
       h('div.openings__header', [
-        h('h1.openings__title', 'Opponent Research'),
+        h('h1.openings__title', 'Opening Tree'),
       ]),
       h('div.openings__body', [
         h('div.openings__loading', 'Loading collections\u2026'),
@@ -497,7 +438,7 @@ function renderLibraryPage(redraw: () => void): VNode {
 
   return h('div.openings', [
     h('div.openings__header', [
-      h('h1.openings__title', 'Opponent Research'),
+      h('h1.openings__title', 'Opening Tree'),
       step === 'idle'
         ? h('button.openings__new-btn', {
             on: { click: () => { setImportStep('details'); redraw(); } },
@@ -1383,7 +1324,7 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
 function renderEmptyState(redraw: () => void): VNode {
   return h('div.openings__empty', [
     h('div.openings__empty-icon', '\u265E'),
-    h('h2.openings__empty-title', 'Opponent Research'),
+    h('h2.openings__empty-title', 'Opening Tree'),
     h('p', 'Research your opponents\u2019 openings by importing their games.'),
     h('p.openings__hint', 'Accounts imported anywhere in Patzer Pro appear here automatically.'),
     h('button.openings__start-btn', {
@@ -1638,7 +1579,7 @@ function renderImportWorkflow(redraw: () => void): VNode {
   const step = importStep();
   return h('div.openings__import', [
     h('div.openings__import-header', [
-      h('span', 'New Opponent Research'),
+      h('span', 'New Opening Tree'),
       h('button.header__panel-btn.--ghost', {
         on: { click: () => { resetImport(); redraw(); } },
       }, 'Cancel'),
@@ -1906,7 +1847,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
         } },
       }, 'Save to Library') : null,
       h('button', {
-        attrs: { title: 'Report an issue with the Opponent Research page' },
+        attrs: { title: 'Report an issue with the Opening Tree page' },
         on: { click: () => { reportOpeningsIssue(); close(); } },
       }, 'Report issue'),
     ]),
@@ -1923,1168 +1864,15 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
   ]);
 }
 
-// Tool rail icon codepoints — Adapted from lichess-org/lila: ui/lib/src/licon.ts
-const ICON_BRANCH    = '\ue003'; // licon.Branch     → Opening Tree (branching variations)
-const ICON_BOOK      = '\ue03b'; // licon.Book       → Opponent's Repertoire
-const ICON_BAR_GRAPH = '\ue03c'; // licon.BarGraph   → Prep Report
-const ICON_EYE       = '\ue054'; // licon.Eye        → Style
-const ICON_SWORDS    = '\ue033'; // licon.Swords     → Practice Against Them
-
-export interface OpeningsToolDef { id: OpeningsTool; label: string; icon: string }
-
-export const OPENINGS_TOOL_DEFS: OpeningsToolDef[] = [
-  { id: 'opening-tree',         label: 'Tree',                  icon: ICON_BRANCH },
-  { id: 'opponent-repertoire',  label: "Opponent's Repertoire", icon: ICON_BOOK },
-  { id: 'prep-report',          label: 'Report',                icon: ICON_BAR_GRAPH },
-  { id: 'style',                label: 'Style',                 icon: ICON_EYE },
-  { id: 'practice',             label: 'Practice',              icon: ICON_SWORDS },
-];
+const ICON_BOOK = '\ue03b'; // licon.Book — used by "Save to Library" and the masters-book move icon
 
 /**
- * Persistent left tool rail for the openings session.
- * Switching tools updates activeTool() without leaving the current collection context.
- */
-function renderToolRail(redraw: () => void): VNode {
-  const current = activeTool();
-  return h('nav.openings__tool-rail', OPENINGS_TOOL_DEFS.map(def =>
-    h('button.openings__tool-rail-btn', {
-      class: { 'openings__tool-rail-btn--active': current === def.id },
-      attrs: { title: def.label },
-      on: { click: () => { setActiveTool(def.id); redraw(); } },
-    }, [
-      h('span.openings__tool-rail-icon', { attrs: { 'data-icon': def.icon } }),
-      h('span.openings__tool-rail-label', def.label),
-    ]),
-  ));
-}
-
-const TOOL_NAMES: Record<OpeningsTool, string> = {
-  'opening-tree':         'Opening Tree',
-  'opponent-repertoire':  "Opponent's Repertoire",
-  'prep-report':          'Prep Report',
-  'style':                'Style',
-  'practice':             'Practice Against Them',
-};
-
-/**
- * Placeholder for tools not yet implemented.
- * Spans the full content area (board + panel columns) via grid-column in CSS.
- */
-function renderToolPlaceholder(tool: OpeningsTool): VNode {
-  return h('div.openings__tool-content.openings__tool-content--placeholder', [
-    h('div.openings__tool-placeholder-inner', [
-      h('h3', TOOL_NAMES[tool]),
-      h('p', 'This tool is coming soon.'),
-    ]),
-  ]);
-}
-
-/**
- * High-signal opponent-repertoire overview strip.
- * Shows opponent W/D/L, opponent-repertoire breadth, and recency from the analytics cache.
- * Returns null if analytics are not yet available (tree still building).
- */
-function renderOpponentRepertoireOverview(collection: ResearchCollection): VNode | null {
-  const summary = getCollectionSummary();
-  if (!summary) return null;
-
-  const tree    = openingTree();
-  const profile = computeOpponentRepertoireProfile(collection.games, tree, collection.target ?? '');
-  const report  = computePrepReport(collection.games, collection.target ?? '', summary);
-
-  const wdl   = report.overall;
-  const total = wdl.total || 1;
-  const wPct  = (wdl.wins   / total * 100).toFixed(0);
-  const dPct  = (wdl.draws  / total * 100).toFixed(0);
-  const lPct  = (wdl.losses / total * 100).toFixed(0);
-
-  // Breadth label based on normalized entropy
-  let breadthLabel: string;
-  if (profile.distinctFirstMoves <= 1)       breadthLabel = 'Single line';
-  else if (profile.normalizedEntropy < 0.35) breadthLabel = 'Narrow';
-  else if (profile.normalizedEntropy < 0.65) breadthLabel = 'Moderate';
-  else                                        breadthLabel = 'Broad';
-
-  const recentGames = summary.recency.last90;
-
-  return h('div.openings__opponent-repertoire-overview', [
-    // W/D/L bar
-    h('div.openings__overview-wdl', [
-      h('div.openings__overview-wdl-bar', [
-        h('span.wdl-w', { attrs: { style: `width:${wPct}%` } }, wdl.wins > 0 ? `${wPct}%` : ''),
-        h('span.wdl-d', { attrs: { style: `width:${dPct}%` } }, wdl.draws > 0 ? `${dPct}%` : ''),
-        h('span.wdl-l', { attrs: { style: `width:${lPct}%` } }, wdl.losses > 0 ? `${lPct}%` : ''),
-      ]),
-      h('div.openings__overview-wdl-counts', [
-        h('span.wdl-w', `${wdl.wins}W`),
-        h('span.wdl-d', `${wdl.draws}D`),
-        h('span.wdl-l', `${wdl.losses}L`),
-      ]),
-    ]),
-    // Quick stats row
-    h('div.openings__overview-stats', [
-      h('div.openings__overview-stat', [
-        h('span.openings__overview-stat-label', "Opponent's Repertoire"),
-        h('span.openings__overview-stat-value', breadthLabel),
-      ]),
-      h('div.openings__overview-stat', [
-        h('span.openings__overview-stat-label', 'Openings'),
-        h('span.openings__overview-stat-value', `${profile.distinctEcos}`),
-      ]),
-      h('div.openings__overview-stat', [
-        h('span.openings__overview-stat-label', 'Last 90d'),
-        h('span.openings__overview-stat-value', `${recentGames}`),
-      ]),
-    ]),
-    profile.isSampleSmall
-      ? h('div.openings__overview-caveat', `Small sample (${summary.totalGames} games) — stats are estimates`)
-      : null,
-  ]);
-}
-
-const SPEED_LABELS: Record<string, string> = {
-  bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', classical: 'Classical',
-};
-
-/**
- * Opponent-repertoire summary modules: perspective split and time-control breakdown.
- * Speed cards are clickable to filter the session to that time control.
- * All data from cached CollectionSummary — no additional computation.
- */
-function renderOpponentRepertoireSummaryModules(redraw: () => void): VNode | null {
-  const summary = getCollectionSummary();
-  if (!summary) return null;
-
-  const activeSpeeds = speedFilter();
-
-  function miniWdlBar(wdl: { wins: number; draws: number; losses: number; total: number }): VNode {
-    const t = wdl.total || 1;
-    const wP = (wdl.wins   / t * 100).toFixed(0);
-    const dP = (wdl.draws  / t * 100).toFixed(0);
-    const lP = (wdl.losses / t * 100).toFixed(0);
-    return h('div.openings__mini-wdl', [
-      h('span.wdl-w', { attrs: { style: `width:${wP}%` } }),
-      h('span.wdl-d', { attrs: { style: `width:${dP}%` } }),
-      h('span.wdl-l', { attrs: { style: `width:${lP}%` } }),
-    ]);
-  }
-
-  // Perspective split
-  const perspSection = h('div.openings__sum-section', [
-    h('div.openings__sum-title', 'By Color'),
-    h('div.openings__sum-perspective', [
-      h('div.openings__sum-color', [
-        h('span.openings__sum-color-dot.white-dot', '○'),
-        h('span', `White: ${summary.asWhite.total}`),
-        summary.asWhite.total > 0 ? miniWdlBar(summary.asWhite) : null,
-      ]),
-      h('div.openings__sum-color', [
-        h('span.openings__sum-color-dot.black-dot', '●'),
-        h('span', `Black: ${summary.asBlack.total}`),
-        summary.asBlack.total > 0 ? miniWdlBar(summary.asBlack) : null,
-      ]),
-    ]),
-  ]);
-
-  // Time control cards
-  const topSpeeds = summary.bySpeed.slice(0, 4);
-  const speedSection = topSpeeds.length > 0 ? h('div.openings__sum-section', [
-    h('div.openings__sum-title', 'By Time Control'),
-    h('div.openings__sum-speeds', topSpeeds.map(sp => {
-      const isActive = activeSpeeds.has(sp.timeClass);
-      return h('button.openings__sum-speed-card', {
-        class: { 'openings__sum-speed-card--active': isActive },
-        attrs: { title: isActive ? 'Remove filter' : `Filter to ${sp.timeClass}` },
-        on: { click: () => {
-          const next = new Set(activeSpeeds as Set<string>);
-          if (isActive) next.delete(sp.timeClass);
-          else          next.add(sp.timeClass);
-          setSpeedFilter(next as Set<string>, redraw);
-          redraw();
-        } },
-      }, [
-        h('span.openings__sum-speed-name', SPEED_LABELS[sp.timeClass] ?? sp.timeClass),
-        h('span.openings__sum-speed-count', `${sp.wdl.total}`),
-        miniWdlBar(sp.wdl),
-      ]);
-    })),
-  ]) : null;
-
-  // Recency row
-  const recencySection = h('div.openings__sum-section', [
-    h('div.openings__sum-title', 'Recency'),
-    h('div.openings__sum-recency', [
-      h('span', `30d: ${summary.recency.last30}`),
-      h('span', `90d: ${summary.recency.last90}`),
-      h('span', `1yr: ${summary.recency.last365}`),
-    ]),
-  ]);
-
-  return h('div.openings__opponent-repertoire-summary', [
-    perspSection,
-    speedSection,
-    recencySection,
-  ]);
-}
-
-/**
- * Interactive line-insight cards for the Opponent's Repertoire panel.
- * Cards are derived from PrepReportLines (Phase 3 analytics) and are clickable
- * to navigate the board/tree to the target branch position.
- */
-function renderLineInsightCards(redraw: () => void): VNode | null {
-  const tree = openingTree();
-  if (!tree) return null;
-
-  const perspective = colorFilter();
-  const lines = computePrepReportLines(tree, perspective, 8);
-
-  const hasAny = lines.likelyLines.length > 0;
-  if (!hasAny) return null;
-
-  function renderLineCard(line: PrepLine, onClick: () => void): VNode {
-    const moveSan = line.sans.slice(0, 4).join(' ') + (line.sans.length > 4 ? '…' : '');
-    const winPct  = (line.opponentWinPct * 100).toFixed(0);
-    return h('button.openings__insight-card', { on: { click: onClick } }, [
-      h('span.openings__insight-moves', moveSan),
-      h('span.openings__insight-meta', [
-        h('span.openings__insight-freq', `${line.frequency}g`),
-        line.isReliable
-          ? h('span.openings__insight-pct', `${winPct}%W`)
-          : null,
-      ]),
-    ]);
-  }
-
-  function navTo(line: PrepLine): void {
-    navigateToPath(line.moves);
-    syncOpeningsBoard(redraw);
-    redraw();
-  }
-
-  const sections: VNode[] = [];
-
-  if (lines.likelyLines.length > 0) {
-    sections.push(h('div.openings__insight-group', [
-      h('div.openings__insight-group-label', 'Most Played'),
-      ...lines.likelyLines.slice(0, 2).map(l => renderLineCard(l, () => navTo(l))),
-    ]));
-  }
-
-  if (lines.strongLines.length > 0) {
-    sections.push(h('div.openings__insight-group', [
-      h('div.openings__insight-group-label', 'Strong Lines'),
-      ...lines.strongLines.slice(0, 2).map(l => renderLineCard(l, () => navTo(l))),
-    ]));
-  }
-
-  if (lines.weakLines.length > 0) {
-    sections.push(h('div.openings__insight-group', [
-      h('div.openings__insight-group-label', 'Weak Scoring'),
-      ...lines.weakLines.slice(0, 2).map(l => renderLineCard(l, () => navTo(l))),
-    ]));
-  }
-
-  if (lines.freshLines.length > 0) {
-    sections.push(h('div.openings__insight-group', [
-      h('div.openings__insight-group-label', 'Recent Additions'),
-      ...lines.freshLines.slice(0, 2).map(l => renderLineCard(l, () => navTo(l))),
-    ]));
-  }
-
-  if (sections.length === 0) return null;
-
-  return h('div.openings__line-insights', [
-    h('div.openings__insights-header', 'Line Insights'),
-    ...sections,
-  ]);
-}
-
-/**
- * Prep Report tool — full-page opponent dossier.
- * Spans both board and panel columns (grid-column: 2 / -1) via openings__tool-content.
- * Answers: what to prepare, what to avoid, what to expect.
- */
-function renderPrepReportTool(redraw: () => void): VNode {
-  const collection = activeCollection();
-  const vm = getPrepReportViewModel();
-
-  // Loading state — tree still building
-  if (!vm || !collection) {
-    return h('div.openings__tool-content', [
-      renderFilterBadge(redraw),
-      h('div.openings__prep-report', [
-        h('div.openings__pr-header', [
-          h('span.openings__pr-label', 'Prep Report'),
-          collection ? h('span.openings__pr-context', collection.target) : null,
-        ]),
-        treeBuilding()
-          ? h('div.openings__pr-loading', 'Building tree\u2026')
-          : h('div.openings__pr-loading', 'Open a collection to see the Prep Report.'),
-      ]),
-    ]);
-  }
-
-  const { summary, report, lines } = vm;
-  const total = summary.overall.total || 1;
-  const isSparse = isCollectionSmall(summary.overall.total);
-  const wPct = (summary.overall.wins   / total * 100).toFixed(0);
-  const dPct = (summary.overall.draws  / total * 100).toFixed(0);
-  const lPct = (summary.overall.losses / total * 100).toFixed(0);
-
-  // Likely lines (recency-weighted)
-  const colorPerspective = colorFilter();
-  const likelyModule = computeLikelyLineModule(openingTree(), colorPerspective, 8, 8, recencyMode());
-
-  // Weakness module
-  const tree = openingTree();
-  const profile = computeOpponentRepertoireProfile(collection.games, tree, collection.target ?? '');
-  const weaknessModule = computeWeaknessModule(lines, summary.overall.total);
-
-  // Prep notes
-  const notes = computePrepNotes(summary, profile, lines);
-
-  function navToLine(line: PrepLine): void {
-    navigateToPath(line.moves);
-    setActiveTool('opening-tree');
-    redraw();
-  }
-
-  // Likely-line row: shows recency boost badge when line was played within 90 days.
-  function renderLikelyLineRow(line: LikelyLineEntry, onClick: () => void): VNode {
-    const moveSan = line.sans.slice(0, 5).join(' ') + (line.sans.length > 5 ? '\u2026' : '');
-    const boostRecent  = line.recencyBoost >= 2.0;  // ≤30d
-    const boostFresh   = line.recencyBoost >= 1.5 && line.recencyBoost < 2.0;  // ≤90d
-    return h('button.openings__pr-line-row', {
-      class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
-      attrs: { title: "Open in Opponent's Repertoire" },
-      on: { click: onClick },
-    }, [
-      h('span.openings__pr-line-moves', moveSan),
-      h('span.openings__pr-line-meta', [
-        h('span.openings__pr-line-freq', `${line.frequency}g`),
-        boostRecent
-          ? h('span.openings__pr-boost-badge.openings__pr-boost--hot', '\u2191 now')
-          : boostFresh
-            ? h('span.openings__pr-boost-badge.openings__pr-boost--fresh', '\u2191 recent')
-            : null,
-        !line.isReliable ? h('span.openings__pr-line-caveat', `n=${line.frequency}`) : null,
-      ]),
-      h('span.openings__pr-line-nav', '\u2192'),
-    ]);
-  }
-
-  // Target-line row: shows opponent's poor win % as the "why to aim here" signal.
-  function renderTargetLineRow(line: PrepLine, onClick: () => void): VNode {
-    const moveSan    = line.sans.slice(0, 5).join(' ') + (line.sans.length > 5 ? '\u2026' : '');
-    const oppWinPct  = (line.opponentWinPct * 100).toFixed(0);
-    return h('button.openings__pr-target-row', {
-      class: { 'openings__pr-unreliable': !isStatReliable(line.frequency) },
-      attrs: { title: "Open in Opponent's Repertoire" },
-      on: { click: onClick },
-    }, [
-      h('span.openings__pr-line-moves', moveSan),
-      h('span.openings__pr-line-meta', [
-        h('span.openings__pr-line-freq', `${line.frequency}g`),
-        h('span.openings__pr-target-score', `opp ${oppWinPct}%W (n=${line.frequency})`),
-        line.isRecent ? h('span.openings__pr-line-recent', 'recent') : null,
-      ]),
-      h('span.openings__pr-line-nav', '\u2192'),
-    ]);
-  }
-
-  return h('div.openings__tool-content', [
-    renderFilterBadge(redraw),
-    h('div.openings__prep-report', [
-
-      // Header with recency toggle
-      h('div.openings__pr-header', [
-        h('span.openings__pr-label', 'Prep Report'),
-        h('span.openings__pr-context', `${collection.target} · ${summary.totalGames} games`),
-        h('div.openings__pr-recency-toggle', [
-          h('button', {
-            class: { 'openings__pr-recency-btn': true, active: recencyMode() === 'recent' },
-            on: { click: () => { setRecencyMode('recent'); redraw(); } },
-          }, 'Recent first'),
-          h('button', {
-            class: { 'openings__pr-recency-btn': true, active: recencyMode() === 'all-time' },
-            on: { click: () => { setRecencyMode('all-time'); redraw(); } },
-          }, 'All time'),
-        ]),
-      ]),
-
-      // Auto-fallback notice when recent data is too sparse
-      recencyMode() === 'recent' && summary.recency.last90 < 10
-        ? h('div.openings__pr-sparse-banner', '\u26A0 Fewer than 10 games in the last 90 days — showing all-time data.')
-        : null,
-
-      // Small-sample warning banner
-      isSparse ? h('div.openings__pr-sparse-banner', `\u26A0 Small sample (n=${summary.overall.total}) — statistics may not be reliable with fewer than ${MIN_COLLECTION_SIZE} games.`) : null,
-
-      // Prep notes strip
-      notes.length > 0 ? h('div.openings__pr-notes', notes.map(note =>
-        h('div.openings__pr-note', {
-          class: { 'openings__pr-note--low': note.confidence === 'low' },
-        }, [
-          h('span.openings__pr-note-title', note.title),
-          h('span.openings__pr-note-body',  note.body),
-        ])
-      )) : null,
-
-      // Overview: W/D/L bar + quick stats
-      h('div.openings__pr-overview', [
-        h('div.openings__pr-wdl', [
-          h('div.openings__pr-wdl-bar', {
-            class: { 'openings__pr-unreliable': !isStatReliable(summary.overall.total) },
-          }, [
-            h('span.wdl-w', { attrs: { style: `width:${wPct}%` } }, summary.overall.wins > 0   ? `${wPct}%` : ''),
-            h('span.wdl-d', { attrs: { style: `width:${dPct}%` } }, summary.overall.draws > 0  ? `${dPct}%` : ''),
-            h('span.wdl-l', { attrs: { style: `width:${lPct}%` } }, summary.overall.losses > 0 ? `${lPct}%` : ''),
-          ]),
-          h('div.openings__pr-wdl-counts', [
-            h('span.wdl-w', `${summary.overall.wins}W`),
-            h('span.wdl-d', `${summary.overall.draws}D`),
-            h('span.wdl-l', `${summary.overall.losses}L`),
-            h('span.openings__pr-sample', `n=${summary.overall.total}`),
-          ]),
-        ]),
-        // Top openings
-        report.topEcos.length > 0 ? h('div.openings__pr-ecos', [
-          h('div.openings__pr-section-title', 'Top Openings'),
-          ...report.topEcos.slice(0, 5).map(eco =>
-            h('div.openings__pr-eco-row', {
-              class: { 'openings__pr-unreliable': !isStatReliable(eco.count) },
-            }, [
-              h('span.openings__pr-eco-name', eco.opening),
-              h('span.openings__pr-eco-count', `${eco.count}g`),
-              h('span.openings__pr-eco-pct', `${Math.round(eco.count / total * 100)}%`),
-              h('span.openings__pr-sample', `n=${eco.count}`),
-            ])
-          ),
-        ]) : null,
-      ]),
-
-      // Two-column section grid: likely lines + target lines
-      h('div.openings__pr-columns', [
-
-        // Likely lines column — what the opponent is most likely to play
-        h('div.openings__pr-col', [
-          h('div.openings__pr-section-title', [
-            'Likely Lines',
-            h('span.openings__pr-section-hint', ' — expect these'),
-          ]),
-          likelyModule.lines.length > 0
-            ? h('div.openings__pr-lines', likelyModule.lines.slice(0, 6).map(l =>
-                renderLikelyLineRow(l, () => navToLine(l))
-              ))
-            : h('div.openings__pr-empty', 'Not enough data.'),
-          !likelyModule.hasSufficientData
-            ? h('div.openings__pr-caveat', 'Small sample — estimates are rough.')
-            : null,
-        ]),
-
-        // Target lines column — lines to steer toward where opponent underperforms
-        h('div.openings__pr-col', [
-          h('div.openings__pr-section-title', [
-            'Target Lines',
-            h('span.openings__pr-section-hint', ' — steer here'),
-          ]),
-          lines.weakLines.length > 0
-            ? h('div.openings__pr-lines', lines.weakLines.slice(0, 6).map(l =>
-                renderTargetLineRow(l, () => navToLine(l))
-              ))
-            : h('div.openings__pr-empty', 'No reliable target lines found.'),
-          lines.weakLines.length > 0
-            ? h('div.openings__pr-caveat', "Lines where opponent wins under 30%. Click to open in Opponent's Repertoire.")
-            : weaknessModule.entries.length > 0
-              ? h('div.openings__pr-caveat', `${weaknessModule.entries.length} prep signal${weaknessModule.entries.length > 1 ? 's' : ''} detected below.`)
-              : null,
-        ]),
-      ]),
-
-      // Risk signals strip — drift and fresh-risk lines that don't meet target threshold
-      weaknessModule.entries.filter(e => e.category !== 'low-score').length > 0
-        ? h('div.openings__pr-risk-strip', [
-            h('div.openings__pr-section-title', 'Prep Signals'),
-            h('div.openings__pr-weaknesses', weaknessModule.entries
-              .filter(e => e.category !== 'low-score')
-              .map(e =>
-                h('button.openings__pr-weakness-row', {
-                  class: { [`openings__pr-weakness--${e.category}`]: true },
-                  on: { click: () => navToLine(e.line) },
-                }, [
-                  h('span.openings__pr-weakness-label', e.label),
-                  h('span.openings__pr-weakness-moves',
-                    e.line.sans.slice(0, 4).join(' ') + (e.line.sans.length > 4 ? '\u2026' : '')),
-                  h('span.openings__pr-weakness-freq', `${e.line.frequency}g`),
-                  h('span.openings__pr-line-nav', '\u2192'),
-                ])
-              )
-            ),
-            weaknessModule.caveats.length > 0
-              ? h('div.openings__pr-caveat', weaknessModule.caveats[0]!)
-              : null,
-          ])
-        : null,
-
-    ]),
-
-    // --- Termination profile + game length ---
-    renderTerminationAndLength(collection),
-
-    // --- Opening recommendations ---
-    renderRecommendations(weaknessModule, lines, summary.overall.total, navToLine),
-
-    // --- Vulnerable positions (traps they fall for) ---
-    renderVulnerablePositions(collection, redraw),
-  ]);
-}
-
-// --- Termination + Game Length section ---
-
-function renderTerminationAndLength(collection: ResearchCollection | null): VNode | null {
-  if (!collection) return null;
-  const target = collection.target ?? '';
-  const term = computeTerminationProfile(collection.games, target);
-  const len = computeGameLengthProfile(collection.games, target);
-
-  if (term.total < 10 && len.totalCounted < 10) return null;
-
-  const pct = (n: number, total: number) => total > 0 ? Math.round((n / total) * 100) : 0;
-  const flagPct = pct(term.timeout, term.total);
-  const isHighFlag = flagPct > 15;
-
-  return h('div.openings__pr-term-section', [
-    // Termination profile
-    term.total >= 10 ? h('div.openings__pr-term-grid', [
-      h('div.openings__pr-section-title', `How Games End (n=${term.total})`),
-      h('div.openings__pr-term-stats', [
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Resign'),
-          h('span.openings__pr-term-value', `${pct(term.resignation, term.total)}%`),
-        ]),
-        h('div.openings__pr-term-stat', {
-          class: { 'openings__pr-term-stat--highlight': isHighFlag },
-        }, [
-          h('span.openings__pr-term-label', 'Timeout'),
-          h('span.openings__pr-term-value', `${flagPct}%`),
-          isHighFlag ? h('span.openings__pr-term-flag', '\u231B pressure!') : null,
-        ]),
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Checkmate'),
-          h('span.openings__pr-term-value', `${pct(term.checkmate, term.total)}%`),
-        ]),
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Draw'),
-          h('span.openings__pr-term-value', `${pct(term.drawAgreement + term.stalemate, term.total)}%`),
-        ]),
-      ]),
-    ]) : null,
-
-    // Game length
-    len.totalCounted >= 10 ? h('div.openings__pr-length-grid', [
-      h('div.openings__pr-section-title', `Game Length (n=${len.totalCounted})`),
-      h('div.openings__pr-term-stats', [
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Avg'),
-          h('span.openings__pr-term-value', `${len.avgLength} moves`),
-        ]),
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Wins'),
-          h('span.openings__pr-term-value', len.avgWinLength > 0 ? `${len.avgWinLength} moves` : '\u2014'),
-        ]),
-        h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Losses'),
-          h('span.openings__pr-term-value', len.avgLossLength > 0 ? `${len.avgLossLength} moves` : '\u2014'),
-        ]),
-        len.shortGamePct > 0 ? h('div.openings__pr-term-stat', [
-          h('span.openings__pr-term-label', 'Short (<20)'),
-          h('span.openings__pr-term-value', `${len.shortGamePct}%`),
-        ]) : null,
-      ]),
-    ]) : null,
-  ]);
-}
-
-// --- Vulnerable positions (traps they fall for) ---
-
-function renderVulnerablePositions(
-  collection: ResearchCollection | null,
-  redraw: () => void,
-): VNode | null {
-  if (!collection || !openingTree()) return null;
-
-  const patterns = detectTrapPatterns(
-    openingTree()!,
-    colorFilter(),
-    collection.games,
-    collection.target ?? '',
-  );
-  const significant = patterns.filter(p => p.isSignificant);
-  if (significant.length === 0) return null;
-
-  return h('div.openings__pr-traps', [
-    h('div.openings__pr-section-title', 'Vulnerable Positions'),
-    h('div.openings__pr-traps-list', significant.slice(0, 6).map(trap =>
-      h('button.openings__pr-trap-card', {
-        class: { 'openings__pr-unreliable': !isStatReliable(trap.totalAtNode) },
-        on: { click: () => { navigateToPath(trap.path.slice(0, -1)); setActiveTool('opening-tree'); syncOpeningsBoard(redraw); redraw(); } },
-      }, [
-        h('div.openings__pr-trap-moves', trap.sans.slice(0, 5).join(' ')),
-        h('div.openings__pr-trap-detail', [
-          h('span', `plays ${trap.opponentMove}`),
-          h('span.openings__pr-trap-losses', `loses ${trap.losses}/${trap.totalAtNode} (${Math.round(trap.losses / trap.totalAtNode * 100)}%)`),
-        ]),
-        h('span.openings__pr-line-nav', '\u2192'),
-      ])
-    )),
-  ]);
-}
-
-// --- Opening recommendations section ---
-
-function renderRecommendations(
-  weakness: import('./analytics').WeaknessModule,
-  lines: import('./analytics').PrepReportLines,
-  totalGames: number,
-  navToLine: (line: PrepLine) => void,
-): VNode | null {
-  const recs = computeOpeningRecommendations(weakness, lines, totalGames);
-  if (recs.length === 0) return null;
-
-  return h('div.openings__pr-recs', [
-    h('div.openings__pr-section-title', 'Recommended Preparation'),
-    h('div.openings__pr-recs-list', recs.map(rec =>
-      h('button.openings__pr-rec-card', {
-        class: { [`openings__pr-rec--${rec.confidence}`]: true },
-        on: { click: () => navToLine(rec.line) },
-      }, [
-        h('div.openings__pr-rec-action', rec.actionLabel),
-        h('div.openings__pr-rec-reason', rec.reason),
-        h('span.openings__pr-line-nav', '\u2192'),
-      ])
-    )),
-  ]);
-}
-
-/**
- * Style dashboard — renders a full-page portrait of the opponent's opening identity:
- * first-move tendencies, predictability, recent form, and synthesized style signals.
- *
- * Grounded in `StyleViewModel` which wraps only what the imported data can honestly support.
- * Signals are labeled as 'descriptive', 'interpretive', or 'cautious' to control display tone.
- */
-function renderStyleTool(redraw: () => void): VNode {
-  const collection = activeCollection();
-  const vm = getStyleViewModel();
-
-  if (!vm || !collection) {
-    return h('div.openings__tool-content', [
-      renderFilterBadge(redraw),
-      h('div.openings__style', [
-        h('div.openings__style-header', [
-          h('span.openings__style-label', 'Style'),
-        ]),
-        treeBuilding()
-          ? h('div.openings__style-loading', 'Building tree\u2026')
-          : h('div.openings__style-loading', 'Open a collection to see Style.'),
-      ]),
-    ]);
-  }
-
-  return h('div.openings__tool-content', [
-    renderFilterBadge(redraw),
-    h('div.openings__style', [
-      renderStyleHeader(collection, vm),
-      renderStylePlayerCard(vm),
-      renderStyleAxesBars(vm),
-      renderStyleSignals(vm),
-      renderStyleFirstMoves(vm),
-      renderStyleForm(vm),
-      renderStyleBehavioral(vm),
-    ]),
-  ]);
-}
-
-function renderStyleHeader(collection: ResearchCollection, vm: StyleViewModel): VNode {
-  const conf = vm.overallConfidence;
-  const confLabel = conf === 'insufficient' ? 'Insufficient data'
-    : conf === 'low'          ? 'Low confidence'
-    : conf === 'medium'       ? 'Medium confidence'
-    : 'High confidence';
-  const n = vm.form.baseline.wdl.total;
-
-  return h('div.openings__style-header', [
-    h('span.openings__style-label', 'Style'),
-    h('span.openings__style-context', `${collection.target} · ${n} games`),
-    h('span.openings__style-confidence', {
-      class: { [`openings__style-conf--${conf}`]: true },
-    }, confLabel),
-  ]);
-}
-
-/**
- * Derive a single archetype label from the StyleViewModel.
- * Labels are useful descriptions, not personality verdicts.
- * Uses a priority-ordered check so the most distinctive trait wins.
- */
-function deriveArchetype(vm: StyleViewModel): { label: string; qualifier: string } | null {
-  if (vm.overallConfidence === 'insufficient') return null;
-
-  const { profile, form } = vm;
-  const n = form.baseline.wdl.total;
-  if (n < 5) return null;
-
-  const drawRate = form.baseline.wdl.draws / (n || 1);
-  const gambitsSignal = vm.signals.find(s => s.label.includes('named gambits'));
-  const gambitsHighPct = (() => {
-    if (!gambitsSignal) return 0;
-    const m = gambitsSignal.label.match(/^(\d+)%/);
-    return m ? parseInt(m[1]!, 10) : 0;
-  })();
-
-  // Ordered priority checks
-  if (gambitsHighPct >= 30) {
-    return { label: 'Gambit Player', qualifier: `${gambitsHighPct}% of games involve named gambits` };
-  }
-  if (profile.normalizedEntropy < 0.3 && profile.topFirstMovePct >= 0.7) {
-    return {
-      label: 'One-Trick Specialist',
-      qualifier: `${Math.round(profile.topFirstMovePct * 100)}% of games open the same way`,
-    };
-  }
-  if (profile.normalizedEntropy < 0.45) {
-    return { label: 'Book Player', qualifier: 'Consistent, narrow opponent opening repertoire' };
-  }
-  if (drawRate >= 0.35) {
-    return { label: 'Draw Specialist', qualifier: `${Math.round(drawRate * 100)}% draw rate` };
-  }
-  if (profile.normalizedEntropy > 0.65) {
-    return { label: 'Versatile Opponent', qualifier: 'Broad, unpredictable opponent repertoire' };
-  }
-  return { label: 'Solid Opponent Repertoire', qualifier: 'Moderate opening variety' };
-}
-
-/**
- * Player card — at-a-glance identity panel.
- * Shows the archetype label (if derivable) and overall W/D/L as a bar.
- */
-function renderStylePlayerCard(vm: StyleViewModel): VNode | null {
-  const n = vm.form.baseline.wdl.total;
-  if (n < 5) return null;
-
-  const archetype = deriveArchetype(vm);
-  const wdl = vm.form.baseline.wdl;
-  const t   = wdl.total || 1;
-  const wP  = (wdl.wins   / t * 100).toFixed(0);
-  const dP  = (wdl.draws  / t * 100).toFixed(0);
-  const lP  = (wdl.losses / t * 100).toFixed(0);
-
-  return h('div.openings__style-player-card', [
-    archetype ? h('div.openings__style-archetype', [
-      h('span.openings__style-archetype-label', archetype.label),
-      h('span.openings__style-archetype-qualifier', archetype.qualifier),
-    ]) : null,
-    h('div.openings__style-card-wdl', [
-      h('div.openings__style-wdl-bar', [
-        h('span.wdl-w', { attrs: { style: `width:${wP}%` } }),
-        h('span.wdl-d', { attrs: { style: `width:${dP}%` } }),
-        h('span.wdl-l', { attrs: { style: `width:${lP}%` } }),
-      ]),
-      h('div.openings__style-wdl-counts', [
-        h('span.wdl-w', `${wdl.wins}W`),
-        h('span.wdl-d', `${wdl.draws}D`),
-        h('span.wdl-l', `${wdl.losses}L`),
-      ]),
-    ]),
-  ]);
-}
-
-/**
- * Style-axis bars — compact visual representation of key style dimensions.
- * Each axis is a labeled bar placed between two poles.
- */
-function renderStyleAxesBars(vm: StyleViewModel): VNode | null {
-  const n = vm.form.baseline.wdl.total;
-  if (n < 10) return null;
-
-  const { profile } = vm;
-
-  // Predictability axis: narrow (0) → broad (1)
-  const predictPct = Math.round(profile.normalizedEntropy * 100);
-
-  // Comfort zone: concentrated (high top3EcoPct) → varied (low top3EcoPct)
-  // Invert so "concentrated" = left pole on bar
-  const comfortPct = Math.round((1 - profile.top3EcoPct) * 100);
-
-  const axes: Array<{ label: string; leftPole: string; rightPole: string; pct: number }> = [];
-
-  if (profile.distinctFirstMoves > 1) {
-    axes.push({ label: 'Opponent repertoire breadth', leftPole: 'Narrow', rightPole: 'Broad', pct: predictPct });
-  }
-  if (profile.top3EcoPct > 0) {
-    axes.push({ label: 'Opening variety', leftPole: 'Concentrated', rightPole: 'Varied', pct: comfortPct });
-  }
-
-  if (axes.length === 0) return null;
-
-  return h('div.openings__style-axes', [
-    h('div.openings__style-section-title', 'Style axes'),
-    h('div.openings__style-axes-list',
-      axes.map(axis =>
-        h('div.openings__style-axis-row', [
-          h('span.openings__style-axis-label', axis.label),
-          h('div.openings__style-axis-track', [
-            h('span.openings__style-axis-pole', axis.leftPole),
-            h('div.openings__style-axis-bar-wrap', [
-              h('div.openings__style-axis-bar', {
-                attrs: { style: `left:${axis.pct}%` },
-              }),
-            ]),
-            h('span.openings__style-axis-pole', axis.rightPole),
-          ]),
-        ])
-      )
-    ),
-  ]);
-}
-
-function renderStyleSignals(vm: StyleViewModel): VNode | null {
-  const { signals } = vm;
-  if (signals.length === 0) return null;
-
-  const descriptive  = signals.filter(s => s.type === 'descriptive');
-  const interpretive = signals.filter(s => s.type === 'interpretive');
-  const cautious     = signals.filter(s => s.type === 'cautious');
-
-  function renderSignal(s: (typeof signals)[number]): VNode {
-    return h('div.openings__style-signal', {
-      class: {
-        [`openings__style-signal--${s.type}`]: true,
-        [`openings__style-signal--${s.confidence}`]: true,
-      },
-    }, [
-      h('span.openings__style-signal-label', s.label),
-      s.caveat ? h('span.openings__style-signal-caveat', s.caveat) : null,
-    ]);
-  }
-
-  return h('div.openings__style-signals', [
-    descriptive.length > 0 ? h('div.openings__style-signals-group', [
-      h('div.openings__style-signals-title', 'Observed facts'),
-      ...descriptive.map(renderSignal),
-    ]) : null,
-    interpretive.length > 0 ? h('div.openings__style-signals-group', [
-      h('div.openings__style-signals-title', 'Inferences'),
-      ...interpretive.map(renderSignal),
-    ]) : null,
-    cautious.length > 0 ? h('div.openings__style-signals-group', [
-      h('div.openings__style-signals-title', 'Behavioral tendencies'),
-      ...cautious.map(renderSignal),
-    ]) : null,
-  ]);
-}
-
-function renderStyleFirstMoves(vm: StyleViewModel): VNode {
-  const { asWhite, asBlack } = vm.style;
-
-  function renderMoveBar(m: (typeof asWhite.firstMoves)[number]): VNode {
-    const pct = Math.round(m.pct * 100);
-    return h('div.openings__style-move-row', [
-      h('span.openings__style-move-san', m.san),
-      h('div.openings__style-move-bar-wrap', [
-        h('div.openings__style-move-bar', {
-          attrs: { style: `width:${pct}%` },
-        }),
-      ]),
-      h('span.openings__style-move-pct', `${pct}%`),
-      h('span.openings__style-move-count', `(${m.count}g)`),
-    ]);
-  }
-
-  return h('div.openings__style-first-moves', [
-    h('div.openings__style-fm-col', [
-      h('div.openings__style-section-title', 'As White'),
-      asWhite.firstMoves.length > 0
-        ? h('div.openings__style-move-list', asWhite.firstMoves.slice(0, 5).map(renderMoveBar))
-        : h('div.openings__style-empty', 'No data'),
-    ]),
-    h('div.openings__style-fm-col', [
-      h('div.openings__style-section-title', 'As Black'),
-      asBlack.firstMoves.length > 0
-        ? h('div.openings__style-move-list', asBlack.firstMoves.slice(0, 5).map(renderMoveBar))
-        : h('div.openings__style-empty', 'No data'),
-    ]),
-  ]);
-}
-
-function renderStyleForm(vm: StyleViewModel): VNode | null {
-  const { form } = vm;
-  const baseline = form.baseline.wdl;
-  const last90   = form.last90.wdl;
-  const last30   = form.last30.wdl;
-
-  if (baseline.total < 5) return null;
-
-  function wdlBar(wdl: typeof baseline): VNode {
-    const t = wdl.total || 1;
-    const wP = (wdl.wins   / t * 100).toFixed(0);
-    const dP = (wdl.draws  / t * 100).toFixed(0);
-    const lP = (wdl.losses / t * 100).toFixed(0);
-    return h('div.openings__style-wdl-row', [
-      h('div.openings__style-wdl-bar', [
-        h('span.wdl-w', { attrs: { style: `width:${wP}%` } }),
-        h('span.wdl-d', { attrs: { style: `width:${dP}%` } }),
-        h('span.wdl-l', { attrs: { style: `width:${lP}%` } }),
-      ]),
-      h('div.openings__style-wdl-counts', [
-        h('span.wdl-w', `${wdl.wins}W`),
-        h('span.wdl-d', `${wdl.draws}D`),
-        h('span.wdl-l', `${wdl.losses}L`),
-        h('span.openings__style-wdl-total', `n=${wdl.total}`),
-      ]),
-    ]);
-  }
-
-  const trendLabel = form.recentTrend === 'improving'    ? '\u2191 Improving recently'
-    : form.recentTrend === 'declining'    ? '\u2193 Declining recently'
-    : form.recentTrend === 'stable'       ? '\u2014 Stable'
-    : null;
-
-  return h('div.openings__style-form', [
-    h('div.openings__style-section-title', 'Form'),
-    h('div.openings__style-form-periods', [
-      h('div.openings__style-form-row', [
-        h('span.openings__style-form-label', 'All time'),
-        wdlBar(baseline),
-      ]),
-      last90.total >= 3 ? h('div.openings__style-form-row', [
-        h('span.openings__style-form-label', 'Last 90d'),
-        wdlBar(last90),
-      ]) : null,
-      last30.total >= 3 ? h('div.openings__style-form-row', [
-        h('span.openings__style-form-label', 'Last 30d'),
-        wdlBar(last30),
-      ]) : null,
-    ]),
-    trendLabel ? h('div.openings__style-trend', trendLabel) : null,
-    form.recentTrend !== 'insufficient-data'
-      ? h('div.openings__style-form-caveat', 'Based on win-rate change only — not engine-backed.')
-      : null,
-  ]);
-}
-
-/**
- * Behavioral tendency module — shows opening commitment, opponent-repertoire switching signals,
- * and stability indicators derived from FormData and OpponentRepertoireProfile.
- *
- * Deliberately avoids psychological claims. Language stays at the level of
- * observable patterns in the game history.
- */
-function renderStyleBehavioral(vm: StyleViewModel): VNode | null {
-  const { form, profile } = vm;
-  const n = form.baseline.wdl.total;
-  if (n < 10) return null;
-
-  const items: VNode[] = [];
-
-  // Opening variety (top3EcoPct) is already shown as a style axis bar — omitted here to avoid duplication.
-
-  // --- Opening switching — recent vs all-time ---
-  // If the recent top opening differs from the baseline top opening, they may have switched lines.
-  const recentEco   = form.last90.topEco;
-  const baselineEco = form.baseline.topEco;
-  if (recentEco && baselineEco && recentEco !== baselineEco && form.last90.datedGameCount >= 5) {
-    items.push(h('div.openings__style-behavioral-row', [
-      h('span.openings__style-behavioral-label', 'Recent opening shift'),
-      h('span.openings__style-behavioral-detail',
-        `${baselineEco} historically → ${recentEco} in last 90 days`,
-      ),
-      h('span.openings__style-behavioral-caveat', 'May reflect prep change or one-off experiment.'),
-    ]));
-  }
-
-  // --- No switching indicator (stability) ---
-  if (recentEco && baselineEco && recentEco === baselineEco && form.last90.datedGameCount >= 5) {
-    items.push(h('div.openings__style-behavioral-row', [
-      h('span.openings__style-behavioral-label', 'Stable opening choice'),
-      h('span.openings__style-behavioral-detail',
-        `Same primary opening (${baselineEco}) in recent and all-time games`,
-      ),
-    ]));
-  }
-
-  if (items.length === 0) return null;
-
-  return h('div.openings__style-behavioral', [
-    h('div.openings__style-section-title', 'Behavioral tendencies'),
-    h('div.openings__style-behavioral-caveat-banner',
-      'These are observed patterns only — not psychological assessments.'),
-    h('div.openings__style-behavioral-list', items),
-  ]);
-}
-
-/**
- * Practice Against Them — board-led training mode.
- *
- * Returns two grid children: board column + practice panel.
- * The board is always visible as the center of gravity.
- *
- * Pre-session (no active PracticeSession):
- *   Shows color picker + "Start" button.
- *
- * Active session:
- *   Shows opponent source banner (opponent-repertoire / engine / exhausted),
- *   session info, and a Stop button.
- *
- * Game loop automation (opponent auto-play) is NOT wired in this prompt.
- * That comes in the next prompt. This shell establishes ownership and layout only.
- */
-function renderPracticeTool(
-  collection: ResearchCollection | null,
-  node: OpeningTreeNode | null,
-  redraw: () => void,
-): VNode[] {
-  const session = practiceSession();
-
-  return [
-    // Board column — same layout as Opening Tree
-    h('div.openings__board-col', [
-      renderPlayerStrip(collection, 'top'),
-      h('div.openings__board-wrap', [
-        renderOpeningsBoard(node, redraw),
-      ]),
-      renderPlayerStrip(collection, 'bottom'),
-    ]),
-
-    // Practice panel
-    h('div.openings__session-panel openings__practice-panel', [
-      session
-        ? renderPracticeActivePanel(node, session, redraw)
-        : renderPracticeSetupPanel(collection, node, redraw),
-    ]),
-  ];
-}
-
-/**
- * Pre-session panel: color picker and Start Practice button.
- */
-function renderPracticeSetupPanel(
-  collection: ResearchCollection | null,
-  node: OpeningTreeNode | null,
-  redraw: () => void,
-): VNode {
-  // Pick a default start color: play as the non-opponent side.
-  // If color filter is set, user plays opposite of opponent's usual color.
-  const suggestedColor: 'white' | 'black' =
-    colorFilter() === 'black' ? 'white' : 'black';
-
-  const target = collection?.target ?? 'them';
-
-  let _selectedColor: 'white' | 'black' = suggestedColor;
-
-  function handleStart(color: 'white' | 'black') {
-    const fen = node?.fen ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    startPractice(color, fen);
-    redraw();
-  }
-
-  return h('div.openings__practice-setup', [
-    h('div.openings__practice-setup-title', `Practice Against ${target}`),
-    h('div.openings__practice-setup-desc',
-      `Play from the current position. ${target} will respond using their imported opening lines while opponent-repertoire data is available, then the engine takes over.`),
-    h('div.openings__practice-color-picker', [
-      h('span.openings__practice-color-label', 'You play as'),
-      h('div.openings__practice-color-btns', [
-        h('button.openings__practice-color-btn', {
-          class: { 'openings__practice-color-btn--active': suggestedColor === 'white' },
-          on: { click: () => { _selectedColor = 'white'; handleStart('white'); } },
-        }, 'White'),
-        h('button.openings__practice-color-btn', {
-          class: { 'openings__practice-color-btn--active': suggestedColor === 'black' },
-          on: { click: () => { _selectedColor = 'black'; handleStart('black'); } },
-        }, 'Black'),
-      ]),
-    ]),
-    h('div.openings__practice-strength', [
-      h('span.openings__practice-strength-label', 'Engine strength'),
-      renderStrengthSelector(getPlayStrengthLevel(), (level) => {
-        setPlayStrengthLevel(level);
-        redraw();
-      }),
-    ]),
-    h('div.openings__practice-setup-note',
-      'Selecting a color starts practice immediately.'),
-  ]);
-}
-
-/**
- * Active session panel: opponent source banner + session info + Stop button.
- */
-function renderPracticeActivePanel(
-  node: OpeningTreeNode | null,
-  session: ReturnType<typeof practiceSession>,
-  redraw: () => void,
-): VNode {
-  if (!session) return h('div'); // type narrowing only; never reached
-
-  // Read source from session state — set by schedulePracticeOpponentResponse after each opponent turn.
-  // Calling planOpponentTurn here would invoke random move selection on every render, which is wrong.
-  const source = session.opponentSource;
-  const engineStrength = source === 'engine'
-    ? STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3]!
-    : null;
-  const sourceBannerText = source === 'opponent-repertoire'
-    ? 'Playing from imported opponent repertoire'
-    : source === 'engine' && engineStrength
-      ? `Engine playing at Level ${engineStrength.level} (${engineStrength.label} ~${engineStrength.uciElo} Elo)`
-      : source === 'engine'
-        ? 'Engine has taken over — opponent repertoire data exhausted'
-        : 'No moves available — practice has ended at this branch';
-
-  const sourceBannerClass = source === 'opponent-repertoire'
-    ? 'openings__practice-source--opponent-repertoire'
-    : source === 'engine'
-      ? 'openings__practice-source--engine'
-      : 'openings__practice-source--exhausted';
-
-  // Compute total opponent frequency from node data — pure, no random selection.
-  const totalFreq = buildPracticeCandidates(node).reduce((s, c) => s + c.frequency, 0);
-
-  const moveCount = session.moveHistory.length;
-
-  return h('div.openings__practice-active', [
-    h('div.openings__practice-source-banner', {
-      class: { [sourceBannerClass]: true },
-    }, [
-      h('span.openings__practice-source-icon',
-        source === 'opponent-repertoire' ? '●' : source === 'engine' ? '⚡' : '✕'),
-      h('span.openings__practice-source-text', sourceBannerText),
-    ]),
-
-    totalFreq > 0
-      ? h('div.openings__practice-freq-note',
-        `Opponent played this position ${totalFreq} time${totalFreq !== 1 ? 's' : ''} in imported games`)
-      : null,
-
-    h('div.openings__practice-controls', [
-      h('div.openings__practice-stat', `Moves played: ${moveCount}`),
-      h('div.openings__practice-stat', `Playing as: ${session.userColor}`),
-    ]),
-
-    h('button.openings__practice-stop-btn', {
-      on: { click: () => { stopPractice(); redraw(); } },
-    }, 'Stop Practice'),
-  ]);
-}
-
-/**
- * Practice tool owner — renders the board column and session panel that make up
- * the current opening-tree experience. Returns two grid children so the session body
- * can spread them into the layout alongside the tool rail.
+ * Opening Tree tool — renders the board column and data columns (tree stats + engine/move
+ * list) that make up the Opening Tree experience. This is the only tool the openings session
+ * renders (P2-TREE-2: the left tool rail and the four research tools were removed).
  *
  * Ownership boundary: board, player strips, move list, explorer, sample games, engine.
- * Session shell owns: header row, tool rail, dispatching to this function.
+ * Session shell owns: header row, dispatching to this function.
  */
 function renderOpeningTreeTool(
   collection: ResearchCollection | null,
@@ -3259,27 +2047,6 @@ function renderOpeningTreePvBox(): VNode | null {
   ]);
 }
 
-/**
- * Opponent's Repertoire dashboard — shows the prep-zone analytics for the active collection.
- * Overview, summary modules, and line insight cards without a board.
- * Spans the full content area via openings__tool-content grid layout.
- */
-function renderOpponentRepertoireDashboard(
-  collection: ResearchCollection | null,
-  redraw: () => void,
-): VNode {
-  return h('div.openings__tool-content', [
-    h('div.openings__prep-zone', treeBuilding()
-      ? [h('div.openings__prep-zone-loading', 'Building tree\u2026')]
-      : [
-          collection ? renderOpponentRepertoireOverview(collection) : null,
-          renderOpponentRepertoireSummaryModules(redraw),
-          renderLineInsightCards(redraw),
-        ]
-    ),
-  ]);
-}
-
 let _keyHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function renderSessionPage(redraw: () => void): VNode {
@@ -3328,30 +2095,19 @@ function renderSessionPage(redraw: () => void): VNode {
       h('button.openings__back-lib-btn', {
         on: { click: () => { _openingsCg = undefined; setCevalPositionOverride(null); closeSession(); redraw(); } },
       }, '\u2190 Library'),
-      h('h2.openings__session-title', collection?.name ?? 'Opponent Research'),
+      h('h2.openings__session-title', collection?.name ?? 'Opening Tree'),
       h('span.openings__session-meta', node
         ? `${node.total} game${node.total !== 1 ? 's' : ''} reached this position`
         : ''),
     ]),
-    h('div.openings__session-body', {
+    h('div.openings__session-body.openings__session-body--tree', {
       class: {
-        'openings__session-body--tree':    activeTool() === 'opening-tree',
-        'openings__session-body--eval-on': activeTool() === 'opening-tree' && engineEnabled,
+        'openings__session-body--eval-on': engineEnabled,
       },
     }, [
-      renderToolRail(redraw),
-      // Active tool owns the main content area.
-      ...(activeTool() === 'opening-tree'
-        ? renderOpeningTreeTool(collection, node, path, redraw)
-        : activeTool() === 'opponent-repertoire'
-          ? [renderOpponentRepertoireDashboard(collection, redraw)]
-          : activeTool() === 'prep-report'
-            ? [renderPrepReportTool(redraw)]
-            : activeTool() === 'style'
-              ? [renderStyleTool(redraw)]
-              : activeTool() === 'practice'
-                ? renderPracticeTool(collection, node, redraw)
-                : [renderToolPlaceholder(activeTool())]),
+      // Opening Tree is the only tool the session renders (P2-TREE-2: left tool rail and the
+      // four research tools removed).
+      ...renderOpeningTreeTool(collection, node, path, redraw),
     ]),
   ]);
 }
@@ -3596,7 +2352,7 @@ function renderOpeningsMoveNavBar(
 	      syncOpeningsAutoShapes(node);
 	      redraw();
 	    },
-    menuTitle: 'Opponents menu',
+    menuTitle: 'Opening Tree menu',
     menuOpen:  _openingsMenuOpen,
     onMenu:    () => { _openingsMenuOpen = !_openingsMenuOpen; redraw(); },
   });
@@ -3645,81 +2401,48 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             move: (orig, dest) => {
               const uci = `${orig}${dest}`;
               const current = sessionNode();
-              const session = practiceSession();
 
-              if (session && session.running) {
-                // Practice mode: only accept moves on the user's turn.
-                // The FEN turn character determines whose move it is.
-                const fen = current?.fen ?? STANDARD_START_FEN;
-                const fenTurn = fen.split(' ')[1]; // 'w' or 'b'
-                const isUserTurn =
-                  (session.userColor === 'white' && fenTurn === 'w') ||
-                  (session.userColor === 'black' && fenTurn === 'b');
-
-                if (!isUserTurn) return; // Not user's turn — board reverts automatically
-
-                if (current) {
-                  // Navigate tree if move is in children; otherwise no tree movement.
-                  // Chessground already validated legality via dests.
+              // Browse mode: tree children navigate the tree; any other legal move
+              // advances as free off-tree analysis (Lichess opening-explorer parity).
+              if (current) {
+                // Only check tree children when we are at a tree position.
+                // If _offTreeFen is set, the board shows an off-tree position so
+                // current.children are no longer relevant — continue in off-tree mode.
+                if (!_offTreeFen) {
                   const match = current.children.find(c =>
                     c.uci === uci || c.uci.startsWith(uci),
                   );
                   if (match) {
                     navigateToMove(match.uci);
-                    recordPracticeMove(match.uci);
                     syncOpeningsBoard(redraw);
                     redraw();
-                    // Schedule the opponent's response after user's move lands.
-                    schedulePracticeOpponentResponse(redraw);
-                  } else {
-                    // Move is legal but not in the tree: board will revert (no tree navigation).
-                    // The user played an off-tree move — just revert silently.
-                    syncOpeningsBoard(redraw);
+                    return;
                   }
                 }
-              } else {
-                // Browse mode: tree children navigate the tree; any other legal move
-                // advances as free off-tree analysis (Lichess opening-explorer parity).
-                if (current) {
-                  // Only check tree children when we are at a tree position.
-                  // If _offTreeFen is set, the board shows an off-tree position so
-                  // current.children are no longer relevant — continue in off-tree mode.
-                  if (!_offTreeFen) {
-                    const match = current.children.find(c =>
-                      c.uci === uci || c.uci.startsWith(uci),
-                    );
-                    if (match) {
-                      navigateToMove(match.uci);
-                      syncOpeningsBoard(redraw);
+                // Off-tree legal move (or continuation from an off-tree position):
+                // compute the resulting FEN and advance the board directly.
+                const baseFen = _offTreeFen ?? current.fen;
+                const setup = parseFen(baseFen);
+                if (setup.isOk) {
+                  const posResult = Chess.fromSetup(setup.value);
+                  if (posResult.isOk) {
+                    const move = parseUci(uci);
+                    if (move) {
+                      let san = uci;
+                      try { san = makeSan(posResult.value, move); } catch {}
+                      posResult.value.play(move);
+                      const newFen = makeFen(posResult.value.toSetup());
+                      _offTreeFen = newFen;
+                      _lastBoardFen = newFen;
+                      _openingsCg?.set({
+                        fen: newFen,
+                        animation: chessBoardAnimationConfig(),
+                        lastMove: [orig, dest],
+                        movable: { dests: destsForFen(newFen), color: 'both' },
+                      });
+                      playOpeningsMoveSound(san);
+                      scheduleOpeningsEngineEval(newFen);
                       redraw();
-                      return;
-                    }
-                  }
-                  // Off-tree legal move (or continuation from an off-tree position):
-                  // compute the resulting FEN and advance the board directly.
-                  const baseFen = _offTreeFen ?? current.fen;
-                  const setup = parseFen(baseFen);
-                  if (setup.isOk) {
-                    const posResult = Chess.fromSetup(setup.value);
-                    if (posResult.isOk) {
-                      const move = parseUci(uci);
-                      if (move) {
-                        let san = uci;
-                        try { san = makeSan(posResult.value, move); } catch {}
-                        posResult.value.play(move);
-                        const newFen = makeFen(posResult.value.toSetup());
-                        _offTreeFen = newFen;
-                        _lastBoardFen = newFen;
-                        _openingsCg?.set({
-                          fen: newFen,
-                          animation: chessBoardAnimationConfig(),
-                          lastMove: [orig, dest],
-                          movable: { dests: destsForFen(newFen), color: 'both' },
-                        });
-                        playOpeningsMoveSound(san);
-                        scheduleOpeningsEngineEval(newFen);
-                        redraw();
-                      }
                     }
                   }
                 }
@@ -3875,7 +2598,9 @@ function scheduleOpeningsEngineEval(fen: string): void {
   });
 }
 
-function syncOpeningsBoard(_redraw: () => void): void {
+// Exported so explorerView.ts's renderExplorerPanel can resync the openings board
+// after a repertoire "jump to deepest match" navigation.
+export function syncOpeningsBoard(_redraw: () => void): void {
   // Stop any running import animation so the board is cleanly handed back.
   if (!isFetching() && _animGame !== null) stopImportAnimation();
   // Any explicit tree navigation clears the transient off-tree analysis position.
@@ -3885,23 +2610,15 @@ function syncOpeningsBoard(_redraw: () => void): void {
   if (!_openingsCg || !node) return;
   const fen = node.fen;
   explorerCtrl.clearStaleHovering(fen);
-  const session = practiceSession();
-  const isPractice = !!session;
-  // Skip only if neither FEN nor practice mode has changed.
-  // Must re-sync on practice start/stop even at the same FEN so movable.color updates.
-  if (fen === _lastBoardFen && isPractice === _lastBoardPractice) return;
+  // Skip if the FEN hasn't changed since the last sync.
+  if (fen === _lastBoardFen) return;
   _lastBoardFen = fen;
-  _lastBoardPractice = isPractice;
-
-  // In practice mode, restrict movable.color to the user's color.
-  // In browse mode, allow both sides to move freely.
-  const movableColor: 'white' | 'black' | 'both' = session ? session.userColor : 'both';
 
   _openingsCg.set({
     fen,
     animation: chessBoardAnimationConfig(),
     orientation: boardOrientation(),
-    movable: { dests: destsForFen(fen), color: movableColor },
+    movable: { dests: destsForFen(fen), color: 'both' },
     ...(node.uci ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] } : {}),
   });
   syncOpeningsAutoShapes(node);
@@ -3913,71 +2630,6 @@ onBoardAnimationChange('chess', () => {
   if (_animGame !== null || _animTimer !== null) return;
   _openingsCg?.set({ animation: chessBoardAnimationConfig() });
 });
-
-// Practice opponent response scheduling.
-// After the user plays a move, the opponent responds after a short delay.
-// Uses a single pending timer so rapid user actions don't queue multiple responses.
-let _practiceOpponentTimer: ReturnType<typeof setTimeout> | null = null;
-
-/**
- * Schedule the opponent's practice response after the user's move.
- * Cancels any pending timer first (prevents double-responses on rapid input).
- *
- * Opponent-repertoire phase: picks a weighted move from the current node's children
- * and navigates to it after PRACTICE_OPPONENT_DELAY_MS.
- *
- * Engine phase: updates the source banner and defers auto-play to a future prompt.
- * The engine banner is set so the view communicates the handoff honestly.
- *
- * Exhausted phase: updates source to 'exhausted' — UI already shows the banner.
- */
-const PRACTICE_OPPONENT_DELAY_MS = 400;
-
-function schedulePracticeOpponentResponse(redraw: () => void): void {
-  if (_practiceOpponentTimer !== null) {
-    clearTimeout(_practiceOpponentTimer);
-    _practiceOpponentTimer = null;
-  }
-
-  _practiceOpponentTimer = setTimeout(() => {
-    _practiceOpponentTimer = null;
-    const session = practiceSession();
-    if (!session || !session.running) return;
-
-    const node = sessionNode();
-    const plan = planOpponentTurn(node, session);
-
-    // Always update the source so the banner stays accurate.
-    setPracticeOpponentSource(plan.source);
-
-    if (plan.action === 'play-opponent-repertoire' && plan.moveUci) {
-      // Opponent plays from imported opponent repertoire.
-      navigateToMove(plan.moveUci);
-      recordPracticeMove(plan.moveUci);
-      syncOpeningsBoard(redraw);
-      redraw();
-    } else if (plan.action === 'request-engine') {
-      if (!node) { redraw(); return; }
-      // Engine plays at the session's selected strength level.
-      const strengthConfig = STRENGTH_LEVELS[(session.strengthLevel ?? 4) - 1] ?? STRENGTH_LEVELS[3]!;
-      playMoveWithDelay({
-        position: practicePlayPositionContext(session, node),
-        strength: strengthConfig,
-        onMove: (uci) => {
-          navigateToMove(uci);
-          recordPracticeMove(uci);
-          syncOpeningsBoard(redraw);
-          redraw();
-        },
-        onError: () => redraw(),
-      });
-      redraw();
-    } else {
-      // Exhausted: session continues but no auto-play. Banner explains state.
-      redraw();
-    }
-  }, PRACTICE_OPPONENT_DELAY_MS);
-}
 
 // Pre-built opacity brushes for frequency arrows (registered once at board init).
 const FREQ_BRUSHES: Record<string, { key: string; color: string; opacity: number; lineWidth: number }> = {};
@@ -4664,128 +3316,30 @@ function renderMastersBookIcon(parentFen: string, uci: string): VNode | null {
   });
 }
 
-type ExplorerMoveRowInteractionOptions = {
-  fen: string;
-  rowSelector: string;
-  board: () => CgApi | undefined;
-  getCurrentFen: () => string | null | undefined;
-  restoreAutoShapes: () => void;
-  onMoveClick?: ((uci: string) => void) | undefined;
-  ignoreClickSelector?: string | undefined;
-  onDirectAutoShapesSet?: (() => void) | undefined;
-};
-
-type ExplorerMoveRowsElement = HTMLElement & {
-  _explorerMoveRowInteractionOptions?: ExplorerMoveRowInteractionOptions;
-  _explorerMoveRowInteractionsBound?: boolean;
-};
-
-function currentOpeningsBoardFen(): string | null {
+// Exported: explorerView.ts (repertoireMoveListHook, renderExplorerPanel, renderExplorerMovesTable)
+// uses this to resolve/default the current openings-board FEN for hover/click interactions.
+export function currentOpeningsBoardFen(): string | null {
   return _offTreeFen ?? sessionNode()?.fen ?? null;
 }
 
-function rowFromEventTarget(target: EventTarget | null, root: HTMLElement, selector: string): HTMLElement | null {
-  if (!(target instanceof HTMLElement)) return null;
-  const row = target.closest(selector);
-  return row instanceof HTMLElement && root.contains(row) ? row : null;
-}
-
-function eventStayedWithinRow(event: MouseEvent, row: HTMLElement): boolean {
-  return event.relatedTarget instanceof Node && row.contains(event.relatedTarget);
-}
-
-function explorerHoverShape(uci: string): DrawShape | null {
-  if (uci.length < 4) return null;
-  return {
-    orig: uci.slice(0, 2) as Key,
-    dest: uci.slice(2, 4) as Key,
-    brush: 'blue',
-  };
-}
-
-function restoreOpeningsExplorerAutoShapes(): void {
+// Exported: explorerView.ts uses this as the default/explicit "restoreAutoShapes" callback for
+// the openings board (the Analysis board has its own restoreAnalysisExplorerAutoShapes).
+export function restoreOpeningsExplorerAutoShapes(): void {
   _lastOpeningsAutoShapesHash = null;
   syncOpeningsAutoShapes(sessionNode());
 }
 
-function restoreAnalysisExplorerAutoShapes(): void {
-  syncArrowForced();
+// Exported so explorerView.ts's move-row hover handling can invalidate the auto-shapes
+// diff-guard after pushing a transient hover arrow directly to the board (bypassing the
+// normal syncOpeningsAutoShapes() push), mirroring what restoreOpeningsExplorerAutoShapes did
+// inline before the explorer/repertoire display layer moved to its own module.
+export function clearOpeningsAutoShapesHash(): void {
+  _lastOpeningsAutoShapesHash = null;
 }
 
-function clearExplorerMoveHover(opts: ExplorerMoveRowInteractionOptions): void {
-  explorerCtrl.setHovering(opts.fen, null);
-  opts.board()?.setAutoShapes([]);
-  opts.onDirectAutoShapesSet?.();
-  opts.restoreAutoShapes();
-}
-
-function fenMatchesExplorerRow(opts: ExplorerMoveRowInteractionOptions): boolean {
-  return opts.getCurrentFen() === opts.fen;
-}
-
-function showExplorerMoveHover(uci: string, opts: ExplorerMoveRowInteractionOptions): void {
-  if (!fenMatchesExplorerRow(opts)) {
-    clearExplorerMoveHover(opts);
-    return;
-  }
-  const shape = explorerHoverShape(uci);
-  if (!shape) return;
-  explorerCtrl.setHovering(opts.fen, uci);
-  opts.board()?.setAutoShapes([shape]);
-  opts.onDirectAutoShapesSet?.();
-}
-
-function handleExplorerMoveClick(uci: string, opts: ExplorerMoveRowInteractionOptions): void {
-  if (!fenMatchesExplorerRow(opts)) {
-    clearExplorerMoveHover(opts);
-    return;
-  }
-  opts.onMoveClick?.(uci);
-}
-
-function currentExplorerMoveRowOptions(root: ExplorerMoveRowsElement): ExplorerMoveRowInteractionOptions | null {
-  return root._explorerMoveRowInteractionOptions ?? null;
-}
-
-function bindExplorerMoveRowInteractions(root: ExplorerMoveRowsElement, opts: ExplorerMoveRowInteractionOptions): void {
-  root._explorerMoveRowInteractionOptions = opts;
-  if (root._explorerMoveRowInteractionsBound) return;
-  root._explorerMoveRowInteractionsBound = true;
-
-  root.addEventListener('mouseover', (event: MouseEvent) => {
-    const opts = currentExplorerMoveRowOptions(root);
-    if (!opts) return;
-    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
-    if (!row || eventStayedWithinRow(event, row)) return;
-    const uci = row.getAttribute('data-uci');
-    if (uci) showExplorerMoveHover(uci, opts);
-  });
-
-  root.addEventListener('mouseout', (event: MouseEvent) => {
-    const opts = currentExplorerMoveRowOptions(root);
-    if (!opts) return;
-    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
-    if (!row || eventStayedWithinRow(event, row)) return;
-    clearExplorerMoveHover(opts);
-  });
-
-  root.addEventListener('mouseleave', () => {
-    const opts = currentExplorerMoveRowOptions(root);
-    if (opts) clearExplorerMoveHover(opts);
-  });
-
-  root.addEventListener('click', (event: MouseEvent) => {
-    const opts = currentExplorerMoveRowOptions(root);
-    if (!opts) return;
-    const target = event.target as HTMLElement | null;
-    if (target && opts.ignoreClickSelector && target.closest(opts.ignoreClickSelector)) return;
-    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
-    const uci = row?.getAttribute('data-uci');
-    if (uci) handleExplorerMoveClick(uci, opts);
-  });
-}
-
-function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
+// Exported: explorerView.ts's renderExplorerPanel/renderExplorerMovesTable call this directly
+// (Tree tool's own move-click handling); the Analysis board passes its own onMoveClick instead.
+export function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
   const current = sessionNode();
   if (!current) return;
 
@@ -4827,380 +3381,6 @@ function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
   playOpeningsMoveSound(san);
   scheduleOpeningsEngineEval(newFen);
   redraw();
-}
-
-function repertoireLineForOpenings(path: readonly string[]): RepertoireExplorerLinePosition<readonly string[]>[] {
-  const tree = openingTree();
-  if (!tree) return [];
-  const line: RepertoireExplorerLinePosition<readonly string[]>[] = [
-    { fen: tree.fen, path: [], ply: 0 },
-  ];
-  let current: OpeningTreeNode | undefined = tree;
-  const currentPath: string[] = [];
-  for (const uci of path) {
-    const child: OpeningTreeNode | undefined = current?.children.find(candidate => candidate.uci === uci);
-    if (!child) break;
-    currentPath.push(uci);
-    line.push({
-      fen: child.fen,
-      path: [...currentPath],
-      uci: child.uci,
-      san: child.san,
-      ply: currentPath.length,
-    });
-    current = child;
-  }
-  return line;
-}
-
-function nagSymbols(nags: readonly number[]): string {
-  return nags.map(nag => nagToGlyph(nag)?.symbol ?? `$${nag}`).join(' ');
-}
-
-function annotationCommentTexts(comments: readonly TreeComment[]): string[] {
-  return comments.map(comment => comment.text.trim()).filter(text => text.length > 0);
-}
-
-function firstCommentLine(comments: readonly TreeComment[]): string {
-  for (const comment of comments) {
-    const line = comment.text.split(/\r?\n/).map(part => part.trim()).find(Boolean);
-    if (line) return line;
-  }
-  return '';
-}
-
-function repertoireAnnotationKey(
-  fen: string,
-  group: RepertoireExplorerSourceGroup,
-  entry: RepertoireExplorerSourceGroup['entries'][number],
-  entryIndex: number,
-): string {
-  return `${group.source.id}:${fen}:${entry.uci}:${entryIndex}`;
-}
-
-function renderRepertoireAnnotationBlock(
-  nags: readonly number[],
-  comments: readonly TreeComment[],
-  modifier: string,
-): VNode | null {
-  const nagText = nagSymbols(nags);
-  const texts = annotationCommentTexts(comments);
-  if (!nagText && texts.length === 0) return null;
-  return h(`div.repertoire__annotation.${modifier}`, [
-    nagText ? h('div.repertoire__annotation-nags', nagText) : null,
-    ...texts.map((text, index) => h('div.repertoire__annotation-text', { key: String(index) }, text)),
-  ]);
-}
-
-function renderRepertoireChip(source: RepertoireExplorerSourceGroup['source'], accentIndex: number): VNode {
-  return h(`span.repertoire__chip.repertoire__accent--${accentIndex % 8}`, [
-    h('span.repertoire__chip-dot'),
-    h('span.repertoire__chip-name', source.name),
-    h('span.repertoire__side-badge', repertoireSourceSideBadge(source.side)),
-  ]);
-}
-
-function renderAccountResultBar(stats: NonNullable<RepertoireExplorerSourceGroup['entries'][number]['accountStats']>): VNode {
-  const total = stats.games || 1;
-  const winPct = (stats.wins * 100) / total;
-  const drawPct = (stats.draws * 100) / total;
-  const lossPct = (stats.losses * 100) / total;
-  const label = `${stats.wins}W ${stats.draws}D ${stats.losses}L`;
-  return h('span.repertoire__account-result', {
-    attrs: {
-      title: label,
-      'aria-label': label,
-    },
-  }, [
-    h('span.repertoire__account-result-bar', [
-      h('span.wdl-w.repertoire__account-result-segment', { attrs: { style: `width:${winPct.toFixed(1)}%` } }),
-      h('span.wdl-d.repertoire__account-result-segment', { attrs: { style: `width:${drawPct.toFixed(1)}%` } }),
-      h('span.wdl-l.repertoire__account-result-segment', { attrs: { style: `width:${lossPct.toFixed(1)}%` } }),
-    ]),
-    h('span.repertoire__account-result-counts', label),
-  ]);
-}
-
-function renderAccountMoveStats(entry: RepertoireExplorerSourceGroup['entries'][number]): VNode | null {
-  const stats = entry.accountStats;
-  if (!stats) return null;
-  return h('span.repertoire__account-stats', [
-    h('span', `${stats.games.toLocaleString()} game${stats.games === 1 ? '' : 's'}`),
-    h('span.repertoire__source-sep', '·'),
-    h('span', `${stats.winPercent}% wins`),
-    renderAccountResultBar(stats),
-  ]);
-}
-
-function toggleRepertoireSourceFromExplorer(
-  source: RepertoireExplorerSourceGroup['source'],
-  redraw: () => void,
-  restoreAutoShapes?: () => void,
-): void {
-  _repertoireExplorerNotice = '';
-  void setRepertoireSourceEnabled(source.id, !source.enabled)
-    .then(() => {
-      restoreAutoShapes?.();
-      redraw();
-    })
-    .catch(() => {
-      _repertoireExplorerNotice = `Could not update ${source.name}.`;
-      redraw();
-    });
-}
-
-function repertoireMoveListHook(
-  fen: string,
-  onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
-  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
-) {
-  const bind = (vnode: import('snabbdom').VNode) => {
-    const el = vnode.elm as ExplorerMoveRowsElement;
-    const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
-    bindExplorerMoveRowInteractions(el, {
-      fen,
-      rowSelector: '.repertoire__move-row',
-      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
-      getCurrentFen,
-      restoreAutoShapes,
-      onMoveClick,
-      ignoreClickSelector: '.repertoire__annotation-toggle',
-      onDirectAutoShapesSet: usesOpeningsBoard ? () => { _lastOpeningsAutoShapesHash = null; } : undefined,
-    });
-  };
-  return {
-    insert: bind,
-    postpatch: (_old: import('snabbdom').VNode, vnode: import('snabbdom').VNode) => bind(vnode),
-  };
-}
-
-function renderRepertoireMoveRows(
-  group: RepertoireExplorerSourceGroup,
-  fen: string,
-  redraw: () => void,
-  onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen?: () => string | null | undefined,
-  restoreAutoShapes?: () => void,
-): VNode | null {
-  if (group.error) return h('div.repertoire__source-error.repertoire__source-error--inline', group.error);
-  if (!group.entries.length) return null;
-  return h('div.repertoire__move-list', {
-    hook: repertoireMoveListHook(fen, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
-  }, group.entries.map((entry, entryIndex) => {
-    const nags = nagSymbols(entry.nags);
-    const preview = firstCommentLine(entry.comments);
-    const annotationKey = repertoireAnnotationKey(fen, group, entry, entryIndex);
-    const expanded = _expandedRepertoireAnnotationKey === annotationKey;
-    const expandedLabel = expanded ? `Collapse annotation for ${entry.san}` : `Expand annotation for ${entry.san}`;
-    return h('div.repertoire__move-row', {
-      key: annotationKey,
-      class: { 'repertoire__move-row--expanded': expanded },
-      attrs: {
-        'data-uci': entry.uci,
-        title: `Play repertoire move ${entry.san}`,
-        'aria-label': `Play repertoire move ${entry.san}`,
-      },
-    }, [
-      h('div.repertoire__move-main', [
-        h('span.repertoire__move-san', entry.san),
-        entry.accountStats ? null : entry.isMain ? h('span.repertoire__main-tag', 'main') : null,
-        nags ? h('span.repertoire__nags', nags) : null,
-        group.expectedReply ? h('span.repertoire__reply-tag', 'expected reply') : null,
-        renderAccountMoveStats(entry),
-      ]),
-      preview ? h('button.repertoire__comment-preview.repertoire__annotation-toggle', {
-        attrs: {
-          type: 'button',
-          title: expandedLabel,
-          'aria-label': expandedLabel,
-          'aria-expanded': String(expanded),
-        },
-        on: {
-          click: (e: MouseEvent) => {
-            e.stopPropagation();
-            _expandedRepertoireAnnotationKey = expanded ? null : annotationKey;
-            redraw();
-          },
-        },
-      }, preview) : null,
-      expanded ? renderRepertoireAnnotationBlock(entry.nags, entry.comments, 'repertoire__annotation--expanded') : null,
-    ]);
-  }));
-}
-
-function renderRepertoirePositionAnnotations(annotations: readonly RepertoireExplorerPositionAnnotation[]): VNode | null {
-  const visible = annotations.filter(annotation =>
-    annotation.nags.length > 0 || annotationCommentTexts(annotation.comments).length > 0,
-  );
-  if (!visible.length) return null;
-
-  return h('div.annotation-panel.repertoire__position-annotations', [
-    h('h3.annotation-panel__title', 'Position comments'),
-    ...visible.map((annotation, annotationIndex) => h('div.repertoire__position-annotation', {
-      key: `${annotation.source.id}:${annotation.sourceGameIndex}:${annotation.chapterIndex}:${annotationIndex}`,
-    }, [
-      renderRepertoireChip(annotation.source, annotation.accentIndex),
-      renderRepertoireAnnotationBlock(annotation.nags, annotation.comments, 'repertoire__annotation--position'),
-    ])),
-  ]);
-}
-
-function renderRepertoireSourceGroup(
-  group: RepertoireExplorerSourceGroup,
-  fen: string,
-  redraw: () => void,
-  onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen?: () => string | null | undefined,
-  restoreAutoShapes?: () => void,
-): VNode {
-  const accountSource = isAccountRepertoireSource(group.source);
-  const accountState = group.accountBuildState;
-  const accountMessage = accountSource && accountState
-    ? accountState.state === 'loading'
-      ? 'Loading account games...'
-      : accountState.state === 'building' || accountState.state === 'publishing'
-        ? `Building account model ${accountState.processedGameCount.toLocaleString()}/${accountState.filteredGameCount.toLocaleString()} games...`
-        : accountState.state === 'empty'
-          ? accountState.filteredGameCount === 0
-            ? 'No account games match these filters.'
-            : 'No account moves found after filters.'
-          : accountState.state === 'error'
-            ? accountState.message ?? 'Could not build this account source.'
-            : group.entries.length === 0
-              ? 'No account move at this position.'
-              : null
-    : null;
-  return h(`section.repertoire__explorer-group.repertoire__accent--${group.accentIndex}`, { key: group.source.id }, [
-    h('div.repertoire__explorer-group-header', [
-      h('span.repertoire__source-summary', [
-        renderRepertoireChip(group.source, group.accentIndex),
-        accountSource ? h('span.repertoire__filter-summary', repertoireAccountFilterSummary(group.source)) : null,
-      ]),
-      h('button.repertoire__source-toggle', {
-        attrs: {
-          title: group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
-          'aria-label': group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
-        },
-        class: { active: group.source.enabled },
-        on: { click: () => toggleRepertoireSourceFromExplorer(group.source, redraw, restoreAutoShapes) },
-      }, group.source.enabled ? 'On' : 'Off'),
-    ]),
-    group.expectedReply
-      ? h('div.repertoire__expected-reply', 'Expected replies from the opponent line')
-      : null,
-    renderRepertoireMoveRows(group, fen, redraw, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
-    accountMessage ? h('div.repertoire__account-empty', accountMessage) : null,
-  ]);
-}
-
-function moveNumberLabel(position: RepertoireExplorerLinePosition<unknown> | null): string {
-  if (!position?.ply) return '';
-  return `move ${Math.max(1, Math.ceil(position.ply / 2))}`;
-}
-
-function renderRepertoireOutOfLine<Path>(
-  match: RepertoireExplorerPriorMatch<Path> | null,
-  onJumpToPrior?: (path: Path) => void,
-): VNode {
-  const leftBy = match?.leftBy ?? null;
-  const moveLabel = leftBy?.san
-    ? ` since ${leftBy.san}${moveNumberLabel(leftBy) ? ` (${moveNumberLabel(leftBy)})` : ''}`
-    : '';
-  const canJump = match?.matched.path !== undefined && onJumpToPrior;
-  return h('div.repertoire__out-of-line', [
-    h('span', match ? `Out of repertoire${moveLabel}.` : 'No repertoire match for this line.'),
-    canJump
-      ? h('button.repertoire__jump', {
-          attrs: {
-            title: 'Jump to deepest repertoire match',
-            'aria-label': 'Jump to deepest repertoire match',
-          },
-          on: { click: () => onJumpToPrior(match.matched.path as Path) },
-        }, 'Jump')
-      : null,
-  ]);
-}
-
-function renderRepertoireExplorerPanel<Path = unknown>(
-  fen: string | null,
-  redraw: () => void,
-  opts: {
-    line?: RepertoireExplorerLinePosition<Path>[];
-    onMoveClick?: (uci: string) => void;
-    onJumpToPrior?: (path: Path) => void;
-    cgBoard?: CgApi;
-    getCurrentFen?: () => string | null | undefined;
-    restoreAutoShapes?: () => void;
-  } = {},
-): VNode {
-  if (!fen) return h('div.openings__explorer-empty', 'No position selected.');
-  if (!repertoireSourcesLoaded()) {
-    loadRepertoireSources(redraw);
-    return h('div.openings__explorer-box', { class: { loading: true } }, [
-      h('div.overlay'),
-      h('div.openings__explorer-message', h('p', 'Loading repertoire sources...')),
-    ]);
-  }
-  if (repertoireSourcesError()) {
-    return h('div.openings__explorer-box', [
-      h('div.openings__explorer-message', [
-        h('strong', 'Could not load repertoire sources'),
-        h('p.openings__explorer-explanation', 'Open Study Library and try again.'),
-      ]),
-    ]);
-  }
-
-  ensureRepertoireAccountSourceBuilds(redraw);
-  const model = buildRepertoireExplorerModel(repertoireSources(), fen, opts.line);
-  if (model.sources.length === 0) {
-    return h('div.openings__explorer-box', [
-      h('div.openings__explorer-message', [
-        h('strong', 'No repertoire sources'),
-        h('p.openings__explorer-explanation', [
-          'Upload a repertoire PGN in ',
-          h('a.repertoire__empty-link', {
-            attrs: {
-              href: '#/study',
-              title: 'Open Study Library to upload a repertoire PGN',
-              'aria-label': 'Open Study Library to upload a repertoire PGN',
-            },
-          }, 'Study Library'),
-          '.',
-        ]),
-      ]),
-    ]);
-  }
-  if (model.enabledSources.length === 0) {
-    return h('div.openings__explorer-box', [
-      h('div.openings__explorer-message', [
-        h('strong', 'No sources enabled'),
-        h('p.openings__explorer-explanation', 'Enable a repertoire source in Study Library.'),
-      ]),
-    ]);
-  }
-
-  return h('div.openings__explorer-box.repertoire__explorer-box', [
-    h('div.repertoire__explorer-list',
-      model.groups.map(group => renderRepertoireSourceGroup(
-        group,
-        fen,
-        redraw,
-        opts.onMoveClick,
-        opts.cgBoard,
-        opts.getCurrentFen,
-        opts.restoreAutoShapes,
-      )),
-    ),
-    !model.hasCurrentMatch && !model.hasPendingAccountBuild
-      ? renderRepertoireOutOfLine(model.deepestPriorMatch, opts.onJumpToPrior)
-      : null,
-    renderRepertoirePositionAnnotations(model.positionAnnotations),
-    _repertoireExplorerNotice ? h('div.repertoire__source-status', _repertoireExplorerNotice) : null,
-  ]);
 }
 
 function treeEvalScoreClasses(entry: TreeEvalEntry, fen: string): Record<string, boolean> {
@@ -5585,694 +3765,10 @@ function extractLichessUrl(pgn: string): string {
   return site && site.includes('lichess.org') ? site : '#';
 }
 
-// ========== Lichess Explorer comparison ==========
-
-/**
- * Tablebase view — renders per-move outcome badges and DTZ/DTM data.
- * Adapted from lichess-org/lila: ui/analyse/src/explorer/tablebaseView.ts
- */
-
-/** Which result class to apply based on category and side to move.
- *  In Lichess's naming: 'loss' means the side to move WINS (opponent loses).
- *  'win' means the side to move LOSES (opponent wins).
- *  Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerUtil.ts winnerOf()
- */
-function tablebaseCategoryClass(fen: string, category: TablebaseCategory): string {
-  const turnWhite = (fen.split(' ')[1] ?? 'w') === 'w';
-  if (category === 'loss' || category === 'blessed-loss' || category === 'syzygy-loss' || category === 'maybe-loss') {
-    return turnWhite ? 'white' : 'black';
-  }
-  if (category === 'win' || category === 'cursed-win' || category === 'syzygy-win' || category === 'maybe-win') {
-    return turnWhite ? 'black' : 'white';
-  }
-  return 'draws';
-}
-
-const CATEGORY_LABELS: Record<TablebaseCategory, string> = {
-  'loss':         'Winning',
-  'maybe-loss':   'Win or 50-move',
-  'blessed-loss': 'Win (prevented by 50-move)',
-  'syzygy-loss':  'Win (prior mistake)',
-  'unknown':      'Unknown',
-  'draw':         'Draw',
-  'cursed-win':   'Loss (saved by 50-move)',
-  'maybe-win':    'Loss or 50-move',
-  'syzygy-win':   'Loss (prior mistake)',
-  'win':          'Losing',
-};
-
-function renderTablebaseMoveRow(fen: string, move: TablebaseMoveStats, onMoveClick: (uci: string) => void): VNode {
-  const cls = tablebaseCategoryClass(fen, move.category);
-  const badge: VNode[] = [];
-  if (move.checkmate)              badge.push(h(`result.${cls}`, 'Checkmate'));
-  else if (move.stalemate)         badge.push(h('result.draws', 'Stalemate'));
-  else if (move.insufficient_material) badge.push(h('result.draws', 'Insufficient'));
-  else if (move.dtz === 0)         badge.push(h('result.draws', 'Draw'));
-  else if (move.dtz !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Zeroing' } }, `DTZ ${Math.abs(move.dtz)}`));
-  else if (move.dtm !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Mate' } }, `DTM ${Math.abs(move.dtm)}`));
-  else                             badge.push(h(`result.${cls}`, CATEGORY_LABELS[move.category] ?? move.category));
-
-  return h('tr.tablebase__row', {
-    attrs: { 'data-uci': move.uci },
-    on: { click: () => onMoveClick(move.uci) },
-  }, [
-    h('td.tablebase__san', move.san),
-    h('td.tablebase__result', badge),
-  ]);
-}
-
-function renderTablebaseSection(
-  fen: string,
-  title: string,
-  moves: TablebaseMoveStats[],
-  onMoveClick: (uci: string) => void,
-): VNode | null {
-  if (!moves.length) return null;
-  return h('div.tablebase__section', [
-    h('div.tablebase__section-title', title),
-    h('table.tablebase', [
-      h('tbody', moves.map(m => renderTablebaseMoveRow(fen, m, onMoveClick))),
-    ]),
-  ]);
-}
-
-/**
- * Full tablebase panel — groups moves by outcome category.
- * Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts tablebase block.
- */
-function renderTablebasePanel(data: TablebaseData, _redraw: () => void): VNode {
-  const onMoveClick = (uci: string) => {
-    explorerCtrl.hovering = { fen: data.fen, uci };
-    _redraw();
-  };
-
-  if (data.checkmate) return h('div.openings__explorer-box', [h('div.openings__explorer-message', [h('strong', 'Checkmate')])]);
-  if (data.stalemate) return h('div.openings__explorer-box', [h('div.openings__explorer-message', [h('strong', 'Stalemate')])]);
-
-  const sections = [
-    renderTablebaseSection(data.fen, 'Winning',                data.moves.filter(m => m.category === 'loss'),        onMoveClick),
-    renderTablebaseSection(data.fen, 'Win or 50-move draw',    data.moves.filter(m => m.category === 'maybe-loss'),  onMoveClick),
-    renderTablebaseSection(data.fen, 'Win (50-move)',           data.moves.filter(m => m.category === 'blessed-loss'),onMoveClick),
-    renderTablebaseSection(data.fen, 'Win (prior mistake)',     data.moves.filter(m => m.category === 'syzygy-loss'), onMoveClick),
-    renderTablebaseSection(data.fen, 'Unknown',                 data.moves.filter(m => m.category === 'unknown'),     onMoveClick),
-    renderTablebaseSection(data.fen, 'Drawing',                 data.moves.filter(m => m.category === 'draw'),        onMoveClick),
-    renderTablebaseSection(data.fen, 'Loss (50-move)',          data.moves.filter(m => m.category === 'cursed-win'),  onMoveClick),
-    renderTablebaseSection(data.fen, 'Loss or 50-move draw',   data.moves.filter(m => m.category === 'maybe-win'),   onMoveClick),
-    renderTablebaseSection(data.fen, 'Loss (prior mistake)',    data.moves.filter(m => m.category === 'syzygy-win'),  onMoveClick),
-    renderTablebaseSection(data.fen, 'Losing',                  data.moves.filter(m => m.category === 'win'),         onMoveClick),
-  ].filter(Boolean) as VNode[];
-
-  return h('div.openings__explorer-box.tablebase-view', [
-    h('div.tablebase__header', [
-      h('span.tablebase__label', 'Tablebase'),
-      h('span.tablebase__pieces', `${data.moves.length} move${data.moves.length !== 1 ? 's' : ''}`),
-    ]),
-    sections.length ? h('div.tablebase__body', sections) : h('div.openings__explorer-message', 'No tablebase data for this position.'),
-  ]);
-}
-
-/**
- * Render the appropriate error box for a failed explorer request.
- * 401 errors get a "Connect to Lichess" prompt instead of the generic message.
- */
-function renderPlayerNamePrompt(redraw: () => void): VNode {
-  return h('div.openings__explorer-box', [
-    h('div.openings__explorer-message', [
-      h('strong', 'Enter a player name'),
-      h('p.openings__explorer-explanation', 'Open the settings panel and enter a Lichess username to search player games.'),
-      h('button.openings__explorer-retry', {
-        on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-      }, 'Open settings'),
-    ]),
-  ]);
-}
-
-function connectBookAccess(fen: string, redraw: () => void): void {
-  _bookAuthNotice = '';
-  void requestBookLogin(redraw).then(() => {
-    explorerCtrl.reload(fen, redraw);
-    redraw();
-  }).catch(error => {
-    explorerCtrl.loading = false;
-    explorerCtrl.failing = error instanceof Error ? error : new Error('Lichess book login failed.');
-    redraw();
-  });
-}
-
-function resetBookConnection(redraw: () => void): void {
-  _bookAuthNotice = 'Resetting Lichess book connection...';
-  explorerCtrl.loading = true;
-  explorerCtrl.failing = null;
-  redraw();
-
-  void clearLichessApiLoginData().then(result => {
-    explorerCtrl.loading = false;
-    explorerCtrl.failing = new ExplorerBookAuthError();
-    _bookAuthNotice = result.warnings.length > 0
-      ? `Browser Lichess login data cleared. ${result.warnings.join(' ')}`
-      : 'Lichess book connection reset. Connect to Lichess again.';
-    redraw();
-  }).catch(error => {
-    explorerCtrl.loading = false;
-    explorerCtrl.failing = error instanceof Error ? error : new Error('Failed to reset Lichess book connection.');
-    _bookAuthNotice = '';
-    redraw();
-  });
-}
-
-function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VNode {
-  const isAuthError = isExplorerBookAuthError(err)
-    || err.message.includes('401')
-    || err.message.includes('Unauthorized')
-    || err.message.includes('Not connected');
-  if (isAuthError) {
-    return h('div.openings__explorer-box', { class: { reduced: true } }, [
-      h('div.overlay'),
-      h('div.openings__explorer-message', [
-        h('strong', 'Lichess book access required'),
-        h('p.openings__explorer-explanation', 'The opening book uses a separate Lichess connection.'),
-        _bookAuthNotice
-          ? h('p.openings__explorer-explanation.openings__explorer-explanation--notice', _bookAuthNotice)
-          : null,
-        h('div.openings__explorer-auth-actions', [
-          h('button.openings__explorer-connect-btn', {
-            attrs: { type: 'button' },
-            on: { click: () => connectBookAccess(fen, redraw) },
-          }, 'Connect to Lichess'),
-          h('button.openings__explorer-retry.openings__explorer-reset-btn', {
-            attrs: { type: 'button' },
-            on: { click: () => resetBookConnection(redraw) },
-          }, 'Reset connection'),
-        ]),
-      ]),
-    ]);
-  }
-  return h('div.openings__explorer-box', { class: { reduced: true } }, [
-    h('div.overlay'),
-    h('div.openings__explorer-message', [
-      h('h3', 'Oops, sorry!'),
-      h('p.openings__explorer-explanation', err.message),
-      h('button.openings__explorer-retry', {
-        on: { click: () => { explorerCtrl.reload(fen, redraw); redraw(); } },
-      }, 'Retry'),
-    ]),
-  ]);
-}
-
 function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode | null {
   if (!explorerCtrl.enabled) return null;
   return h('div.openings__explorer', [
     renderExplorerDbTabs(node, redraw),
     explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw),
-  ]);
-}
-
-function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void, restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes): VNode {
-  const db = explorerCtrl.config.db;
-  const setDb = (d: ExplorerDb) => {
-    explorerCtrl.setDb(d);
-    if (node && d !== 'repertoire') explorerCtrl.setNode(node.fen, redraw);
-    restoreAutoShapes();
-    redraw();
-  };
-  return h('div.openings__explorer-tabs', [
-    h(`button.openings__explorer-tab${db === 'masters' ? '.active' : ''}`, {
-      attrs: { title: 'Show Masters explorer', 'aria-label': 'Show Masters explorer' },
-      on: { click: () => setDb('masters') },
-    }, 'Masters'),
-    h(`button.openings__explorer-tab${db === 'lichess' ? '.active' : ''}`, {
-      attrs: { title: 'Show Lichess explorer', 'aria-label': 'Show Lichess explorer' },
-      on: { click: () => setDb('lichess') },
-    }, 'Lichess'),
-    h(`button.openings__explorer-tab${db === 'player' ? '.active' : ''}`, {
-      attrs: { title: 'Show Player explorer', 'aria-label': 'Show Player explorer' },
-      on: { click: () => setDb('player') },
-    }, 'Player'),
-    h(`button.openings__explorer-tab${db === 'repertoire' ? '.active' : ''}`, {
-      attrs: { title: 'Show Repertoire explorer', 'aria-label': 'Show Repertoire explorer' },
-      on: { click: () => setDb('repertoire') },
-    }, 'Repertoire'),
-    // Config gear shares the right end of the tabs row; swaps to a close glyph
-    // while the config panel is open.
-    // Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts button.fbt.toconf
-    h('button.openings__explorer-gear', {
-      class: { active: explorerCtrl.configOpen },
-      attrs: {
-        title: explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
-        'aria-label': explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
-      },
-      on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-    }, explorerCtrl.configOpen ? '✕' : '⚙'),
-  ]);
-}
-
-/**
- * Config panel — DB-specific filter controls.
- * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerConfig.ts view()
- */
-function renderExplorerConfigPanel(redraw: () => void): VNode {
-  const cfg = explorerCtrl.config;
-  const db = cfg.db;
-
-  const toggleBtn = <T>(label: string, active: boolean, onClick: () => void) =>
-    h('button.openings__explorer-filter-btn', {
-      class: { active },
-      on: { click: () => { onClick(); redraw(); } },
-    }, label);
-
-  const speedSection = () => h('div.openings__explorer-config-section', [
-    h('label', 'Time control'),
-    h('div.openings__explorer-filter-row',
-      ALL_SPEEDS.map(s => toggleBtn(s, cfg.speeds.includes(s), () => cfg.toggleSpeed(s))),
-    ),
-  ]);
-
-  const ratingSection = () => h('div.openings__explorer-config-section', [
-    h('label', 'Avg rating'),
-    h('div.openings__explorer-filter-row',
-      ALL_RATINGS.map(r => toggleBtn(String(r), cfg.ratings.includes(r), () => cfg.toggleRating(r))),
-    ),
-  ]);
-
-  const modeSection = () => h('div.openings__explorer-config-section', [
-    h('label', 'Mode'),
-    h('div.openings__explorer-filter-row',
-      ALL_MODES.map(m => toggleBtn(m, cfg.modes.includes(m), () => cfg.toggleMode(m))),
-    ),
-  ]);
-
-  const dateInput = (label: string, value: string, onChange: (v: string) => void, type: 'number' | 'month') =>
-    h('label.openings__explorer-date-label', [
-      label,
-      h('input', {
-        attrs: { type, value, placeholder: type === 'number' ? 'YYYY' : 'YYYY-MM', min: type === 'number' ? '1952' : '1952-01' },
-        on: { change: (e: Event) => { onChange((e.target as HTMLInputElement).value); redraw(); } },
-      }),
-    ]);
-
-  const dateSection = (type: 'number' | 'month') =>
-    h('div.openings__explorer-config-section', [
-      dateInput('Since', cfg.since(), v => cfg.setSince(v), type),
-      dateInput('Until', cfg.until(), v => cfg.setUntil(v), type),
-    ]);
-
-  const playerSection = () => h('div.openings__explorer-config-section', [
-    h('label', 'Player'),
-    h('input.openings__explorer-player-input', {
-      attrs: { type: 'text', placeholder: 'Lichess username', value: cfg.playerName },
-      on: {
-        change: (e: Event) => {
-          cfg.setPlayerName((e.target as HTMLInputElement).value.trim());
-          redraw();
-        },
-      },
-    }),
-    cfg.playerPrevious.length ? h('div.openings__explorer-player-prev',
-      cfg.playerPrevious.slice(0, 10).map(name =>
-        h('button.openings__explorer-prev-btn', {
-          on: { click: () => { cfg.setPlayerName(name); redraw(); } },
-        }, name),
-      ),
-    ) : null,
-    h('div.openings__explorer-color-row', [
-      h('label', 'Color'),
-      toggleBtn('White', cfg.color === 'white', () => { cfg.color = 'white'; }),
-      toggleBtn('Black', cfg.color === 'black', () => { cfg.color = 'black'; }),
-    ]),
-  ]);
-
-  const sections: VNode[] = [];
-  if (db === 'masters') sections.push(dateSection('number'));
-  if (db === 'lichess') { sections.push(speedSection(), ratingSection(), dateSection('month')); }
-  if (db === 'player') { sections.push(playerSection(), speedSection(), modeSection(), dateSection('month')); }
-
-  return h('div.openings__explorer-config', [
-    ...sections,
-    h('button.openings__explorer-config-close', {
-      on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
-    }, 'Done'),
-  ]);
-}
-
-/**
- * Explorer panel — handles all four UI states: loading, error, empty, and data.
- * Mirrors lichess-org/lila: ui/analyse/src/explorer/explorerView.ts main() function.
- *
- * - Preserves stale cached data under a loading overlay (`.loading` class)
- * - `.reduced` class when movesAway > 2 (position moved far from book)
- * - "Max depth reached" when at or beyond MAX_EXPLORER_DEPTH
- * - Queue position message when player DB is indexing
- * - Error state with retry button
- */
-function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): VNode {
-  if (!node) return h('div.openings__explorer-empty', 'No position selected.');
-  if (explorerCtrl.config.db === 'repertoire') {
-    return renderRepertoireExplorerPanel(node.fen, redraw, {
-      line: repertoireLineForOpenings(sessionPath()),
-      onMoveClick: (uci: string) => {
-        playOpeningsExplorerMove(uci, redraw);
-      },
-      onJumpToPrior: (path: readonly string[]) => {
-        navigateToPath([...path]);
-        syncOpeningsBoard(redraw);
-        redraw();
-      },
-      getCurrentFen: currentOpeningsBoardFen,
-      restoreAutoShapes: restoreOpeningsExplorerAutoShapes,
-    });
-  }
-
-  const data = explorerCtrl.current(node.fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
-    explorerCtrl.setNode(node.fen, redraw);
-  }
-
-  const loading = explorerCtrl.loading;
-  const failing = explorerCtrl.failing;
-  const movesAway = explorerCtrl.movesAway;
-  const isMasters = explorerCtrl.config.db === 'masters';
-
-  // Player DB needs a username before we can fetch
-  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw);
-
-  // Tablebase mode — ≤7 pieces
-  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw);
-
-  // Error state — 401 shows a connect prompt; other errors show retry
-  if (failing && !data) return renderExplorerErrorBox(failing, node.fen, redraw);
-
-  // Empty state — no data and no longer loading
-  if (!loading && !data) {
-    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
-    const queuePos = (data as import('./explorer').OpeningData | undefined)?.queuePosition;
-    return h('div.openings__explorer-box', { class: { reduced: movesAway > 2 } }, [
-      h('div.openings__explorer-message', [
-        h('strong', tooDeep ? 'Max depth reached' : 'No game found'),
-        queuePos
-          ? h('p.openings__explorer-explanation', `Indexing ${queuePos} other players first\u2026`)
-          : !tooDeep
-            ? h('p.openings__explorer-explanation', 'Try adjusting the filters.')
-            : null,
-      ]),
-    ]);
-  }
-
-  // Data available — show with loading overlay if refreshing
-  if (data) {
-    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
-    const queuePos = data.queuePosition;
-
-    const content = hasContent
-      ? h('div.openings__explorer-data', [
-          data.opening
-            ? h('div.openings__explorer-opening', data.opening.name)
-            : null,
-          renderExplorerMovesTable(data, node.fen, redraw),
-          renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
-          renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
-        ])
-      : h('div.openings__explorer-message', [
-          h('strong', movesAway >= MAX_EXPLORER_DEPTH ? 'Max depth reached' : 'No game found'),
-          queuePos
-            ? h('p.openings__explorer-explanation', `Indexing ${queuePos} other players first\u2026`)
-            : null,
-        ]);
-
-    return h('div.openings__explorer-box', { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
-      h('div.overlay'),
-      content,
-    ]);
-  }
-
-  // Still waiting on first response
-  return h('div.openings__explorer-box', { class: { loading: true } }, [
-    h('div.overlay'),
-    h('div.openings__explorer-message', h('p', 'Loading\u2026')),
-  ]);
-}
-
-/**
- * Top/recent games table — adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts showGameTable()
- * Columns: ratings (stacked), player names (stacked), result badge, month/year, speed icon (non-masters).
- * Row click opens the game on Lichess in a new tab.
- */
-function renderExplorerGamesTable(
-  title: string,
-  games: import('./explorer').OpeningGame[],
-  isMasters: boolean,
-): VNode | null {
-  if (!games.length) return null;
-  const colSpan = isMasters ? 4 : 5;
-
-  const resultBadge = (winner?: 'white' | 'black') =>
-    winner === 'white'
-      ? h('result.white', '1-0')
-      : winner === 'black'
-        ? h('result.black', '0-1')
-        : h('result.draws', '\u00BD-\u00BD');
-
-  const openGame = (gameId: string) => {
-    const url = isMasters
-      ? `https://lichess.org/import/master/${gameId}`
-      : `https://lichess.org/${gameId}`;
-    window.open(url, '_blank', 'noopener');
-  };
-
-  return h('table.explorer-games', [
-    h('thead', h('tr', h('th', { attrs: { colspan: colSpan } }, title))),
-    h('tbody',
-      games.map(game =>
-        h('tr', {
-          key: game.id,
-          attrs: { 'data-id': game.id, 'data-uci': game.uci ?? '' },
-          on: { click: () => openGame(game.id) },
-        }, [
-          h('td.ratings', [
-            h('span', String(game.white.rating)),
-            h('span', String(game.black.rating)),
-          ]),
-          h('td.players', [
-            h('span', game.white.name),
-            h('span', game.black.name),
-          ]),
-          h('td', resultBadge(game.winner)),
-          h('td.date', game.month ?? game.year ?? ''),
-          !isMasters
-            ? h('td.speed', game.speed ? h('span', { attrs: { title: game.speed } }, speedGlyph(game.speed)) : '')
-            : null,
-        ]),
-      ),
-    ),
-  ]);
-}
-
-/** Simple text glyph for speed — no icon font required. */
-function speedGlyph(speed: string): string {
-  const glyphs: Record<string, string> = {
-    ultraBullet: '\u26a1\u26a1', bullet: '\u26a1', blitz: '\uD83D\uDD25',
-    rapid: '\u23F1', classical: '\u231B', correspondence: '\u2709',
-  };
-  return glyphs[speed] ?? speed;
-}
-
-/** Compact number formatter: 12400 → "12.4k", 1200000 → "1.2M". */
-function compactNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-/** Render a stacked W/D/B result bar — adapted from Lichess explorerView.ts resultBar(). */
-function renderExplorerResultBar(move: OpeningMoveStats): VNode {
-  const sum = move.white + move.draws + move.black || 1;
-  const seg = (key: 'white' | 'draws' | 'black') => {
-    const pct = (move[key] * 100) / sum;
-    const width = Math.round((move[key] * 1000) / sum) / 10;
-    return h(`span.${key}`, { attrs: { style: `width: ${width}%` } },
-      pct > 12 ? `${Math.round(pct)}${pct > 20 ? '%' : ''}` : '');
-  };
-  return h('div.bar', [seg('white'), seg('draws'), seg('black')]);
-}
-
-/**
- * Lichess-style moves table with result bar, hover arrows, and click-to-play.
- * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts showMoveTable()
- * and ui/analyse/src/explorer/explorerUtil.ts moveArrowAttributes().
- *
- * @param onMoveClick — optional; defaults to openings navigateToMove. Analysis board passes its own.
- * @param cgBoard     — optional; defaults to openings board. Analysis board passes its Chessground.
- */
-function renderExplorerMovesTable(
-  data: import('./explorer').OpeningData,
-  fen: string,
-  redraw: () => void,
-  onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
-  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
-): VNode {
-  const sumTotal = (data.white ?? 0) + (data.draws ?? 0) + (data.black ?? 0) || 1;
-
-  type SumRow = { uci: ''; san: string; white: number; black: number; draws: number };
-  type AnyRow = OpeningMoveStats | SumRow;
-  const rows: AnyRow[] = data.moves.length > 1
-    ? [...data.moves, { uci: '' as '', san: '\u03A3', white: data.white ?? 0, black: data.black ?? 0, draws: data.draws ?? 0 }]
-    : [...data.moves];
-
-  const defaultMoveClick = (uci: string) => {
-    playOpeningsExplorerMove(uci, redraw);
-  };
-  const handleMoveClick = onMoveClick ?? defaultMoveClick;
-  const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
-  const bind = (vnode: import('snabbdom').VNode) => {
-    const el = vnode.elm as ExplorerMoveRowsElement;
-    bindExplorerMoveRowInteractions(el, {
-      fen,
-      rowSelector: 'tr',
-      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
-      getCurrentFen,
-      restoreAutoShapes,
-      onMoveClick: handleMoveClick,
-      onDirectAutoShapesSet: usesOpeningsBoard ? () => { _lastOpeningsAutoShapesHash = null; } : undefined,
-    });
-  };
-
-  return h('table.explorer-moves', {
-    hook: {
-      insert: bind,
-      postpatch: (_old: import('snabbdom').VNode, vnode: import('snabbdom').VNode) => bind(vnode),
-    },
-  }, [
-    h('thead', h('tr', [
-      h('th', 'Move'), h('th', '%'), h('th', 'Games'), h('th', 'W/D/B'),
-    ])),
-    h('tbody', rows.map(move => {
-      const total = move.white + move.draws + move.black || 1;
-      const isSum = move.uci === '';
-      return h(isSum ? 'tr.sum' : 'tr', {
-        key: move.uci || '\u03A3',
-        attrs: move.uci ? { 'data-uci': move.uci } : {},
-      }, [
-        h('td', move.san),
-        h('td', `${((total / sumTotal) * 100).toFixed(0)}%`),
-        h('td', compactNum(total)),
-        h('td', renderExplorerResultBar(move as OpeningMoveStats)),
-      ]);
-    })),
-  ]);
-}
-
-// ========== Analysis board explorer integration ==========
-
-/**
- * Explorer section for the analysis board tools column.
- * Uses the same ExplorerCtrl singleton as the openings page.
- * Adapted from lichess-org/lila: ui/analyse/src/explorer/explorerView.ts default export.
- *
- * @param fen         — current board FEN (from ctrl.node.fen)
- * @param cg          — analysis board Chessground instance (for hover arrows)
- * @param onMoveClick — called when a move row is clicked; should advance the analysis tree
- * @param redraw      — analysis board redraw function
- */
-export function renderAnalysisExplorerSection(
-  fen: string,
-  cg: CgApi | undefined,
-  onMoveClick: (uci: string) => void,
-  redraw: () => void,
-  line?: RepertoireExplorerLinePosition<string>[],
-  onJumpToPath?: (path: string) => void,
-  getCurrentFen: () => string | null | undefined = () => fen,
-): VNode | null {
-  if (!explorerCtrl.enabled) return null;
-
-  const isMasters = explorerCtrl.config.db === 'masters';
-
-  return h('div.openings__explorer', [
-    renderExplorerDbTabs(null, redraw, restoreAnalysisExplorerAutoShapes),
-    explorerCtrl.configOpen
-      ? renderExplorerConfigPanel(redraw)
-      : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw, line, onJumpToPath, getCurrentFen),
-  ]);
-}
-
-/**
- * FEN-based explorer panel for the analysis board (no OpeningTreeNode dependency).
- * Mirrors renderExplorerPanel() but uses a plain FEN and custom move/arrow callbacks.
- */
-function renderAnalysisExplorerPanel(
-  fen: string,
-  isMasters: boolean,
-  cg: CgApi | undefined,
-  onMoveClick: (uci: string) => void,
-  redraw: () => void,
-  line?: RepertoireExplorerLinePosition<string>[],
-  onJumpToPath?: (path: string) => void,
-  getCurrentFen: () => string | null | undefined = () => fen,
-): VNode {
-  if (explorerCtrl.config.db === 'repertoire') {
-    const opts: {
-      line?: RepertoireExplorerLinePosition<string>[];
-      onMoveClick: (uci: string) => void;
-      onJumpToPrior?: (path: string) => void;
-      cgBoard?: CgApi;
-      getCurrentFen: () => string | null | undefined;
-      restoreAutoShapes: () => void;
-    } = {
-      onMoveClick,
-      getCurrentFen,
-      restoreAutoShapes: restoreAnalysisExplorerAutoShapes,
-    };
-    if (line) opts.line = line;
-    if (onJumpToPath) opts.onJumpToPrior = onJumpToPath;
-    if (cg) opts.cgBoard = cg;
-    return renderRepertoireExplorerPanel(fen, redraw, opts);
-  }
-
-  const data = explorerCtrl.current(fen);
-  if (!data && !explorerCtrl.loading && !explorerCtrl.failing && !explorerCtrl.needsPlayerName) {
-    explorerCtrl.setNode(fen, redraw);
-  }
-
-  const loading = explorerCtrl.loading;
-  const failing = explorerCtrl.failing;
-  const movesAway = explorerCtrl.movesAway;
-
-  if (explorerCtrl.needsPlayerName) return renderPlayerNamePrompt(redraw);
-
-  if (explorerCtrl.tablebaseData) return renderTablebasePanel(explorerCtrl.tablebaseData, redraw);
-
-  if (failing && !data) return renderExplorerErrorBox(failing, fen, redraw);
-
-  if (!loading && !data) {
-    const tooDeep = movesAway >= MAX_EXPLORER_DEPTH;
-    return h('div.openings__explorer-box', { class: { reduced: movesAway > 2 } }, [
-      h('div.openings__explorer-message', [
-        h('strong', tooDeep ? 'Max depth reached' : 'No game found'),
-        !tooDeep ? h('p.openings__explorer-explanation', 'Try adjusting the filters.') : null,
-      ]),
-    ]);
-  }
-
-  if (data) {
-    const hasContent = data.moves.length > 0 || (data.topGames?.length ?? 0) > 0 || (data.recentGames?.length ?? 0) > 0;
-    const content = hasContent
-      ? h('div.openings__explorer-data', [
-          data.opening ? h('div.openings__explorer-opening', data.opening.name) : null,
-          renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg, getCurrentFen, restoreAnalysisExplorerAutoShapes),
-          renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
-          renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
-        ])
-      : h('div.openings__explorer-message', [
-          h('strong', movesAway >= MAX_EXPLORER_DEPTH ? 'Max depth reached' : 'No game found'),
-        ]);
-    return h('div.openings__explorer-box', { class: { loading, reduced: movesAway > 2 && !hasContent } }, [
-      h('div.overlay'),
-      content,
-    ]);
-  }
-
-  return h('div.openings__explorer-box', { class: { loading: true } }, [
-    h('div.overlay'),
-    h('div.openings__explorer-message', h('p', 'Loading\u2026')),
   ]);
 }

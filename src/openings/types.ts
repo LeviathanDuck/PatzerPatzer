@@ -5,13 +5,17 @@
  * Opponent-research data must not reuse the analysis game library or persistence path.
  */
 
-/** The top-level tools available inside an openings research session. */
+/**
+ * The top-level tools available inside an openings research session.
+ *
+ * P2-TREE-2 removed the left tool rail and the four research tools (opponent-repertoire,
+ * prep-report, style, practice) as a deprecated experiment not proceeded with — the Opening Tree
+ * is the only tool now. Legacy/removed values still normalize safely: see
+ * `LegacyOpeningsTool`/`normalizeOpeningsTool` below and the invalid-param recovery path in
+ * `urlState.ts`.
+ */
 export const OPENINGS_TOOL_IDS = [
   'opening-tree',
-  'opponent-repertoire',
-  'prep-report',
-  'style',
-  'practice',
 ] as const;
 
 export type OpeningsTool = typeof OPENINGS_TOOL_IDS[number];
@@ -23,8 +27,13 @@ export type PersistedOpeningsTool = OpeningsTool | LegacyOpeningsTool;
 
 const OPENINGS_TOOL_ID_SET = new Set<string>(OPENINGS_TOOL_IDS);
 
+/**
+ * Normalizes a persisted/URL tool value. Returns null for anything not currently a live tool id —
+ * this includes the legacy `'repertoire'` alias and the removed research-tool ids
+ * (`opponent-repertoire`, `prep-report`, `style`, `practice`), all of which fall through to the
+ * caller's existing invalid-param recovery (fallback: `'opening-tree'`).
+ */
 export function normalizeOpeningsTool(value: string): OpeningsTool | null {
-  if (value === 'repertoire') return 'opponent-repertoire';
   return OPENINGS_TOOL_ID_SET.has(value) ? value as OpeningsTool : null;
 }
 
@@ -137,62 +146,4 @@ export interface SavedVariation {
     correct: number;
     lastAttempt: number;
   };
-}
-
-// ---------------------------------------------------------------------------
-// Practice session state
-// ---------------------------------------------------------------------------
-
-/**
- * Whether the opponent's next move is covered by the imported opponent repertoire
- * or has been handed off to the engine.
- *
- *  'opponent-repertoire' — the current position has at least one child node with
- *                          sufficient game frequency to make a weighted opponent-repertoire pick.
- *  'engine'              — the opponent repertoire has no data here; engine plays best move.
- *  'exhausted'           — the tree has run out of moves AND no engine is available.
- */
-export type PracticeOpponentSource = 'opponent-repertoire' | 'engine' | 'exhausted';
-
-/**
- * Active practice session state.
- *
- * One `PracticeSession` exists while the user is playing in Practice mode.
- * It is null when the user is in any other tool (Opening Tree, Prep Report, etc.).
- * Cleared on `closeSession()` and `stopPractice()`.
- *
- * Design notes (mirroring lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts):
- *  - `userColor` is fixed for the life of the session; the user cannot flip mid-session.
- *  - `opponentSource` reflects the current position's coverage state and updates on
- *    every half-move (after user moves AND after opponent moves).
- *  - `running` may be false if the user paused / navigated back manually; the session
- *    is preserved but the auto-advance loop is halted.
- *  - `startFen` records where the session began so "restart" can return there.
- */
-export interface PracticeSession {
-  /** Color the user is playing in this session. */
-  userColor: 'white' | 'black';
-  /** UCI path of moves played so far in this session (starting from startFen). */
-  moveHistory: string[];
-  /** FEN at session start (root of the practice sequence). */
-  startFen: string;
-  /** Whether the session auto-advance loop is running. False = paused. */
-  running: boolean;
-  /**
-   * Who is providing the opponent's move at the current position.
-   * Kept up to date so the view can show an honest handoff banner.
-   */
-  opponentSource: PracticeOpponentSource;
-  /**
-   * Minimum game frequency a tree child must have to be eligible
-   * for opponent-repertoire play. Positions below this threshold are treated as
-   * `'engine'` handoff even if children exist.
-   * Default: 2 (opponent has played this move at least twice in imported games).
-   */
-  minOpponentRepertoireFreq: number;
-  /**
-   * Engine strength level (1–8) used when opponentSource transitions to 'engine'.
-   * Index into STRENGTH_LEVELS from src/engine/types.ts.
-   */
-  strengthLevel: number;
 }

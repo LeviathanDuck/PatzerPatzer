@@ -386,18 +386,49 @@ export function stopProtocol(): void              { protocol.stop(); }
 export let _playMoveCallback: ((uci: string) => void) | null = null;
 export function setPlayMoveCallback(cb: ((uci: string) => void) | null): void { _playMoveCallback = cb; }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _pendingPlayDispatch: (() => void) | null = null;
+
+/** Drops any queued play-mode dispatch without running it (used by cancelPlayMove()). */
+export function clearPendingPlayDispatch(): void {
+  _pendingPlayDispatch = null;
+}
+
 /**
- * Switch engine to play mode at the given strength level.
- * Guards evalCurrentPosition() and evalThreatPosition() from resuming analysis.
+ * Switch engine to play mode at the given strength level, then invoke `dispatch` (which sends
+ * the position + go for the actual play search). If a search is currently outstanding — either
+ * still analyzing or already stopped but not yet drained — the mode switch and dispatch are
+ * deferred until the engine is confirmed idle (see _pendingPlayDispatch above).
  */
-export function enterPlayMode(config: EngineStrengthConfig): void {
-  engineMode = 'play';
+export function enterPlayMode(config: EngineStrengthConfig, dispatch: () => void): void {
   playStrengthConfig = config;
-  if (engineSearchActive) {
-    pendingStopCount++;
-    protocol.stop();
+  if (pendingStopCount > 0 || protocol.isAnalyzing() || engineSearchActive) {
+    if (protocol.isAnalyzing()) {
+      pendingStopCount++;
+      protocol.stop();
+    }
+    _pendingPlayDispatch = () => {
+      engineMode = 'play';
+      protocol.setPlayStrength(config);
+      dispatch();
+    };
+    return;
   }
+  engineMode = 'play';
   protocol.setPlayStrength(config);
+  dispatch();
 }
 
 /** Returns the last-used strength level (1–8) from localStorage, defaulting to DEFAULT_STRENGTH_LEVEL. */
@@ -439,21 +470,28 @@ export function buildArrowShapes(): DrawShape[] {
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts showBestMoveArrows() returning false
   // when retro.hideComputerLine(node) is true for unsolved candidate plies.
   const retroHidden = ctrl.retro !== undefined && !ctrl.retro.guidanceRevealed();
+  // Additional external suppression (e.g. analysis practice hides the engine display by
+  // default while its own verdict/reply evals keep running internally — mirrors
+  // lichess-org/lila practiceCtrl hiding ceval UI during practice). Combined with retroHidden
+  // below for every gate except the retro-only candidate-arrow branch, which requires
+  // ctrl.retro itself and stays keyed on retroHidden alone.
+  const externallyHidden = _extraArrowSuppressProvider?.() ?? false;
+  const engineGuidanceHidden = retroHidden || externallyHidden;
 
   if (ctrl.retro === undefined) {
     shapes.push(..._repertoireArrowShapeProvider());
   }
 
-  shapes.push(...buildEngineArrowShapes({ suppress: retroHidden, includeThreat: false }));
+  shapes.push(...buildEngineArrowShapes({ suppress: engineGuidanceHidden, includeThreat: false }));
 
-  if (engineEnabled && threatMode && threatEval.best && !retroHidden) {
+  if (engineEnabled && threatMode && threatEval.best && !engineGuidanceHidden) {
     const uci = threatEval.best;
     shapes.push({ orig: uci.slice(0, 2) as any, dest: uci.slice(2, 4) as any, brush: 'red' });
   }
 
-  // Board review glyphs: suppress during retro so the opponent's previous move
-  // (ctrl.node.uci) does not draw a confusing ?/??  arrow on the exercise position.
-  if (showBoardReviewGlyphs && !retroHidden) {
+  // Board review glyphs: suppress during retro/practice so the opponent's previous move
+  // (ctrl.node.uci) does not draw a confusing ?/??  arrow on the exercise/practice position.
+  if (showBoardReviewGlyphs && !engineGuidanceHidden) {
     shapes.push(...buildCurrentNodeReviewGlyphShapes(ctrl));
   }
 
@@ -472,7 +510,7 @@ export function buildArrowShapes(): DrawShape[] {
   // on the original game mainline.  Suppressed during retro to avoid showing the
   // opponent's reply as if it were the candidate mistake.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMainline gate.
-  if (showPlayedArrow && pathIsMainline(ctrl.root, ctrl.path) && !retroHidden) {
+  if (showPlayedArrow && pathIsMainline(ctrl.root, ctrl.path) && !engineGuidanceHidden) {
     const nextNode = ctrl.node.children[0];
     if (nextNode?.uci) {
       const uci = nextNode.uci;
@@ -494,6 +532,18 @@ export function buildArrowShapes(): DrawShape[] {
   shapes.push(...(_extraAutoShapesProvider?.() ?? []));
 
   return shapes;
+}
+
+
+
+
+
+
+
+
+let _extraArrowSuppressProvider: (() => boolean) | null = null;
+export function setExtraArrowSuppressProvider(fn: (() => boolean) | null): void {
+  _extraArrowSuppressProvider = fn;
 }
 
 // Extra auto-shape provider seam — lets a feature module (e.g. analysis practice) merge
@@ -878,8 +928,38 @@ function scheduleLiveEngineUiRefresh(includeRetroCheck = false): void {
  */
 function parseEngineLine(line: string): void {
   const parts = line.trim().split(/\s+/);
+
+
+
+
+
+
+
+
+
+
+
+
+  if (parts[0] === 'bestmove' && pendingStopCount > 0) {
+    cancelLiveEngineUiRefresh();
+    pendingStopCount--;
+    currentEval  = {};
+    pendingLines = [];
+    engineSearchActive = false;
+    if (pendingStopCount === 0 && _pendingPlayDispatch) {
+      const dispatch = _pendingPlayDispatch;
+      _pendingPlayDispatch = null;
+      dispatch();
+    } else if (pendingEval) {
+      evalCurrentPosition();
+    }
+    return;
+  }
+
   // In play mode, ignore info lines entirely — they must not update currentEval or arrows.
   // Route bestmove to _playMoveCallback instead of the analysis eval path.
+  // By this point pendingStopCount is guaranteed 0 (the gate above handled it otherwise), so
+  // any bestmove reaching here genuinely belongs to the currently active search.
   if (engineMode === 'play') {
     if (parts[0] === 'bestmove') {
       const uci = parts[1];
@@ -989,24 +1069,8 @@ function parseEngineLine(line: string): void {
     }
   } else if (parts[0] === 'bestmove') {
     cancelLiveEngineUiRefresh();
-    // Discard the stale bestmove that arrives after a 'stop' interrupted a previous search.
-    // Also resume any pending eval so the current position is not left unevaluated.
-    if (pendingStopCount > 0) {
-      pendingStopCount--;
-      currentEval  = {};
-      pendingLines = [];
-      if (pendingEval) {
-        // The stopped search has ended — the engine is now idle.
-        // Reset engineSearchActive before resuming so evalCurrentPosition() sees a
-        // genuinely idle engine and enters the start-new-search branch.
-        // Without this reset, evalCurrentPosition() sees engineSearchActive=true,
-        // sends another stop (incrementing pendingStopCount back to 1), receives no
-        // bestmove in reply (engine was already idle), and analysis stalls permanently.
-        engineSearchActive = false;
-        evalCurrentPosition();
-      }
-      return;
-    }
+    // pendingStopCount > 0 is already handled by the uniform gate at the top of this
+    // function, so every bestmove reaching here genuinely belongs to the active search.
     engineSearchActive = false;
     if (!parts[1] || parts[1] === '(none)') {
       if (isSilentEvalActive()) onSilentEvalBestmove?.();

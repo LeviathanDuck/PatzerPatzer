@@ -60,6 +60,7 @@ import {
   getRemoteSyncProgressSnapshot,
   getRemoteSyncToken,
   hasRemoteSyncToken,
+  flushRemoteSyncOutbox,
   logoutRemoteSync as stopAndClearRemoteSync,
   queueLocalLibraryForRemoteSync,
   refreshRemoteSyncProgressSnapshot,
@@ -72,6 +73,7 @@ import {
   type RemoteSyncProgressSnapshot,
 } from '../sync/remoteSync';
 import type { RemoteSyncIssue } from '../sync/progress';
+import { clearLocalDataForTokenLogout } from '../sync/dataManagement';
 import { syncRatedLadder } from '../puzzles/puzzleDb';
 import { writeHashRoute, type Route } from '../router';
 import type { ImportedGame, ImportCallbacks } from '../import/types';
@@ -338,14 +340,36 @@ function submitRemoteSyncLogin(redraw: () => void): void {
   });
 }
 
+let remoteSyncLogoutInProgress = false;
+
 function logoutRemoteSync(redraw: () => void): void {
-  clearRememberedRemoteSyncToken();
-  remoteSyncActive = false;
-  remoteSyncChecked = true;
-  remoteSyncChecking = false;
-  remoteSyncLoginInput = '';
-  remoteSyncLoginError = '';
-  redraw();
+  if (remoteSyncLogoutInProgress) return;
+  if (!confirm('Log out and remove this account’s local data from this browser? Data already synced stays in the cloud account.')) return;
+  remoteSyncLogoutInProgress = true;
+  void (async () => {
+
+
+
+    try {
+      // Flush while the token is still present so pending unsynced changes are pushed,
+      // not destroyed by the wipe below. Best-effort: offline/failed flush cannot block logout.
+      try {
+        await flushRemoteSyncOutbox();
+      } catch {
+        // ignore
+      }
+      clearRememberedRemoteSyncToken();
+      remoteSyncActive = false;
+      remoteSyncChecked = true;
+      remoteSyncChecking = false;
+      remoteSyncLoginInput = '';
+      remoteSyncLoginError = '';
+      redraw();
+      await clearLocalDataForTokenLogout();
+    } finally {
+      window.location.reload();
+    }
+  })();
 }
 
 function ensureLoginModalListener(redraw: () => void): void {
@@ -600,7 +624,7 @@ const navLinks: { label: string; href: string; section: string }[] = [
   { label: 'Analysis', href: '#/analysis', section: 'analysis' },
   { label: 'Puzzles',  href: '#/puzzles',  section: 'puzzles'  },
   { label: 'Games',    href: '#/games',    section: 'games'    },
-  { label: 'Opponents', href: '#/opponents', section: 'opponents' },
+  { label: 'Opening Tree', href: '#/opponents', section: 'opponents' },
   { label: 'Stats',    href: '#/stats',    section: 'stats'    },
   { label: 'Study',   href: '#/study',    section: 'study'    },
 ];

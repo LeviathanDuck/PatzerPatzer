@@ -6,28 +6,21 @@
  */
 
 import { normalizeOpeningsTool } from './types';
-import type { ResearchCollection, ResearchGame, ResearchSource, OpeningsTool, PracticeSession } from './types';
+import type { ResearchCollection, ResearchGame, ResearchSource, OpeningsTool } from './types';
 import {
   loadCollections, saveCollection, deleteCollection as dbDeleteCollection,
   saveSessionState, loadSessionState, clearSessionState,
   type StoredOpeningsSession,
 } from './db';
 import { createAccountResearchCollection } from './routeTarget';
-import { getPlayStrengthLevel, exitPlayMode, engineEnabled } from '../engine/ctrl';
+import { engineEnabled } from '../engine/ctrl';
 
 
 
 import { listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { loadGamesByAccountFromIdb } from '../idb';
-import { DEFAULT_STRENGTH_LEVEL } from '../engine/types';
-import { cancelPlayMove } from '../engine/playMove';
 import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode, type SampleGameMatch } from './tree';
 import type { ImportSpeed, ImportDateRange } from '../import/filters';
-import {
-  computeCollectionSummary, computePrepReport, computePrepReportLines,
-  computeStyleViewModel,
-  type CollectionSummary, type PrepReportData, type PrepReportLines, type StyleViewModel,
-} from './analytics';
 import {
   cancelTreeEval,
   isTreeEvalEnabled,
@@ -532,7 +525,6 @@ let _activeGames: ResearchGame[] = [];
 export function recencyMode(): 'recent' | 'all-time' { return _recencyMode; }
 export function setRecencyMode(mode: 'recent' | 'all-time'): void {
   _recencyMode = mode;
-  _prepReportCache = null; // force Prep Report to recompute with new mode
 }
 
 /** Active session date range filter (null = all time). */
@@ -1658,204 +1650,10 @@ function invalidateSampleCache(): void {
   _cachedSamples = [];
   _cachedSamplesLoading = false;
   _cachedSamplesGeneration++;
-  _summaryCache = null;      // analytics must recompute when data changes
-  _prepReportCache = null;   // Prep Report view-model must also recompute
-  _styleCache = null;        // Style view-model must also recompute
-}
-
-// --- Analytics cache ---
-// CollectionSummary is the shared base for all dashboard tools.
-// It is computed lazily after tree build completes and cached until the
-// data changes (collection switch, filter change, tree rebuild).
-//
-// Invalidation points: same as invalidateSampleCache() — any time the
-// underlying game set or tree changes, both caches clear together.
-//
-// Only available when the tree is fully built (treeBuilding() === false).
-// Returns null during tree build or when no collection is open.
-
-let _summaryCache: CollectionSummary | null = null;
-
-/**
- * Get the cached CollectionSummary for the active collection.
- * Computes lazily on first call after tree build completes.
- * Returns null if no collection is open or the tree is still building.
- */
-export function getCollectionSummary(): CollectionSummary | null {
-  if (!_activeCollection || _treeBuilding) return null;
-  if (!_summaryCache) {
-    _summaryCache = computeCollectionSummary(_activeGames, _activeCollection.target);
-  }
-  return _summaryCache;
-}
-
-// --- Prep Report view-model ---
-// Assembles PrepReportData + PrepReportLines from the cached CollectionSummary.
-// Caches the result so the Prep Report view never recomputes analytics per render.
-// Invalidated alongside _summaryCache on any data or filter change.
-
-/**
- * Assembled view-model for the Prep Report tool.
- * All three sections are derived from the same underlying game set and tree
- * so they are consistent with each other.
- */
-export interface PrepReportViewModel {
-  /** Base collection-level scouting facts (reused from _summaryCache). */
-  summary: CollectionSummary;
-  /** ECO breakdown and overall W/D/L for the Prep Report header/overview sections. */
-  report: PrepReportData;
-  /** Tree-derived line summaries for likely-lines, strong/weak, and fresh sections. */
-  lines: PrepReportLines;
-}
-
-let _prepReportCache: PrepReportViewModel | null = null;
-
-/**
- * Get the cached PrepReportViewModel.
- * Computes lazily on first call after tree build completes.
- * Returns null if no collection is open or the tree is still building.
- *
- * Color perspective follows the active color filter so that line analysis
- * is consistent with the current board/filter state.
- */
-export function getPrepReportViewModel(): PrepReportViewModel | null {
-  if (!_activeCollection || _treeBuilding) return null;
-  if (!_prepReportCache) {
-    const summary = getCollectionSummary()!; // safe: checked above
-    const report  = computePrepReport(_activeGames, _activeCollection.target, summary);
-    const colorPerspective = _colorFilter;
-    const lines = computePrepReportLines(ensureFullOpeningTreeSnapshot(), colorPerspective, 8);
-    _prepReportCache = { summary, report, lines };
-  }
-  return _prepReportCache;
-}
-
-// --- Style view-model ---
-// Wraps StyleData + FormData + OpponentRepertoireProfile with confidence annotations.
-// Cached and invalidated on the same contract as _prepReportCache.
-// Only available when the tree is fully built and a collection is open.
-
-let _styleCache: StyleViewModel | null = null;
-
-/**
- * Get the cached StyleViewModel for the active collection.
- * Computes lazily on first call after tree build completes.
- * Returns null if no collection is open or the tree is still building.
- */
-export function getStyleViewModel(): StyleViewModel | null {
-  if (!_activeCollection || _treeBuilding) return null;
-  if (!_styleCache) {
-    const summary = getCollectionSummary()!; // safe: checked above
-    _styleCache = computeStyleViewModel(
-      _activeGames,
-      ensureFullOpeningTreeSnapshot(),
-      _activeCollection.target,
-      summary,
-    );
-  }
-  return _styleCache;
-}
-
-// ---------------------------------------------------------------------------
-// Practice session ownership
-// ---------------------------------------------------------------------------
-//
-// Practice state lives here (not in view.ts) so board, engine, and UI layers
-// can all read from a single source of truth without coupling to each other.
-//
-// Lifecycle:
-//   startPractice()  — allocate session, switch to practice tool
-//   stopPractice()   — clear session, return to opening-tree tool
-//   practiceSession() — read current session (null = not in practice mode)
-//   setPracticeRunning() — pause / resume the auto-advance loop
-//   setPracticeOpponentSource() — update coverage state after each half-move
-//
-// The session is automatically cleared by closeSession().
-//
-// References:
-//   Adapted from lichess-org/lila: ui/analyse/src/practice/practiceCtrl.ts
-//   (isMyTurn / running / comment lifecycle pattern)
-
-let _practiceSession: PracticeSession | null = null;
-
-/** Read the active practice session. Null when not in practice mode. */
-export function practiceSession(): PracticeSession | null {
-  return _practiceSession;
-}
-
-/**
- * Start a practice session for the current collection.
- * Switches the active tool to 'practice' and initialises the session at the
- * current board position.
- *
- * @param userColor  The color the user will play ('white' or 'black').
- * @param startFen   FEN at the start of the practice sequence. Defaults to the
- *                   current session node FEN (the position visible on the board).
- */
-export function startPractice(
-  userColor: 'white' | 'black',
-  startFen: string,
-  strengthLevel?: number,
-): void {
-  _practiceSession = {
-    userColor,
-    moveHistory: [],
-    startFen,
-    running: true,
-    opponentSource: 'opponent-repertoire',
-    minOpponentRepertoireFreq: 2,
-    strengthLevel: strengthLevel ?? getPlayStrengthLevel() ?? DEFAULT_STRENGTH_LEVEL,
-  };
-  _activeTool = 'practice';
-  notifySessionStateChanged();
-}
-
-/**
- * Stop practice mode. Clears the session and returns to the opening-tree tool
- * so the user can continue browsing.
- */
-export function stopPractice(): void {
-  cancelPlayMove();
-  exitPlayMode();
-  _practiceSession = null;
-  _activeTool = 'opening-tree';
-  notifySessionStateChanged();
-}
-
-/**
- * Pause or resume the practice auto-advance loop.
- * Does nothing if no session is active.
- */
-export function setPracticeRunning(running: boolean): void {
-  if (_practiceSession) _practiceSession = { ..._practiceSession, running };
-}
-
-/**
- * Update the opponent source state at the current board position.
- * Called after each half-move so the UI can show the correct coverage banner.
- *
- * @param source  'opponent-repertoire' | 'engine' | 'exhausted'
- */
-export function setPracticeOpponentSource(source: PracticeSession['opponentSource']): void {
-  if (_practiceSession) _practiceSession = { ..._practiceSession, opponentSource: source };
-}
-
-/**
- * Append a UCI move to the current session's move history.
- * Used to track the full sequence played so "restart" can replay from startFen.
- */
-export function recordPracticeMove(uci: string): void {
-  if (_practiceSession) {
-    _practiceSession = {
-      ..._practiceSession,
-      moveHistory: [..._practiceSession.moveHistory, uci],
-    };
-  }
 }
 
 /** Close the current session, return to library. */
 export function closeSession(): void {
-  if (_practiceSession) { cancelPlayMove(); exitPlayMode(); }
   cancelTreeEvalWork();
 
 
@@ -1863,7 +1661,6 @@ export function closeSession(): void {
   _buildGeneration++;
   _treeBuilding = false;
   _activeTool = 'opening-tree';
-  _practiceSession = null;          // practice session must be cleared on close
   invalidateSampleCache();
   _activeCollection = null;
   _openingTree = null;

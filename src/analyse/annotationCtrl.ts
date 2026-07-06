@@ -4,7 +4,7 @@
 // writing directly to the local tree instead of a study server round-trip.
 
 import type { GlyphId, TreeNode, TreePath } from '../tree/types';
-import { setCommentAt, setGlyphsAt, nodeAtPath } from '../tree/ops';
+import { setCommentAt, deleteCommentAt, setGlyphsAt, nodeAtPath } from '../tree/ops';
 import { toggleGlyph } from '../tree/glyphs';
 
 export type AnnotationPanel = 'comments' | 'glyphs';
@@ -65,6 +65,19 @@ export function flushCommentSave(): void {
     _saveTimer = undefined;
   }
   _pendingSave?.();
+}
+
+/**
+ * Discard button entry point: cancel any pending debounced save (so a stale keystroke
+ * doesn't resurrect the comment on close) and delete the node's local comment outright.
+ */
+export function discardLocalComment(root: TreeNode, path: TreePath): void {
+  if (_saveTimer !== undefined) {
+    clearTimeout(_saveTimer);
+    _saveTimer = undefined;
+  }
+  _pendingSave = undefined;
+  deleteCommentAt(root, LOCAL_COMMENT_ID, path);
 }
 
 /** Toggle a catalog glyph on the node at path (one glyph per category). */

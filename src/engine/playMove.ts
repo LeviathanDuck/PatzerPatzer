@@ -6,6 +6,7 @@ import {
   engineMode,
   playStrengthConfig,
   enterPlayMode,
+  clearPendingPlayDispatch,
   setPlayMoveCallback,
   setPlayMoveRequestPending,
   incrementPendingStopCount,
@@ -19,24 +20,34 @@ export interface PlayMoveRequest {
   onError?: (reason: string) => void;
 }
 
-/**
- * Request a single move from the engine at the given strength level.
- * Routes the bestmove response to req.onMove via a one-shot callback.
- * Does not affect analysis eval state.
- */
+
+
+
+
+
+
+
+
+
+
+
 export function requestPlayMove(req: PlayMoveRequest): void {
   setPlayMoveRequestPending(false);
   if (!engineEnabled || !engineReady) {
     req.onError?.('engine not ready');
     return;
   }
+  const dispatch = () => {
+    setPlayMoveCallback(req.onMove);
+    protocol.setPositionContext(req.position);
+    protocol.goPlay(req.strength.maxDepth);
+  };
   // Switch to play mode at the requested strength if not already there.
   if (engineMode !== 'play' || playStrengthConfig?.level !== req.strength.level) {
-    enterPlayMode(req.strength);
+    enterPlayMode(req.strength, dispatch);
+  } else {
+    dispatch();
   }
-  setPlayMoveCallback(req.onMove);
-  protocol.setPositionContext(req.position);
-  protocol.goPlay(req.strength.maxDepth);
 }
 
 // Pending timer handle — cleared by cancelPlayMove() so stale callbacks never fire.
@@ -62,12 +73,21 @@ function randomInt(min: number, max: number): number {
 
 /**
  * Cancel a pending play-move request.
- * Clears any pending timer so the delayed callback never fires, then stops the engine.
+ * Clears any pending timer and queued play-mode dispatch so nothing fires late, then stops the
+ * engine — but only when a search is actually outstanding. Unconditionally calling
+ * protocol.stop() + incrementing the pending-stop credit (as this used to do) is only safe if
+ * the engine really is searching: a 'stop' sent to an idle engine typically produces no
+ * bestmove at all, which would leave the credit permanently undrained and cause every future
+ * bestmove (in any mode) to be misclassified as stale and discarded forever — a genuine
+ * "reply never arrives" stall (BUG-2026-07-05-014), not just a one-off dropped move.
  */
 export function cancelPlayMove(): void {
   if (_pendingTimer !== null) { clearTimeout(_pendingTimer); _pendingTimer = null; }
   setPlayMoveRequestPending(false);
   setPlayMoveCallback(null);
-  incrementPendingStopCount();
-  protocol.stop();
+  clearPendingPlayDispatch();
+  if (protocol.isAnalyzing()) {
+    incrementPendingStopCount();
+    protocol.stop();
+  }
 }

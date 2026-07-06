@@ -6,10 +6,12 @@ import { h, type VNode } from 'snabbdom';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath } from '../tree/ops';
 import { GLYPH_CATEGORIES } from '../tree/glyphs';
+import { GLYPH_COLORS } from './moveList';
 import {
   LOCAL_COMMENT_ID,
   annotationPanel,
   closeAnnotationPanel,
+  discardLocalComment,
   flushCommentSave,
   localCommentText,
   scheduleCommentSave,
@@ -75,7 +77,34 @@ function renderCommentForm(deps: AnnotationViewDeps, node: TreeNode): VNode {
         },
       },
     }),
-    h('div.annotation-form__hint', 'Saved as you type. Clear the text to delete the comment.'),
+    // Save dismisses the panel — the textarea already auto-saves on input (lila
+    // commentForm parity); Discard deletes the comment outright and dismisses.
+    h('div.annotation-form__footer', [
+      h('button.annotation-form__discard-btn', {
+        attrs: { type: 'button', title: 'Discard comment', 'aria-label': 'Discard comment' },
+        on: {
+          click: () => {
+            discardLocalComment(root, path);
+            closeAnnotationPanel();
+            redraw();
+          },
+        },
+      }, [
+        h('span.annotation-form__discard-icon', { attrs: { 'aria-hidden': 'true' } }, '🗑'),
+        'Discard',
+      ]),
+      h('button.annotation-form__save-btn', {
+        attrs: { type: 'button', title: 'Save', 'aria-label': 'Save comment' },
+        on: {
+          click: () => {
+            closeAnnotationPanel();
+            redraw();
+          },
+        },
+      }, [
+        h('span.annotation-form__save-icon', { attrs: { 'aria-hidden': 'true' } }, '✓'),
+      ]),
+    ]),
   ]);
 }
 
@@ -104,8 +133,13 @@ function renderGlyphPicker(deps: AnnotationViewDeps, node: TreeNode): VNode {
       h(`div.annotation-form__glyph-group.annotation-form__glyph-group--${group.category}`, [
         h('h4.annotation-form__glyph-group-label', group.label),
         h('div.annotation-form__glyph-buttons',
-          group.glyphs.map(glyph =>
-            h('button.annotation-form__glyph-btn', {
+          group.glyphs.map(glyph => {
+
+
+
+
+            const color = GLYPH_COLORS[glyph.symbol];
+            return h('button.annotation-form__glyph-btn', {
               class: { active: active.has(glyph.id) },
               attrs: { type: 'button', 'data-symbol': glyph.symbol, title: glyph.name },
               on: {
@@ -115,10 +149,12 @@ function renderGlyphPicker(deps: AnnotationViewDeps, node: TreeNode): VNode {
                 },
               },
             }, [
-              h('span.annotation-form__glyph-symbol', glyph.symbol),
+              h('span.annotation-form__glyph-symbol', {
+                attrs: color ? { style: `color:${color}` } : {},
+              }, glyph.symbol),
               h('span.annotation-form__glyph-name', glyph.name),
-            ]),
-          ),
+            ]);
+          }),
         ),
       ]),
     ),

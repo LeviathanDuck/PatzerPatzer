@@ -29,7 +29,7 @@ import {
   getPlayStrengthLevel,
   setPlayStrengthLevel,
 } from '../../engine/ctrl';
-import { cancelPlayMove, playMoveWithDelay } from '../../engine/playMove';
+import { cancelPlayMove, requestPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
 
 export type PracticeVerdict = 'goodMove' | 'inaccuracy' | 'mistake' | 'blunder';
@@ -98,6 +98,12 @@ let _threefold = false;
 let _replyRequestFen: string | null = null;
 let _fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
+
+let _sessionStartPath: TreePath | null = null;
+
+
+let _railSettingsOpen = false;
+
 export function initPractice(d: PracticeDeps): void {
   deps = d;
 }
@@ -113,6 +119,34 @@ export function practiceStrengthLevel(): number { return getPlayStrengthLevel();
 export function setPracticeStrengthLevel(level: number): void { setPlayStrengthLevel(level); }
 export function practiceStrengthConfig(): EngineStrengthConfig {
   return STRENGTH_LEVELS[practiceStrengthLevel() - 1] ?? STRENGTH_LEVELS[3]!;
+}
+
+
+
+
+
+
+const FEEDBACK_STORAGE_KEY = 'patzer.practice.feedbackEnabled';
+
+function loadFeedbackEnabled(): boolean {
+  return localStorage.getItem(FEEDBACK_STORAGE_KEY) !== '0';
+}
+
+let _feedbackEnabled = loadFeedbackEnabled();
+
+export function practiceFeedbackEnabled(): boolean { return _feedbackEnabled; }
+
+export function setPracticeFeedbackEnabled(enabled: boolean): void {
+  _feedbackEnabled = enabled;
+  localStorage.setItem(FEEDBACK_STORAGE_KEY, enabled ? '1' : '0');
+}
+
+
+
+export function practiceRailSettingsOpen(): boolean { return _railSettingsOpen; }
+
+export function setPracticeRailSettingsOpen(open: boolean): void {
+  _railSettingsOpen = open;
 }
 
 // --- Position helpers ---
@@ -260,7 +294,11 @@ function requestReply(): void {
   const requestFen = node.fen;
   const requestPath = d.getPath();
   _replyRequestFen = requestFen;
-  playMoveWithDelay({
+  // Dispatched immediately — no artificial human-like delay (owner directive: replies at
+  // computer speed). requestPlayMove() itself defers the actual position/go send until the
+  // shared engine is confirmed idle when a verdict-eval search is still in flight (see
+  // enterPlayMode()'s readiness barrier in engine/ctrl.ts), so this is never premature.
+  requestPlayMove({
     position: fenOnlyPositionContext(requestFen, 'analysis-practice-play', 'practice opponent reply'),
     strength: practiceStrengthConfig(),
     onMove: uci => {
@@ -385,6 +423,7 @@ export function startPractice(): void {
   _hinting = null;
   _played = false;
   _threefold = detectThreefold();
+  _sessionStartPath = deps?.getPath() ?? null;
   checkState();
   deps?.redraw();
 }
@@ -398,9 +437,33 @@ export function stopPractice(): void {
   _hovering = null;
   _hinting = null;
   _played = false;
+  _sessionStartPath = null;
+  _railSettingsOpen = false;
   cancelPendingReply();
   deps?.onShapesChanged();
   deps?.redraw();
+}
+
+
+
+
+
+
+
+export function practiceReset(): void {
+  const d = deps;
+  if (!_active || !d || _sessionStartPath === null) return;
+  cancelPendingReply();
+  _comment = null;
+  _hovering = null;
+  _hinting = null;
+  _played = false;
+  if (d.getPath() !== _sessionStartPath) d.navigate(_sessionStartPath);
+  _threefold = detectThreefold();
+  _running = true;
+  checkState();
+  d.onShapesChanged();
+  d.redraw();
 }
 
 /** Resume after going off-track. Mirrors lila resume(). */

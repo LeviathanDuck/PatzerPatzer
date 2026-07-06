@@ -1,5 +1,6 @@
 import { accountId, type AccountCategory, type AccountPlatform, type ChessAccount } from '../accounts';
 import {
+  clearAllIdbData,
   DB_NAME as MAIN_DB_NAME,
   DB_VERSION as MAIN_DB_VERSION,
   setSavedPuzzles,
@@ -10,6 +11,9 @@ import {
   type ReviewQueueManifestEntry,
 } from '../idb';
 import { upgradeGameDbSchema } from '../idb';
+import { clearAllPuzzleV1Data } from '../puzzles/puzzleDb';
+import { clearAllOpeningsData } from '../openings/db';
+import { clearBoardLocalData } from '../board/cosmetics';
 import type { ReviewRunManifest } from '../engine/reviewRun';
 import type { ImportedGame } from '../import/types';
 import type { GameSummary } from '../stats/types';
@@ -18,10 +22,16 @@ import type { PuzzleAttempt, PuzzleDefinition, PuzzleUserMeta } from '../puzzles
 import type { StudyItem, TrainableSequence } from '../study/types';
 import {
   beginRemoteSyncDataManagementDelete,
+  clearRemoteSyncLocalSyncState,
   type RemoteSyncDataManagementDeleteTransaction,
   type RemoteSyncDeleteKey,
   type RemoteSyncStoreName,
 } from './remoteSync';
+import {
+  defaultDurableVersionedOutboxStorage,
+  removeDurableVersionedOutboxEntries,
+  removeQuarantineRecords,
+} from './versionOutbox';
 import {
   createDataManagementActionId,
   emitDataManagementLocalChange,
@@ -1704,4 +1714,44 @@ export async function resetSettingsGroup(groupId: string): Promise<DataManagemen
 export function getSettingsResetGroupKeysForTest(groupId: string): string[] | null {
   const group = SETTINGS_GROUPS.find(item => item.id === groupId);
   return group ? [...group.keys] : null;
+}
+
+
+
+
+
+
+
+
+export async function clearLocalDataForTokenLogout(): Promise<void> {
+  const steps: Array<[string, () => Promise<unknown> | void]> = [
+    ['main-idb', () => clearAllIdbData()],
+    ['puzzles', () => clearAllPuzzleV1Data()],
+    ['openings', () => clearAllOpeningsData()],
+    ['pgn-cache', () => clearPuzzlePgnCache()],
+    ['outbox', async () => {
+      // Read both stores raw instead of the normalizing readers: keyPath is opId, so every
+      // persisted record has one, and malformed records must not survive the wipe. Deletion
+      // goes through the lock-holding key-targeted primitives so a concurrent enqueue cannot
+      // interleave with the removal; an entry enqueued after this read survives only until
+      // the reload that follows the wipe.
+      const storage = defaultDurableVersionedOutboxStorage();
+      const rawOpIds = (raw: readonly unknown[]): string[] => raw
+        .map(record => (record && typeof record === 'object' ? (record as { opId?: unknown }).opId : null))
+        .filter((opId): opId is string => typeof opId === 'string' && opId.length > 0);
+      const entryIds = rawOpIds(await storage.readEntries());
+      if (entryIds.length) await removeDurableVersionedOutboxEntries(storage, entryIds);
+      const quarantineIds = rawOpIds((await storage.readQuarantineRecords?.()) ?? []);
+      if (quarantineIds.length) await removeQuarantineRecords(quarantineIds, storage);
+    }],
+    ['sync-markers', () => clearRemoteSyncLocalSyncState()],
+    ['board-local', () => clearBoardLocalData()],
+  ];
+  for (const [label, step] of steps) {
+    try {
+      await step();
+    } catch (error) {
+      console.warn(`[data-management] Logout local clear step failed (${label})`, error);
+    }
+  }
 }

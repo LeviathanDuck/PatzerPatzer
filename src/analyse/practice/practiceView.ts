@@ -3,18 +3,28 @@
 
 
 
+
 import { h, type VNode } from 'snabbdom';
+import { renderStrengthSelector } from '../../engine/strengthView';
 import {
   isMyTurn,
   playCommentBest,
+  practiceActive,
   practiceComment,
   practiceCommentShape,
   practiceEndState,
+  practiceFeedbackEnabled,
   practiceHint,
   practiceHinting,
+  practiceRailSettingsOpen,
+  practiceReset,
   practiceResume,
   practiceRunning,
   practiceStrengthConfig,
+  practiceStrengthLevel,
+  setPracticeFeedbackEnabled,
+  setPracticeRailSettingsOpen,
+  setPracticeStrengthLevel,
   type PracticeComment,
   type PracticeEndState,
 } from './practiceCtrl';
@@ -112,7 +122,7 @@ export function renderPracticeBox(deps: PracticeViewDeps): VNode {
   return h(`div.practice-box.practice-box--${comment ? comment.verdict : 'no-verdict'}`, [
     h('div.practice-box__title', [
       h('span', 'Practice vs. Computer'),
-      h('span.practice-box__strength', strength.label),
+      h('span.practice-box__strength', `Level ${strength.level}`),
       h('button.practice-box__close', {
         attrs: { type: 'button', title: 'Stop practice', 'aria-label': 'Stop practice' },
         on: { click: () => deps.onClose() },
@@ -121,7 +131,9 @@ export function renderPracticeBox(deps: PracticeViewDeps): VNode {
     h('div.practice-box__feedback',
       end ? renderEnd(end) : running ? renderRunning(deps) : renderOffTrack(deps),
     ),
-    running && !end
+
+
+    running && !end && practiceFeedbackEnabled()
       ? h('div.practice-box__comment',
           comment
             ? [
@@ -131,6 +143,64 @@ export function renderPracticeBox(deps: PracticeViewDeps): VNode {
               ]
             : [isMyTurn() ? '' : h('span.practice-box__wait', 'Evaluating your move…')],
         )
+      : null,
+  ]);
+}
+
+export interface PracticeRailDeps {
+  redraw(): void;
+}
+
+
+
+
+
+
+
+
+
+export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
+  if (!practiceActive()) return null;
+  const hint = practiceHinting();
+  const feedbackOn = practiceFeedbackEnabled();
+  const settingsOpen = practiceRailSettingsOpen();
+  return h('div.practice-rail', [
+    h('div.practice-rail__row', [
+      h('button.practice-rail__btn', {
+        attrs: { type: 'button', title: 'Restart from the position this session started at' },
+        on: { click: () => practiceReset() },
+      }, 'Reset'),
+      h('button.practice-rail__btn', {
+        class: { active: feedbackOn },
+        attrs: {
+          type: 'button',
+          title: feedbackOn ? 'Hide move feedback' : 'Show move feedback',
+          'aria-pressed': String(feedbackOn),
+        },
+        on: { click: () => { setPracticeFeedbackEnabled(!feedbackOn); deps.redraw(); } },
+      }, feedbackOn ? 'Feedback: On' : 'Feedback: Off'),
+      h('button.practice-rail__btn', {
+        attrs: { type: 'button', title: 'Get a hint' },
+        on: { click: () => practiceHint() },
+      }, hint ? (hint.mode === 'piece' ? 'See best move' : 'Hide best move') : 'Get a hint'),
+      h('button.practice-rail__btn.practice-rail__btn--settings', {
+        class: { active: settingsOpen },
+        attrs: {
+          type: 'button',
+          title: 'Practice settings',
+          'aria-label': 'Practice settings',
+          'aria-expanded': String(settingsOpen),
+        },
+        on: { click: () => { setPracticeRailSettingsOpen(!settingsOpen); deps.redraw(); } },
+      }, '⚙'),
+    ]),
+    settingsOpen
+      ? h('div.practice-rail__settings', [
+          renderStrengthSelector(practiceStrengthLevel(), level => {
+            setPracticeStrengthLevel(level);
+            deps.redraw();
+          }),
+        ])
       : null,
   ]);
 }

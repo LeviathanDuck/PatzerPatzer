@@ -31,7 +31,6 @@ import {
 import { renderStrengthSelector } from '../engine/strengthView';
 import {
   practiceActive,
-  practiceStrengthConfig,
   practiceStrengthLevel,
   setPracticeStrengthLevel,
   startPractice,
@@ -397,7 +396,7 @@ export function renderActionMenu(): VNode | null {
       h('button', {
         attrs: { title: 'Choose the computer opponent strength' },
         on: { click: () => { _actionMenuSubView = 'practice'; deps.redraw(); } },
-      }, `Strength: ${practiceStrengthConfig().label}`),
+      }, `Strength: Level ${practiceStrengthLevel()}`),
     ]),
 
 

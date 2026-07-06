@@ -1875,9 +1875,17 @@ export function getCurrentSessionMode(): PuzzleSessionMode {
  * Set the session mode. Affects newly opened puzzle rounds.
  * Switching to 'rated' is only meaningful for imported-lichess puzzles;
  * user-library rounds will still be treated as practice regardless.
+ *
+ * P2-PZ-9 (Q-PZ-4 option A, dormancy guard): the rated-mode UI entry points
+ * (mode toggle, rated-stream card, rating display) have been removed from
+ * view.ts, so there is no way to leave rated mode once in it. A 'rated'
+ * value loaded/read from persisted state (e.g. a previously bookmarked or
+ * hash-restored `#/puzzles?...&mode=rated` route) is normalized to
+ * 'practice' here so no user is trapped in a mode with no UI. Rated logic,
+ * Glicko data, attempts, and sync remain dormant and untouched elsewhere.
  */
 export function setSessionMode(mode: PuzzleSessionMode): void {
-  _currentSessionMode = mode;
+  _currentSessionMode = mode === 'rated' ? 'practice' : mode;
 }
 
 // ---------------------------------------------------------------------------
@@ -2245,6 +2253,10 @@ async function openPuzzleRoundWithRuntimeHooks(
     return;
   }
   id = validation.id;
+
+  // Any real navigation into a puzzle round dismisses a stale retry/due-review
+  // completion screen (BUG-2026-07-05-016) so it never shadows the new view.
+  retryQueueCompletion = null;
 
   // Avoid re-fetching if we already have the right puzzle loaded or loading
   if (roundState && state.puzzleId === id && roundState.status !== 'error') return;
@@ -3149,6 +3161,10 @@ export async function hydratePuzzleLibraryRoute(query: string, redraw: () => voi
 
   setDifficulty(routeState.difficulty);
   setSessionMode(routeState.mode);
+  // Mirror the normalized mode back onto the local route state so a stale
+  // `mode=rated` query param (P2-PZ-9 dormancy guard) isn't re-serialized
+  // into the URL by replacePuzzleLibraryRoute() below.
+  routeState.mode = getCurrentSessionMode();
 
   if (!routeState.source) {
     puzzleListState = null;
@@ -3582,6 +3598,8 @@ function clearSessionRuntimeOnly(): void {
   retryQueue = [];
   retryIndex = 0;
   retrySessionActive = false;
+  retryQueueKind = 'retry';
+  retryQueueCompletion = null;
   retryCount = undefined;
   dueCount = undefined;
   _importedSessionError = null;
@@ -3824,6 +3842,38 @@ export function isRetrySessionActive(): boolean { return retrySessionActive; }
 export function getRetryCount(): number | undefined { return retryCount; }
 
 /**
+ * Which library action populated the shared retry/due-review queue above.
+ * UI-labeling only (BUG-2026-07-05-016 progress/completion fix) — does not
+ * affect due-date/interval/retry-eligibility semantics (Track T3, out of
+ * scope for this fix).
+ */
+export type RetryQueueKind = 'retry' | 'due';
+let retryQueueKind: RetryQueueKind = 'retry';
+export function getRetryQueueKind(): RetryQueueKind { return retryQueueKind; }
+
+/**
+ * Set once a retry/due-review queue is exhausted so the view can show a
+ * clear completion state instead of silently resetting on the last
+ * puzzle's feedback screen (BUG-2026-07-05-016). Cleared when dismissed,
+ * when a new queue session starts, or when any puzzle round is opened.
+ */
+export interface RetryQueueCompletion {
+  kind: RetryQueueKind;
+  total: number;
+}
+let retryQueueCompletion: RetryQueueCompletion | null = null;
+export function getRetryQueueCompletion(): RetryQueueCompletion | null { return retryQueueCompletion; }
+export function dismissRetryQueueCompletion(): void { retryQueueCompletion = null; }
+
+/** End an active retry/due-review queue session before it finishes naturally. */
+export function endRetryQueueSession(): void {
+  retrySessionActive = false;
+  retryQueue = [];
+  retryIndex = -1;
+  retryQueueCompletion = null;
+}
+
+/**
  * Build the retry queue: puzzles whose most recent attempt was not a clean
  * or recovered solve, plus puzzles that have never been attempted.
  */
@@ -3892,6 +3942,8 @@ export async function startRetrySession(redraw: () => void): Promise<void> {
     retryQueue = queue;
     retryIndex = 0;
     retrySessionActive = true;
+    retryQueueKind = 'retry';
+    retryQueueCompletion = null;
 
     // Navigate to the first puzzle in the queue
     const first = retryQueue[0]!;
@@ -3915,13 +3967,19 @@ export async function nextRetryPuzzle(redraw: () => void): Promise<void> {
 
   retryIndex++;
   if (retryIndex >= retryQueue.length) {
-    // Queue exhausted
+    // Queue exhausted — surface a completion state (BUG-2026-07-05-016)
+    // instead of silently clearing the session, which previously left the
+    // user staring at the last puzzle's stale feedback screen with no
+    // indication the batch had ended.
+    retryQueueCompletion = { kind: retryQueueKind, total: retryQueue.length };
     retrySessionActive = false;
     retryQueue = [];
     retryIndex = -1;
-    // Refresh retry count to reflect any newly-solved puzzles
+    // Refresh retry/due counts to reflect any newly-solved puzzles
     loadRetryCount(redraw);
+    loadDueCount(redraw);
     console.log('[puzzle-ctrl] retry queue complete');
+    redraw();
     return;
   }
 
@@ -4085,6 +4143,8 @@ export async function startDueSession(redraw: () => void): Promise<void> {
     retryQueue = queue;
     retryIndex = 0;
     retrySessionActive = true;
+    retryQueueKind = 'due';
+    retryQueueCompletion = null;
 
     const first = retryQueue[0]!;
     await openGeneratedPuzzleRoundRoute(first.id, redraw);

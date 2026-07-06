@@ -60,7 +60,9 @@ function shouldShowReviewAnnotation(
 
 // Annotation glyph colors — mirrors lichess-org/lila: ui/lib/css/theme/_theme.default.scss
 // $c-blunder / $c-mistake / $c-inaccuracy / $c-brilliant / $c-secondary / $c-interesting
-const GLYPH_COLORS: Record<string, string> = {
+// Canonical per-glyph color mapping — also reused by the glyph picker (annotationView.ts)
+// so a glyph's color matches everywhere it appears (move list, board badges, picker).
+export const GLYPH_COLORS: Record<string, string> = {
   '??':  'hsl(0,69%,60%)',    // blunder     — muted red
   '?':   'hsl(41,100%,45%)',  // mistake     — amber
   '?!':  'hsl(202,78%,62%)',  // inaccuracy  — steel blue

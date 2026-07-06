@@ -20,6 +20,9 @@ import {
   isRetrySessionActive, getRetryCount, getRetryIndex, getRetryQueue,
   startRetrySession, nextRetryPuzzle, loadRetryCount,
   getDueCount, loadDueCount, startDueSession,
+  getRetryQueueKind, endRetryQueueSession,
+  getRetryQueueCompletion, dismissRetryQueueCompletion,
+  type RetryQueueCompletion,
   getPuzzleListState, openPuzzleList, closePuzzleList,
   filterPuzzleList, loadMorePuzzles, selectPuzzleFromList,
   loadMoreImportedShards, hasMoreImportedShards,
@@ -36,15 +39,14 @@ import {
   type ActiveSession,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
-import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta, PuzzleDifficulty } from './types';
-import { PUZZLE_DIFFICULTY_OFFSETS } from './types';
+import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta } from './types';
 import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { renderMoveList, renderContextMoves } from '../analyse/moveList';
 import { renderMoveNavBar } from '../analyse/analysisControls';
-import { syncPuzzleBoard, peekPuzzleContext, getCurrentSessionMode, setSessionMode, getCurrentDifficulty, setDifficulty, getCurrentUserPerf, startRatedSession, stopRatedStream, isRatedStreamActive, getRatedStreamCount, isEmptyRatedStream } from './ctrl';
+import { syncPuzzleBoard, peekPuzzleContext } from './ctrl';
 import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
@@ -947,143 +949,6 @@ function solveResultLabel(result: SolveResult): string {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Rated ladder UI — mode badge, difficulty selector, rating display
-// Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts (session controls)
-// ---------------------------------------------------------------------------
-
-/** Difficulty level display labels. */
-const DIFFICULTY_LABELS: Record<PuzzleDifficulty, string> = {
-  easiest: 'Easiest',
-  easier:  'Easier',
-  normal:  'Normal',
-  harder:  'Harder',
-  hardest: 'Hardest',
-};
-
-/**
- * Rated stream left-panel entry card.
- * Shows the user's current rating, difficulty selector, and Start/Stop controls.
- * Mirrors the Lichess puzzle dashboard entry point (PuzzleSession concept).
- * Adapted from lichess-org/lila: ui/puzzle/src/view/main.ts
- */
-export function renderRatedStreamEntry(redraw: () => void): VNode {
-  const perf = getCurrentUserPerf();
-  const intRating = Math.round(perf.glicko.rating);
-  const intDeviation = Math.round(perf.glicko.deviation);
-  const streamActive = isRatedStreamActive();
-  const streamCount = getRatedStreamCount();
-  const empty = isEmptyRatedStream();
-  const difficulty = getCurrentDifficulty();
-
-  const difficultyOptions: Array<[string, string]> = [
-    ['easiest', 'Easiest'],
-    ['easier', 'Easier'],
-    ['normal', 'Normal'],
-    ['harder', 'Harder'],
-    ['hardest', 'Hardest'],
-  ];
-
-  return h('div.puzzle__rated-stream-entry', [
-    // Rating display
-    h('div.puzzle__rated-stream-entry__rating', [
-      h('span.puzzle__rated-stream-entry__rating-label', 'Your Rating'),
-      h('span.puzzle__rated-stream-entry__rating-value', String(intRating)),
-      h('span.puzzle__rated-stream-entry__rating-dev', `\u00b1${intDeviation}`),
-    ]),
-
-    // Difficulty selector
-    h('div.puzzle__rated-stream-entry__difficulty', [
-      h('label.puzzle__rated-stream-entry__difficulty-label', { attrs: { for: 'rated-stream-difficulty' } }, 'Difficulty'),
-      h('select.puzzle__rated-stream-entry__difficulty-select', {
-        attrs: { id: 'rated-stream-difficulty', value: difficulty },
-        props: { value: difficulty },
-        on: {
-          change: (e: Event) => {
-            setDifficulty((e.target as HTMLSelectElement).value as typeof difficulty);
-            redraw();
-          },
-        },
-      }, difficultyOptions.map(([val, label]) =>
-        h('option', { attrs: { value: val, selected: val === difficulty } }, label),
-      )),
-    ]),
-
-    // Stream counter (visible when active)
-    streamActive
-      ? h('div.puzzle__rated-stream-entry__count', `Puzzle ${streamCount}`)
-      : null,
-
-    // Empty state
-    empty
-      ? h('div.puzzle__rated-stream-entry__empty',
-          'No rated puzzles available \u2014 import Lichess puzzles to begin.')
-      : null,
-
-    // Start / Stop button
-    streamActive
-      ? h('button.puzzle__rated-stream-entry__stop', {
-          on: { click: () => { stopRatedStream(); redraw(); } },
-        }, 'Stop')
-      : h('button.puzzle__rated-stream-entry__start', {
-          on: { click: () => { void startRatedSession(redraw); } },
-        }, 'Start Rated'),
-  ]);
-}
-
-/**
- * Rated session badge + difficulty selector.
- * Only shown for imported-lichess puzzles. User-library puzzles show a
- * "Practice only" label so the distinction is clear.
- * Adapted from Lichess puzzle mode controls.
- */
-function renderRatedBadge(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
-  const isImported = rc.definition.sourceKind === 'imported-lichess';
-  const sessionMode = getCurrentSessionMode();
-  const perf = getCurrentUserPerf();
-  const intRating = Math.round(perf.glicko.rating);
-
-  if (!isImported) {
-    return h('div.puzzle__rated-badge.puzzle__rated-badge--practice-only', [
-      h('span.puzzle__rated-badge__label', 'Practice only'),
-    ]);
-  }
-
-  const difficulties: PuzzleDifficulty[] = ['easiest', 'easier', 'normal', 'harder', 'hardest'];
-  const currentDiff = getCurrentDifficulty();
-
-  return h('div.puzzle__rated-badge', [
-    h('div.puzzle__rated-badge__mode', [
-      h('button.puzzle__rated-badge__btn', {
-        class: { active: sessionMode === 'practice' },
-        on: { click: () => { setSessionMode('practice'); redraw(); } },
-      }, 'Practice'),
-      h('button.puzzle__rated-badge__btn', {
-        class: { active: sessionMode === 'rated' },
-        on: { click: () => { setSessionMode('rated'); redraw(); } },
-      }, 'Rated'),
-    ]),
-    sessionMode === 'rated'
-      ? h('div.puzzle__rated-badge__controls', [
-          h('span.puzzle__rated-badge__rating', `${intRating}`),
-          h('select.puzzle__rated-badge__difficulty', {
-            props: { value: currentDiff },
-            on: {
-              change: (e: Event) => {
-                const sel = e.target as HTMLSelectElement;
-                setDifficulty(sel.value as PuzzleDifficulty);
-                redraw();
-              },
-            },
-          }, difficulties.map(d =>
-            h('option', { props: { value: d, selected: d === currentDiff } },
-              `${DIFFICULTY_LABELS[d]} (${PUZZLE_DIFFICULTY_OFFSETS[d] >= 0 ? '+' : ''}${PUZZLE_DIFFICULTY_OFFSETS[d]})`),
-          )),
-        ])
-      : null,
-  ]);
-}
-
 /**
  * Rated assistance warning modal.
  * Shown when the user triggers a restricted tool during a rated round.
@@ -1117,43 +982,6 @@ function renderAssistanceWarning(rc: PuzzleRoundCtrl, redraw: () => void): VNode
         }, 'Stay rated (lose points)'),
       ]),
     ]),
-  ]);
-}
-
-/**
- * Messaging shown when a previously correctly solved puzzle appears in a rated session.
- * Makes explicit that this round cannot score rated again.
- */
-function renderSolvedRepeatNotice(rc: PuzzleRoundCtrl): VNode | null {
-  // Only show for rated imported-lichess puzzles with already-solved outcome.
-  if (rc.currentSessionMode !== 'rated') return null;
-  if (rc.definition.sourceKind !== 'imported-lichess') return null;
-  if (rc.ratedOutcomeResolved !== 'already-solved') return null;
-  return h('div.puzzle__solved-repeat-notice', [
-    h('span.puzzle__solved-repeat-notice__icon', '\u2139'),
-    'You\'ve solved this puzzle before — this round is for practice only.',
-  ]);
-}
-
-/**
- * Current user rating and last-round delta display.
- * Shown after a rated round completes so results are immediately visible.
- */
-function renderRatingDisplay(rc: PuzzleRoundCtrl): VNode | null {
-  if (rc.currentSessionMode !== 'rated') return null;
-  if (rc.definition.sourceKind !== 'imported-lichess') return null;
-  const perf = getCurrentUserPerf();
-  const intRating = Math.round(perf.glicko.rating);
-  const delta = rc.lastRatingDelta;
-
-  return h('div.puzzle__rating-display', [
-    h('span.puzzle__rating-display__label', 'Rating'),
-    h('span.puzzle__rating-display__value', `${intRating}`),
-    delta !== undefined && delta !== 0
-      ? h('span.puzzle__rating-display__delta', {
-          class: { positive: delta > 0, negative: delta < 0 },
-        }, delta > 0 ? `+${delta}` : `${delta}`)
-      : null,
   ]);
 }
 
@@ -1460,11 +1288,17 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
 }
 
 // --- Shared next-puzzle navigation ---
-// When a retry session is active, "Next Puzzle" advances through the retry
-// queue. Otherwise it falls back to the default random-next behavior.
+// When a retry or due-review queue is active, "Next Puzzle" advances through
+// that queue. Otherwise it falls back to the default random-next behavior.
+// The queue is shared runtime state (src/puzzles/ctrl.ts retryQueue/retryIndex)
+// used by both the "Retry Failed" and "Review Due" library actions; the
+// label switches on getRetryQueueKind() so due-review batches read as
+// "Review" rather than "Retry" (BUG-2026-07-05-016).
 
 function renderNextNavChildren(redraw: () => void): VNode[] {
   const inRetry = isRetrySessionActive();
+  const kind = getRetryQueueKind();
+  const label = kind === 'due' ? 'Review' : 'Retry';
   const nextFn = inRetry ? nextRetryPuzzle : nextPuzzle;
   const idx = getRetryIndex();
   const total = getRetryQueue().length;
@@ -1473,7 +1307,7 @@ function renderNextNavChildren(redraw: () => void): VNode[] {
 
   if (inRetry) {
     children.push(
-      h('span.puzzle__retry-progress', `Retry ${idx + 1} of ${total}`),
+      h('span.puzzle__retry-progress', `${label} ${idx + 1} of ${total}`),
     );
   }
 
@@ -1481,7 +1315,7 @@ function renderNextNavChildren(redraw: () => void): VNode[] {
     h('button.button.button-empty.puzzle__next', {
       on: { click: () => { nextFn(redraw); } },
     }, inRetry
-      ? (idx + 1 >= total ? 'Finish Retry Session' : 'Next Retry Puzzle')
+      ? (idx + 1 >= total ? `Finish ${label} Session` : `Next ${label} Puzzle`)
       : 'Next Puzzle',
     ),
   );
@@ -2093,7 +1927,69 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
   ]);
 }
 
+// --- Retry / due-review queue sidebar ---
+// A retry-failed or due-for-review batch (src/puzzles/ctrl.ts retryQueue/
+// retryIndex/retrySessionActive) is NOT an ActiveSession — it has no theme/
+// rating/history to drive renderSessionSidebar above. Previously that meant
+// these batches fell back to the plain no-session sidebar with zero
+// position-in-set indication except a transient label buried in the
+// post-answer feedback nav. This persistent readout (reusing the
+// .session-info block styling) fixes BUG-2026-07-05-016 by keeping "N of M"
+// visible for the whole batch, not just right after each answer.
+
+function renderRetryQueueProgress(redraw: () => void): VNode {
+  const kind = getRetryQueueKind();
+  const label = kind === 'due' ? 'Due Review' : 'Retry Session';
+  const idx = getRetryIndex();
+  const total = getRetryQueue().length;
+
+  return h('div.session-info', [
+    h('div.session-info__header', [
+      h('span.session-info__label', label),
+      h('div.session-info__actions', [
+        h('button.session-info__end', {
+          on: { click: () => { endRetryQueueSession(); writeHashRoute('#/puzzles'); } },
+          attrs: { title: 'End session' },
+        }, 'End'),
+      ]),
+    ]),
+    h('div.session-info__stats', [
+      h('span.session-info__stat', `${Math.min(idx + 1, total)} of ${total}`),
+    ]),
+  ]);
+}
+
+/**
+ * Shown once a retry/due-review queue is exhausted. ctrl.ts nextRetryPuzzle()
+ * clears the queue on the last puzzle but leaves this summary in place so the
+ * batch doesn't silently dead-end on the last puzzle's feedback screen
+ * (BUG-2026-07-05-016). Reuses the existing solved-feedback card pattern
+ * instead of introducing new visual UI.
+ */
+function renderRetryQueueCompletion(completion: RetryQueueCompletion): VNode {
+  const label = completion.kind === 'due' ? 'Due review' : 'Retry session';
+  return h('div.puzzle-page', h('div.puzzle-round', [
+    h('div.puzzle__feedback.after.solved', [
+      h('div.puzzle__feedback__result', [
+        h('div.puzzle__feedback__icon.puzzle__feedback__icon--success', '✓'),
+        h('div.puzzle__feedback__message', [
+          h('strong', `${label} complete`),
+          h('em', `You went through all ${completion.total} ${completion.total === 1 ? 'puzzle' : 'puzzles'}.`),
+        ]),
+      ]),
+      h('div.puzzle__feedback__actions', [
+        h('button.button.puzzle__next', {
+          on: { click: () => { dismissRetryQueueCompletion(); writeHashRoute('#/puzzles'); } },
+        }, 'Back to Library'),
+      ]),
+    ]),
+  ]));
+}
+
 export function renderPuzzleRound(redraw: () => void): VNode {
+  const retryCompletion = getRetryQueueCompletion();
+  if (retryCompletion) return renderRetryQueueCompletion(retryCompletion);
+
   const rs = getPuzzleRoundState();
 
   // No round state yet (should not normally happen if openPuzzleRound was called)
@@ -2122,6 +2018,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   const rc = getActiveRoundCtrl();
 
   const session = getActiveSession();
+  const inRetryQueue = isRetrySessionActive();
 
   return h('div.puzzle-page', [
     h('div.puzzle.puzzle--with-session', [
@@ -2129,11 +2026,10 @@ export function renderPuzzleRound(redraw: () => void): VNode {
       session
         ? renderSessionSidebar(session, def, redraw)
         : h('aside.puzzle__session-sidebar', [
-            h('div.puzzle-round__header', [
+            inRetryQueue ? renderRetryQueueProgress(redraw) : h('div.puzzle-round__header', [
               h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
               h('h2.puzzle-round__title', `Puzzle ${def.id}`),
             ]),
-            renderRatedStreamEntry(redraw),
             renderPuzzleInfo(def, redraw),
             renderMetaPanel(def.id, redraw),
           ]),
@@ -2165,12 +2061,9 @@ export function renderPuzzleRound(redraw: () => void): VNode {
       h('aside.puzzle__side', [
         rc ? renderAssistanceWarning(rc, redraw) : null,
         rc ? renderPuzzleRoundActionMenu(rc, redraw) : null,
-        rc ? renderRatedBadge(rc, redraw) : null,
         rc ? renderPuzzleEnginePanel(rc, redraw) : null,
         renderPuzzleMoveList(def, rc, redraw),
         rc ? renderPuzzleRoundNavBar(rc, redraw) : null,
-        rc ? renderSolvedRepeatNotice(rc) : null,
-        rc ? renderRatingDisplay(rc) : null,
         rc ? renderFeedbackPanel(rc, redraw) : null,
       ]),
     ]),

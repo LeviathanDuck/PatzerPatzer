@@ -164,6 +164,32 @@ export function setGlyphsAt(root: TreeNode, glyphs: Glyph[], path: TreePath): vo
 }
 
 /**
+ * Merge stored user-tree edits (comments/glyphs/nags plus any extra children) onto a freshly
+ * parsed tree. Node identity is matched by `id` — a stable 2-char scalachess pair derived from
+ * the move itself, so it is identical whether a node came from a fresh PGN parse or from a
+ * previously stored edit of the same move. Comments are upserted by comment id (matches
+ * setCommentAt's identity rule — the board's local comment always uses a fixed id); glyphs and
+ * nags are replaced wholesale when the stored node has them, since annotation authoring always
+ * writes a full replacement list (see toggleGlyphAt/setGlyphsAt).
+ * Mirrors lichess-org/lila: ui/lib/src/tree/ops.ts merge().
+ */
+export function mergeUserTreeEdits(n1: TreeNode, n2: TreeNode): void {
+  n2.comments?.forEach(c => {
+    n1.comments = n1.comments ?? [];
+    const existing = n1.comments.find(d => d.id === c.id);
+    if (existing) existing.text = c.text;
+    else n1.comments.push(c);
+  });
+  if (n2.glyphs && n2.glyphs.length) n1.glyphs = n2.glyphs;
+  if (n2.nags && n2.nags.length) n1.nags = n2.nags;
+  n2.children.forEach(c => {
+    const existing = childById(n1, c.id);
+    if (existing) mergeUserTreeEdits(existing, c);
+    else n1.children.push(c);
+  });
+}
+
+/**
  * Promote the node at path toward the mainline.
  * - toMainline=false: promote one level (swap with parent's first child)
  * - toMainline=true:  promote all the way to mainline (first child at every ancestor)

@@ -594,7 +594,7 @@ export interface PlayerProfileRecord {
 
 export const DB_NAME = 'patzer-pro';
 
-export const DB_VERSION = 25;
+export const DB_VERSION = 26;
 
 let _idb: IDBDatabase | undefined;
 
@@ -772,6 +772,12 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
 
 
   ensureStore(db, event, 'player-profiles', { keyPath: 'key' });
+
+
+
+
+
+  ensureStore(db, event, 'user-tree', { keyPath: 'gameId' });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
@@ -1664,6 +1670,75 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+export interface StoredUserTree {
+  gameId:    string;
+  updatedAt: number;
+  /** Serialized via serializeUserTreeNode: engine/session-only fields are omitted. */
+  root:      TreeNode;
+}
+
+/**
+ * Recursively strip engine/session-only fields (eval, ceval, clock, moveTime, timeControl,
+ * shapes, forceVariation) from a node, keeping identity/structure (id, ply, uci, san, fen,
+ * children) plus the actual user edits (comments, glyphs, nags).
+ * Mirrors lichess-org/lila: ui/analyse/src/idbTree.ts IdbTree.serializeNode.
+ */
+export function serializeUserTreeNode(n: TreeNode): TreeNode {
+  return {
+    id: n.id,
+    ply: n.ply,
+    ...(n.uci !== undefined ? { uci: n.uci } : {}),
+    ...(n.san !== undefined ? { san: n.san } : {}),
+    fen: n.fen,
+    ...(n.comments && n.comments.length ? { comments: n.comments } : {}),
+    ...(n.glyphs && n.glyphs.length ? { glyphs: n.glyphs } : {}),
+    ...(n.nags && n.nags.length ? { nags: n.nags } : {}),
+    children: n.children.map(serializeUserTreeNode),
+  };
+}
+
+export async function saveUserTreeToIdb(gameId: string, root: TreeNode): Promise<void> {
+  try {
+    const db = await openGameDb();
+    const record: StoredUserTree = {
+      gameId,
+      updatedAt: Date.now(),
+      root: serializeUserTreeNode(root),
+    };
+    const tx = db.transaction('user-tree', 'readwrite');
+    tx.objectStore('user-tree').put(record);
+    await txDone(tx);
+  } catch (e) {
+    console.warn('[idb] user tree save failed', e);
+  }
+}
+
+export async function loadUserTreeFromIdb(gameId: string): Promise<StoredUserTree | undefined> {
+  try {
+    const db = await openGameDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('user-tree', 'readonly').objectStore('user-tree').get(gameId);
+      req.onsuccess = () => resolve(req.result as StoredUserTree | undefined);
+      req.onerror   = () => reject(recordReqFailure(req, 'user-tree', 'read', gameId));
+    });
+  } catch (e) {
+    console.warn('[idb] user tree load failed', e);
+    return undefined;
+  }
+}
+
 // --- Retro session results ---
 
 export async function saveRetroResult(result: RetroSessionResult): Promise<void> {
@@ -1991,7 +2066,7 @@ export async function backfillOpenings(): Promise<number> {
 export async function clearAllIdbData(): Promise<void> {
   try {
     const db = await openGameDb();
-    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue', 'review-failures', 'review-runs', 'repertoire-sources', 'repertoire-match-records', 'repertoire-scan-runs'], 'readwrite');
+    const tx = db.transaction(['game-library', 'puzzle-library', 'analysis-library', 'retro-results', 'game-summaries', 'games', 'studies', 'practice-lines', 'position-progress', 'drill-attempts', 'folders', 'accounts', 'review-queue', 'review-failures', 'review-runs', 'repertoire-sources', 'repertoire-match-records', 'repertoire-scan-runs', 'player-profiles', 'user-tree'], 'readwrite');
     tx.objectStore('game-library').clear();
     tx.objectStore('puzzle-library').clear();
     tx.objectStore('analysis-library').clear();
@@ -2010,6 +2085,8 @@ export async function clearAllIdbData(): Promise<void> {
     tx.objectStore('repertoire-sources').clear();
     tx.objectStore('repertoire-match-records').clear();
     tx.objectStore('repertoire-scan-runs').clear();
+    tx.objectStore('player-profiles').clear();
+    tx.objectStore('user-tree').clear();
     await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] clearAllIdbData failed', e);

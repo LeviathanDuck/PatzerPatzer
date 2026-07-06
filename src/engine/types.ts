@@ -2,21 +2,50 @@ export type EngineMode = 'analysis' | 'play';
 
 export interface EngineStrengthConfig {
   level: number;
-  label: string;
   uciElo: number;
   maxDepth: number;
-  description: string;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const STRENGTH_LEVELS: EngineStrengthConfig[] = [
-  { level: 1, label: 'Beginner',     uciElo: 1320, maxDepth:  1, description: 'Frequent blunders' },
-  { level: 2, label: 'Casual',       uciElo: 1500, maxDepth:  3, description: 'Weak tactics' },
-  { level: 3, label: 'Club Novice',  uciElo: 1650, maxDepth:  5, description: 'Basic tactics' },
-  { level: 4, label: 'Club Player',  uciElo: 1800, maxDepth:  8, description: 'Solid tactics' },
-  { level: 5, label: 'Tournament',   uciElo: 2000, maxDepth: 12, description: 'Strong tactics' },
-  { level: 6, label: 'Expert',       uciElo: 2200, maxDepth: 16, description: 'Few mistakes' },
-  { level: 7, label: 'Master',       uciElo: 2500, maxDepth: 22, description: 'Near-optimal' },
-  { level: 8, label: 'Full Strength',uciElo: 3190, maxDepth: 30, description: 'UCI_LimitStrength off' },
+  { level: 1, uciElo: 1320, maxDepth:  1 },
+  { level: 2, uciElo: 1450, maxDepth:  2 },
+  { level: 3, uciElo: 1600, maxDepth:  3 },
+  { level: 4, uciElo: 1750, maxDepth:  4 },
+  { level: 5, uciElo: 1900, maxDepth:  6 },
+  { level: 6, uciElo: 2200, maxDepth:  8 },
+  { level: 7, uciElo: 2500, maxDepth: 10 },
+  { level: 8, uciElo: 3190, maxDepth: 12 },
 ];
 
 export const DEFAULT_STRENGTH_LEVEL = 4;
