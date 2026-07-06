@@ -37,6 +37,7 @@ import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } fro
 import { renderCompactGameRow } from '../games/view';
 import {
   repertoireComplianceReportFiltersActive,
+  type RepertoireComplianceCategoryFilter,
   type RepertoireComplianceDateFilter,
   type RepertoireComplianceOutcome,
   type RepertoireComplianceOwnerColorFilter,
@@ -124,6 +125,15 @@ let _showAccountSourcePicker = false;
 const _expandedRepertoireReportRows = new Set<string>();
 type RepertoireReportMode = 'divergences' | 'study-next';
 let _repertoireReportMode: RepertoireReportMode = 'divergences';
+// T7-A8: Study-Next-only "Group by" toggle. Local UI state, not a persisted filter — both
+// report.groups and report.studyNextGroups are already computed on every report build regardless
+// of this value, so there is no filters-style plumbing to thread this through (and doing so would
+// require touching studyCtrl.ts, outside this slice's file scope). Defaults to 'position' (the
+// corrected, transposition-merged grouping); 'exact-line' restores the pre-A8 per-line-prefix
+// breakdown for inspection/audit — same default-correct, switchable-for-audit pattern as A1/A2's
+// category filter.
+type RepertoireStudyNextGroupMode = 'position' | 'exact-line';
+let _repertoireStudyNextGroupMode: RepertoireStudyNextGroupMode = 'position';
 const _repertoireOrpSavingRows = new Set<string>();
 const _repertoireOrpFeedback = new Map<string, string>();
 const _repertoireOrpFeedbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -862,14 +872,26 @@ function renderReportPill<T extends string>(
   value: T,
   activeValue: T | null,
   redraw: () => void,
-  key: 'ownerColor' | 'result',
+  key: 'ownerColor' | 'result' | 'category',
 ): VNode {
   const active = activeValue === value;
   const next = active ? null : value;
-  const title = active ? `Clear ${label} repertoire report filter` : `Filter repertoire report by ${label}`;
+  // Category has no "no filter" state — RepertoireComplianceReportFilters.category is always
+  // exactly one of 'owner' | 'opponent' | 'all' (default 'owner'), unlike ownerColor/result, which
+  // clear back to null ("no filter") when their active pill is clicked again. So the category
+  // title never claims a "Clear" action, and its apply() branch below re-applies `value` directly
+  // instead of toggling through `next` (which can be null) — casting a null `next` into the
+  // non-nullable `category` field would silently write an invalid state past the type checker.
+  const title = active && key !== 'category'
+    ? `Clear ${label} repertoire report filter`
+    : `Filter repertoire report by ${label}`;
   const apply = (): void => {
     if (key === 'ownerColor') {
       updateReportFilters({ ownerColor: next as RepertoireComplianceOwnerColorFilter | null }, redraw);
+      return;
+    }
+    if (key === 'category') {
+      updateReportFilters({ category: value as RepertoireComplianceCategoryFilter }, redraw);
       return;
     }
     updateReportFilters({ result: next as RepertoireComplianceOutcome | null }, redraw);
@@ -898,6 +920,14 @@ function renderRepertoireReportFilters(report: RepertoireComplianceReport, redra
   ];
 
   return h('div.games-view__controls.repertoire__report-filters', [
+    // T7-A2 (Audit C F14): the category filter is the primary "what counts" control, so it leads
+    // the filter bar ahead of the account/color/result/time/date refinements below.
+    h('div.games-view__filter-group.repertoire__filter-group', [
+      h('span.games-view__filter-label', 'Category'),
+      renderReportPill('Your divergences', 'owner', filters.category, redraw, 'category'),
+      renderReportPill('Opponent', 'opponent', filters.category, redraw, 'category'),
+      renderReportPill('All', 'all', filters.category, redraw, 'category'),
+    ]),
     renderReportSelect('Account', filters.accountId ?? '', accountOptions, value =>
       updateReportFilters({ accountId: value || null }, redraw)
     ),
@@ -1086,6 +1116,9 @@ function repertoireOrpUnavailableReason(
   group: RepertoireComplianceReportGroup,
   source: RepertoireSource | null,
 ): string | null {
+  // T7-A4 (Audit C F14): an 'opponent-left' divergence has no owner move to drill — gate, don't
+  // warn, ahead of the source/mixed/missedUci checks below (see T7_REPERTOIRE_DESIGN §A.1).
+  if (group.category === 'opponent-left') return "This was the opponent's deviation, not yours — there's no repertoire move of your own to drill here.";
   if (!source) return `Source ${group.sourceName} is not available`;
   if (group.ownerColor === 'mixed') return 'This aggregate row mixes White and Black owner games, so send each color separately.';
   if (!group.missedUci) return 'No repertoire move is available for this row.';
@@ -1187,6 +1220,58 @@ function renderRepertoireReportTabs(redraw: () => void): VNode {
   }));
 }
 
+// T7-A8 (Audit C F16, consumption half): a sibling control next to the tabs, not inside them —
+// Study-Next-only, since the dilution problem (F16) is specifically about Study-Next ranking; the
+// Divergences tab's grouping is intentionally unchanged and has nothing to toggle.
+function renderRepertoireStudyNextGroupToggle(redraw: () => void): VNode | null {
+  if (_repertoireReportMode !== 'study-next') return null;
+  const options: { mode: RepertoireStudyNextGroupMode; label: string }[] = [
+    { mode: 'position', label: 'Position' },
+    { mode: 'exact-line', label: 'Exact line' },
+  ];
+  return h('div.games-view__filter-group.repertoire__filter-group.repertoire__group-by', [
+    h('span.games-view__filter-label', 'Group by'),
+    ...options.map(option => {
+      const active = _repertoireStudyNextGroupMode === option.mode;
+      const title = `Group Study-Next rows by ${option.label.toLowerCase()}`;
+      return h('button.games-view__pill.repertoire__filter-pill', {
+        class: { active },
+        attrs: {
+          type: 'button',
+          title,
+          'aria-label': title,
+          'aria-pressed': String(active),
+        },
+        on: { click: () => {
+          if (_repertoireStudyNextGroupMode === option.mode) return;
+          _repertoireStudyNextGroupMode = option.mode;
+          redraw();
+        } },
+      }, option.label);
+    }),
+  ]);
+}
+
+// T7-A2 (Audit C F14): name what's actually being counted instead of a bare "X stored
+// divergence(s)" figure that silently blended owner-caused and opponent-caused rows together.
+// Uses filteredDivergenceCount alone rather than a "filtered of total" comparison against
+// totalDivergenceCount, because totalDivergenceCount spans every category regardless of the
+// category filter — comparing the two no longer isolates "some other filter is narrowing this
+// view" once category is one of the filters folded into filteredDivergenceCount; it would also
+// fire from the category filter itself on any course with opponent-left records, which is the
+// expected common case, not a corner case.
+function repertoireReportSummaryText(report: RepertoireComplianceReport): string {
+  const count = report.filteredDivergenceCount.toLocaleString();
+  const plural = report.filteredDivergenceCount === 1 ? '' : 's';
+  if (report.filters.category === 'opponent') {
+    return `${count} opponent deviation${plural} (shown for reference, not counted against you)`;
+  }
+  if (report.filters.category === 'all') {
+    return `${count} divergence${plural} across all categories`;
+  }
+  return `${count} divergence${plural} from your repertoire`;
+}
+
 function renderRepertoireReportBody(redraw: () => void): VNode {
   if (repertoireComplianceReportError()) {
     return h('div.repertoire__source-error', 'Could not load stored divergence records.');
@@ -1197,15 +1282,21 @@ function renderRepertoireReportBody(redraw: () => void): VNode {
   }
 
   const report = repertoireComplianceReport();
-  const groups = _repertoireReportMode === 'study-next' ? report.studyNextGroups : report.groups;
-  const summary = report.filteredDivergenceCount === report.totalDivergenceCount
-    ? `${report.filteredDivergenceCount.toLocaleString()} stored divergence${report.filteredDivergenceCount === 1 ? '' : 's'}`
-    : `${report.filteredDivergenceCount.toLocaleString()} of ${report.totalDivergenceCount.toLocaleString()} stored divergences`;
+  // T7-A8: the "Group by" toggle only applies on the Study-Next tab, and only changes which
+  // grouping key feeds the ranked list — report.studyNextGroupsByLine (the Divergences tab's
+  // exact-line grouping, but Study-Next-ranked, for the "Exact line" audit view) or
+  // report.studyNextGroups (the corrected, position-first grouping, default). Both are ranked by
+  // the same sortStudyNextGroups score, so the toggle changes grouping only, never ranking.
+  const groups = _repertoireReportMode === 'study-next'
+    ? (_repertoireStudyNextGroupMode === 'exact-line' ? report.studyNextGroupsByLine : report.studyNextGroups)
+    : report.groups;
+  const summary = repertoireReportSummaryText(report);
 
   return h('div.repertoire__report', [
     renderRepertoireReportFilters(report, redraw),
     h('div.repertoire__report-summary', summary),
     renderRepertoireReportTabs(redraw),
+    renderRepertoireStudyNextGroupToggle(redraw),
     groups.length === 0
       ? h('div.repertoire__source-empty',
           report.totalDivergenceCount === 0

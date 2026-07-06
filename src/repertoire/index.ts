@@ -89,6 +89,7 @@ export interface RepertoireMatchRecord {
   gameDate: string | null;
   accountId: string | null;
   scannedAt: number;
+  divergencePositionKey: PositionKey | null;
 }
 
 export interface RepertoireScanRun {

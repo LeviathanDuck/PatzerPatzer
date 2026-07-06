@@ -376,6 +376,12 @@ function setAnalysisOrpFeedback(key: string, message: string, redraw: () => void
 }
 
 function analysisOrpUnavailableReason(row: AnalysisRepertoireComplianceRow): string | null {
+  // T7-A5 (Audit C F14, second bullet; T7_REPERTOIRE_DESIGN_2026-07-06 §A.1/§A.2): an
+  // 'opponent-left' divergence has no owner move to drill — gate, don't warn, ahead of the
+  // missedUci check below. No ownerColor 'mixed' check here (unlike A4's libraryView.ts
+  // version): a single RepertoireMatchRecord is always one game's one owner color, never
+  // 'mixed' — that field only exists on the aggregated RepertoireComplianceReportGroup.
+  if (row.record.category === 'opponent-left') return "This was the opponent's deviation, not yours — there's no repertoire move of your own to drill here.";
   if (!row.record.missedUci) return 'No repertoire move is available for this row.';
   return null;
 }

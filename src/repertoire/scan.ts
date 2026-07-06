@@ -63,12 +63,10 @@ export function inferOwnerColorFromImportedGame(game: ImportedGame): RepertoireS
 }
 
 function ownerColorForSource(
-  source: Pick<RepertoireSource, 'side'>,
+  _source: Pick<RepertoireSource, 'side'>,
   game: ImportedGame,
   explicitOwnerColor?: RepertoireScanOwnerColor,
 ): RepertoireScanOwnerColor | null {
-  const gameOwnerColor = explicitOwnerColor ?? inferOwnerColorFromImportedGame(game);
-  if (source.side === 'white' || source.side === 'black') return gameOwnerColor ?? source.side;
   return explicitOwnerColor ?? inferOwnerColorFromImportedGame(game);
 }
 
@@ -122,7 +120,7 @@ function safeSourceIndex(input: ComputeRepertoireMatchRecordInput): RepertoirePo
 function baseRecord(
   input: ComputeRepertoireMatchRecordInput,
   ownerColor: RepertoireScanOwnerColor,
-): Omit<RepertoireMatchRecord, 'status' | 'firstDivergencePly' | 'category' | 'playedUci' | 'missedUci' | 'matchedDepthPly'> {
+): Omit<RepertoireMatchRecord, 'status' | 'firstDivergencePly' | 'category' | 'playedUci' | 'missedUci' | 'matchedDepthPly' | 'divergencePositionKey'> {
   return {
     key:           repertoireMatchRecordKey(input.source.id, input.game.id),
     sourceId:      input.source.id,
@@ -149,6 +147,7 @@ function notApplicableRecord(
     playedUci:          null,
     missedUci:          null,
     matchedDepthPly:    0,
+    divergencePositionKey: null,
   };
 }
 
@@ -246,6 +245,7 @@ export function computeRepertoireMatchRecord(input: ComputeRepertoireMatchRecord
         missedSan:          missedMove?.san ?? null,
         linePrefix:         nextLinePrefix,
         matchedDepthPly,
+        divergencePositionKey: key,
       };
     }
 
@@ -261,6 +261,7 @@ export function computeRepertoireMatchRecord(input: ComputeRepertoireMatchRecord
     playedUci:          null,
     missedUci:          null,
     matchedDepthPly,
+    divergencePositionKey: null,
   };
 }
 

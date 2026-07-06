@@ -74,6 +74,10 @@ export interface RepertoireComplianceReportGroup {
 export interface RepertoireComplianceReport {
   groups: RepertoireComplianceReportGroup[];
   studyNextGroups: RepertoireComplianceReportGroup[];
+  // T7-A8: the same exact-line grouping as `groups` (Divergences tab), but ranked by the
+  // Study-Next score instead of sortGroups's seen/lost/loss-rate order — backs the "Group by:
+  // Exact line" toggle so switching grouping never also silently swaps the ranking algorithm.
+  studyNextGroupsByLine: RepertoireComplianceReportGroup[];
   filters: RepertoireComplianceReportFilters;
   filterOptions: RepertoireComplianceReportFilterOptions;
   totalDivergenceCount: number;
@@ -299,6 +303,27 @@ function groupKey(record: RepertoireMatchRecord): string {
   ].join('::');
 }
 
+// T7-A8 (Audit C F16, consumption half): a position-first key for the Study-Next tab only, so a
+// recurring mistake reached via two different move orders (a transposition) accumulates into ONE
+// row instead of fragmenting across each move order's own linePrefixIdentity, which dilutes
+// repertoireStudyNextScore = seenCount * lostCount. Keeps sourceId + category (so unrelated
+// sources/categories never merge) but DROPS firstDivergencePly/matchedDepthPly relative to
+// groupKey: two records reaching the identical divergence position via move orders of different
+// length can legitimately carry different values for those two fields, so keeping either would
+// defeat exactly the transposition merge this key exists to produce. The `??` fallback to
+// linePrefixIdentity keeps pre-A7 records (scanned before divergencePositionKey existed) grouping
+// exactly as they do today instead of silently disappearing or over-merging. groupKey above
+// (Divergences tab) is intentionally left untouched.
+function studyNextGroupKey(record: RepertoireMatchRecord): string {
+  return [
+    record.sourceId,
+    record.category ?? 'unknown',
+    record.divergencePositionKey ?? linePrefixIdentity(record),
+    record.playedUci ?? '-',
+    record.missedUci ?? '-',
+  ].join('::');
+}
+
 function lineLabel(params: {
   sourceName: string;
   categoryLabel: string;
@@ -352,30 +377,21 @@ function sortStudyNextGroups(a: RepertoireComplianceReportGroup, b: RepertoireCo
     || a.key.localeCompare(b.key);
 }
 
-export function buildRepertoireComplianceReport(
-  input: BuildRepertoireComplianceReportInput,
-): RepertoireComplianceReport {
-  const filters = normalizedFilters(input.filters);
-  const now = input.now ?? Date.now();
-  const gamesById = new Map(input.games.map(game => [game.id, game]));
-  const sourceById = new Map(
-    [...input.sources].sort(sourceSort).map((source, index) => [source.id, { source, index }] as const),
-  );
-  // Enabled-aware exclusion (P2-REP-3 T0 note): a record whose source is missing entirely or has
-  // been disabled never counts as a divergence at all. Independent of the category filter below —
-  // there is no "show disabled sources" toggle, disabled means disabled.
-  const divergenceRecords = input.records.filter(record => {
-    if (record.status !== 'diverged' || record.category === null) return false;
-    const known = sourceById.get(record.sourceId);
-    return known !== undefined && known.source.enabled;
-  });
-  const filteredRecords = divergenceRecords.filter(record => recordMatchesFilters(record, filters, now));
-
+// T7-A8: the per-line-prefix accumulation loop, factored behind a key function so it can be run
+// twice over the same filteredRecords — once with groupKey (Divergences tab, unchanged) and once
+// with studyNextGroupKey (Study-Next tab, position-first) — as two independent grouping passes
+// rather than one grouping pass re-sorted two different ways.
+function accumulateRepertoireComplianceGroups(
+  records: readonly RepertoireMatchRecord[],
+  gamesById: ReadonlyMap<string, ImportedGame>,
+  sourceById: ReadonlyMap<string, { source: RepertoireSource; index: number }>,
+  keyFn: (record: RepertoireMatchRecord) => string,
+): RepertoireComplianceReportGroup[] {
   const grouped = new Map<string, RepertoireComplianceReportGroup>();
-  for (const record of filteredRecords) {
+  for (const record of records) {
     const category = record.category;
     if (category === null) continue;
-    const key = groupKey(record);
+    const key = keyFn(record);
     const existing = grouped.get(key);
     const outcome = repertoireComplianceOutcomeFromRecord(record);
     const gameEntry: RepertoireComplianceReportGame = {
@@ -432,14 +448,42 @@ export function buildRepertoireComplianceReport(
     });
   }
 
-  const groups = [...grouped.values()].map(group => ({
+  return [...grouped.values()].map(group => ({
     ...group,
     games: [...group.games].sort(sortReportGames),
   }));
+}
+
+export function buildRepertoireComplianceReport(
+  input: BuildRepertoireComplianceReportInput,
+): RepertoireComplianceReport {
+  const filters = normalizedFilters(input.filters);
+  const now = input.now ?? Date.now();
+  const gamesById = new Map(input.games.map(game => [game.id, game]));
+  const sourceById = new Map(
+    [...input.sources].sort(sourceSort).map((source, index) => [source.id, { source, index }] as const),
+  );
+  // Enabled-aware exclusion (P2-REP-3 T0 note): a record whose source is missing entirely or has
+  // been disabled never counts as a divergence at all. Independent of the category filter below —
+  // there is no "show disabled sources" toggle, disabled means disabled.
+  const divergenceRecords = input.records.filter(record => {
+    if (record.status !== 'diverged' || record.category === null) return false;
+    const known = sourceById.get(record.sourceId);
+    return known !== undefined && known.source.enabled;
+  });
+  const filteredRecords = divergenceRecords.filter(record => recordMatchesFilters(record, filters, now));
+
+  const groups = accumulateRepertoireComplianceGroups(filteredRecords, gamesById, sourceById, groupKey);
+  // T7-A8 (Audit C F16, consumption half): a SECOND, separately-keyed pass over the same
+  // filteredRecords — not a re-sort of `groups` — so a recurring mistake reached via two different
+  // move orders accumulates seenCount/lostCount into one Study-Next row instead of two smaller,
+  // diluted ones. `groups` above (Divergences tab) keeps its original groupKey pass unchanged.
+  const studyNextGroups = accumulateRepertoireComplianceGroups(filteredRecords, gamesById, sourceById, studyNextGroupKey);
 
   return {
     groups: [...groups].sort(sortGroups(sourceById)),
-    studyNextGroups: [...groups].sort(sortStudyNextGroups),
+    studyNextGroups: [...studyNextGroups].sort(sortStudyNextGroups),
+    studyNextGroupsByLine: [...groups].sort(sortStudyNextGroups),
     filters,
     filterOptions: buildFilterOptions(divergenceRecords, input.games),
     totalDivergenceCount: divergenceRecords.length,

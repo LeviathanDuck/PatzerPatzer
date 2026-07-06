@@ -158,7 +158,7 @@ async function currentSourcesAndGameCount(storage: RepertoireScanStorage): Promi
     storage.listSources(),
     storage.countGames(),
   ]);
-  const sources = allSources.filter(isUploadedRepertoireSource);
+  const sources = allSources.filter(source => isUploadedRepertoireSource(source) && source.enabled);
   return { sources, totalGameCount };
 }
 
