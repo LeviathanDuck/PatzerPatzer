@@ -56,6 +56,7 @@ import {
 } from './navigationIndexProvider';
 import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
+import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './navigatorSettings';
 
 // ---------------------------------------------------------------------------------------------
 // Selection model — BASIC single-selection only (T5-D09 owns multi-select). Kept as a single
@@ -276,6 +277,33 @@ function renderDivider(redraw: () => void): VNode {
 // instead of this constant.
 const ITEM_LIST_DENSITY: ItemListDensity = 'full';
 
+
+
+
+
+
+
+
+let _settingsOpen = false;
+
+function renderAppearanceEntryPoint(redraw: () => void): VNode {
+  return h('div.lib-shell-toolbar', [
+    h('button.nav-settings-trigger', {
+      class: { '--active': _settingsOpen },
+      attrs: {
+        type: 'button',
+        title: 'Appearance settings',
+        'aria-label': 'Appearance settings',
+        'aria-expanded': String(_settingsOpen),
+      },
+      on: { click: () => { _settingsOpen = !_settingsOpen; redraw(); } },
+    }, [
+      h('span.nav-settings-trigger__icon', '⚙'),
+      h('span.nav-settings-trigger__label', 'Appearance'),
+    ]),
+  ]);
+}
+
 /**
  * Render the Study Navigator's composing shell: nav pane (T5-D05) + resize divider + item-list
  * pane (T5-D06), wired with BASIC single-selection over the P1 navigation-index tree.
@@ -288,6 +316,11 @@ export function renderNavigatorShell(
   allItems: readonly StudyItem[],
   redraw: () => void,
 ): VNode {
+  // Apply-on-mount + apply-on-every-render (T5-D08): cheap and idempotent (a handful of
+  // `document.body.style.setProperty` calls), so re-running it on every redraw — including the
+  // very first, i.e. "mount" — is simpler and safer than tracking a separate one-shot mount flag.
+  applyNavigatorSettings();
+
   if (_selection === null) _selection = defaultSelection();
 
   const keyIndex = buildSelectionIndex(tree);
@@ -304,11 +337,15 @@ export function renderNavigatorShell(
   const items = resolveItems(resolveSelectedItemIds(tree, _selection), byId);
   const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw);
 
-  return h('div.lib-shell', {
-    attrs: { style: _navDivider.styleDeclaration() },
-  }, [
-    navPane,
-    renderDivider(redraw),
-    itemListPane,
+  return h('div.lib-shell-wrap', [
+    renderAppearanceEntryPoint(redraw),
+    _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
+    h('div.lib-shell', {
+      attrs: { style: _navDivider.styleDeclaration() },
+    }, [
+      navPane,
+      renderDivider(redraw),
+      itemListPane,
+    ]),
   ]);
 }
