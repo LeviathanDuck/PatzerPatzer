@@ -273,6 +273,13 @@ function formatReviewPositionProgress(done: number, total: number): string | nul
   return `${analyzed}/${total} positions analyzed`;
 }
 
+// Percent for the running-state meter (approved redesign 2026-07-05, underboard round 3):
+// mirrors the games-list `.grr__review--running` percent derivation (done/total, clamped).
+function reviewProgressPercent(done: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round(Math.min(100, Math.max(0, (done / total) * 100)));
+}
+
 function renderReviewProgressLabel(label: string): VNode {
   return h('span.review-progress-label', [
     h('span.review-progress-label__text', label),
@@ -307,25 +314,37 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   const selectedGameId = _getSelectedGameId();
   const hasGame        = ctrl.mainline.length > 1;
 
-  // Review button label and behavior change based on state.
+  // Review button content/behavior changes based on state (approved redesign 2026-07-05,
+  // underboard round 3: ghost Analyze -> underline-meter Analyzing -> dimmer ghost Re-analyze).
   // Mirrors the single-action pattern in Lichess analysis controls.
-  let reviewLabel: string;
   let reviewTitle: string;
+  let reviewContent: (VNode | string)[];
   const reviewProgress = selectedGameReviewProgress();
   const runningProgressLabel = reviewProgress.active
     ? formatReviewPositionProgress(reviewProgress.done, reviewProgress.total)
     : null;
   if (reviewProgress.active) {
-    reviewLabel = reviewProgress.total > 0
-      ? `${Math.min(Math.max(0, reviewProgress.done), reviewProgress.total)}/${reviewProgress.total}`
-      : 'Reviewing…';
+    const percent = reviewProgressPercent(reviewProgress.done, reviewProgress.total);
     reviewTitle = 'Analysis in progress — click to pause';
+    reviewContent = [
+      h('span.btn-review__bolt.--breathing', '⚡'),
+      h('span.btn-review__label', ['Analyzing · ', h('span.btn-review__pct', `${percent}%`)]),
+      h('div.btn-review__fill', { style: { width: `${percent}%` } }),
+    ];
   } else if (analysisComplete) {
-    reviewLabel = 'Re-analyze';
-    reviewTitle = 'Clear previous analysis and run again';
+    // Re-run composite icon (arc + small bolt): the bolt marks it as an engine action, the arc
+    // marks re-run. Title mentions it replaces the stored review per the approved spec.
+    reviewTitle = 'Re-analyze this game — replaces the stored review';
+    reviewContent = [
+      h('span.btn-review__icon', ['↻', h('span.btn-review__icon-bolt', '⚡')]),
+      h('span.btn-review__label', ' Re-analyze'),
+    ];
   } else {
-    reviewLabel = 'Review';
     reviewTitle = 'Analyze this game to detect mistakes and blunders';
+    reviewContent = [
+      h('span.btn-review__bolt', '⚡'),
+      h('span.btn-review__label', ' Analyze'),
+    ];
   }
 
   const reviewClick = () => {
@@ -372,12 +391,13 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
     h('div.analyse-review-controls__row', [
       h('button.btn-review', {
         class: {
-          'btn-review--complete': analysisComplete,
+          'btn-review--complete': !reviewProgress.active && analysisComplete,
           'btn-review--primary':  !reviewProgress.active && !analysisComplete && hasGame,
+          'btn-review--running':  reviewProgress.active,
         },
         attrs: { disabled: !hasGame, title: reviewTitle },
         on: { click: reviewClick },
-      }, reviewLabel),
+      }, reviewContent),
       hintText,
       ...(extraButtons ?? []),
     ]),

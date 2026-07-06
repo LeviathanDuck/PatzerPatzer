@@ -121,7 +121,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
       : !engineEnabled || !engineReady
         ? 'Loading…'
       : reviewProgress.active
-        ? `Reviewing ${reviewProgress.done}/${reviewProgress.total}…`
+        ? `Analyzing ${reviewProgress.done}/${reviewProgress.total}…`
         : 'Engine on';
   // Active-process statuses (loading, reviewing) get a live tint; idle labels stay gray.
   const statusActive = visibleEngineEnabled
@@ -301,7 +301,7 @@ export function renderPvBox(): VNode | null {
         const statusText = !engineReady
           ? 'Loading engine…'
           : reviewProgress.active
-            ? `Reviewing ${reviewProgress.done}/${reviewProgress.total}…`
+            ? `Analyzing ${reviewProgress.done}/${reviewProgress.total}…`
             : '…';
         return h('div.pv.pv--nowrap', [h('span.ceval__info', statusText)]);
       }

@@ -59,12 +59,16 @@ export interface RetroEntryDeps {
  * Renders the Mistakes / Close entry button for retrospection.
  * Placed inside the analysis controls row (extraButtons slot of renderAnalysisControls).
  * Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroView.ts entry affordance.
+ *
+ * LFYM brand (approved redesign 2026-07-05, "Underboard set" -> "Mistakes / LFYM brand"): the
+ * solid amber "?!" badge replaces the borrowed Lichess bullseye. Idle = ghost amber chip; active
+ * (retro session or choice page open) = solid amber chip with an inverted badge.
  */
 export function renderRetroEntry(deps: RetroEntryDeps): VNode {
   const { retro, choiceOpen, analysisComplete, batchAnalyzing, onToggle } = deps;
   const active = !!retro || choiceOpen;
-  return h('button', {
-    class: { active },
+  return h('button.btn-mistakes', {
+    class: { 'btn-mistakes--active': active },
     attrs: {
       disabled: !analysisComplete || batchAnalyzing,
       title: retro
@@ -76,7 +80,10 @@ export function renderRetroEntry(deps: RetroEntryDeps): VNode {
           : 'Complete game review first',
     },
     on: { click: onToggle },
-  }, active ? 'Close' : 'Mistakes');
+  }, [
+    h('span.lfym-badge', { class: { 'lfym-badge--inverted': active } }, '?!'),
+    active ? ' Close Mistakes' : ' Mistakes',
+  ]);
 }
 
 // --- Choice page ---

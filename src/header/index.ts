@@ -1042,28 +1042,28 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     switch (pillState) {
       case 'breaker':
         return `${runSummary?.breakerTrippedReason === 'engine-init-failure'
-          ? 'Review paused: the background engine failed to initialize.'
-          : 'Review paused: 3 consecutive game failures.'} Review paused · ${runSummary?.failed.length ?? 0} failed in a row.`;
+          ? 'Analysis paused: the background engine failed to initialize.'
+          : 'Analysis paused: 3 consecutive game failures.'} Analysis paused · ${runSummary?.failed.length ?? 0} failed in a row.`;
       case 'failed':
-        return `Current review failed and is retrying. ${positionProgress
+        return `Current analysis failed and is retrying. ${positionProgress
           ? `Failed (${failedStatus?.attempts}) · ${positionProgress}.`
           : `Failed (${failedStatus?.attempts}).`}`;
       case 'storage':
         return 'Storage error: review storage write failed - resume may be unavailable.';
       case 'resume':
-        return `Review interrupted after reload - resume manually. Resume review ${activeProgressLabel}.`;
+        return `Review interrupted after reload - resume manually. Resume analysis ${activeProgressLabel}.`;
       case 'stalled':
-        return `No recent review progress detected. Review stalled · ${activeProgressLabel}.`;
+        return `No recent analysis progress detected. Analysis stalled · ${activeProgressLabel}.`;
       case 'paused-auto':
       case 'paused':
         return activePauseNotice
           ? `${formatReviewPauseReasonLabel(activePauseNotice.reason)}: ${activePauseNotice.message}`
-          : `Review paused · ${activeProgressLabel}.`;
+          : `Analysis paused · ${activeProgressLabel}.`;
       case 'complete':
         return 'Batch complete. Dismiss this notice, or Cancel to stop the run.';
       case 'running':
       default:
-        return summary ? `Reviewing ${activeProgressLabel}.` : 'Reviewing…';
+        return summary ? `Analyzing ${activeProgressLabel}.` : 'Analyzing…';
     }
   })();
   const pillNumbersSuffix = [
@@ -1102,7 +1102,7 @@ function renderReviewMenu(redraw: () => void): VNode | null {
       h('div.review-menu__section', [
         h('div.review-menu__label', summary
           ? `${summary.done} of ${summary.total} game${summary.total === 1 ? '' : 's'} analyzed`
-          : 'Reviewing…'),
+          : 'Analyzing…'),
         summary.failed > 0 || summary.skipped > 0
           ? h('div.review-menu__label',
               [

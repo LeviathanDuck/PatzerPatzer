@@ -352,17 +352,20 @@ export function renderActionMenu(): VNode | null {
     h('h2', 'Mistakes'),
     h('div.action-menu__tools', [
       // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
+      // LFYM brand (approved redesign 2026-07-05): the ?! badge replaces the bullseye glyph.
       h('button', {
         class:  { active: hasRetro },
         attrs:  {
-          'data-icon': ICON_RETRO,
           title: canLFYM
             ? (hasRetro ? 'Exit mistakes review' : 'Review your mistakes')
             : 'Analyze the game first',
           disabled: !canLFYM,
         },
         on: { click: () => { if (canLFYM) { deps.onToggleRetro(); close(); } } },
-      }, hasRetro ? 'Close Mistakes' : 'Learn From Your Mistakes'),
+      }, [
+        h('span.lfym-badge', { class: { 'lfym-badge--inverted': hasRetro } }, '?!'),
+        hasRetro ? ' Close Mistakes' : ' Learn From Your Mistakes',
+      ]),
 
 
       h('button', {

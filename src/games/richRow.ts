@@ -462,10 +462,17 @@ function stopAnd(e: Event, fn: (() => void) | undefined): void {
 export function renderReviewControl(state: ReviewControlState, opts: ReviewControlOpts = {}): VNode {
   switch (state.kind) {
     case 'unreviewed':
-      return h('button.grr__review.--unreviewed', {
-        attrs: { type: 'button', title: 'Queue for background review' },
+      // Ghost outline chip (approved redesign 2026-07-05): true green bolt/text, transparent
+      // background, `#2e6b3c` outline. The label collapses via the shared `.grr__review-collapse`
+      // container-query mechanism (same one the reviewed pill already used), leaving a bolt-only
+      // ghost tile at the narrowest compact widths (spec §5).
+      return h('button.grr__review.--unreviewed' + (opts.compact ? '.--compact' : ''), {
+        attrs: { type: 'button', title: 'Analyze this game' },
         on:    { click: (e: Event) => stopAnd(e, opts.onReview) },
-      }, 'Review');
+      }, [
+        h('span.grr__review-bolt', '⚡'),
+        h('span.grr__review-collapse', ' Analyze'),
+      ]);
 
     case 'queued':
 
@@ -485,20 +492,24 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
 
+
+
+
       return h('div.grr__review.--running', { attrs: { title: 'Analyzing…' } }, [
-        h('div.grr__review-fill', { style: { width: `${Math.max(0, Math.min(100, state.percent))}%` } }),
+        h('span.grr__review-bolt.--breathing', '⚡'),
         h('span.grr__review-label', [
           'Analyzing · ',
           h('span.grr__review-pct', `${Math.round(state.percent)}%`),
         ]),
+        h('div.grr__review-fill', { style: { width: `${Math.max(0, Math.min(100, state.percent))}%` } }),
       ]);
 
     case 'failed':
       return h('div.grr__review.--failed', [
-        h('span.grr__review-label', { attrs: { title: 'Review failed' } },
-          state.attempts !== undefined ? `⚠ Review failed (${state.attempts})` : '⚠ Review failed'),
+        h('span.grr__review-label', { attrs: { title: 'Analysis failed' } },
+          state.attempts !== undefined ? `⚠ Analysis failed (${state.attempts})` : '⚠ Analysis failed'),
         h('button.grr__review-retry', {
-          attrs: { type: 'button', title: 'Retry review' },
+          attrs: { type: 'button', title: 'Retry analysis' },
           on:    { click: (e: Event) => stopAnd(e, opts.onRetry) },
         }, 'Retry'),
         h('button.grr__review-skip', {
@@ -507,16 +518,33 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
         }, 'Skip'),
       ]);
 
-    case 'reviewed':
-
-
-
-
-
-      return h('button.grr__review.--reviewed' + (opts.compact ? '.--compact' : ''), {
-        attrs: { type: 'button', title: 'Open stored review' },
+    case 'reviewed': {
+      // Navy split capsule (approved redesign 2026-07-05): one action (`opts.onOpenReview`) —
+      // the 34px `↗` cell is a visual affordance of the same click, not a second control. Compact
+      // rows get a simpler tinted navy pill instead of the split-cell treatment (no room for a
+      // dedicated icon cell); it collapses to a near-square icon-only tile via the same
+      // `.grr__review-collapse` container-query mechanism the previous "✓ Reviewed" pill used.
+      const title = 'Open in the analysis board';
+      if (opts.compact) {
+        return h('button.grr__review.--reviewed.--compact', {
+          attrs: { type: 'button', title, 'aria-label': title },
+          on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
+        }, [
+          h('span.grr__review-check', '✓'),
+          h('span.grr__review-collapse', ' Review'),
+        ]);
+      }
+      return h('button.grr__review.--reviewed', {
+        attrs: { type: 'button', title, 'aria-label': title },
         on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
-      }, opts.compact ? ['✓', h('span.grr__review-collapse', ' Reviewed')] : '✓ Open review');
+      }, [
+        h('span.grr__review-main', [
+          h('span.grr__review-check', '✓'),
+          ' Review',
+        ]),
+        h('span.grr__review-icon-cell', { attrs: { 'aria-hidden': 'true' } }, '↗'),
+      ]);
+    }
 
     case 'stalled':
       return h('button.grr__review.--stalled', {
@@ -526,9 +554,9 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
     case 'incomplete':
       return h('button.grr__review.--incomplete', {
-        attrs: { type: 'button', title: 'Review incomplete — click to resume' },
+        attrs: { type: 'button', title: 'Analysis incomplete — click to resume' },
         on:    { click: (e: Event) => stopAnd(e, opts.onResume) },
-      }, '◐ Resume review');
+      }, '◐ Resume analysis');
 
     default: {
       const exhaustive: never = state;
@@ -569,7 +597,7 @@ function computeIcons(reviewState: ReviewControlState, inputs: RichRowIconInputs
     icons.push({ cls: '--incomplete', glyph: '◐', title: 'Review incomplete — never shown as complete' });
   }
   if (reviewState.kind === 'failed') {
-    icons.push({ cls: '--failed', glyph: '⚠', title: 'Review failed' });
+    icons.push({ cls: '--failed', glyph: '⚠', title: 'Analysis failed' });
   }
   if (inputs.lfymAvailable) {
     icons.push({ cls: '--lfym', glyph: '●', title: 'Learn From Your Mistakes puzzles available' });
@@ -881,7 +909,9 @@ function metaRow(glyph: string | null, iconCls: string, text: string, tooltip?: 
 
 
 
-function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: string | null | undefined): VNode {
+
+/** Top rail zone — colored time-class icon + "Blitz 3m + 2" label, anchored to the cell top. */
+function renderRailTimeClass(game: ImportedGame, extras: GameExtras): VNode {
   const icon = (game.timeClass ? TIME_CLASS_ICON[game.timeClass] : undefined) ?? NO_CLOCK_ICON;
   const tcLabel = game.timeClass
     ? game.timeClass.charAt(0).toUpperCase() + game.timeClass.slice(1)
@@ -890,10 +920,17 @@ function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: strin
   const tcText = formattedControl !== null ? `${tcLabel} ${formattedControl}` : tcLabel;
   const ratedLabel = extras.rated === true ? 'Rated' : extras.rated === false ? 'Casual' : null;
   const tcTooltip = ratedLabel ? `${tcText} · ${ratedLabel}` : tcText;
+
+  return h('div.grr__rail-meta.grr__rail-meta--top', [
+    metaRow(icon.glyph, icon.cls, tcText, tcTooltip),
+  ]);
+}
+
+/** Bottom rail zone — played date/time rows + external link, anchored to the cell bottom. */
+function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: string | null | undefined): VNode {
   const tsTooltip = [extras.timestamp.iso, extras.timestamp.sourceLabel].filter(Boolean).join(' · ');
 
-  return h('div.grr__rail-meta', [
-    metaRow(icon.glyph, icon.cls, tcText, tcTooltip),
+  return h('div.grr__rail-meta.grr__rail-meta--bottom', [
     extras.timestamp.dateLabel ? metaRow(null, '', extras.timestamp.dateLabel, tsTooltip) : null,
     extras.timestamp.timeLabel ? metaRow(CLOCK_GLYPH, '', extras.timestamp.timeLabel, tsTooltip) : null,
     sourceUrl ? h('a.grr__rail-meta-row.grr__rail-ext-link', {
@@ -922,6 +959,8 @@ export interface RichRowSecondaryAction {
 
 export interface RichGameRowDeps {
   selected:     boolean;
+  /** True when this game is the one currently open in the analysis board. */
+  open?:        boolean;
   accuracy?:    { user: number | null; opp: number | null };
   reviewState:  ReviewControlState;
   reviewOpts?:  ReviewControlOpts;
@@ -976,7 +1015,7 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
 
 
   return h('div.grr', {
-    class: { selected: deps.selected },
+    class: { selected: deps.selected, open: deps.open === true },
     on:    { click: (e: MouseEvent) => deps.onSelectRow?.(game, e) },
   }, [
 
@@ -996,7 +1035,10 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
       renderOpeningLine(game),
       renderRichChipsRow(deps.reviewState, tacticIcons, deps.addLibrary),
     ]),
+    // Rail zones (owner request 2026-07-05): time class anchored top, review control (all
+    // states share this slot) vertically centered, played date/time anchored bottom.
     h('div.grr__rail', [
+      renderRailTimeClass(game, extras),
       h('div.grr__review-group', [
         renderReviewControl(deps.reviewState, deps.reviewOpts),
         renderSecondaryActions(deps.secondaryActions ?? []),

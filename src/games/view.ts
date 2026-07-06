@@ -571,21 +571,21 @@ function reviewRowLifecycleLabel(
     const age = formatReviewDuration(summary.lastProgressSeconds);
     return {
       label:    'Stalled',
-      title:    `No review progress${age ? ` for ${age}` : ''}`,
+      title:    `No analysis progress${age ? ` for ${age}` : ''}`,
       modifier: 'warning',
     };
   }
   if (current && summary.lifecycleState === 'hidden-suspended') {
-    return { label: 'Hidden', title: 'Review suspended while the owning tab is hidden', modifier: 'paused' };
+    return { label: 'Hidden', title: 'Analysis suspended while the owning tab is hidden', modifier: 'paused' };
   }
   if (current && summary.lifecycleState === 'interrupted-after-reload') {
-    return { label: 'Resume', title: 'Review interrupted after reload and requires manual resume', modifier: 'paused' };
+    return { label: 'Resume', title: 'Analysis interrupted after reload and requires manual resume', modifier: 'paused' };
   }
   if (current && summary.paused) {
-    return { label: 'Paused', title: 'Review is paused', modifier: 'paused' };
+    return { label: 'Paused', title: 'Analysis is paused', modifier: 'paused' };
   }
   if (current) {
-    return { label: 'Reviewing', title: 'Current review game', modifier: 'active' };
+    return { label: 'Analyzing', title: 'Current analysis game', modifier: 'active' };
   }
   const progress = reviewQueueItemProgressPercent(item);
   const waveLabel = `Wave ${item.waveIndex + 1}`;
@@ -1528,7 +1528,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       // On desktop, ctrl/cmd+click still works alongside this button.
       h('button.games-view__select-toggle', {
         class: { active: selectModeActive },
-        attrs: { title: selectModeActive ? 'Exit select mode' : 'Select games for bulk review' },
+        attrs: { title: selectModeActive ? 'Exit select mode' : 'Select games for bulk analysis' },
         on: { click: () => {
           selectModeActive = !selectModeActive;
           if (!selectModeActive) selectedGameIds = new Set();
@@ -1545,7 +1545,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
-          }, `Review ${listSelectedCount}`)
+          }, `Analyze ${listSelectedCount}`)
         : null,
       pageGames.length > 1
         ? h('button.games-view__review-all-btn', {
@@ -1554,7 +1554,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: 'Analyze the games on this page sequentially' },
-          }, 'Review All')
+          }, 'Analyze All')
         : null,
     ]),
     gameListMorePillsOpen ? h('div.game-list__filter-pills.--overflow', [
@@ -1660,7 +1660,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           ].filter(Boolean).join(' · ');
           const suffix = `games${details ? ` · ${details}` : ''}…${elapsed ? ` Elapsed ${elapsed}` : ''}`;
           return [
-            'Reviewing ',
+            'Analyzing ',
             h('span.game-list__queue-counter', `${queueSummary.done} / ${queueSummary.total}`),
             ` ${suffix}`,
           ];
@@ -1685,6 +1685,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           if (effectiveDensity === 'rich') {
             const rowDeps: RichGameRowDeps = {
               selected:    selectedGameIds.has(game.id),
+              open:        game.id === deps.selectedGameId,
               ...(accuracy !== undefined ? { accuracy } : {}),
               reviewState: state,
               reviewOpts:  opts,
@@ -1855,7 +1856,7 @@ function richRowSecondaryActions(
   return [
     {
       glyph: '⬆',
-      title: 'Review next',
+      title: 'Analyze next',
       onClick: () => {
 
 
@@ -1890,6 +1891,7 @@ function renderRichRowsFeed(
     const secondaryActions = richRowSecondaryActions(deps, game, allFilteredGames, state);
     const rowDeps: RichGameRowDeps = {
       selected:    selectedGameIds.has(game.id),
+      open:        game.id === deps.selectedGameId,
       ...(accuracy !== undefined ? { accuracy } : {}),
       reviewState: state,
       reviewOpts:  opts,
@@ -2026,7 +2028,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` },
-          }, `Review Selected (${selectedGameIds.size})`)
+          }, `Analyze Selected (${selectedGameIds.size})`)
         : null,
       pageGames.length > 1
         ? h('button.games-view__review-all-btn', {
@@ -2035,7 +2037,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               deps.reviewAllGames(batchGames, sourceContext);
             }},
             attrs: { title: 'Analyze the games on this page sequentially' },
-          }, 'Review All')
+          }, 'Analyze All')
         : null,
     ]),
   ]);
