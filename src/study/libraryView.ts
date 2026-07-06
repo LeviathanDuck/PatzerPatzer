@@ -1981,6 +1981,15 @@ function renderImportModal(redraw: () => void): VNode {
 
 // --- Main library view ---
 
+
+
+
+
+
+
+let _repertoireSectionOpen = false;
+let _orpSectionOpen = false;
+
 export function renderStudyLibrary(redraw: () => void): VNode {
   if (!isLoaded()) {
     return h('div.study-page', h('div.study-page__loading', 'Loading…'));
@@ -2059,42 +2068,15 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     ]),
 
 
+
     practiceLoaded() ? renderPracticeDashboard(redraw) : null,
 
 
-    renderOrpSection(redraw),
-
-    // First-run onboarding hint, preserved from the pre-navigator empty state -- keyed off the
-    // WHOLE library being empty (not the current nav-pane selection, which has no "seed sample
-    // studies" concept of its own). D05/D06 already render their own graceful per-section/
-    // per-folder empty states ("No items yet" / "No games") below regardless of this hint.
-    allStudies().length === 0
-      ? h('div.study-page__empty', [
-          h('p', 'No studies yet.'),
-          h('p', 'Right-click any move on the analysis board to save it here.'),
-          isSeeding()
-            ? h('p.study-page__seeding', 'Seeding sample studies…')
-            : h('button.study-btn.study-btn--seed', {
-                on: { click: () => { void seedSampleStudies(redraw); } },
-              }, 'Seed sample studies'),
-        ])
-      : null,
 
 
 
 
 
-
-
-
-
-
-    renderRepertoireComplianceSection(redraw),
-    renderRepertoireSourcesSection(redraw),
-
-    // T5-D07: the dual-pane Study Navigator shell (P2-LIB-1 first amendment) -- replaces the flat
-    // folder-sidebar + game-list/grid layout. Composes T5-D05 (navigationPaneView.ts) + T5-D06
-    // (itemListView.ts) + the new pane-resize divider (paneResize.ts) with basic single-selection.
     renderNavigatorShell(studyNavigationTree(), allStudies(), redraw),
 
     // Pagination is unchanged (CR-2/CR-3: studies load via IDB cursor pages, never an eager full
@@ -2114,6 +2096,56 @@ export function renderStudyLibrary(redraw: () => void): VNode {
               }, 'Load more'),
         ])
       : null,
+
+
+
+
+
+
+
+
+
+
+    h('div.study-page__bottom-controls', [
+      allStudies().length === 0
+        ? (isSeeding()
+            ? h('span.study-page__seeding', 'Seeding sample studies…')
+            : h('button.study-btn.study-btn--seed', {
+                on: { click: () => { void seedSampleStudies(redraw); } },
+              }, 'Seed sample studies'))
+        : null,
+      h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--repertoire', {
+        class: { 'study-btn--active': _repertoireSectionOpen },
+        attrs: {
+          type: 'button',
+          title: _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
+          'aria-label': _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
+          'aria-expanded': String(_repertoireSectionOpen),
+        },
+        on: { click: () => { _repertoireSectionOpen = !_repertoireSectionOpen; redraw(); } },
+      }, 'Repertoire'),
+      h('button.study-btn.study-page__bottom-toggle.study-page__bottom-toggle--orp', {
+        class: { 'study-btn--active': _orpSectionOpen },
+        attrs: {
+          type: 'button',
+          title: _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
+          'aria-label': _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
+          'aria-expanded': String(_orpSectionOpen),
+        },
+        on: { click: () => { _orpSectionOpen = !_orpSectionOpen; redraw(); } },
+      }, 'Opening Repetition Practice'),
+    ]),
+
+
+
+
+
+    _repertoireSectionOpen ? renderRepertoireComplianceSection(redraw) : null,
+    _repertoireSectionOpen ? renderRepertoireSourcesSection(redraw) : null,
+
+
+
+    _orpSectionOpen ? renderOrpSection(redraw) : null,
 
     _showImportModal ? renderImportModal(redraw) : null,
   ]);
