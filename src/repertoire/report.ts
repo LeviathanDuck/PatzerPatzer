@@ -11,6 +11,13 @@ import type { San, Uci } from '../tree/types';
 export type RepertoireComplianceOutcome = 'win' | 'loss' | 'draw';
 export type RepertoireComplianceOwnerColorFilter = 'white' | 'black';
 export type RepertoireComplianceDateFilter = 'all' | 'last-30' | 'last-90' | 'last-365' | 'undated';
+/**
+ * 'owner' (default) counts only divergences that were the owner's own fault
+ * (i.e. category !== 'opponent-left'); 'opponent' shows only opponent-left divergences (for
+ * inspection/audit, e.g. measuring the false-flag ratio); 'all' restores the pre-T7-A1 blended
+ * behavior. See P2-LIB-7 / P2-REP-3 T0 note.
+ */
+export type RepertoireComplianceCategoryFilter = 'owner' | 'opponent' | 'all';
 
 export interface RepertoireComplianceReportFilters {
   accountId: string | null;
@@ -18,6 +25,7 @@ export interface RepertoireComplianceReportFilters {
   result: RepertoireComplianceOutcome | null;
   timeClass: string | null;
   date: RepertoireComplianceDateFilter;
+  category: RepertoireComplianceCategoryFilter;
 }
 
 export interface RepertoireComplianceFilterOption {
@@ -29,6 +37,7 @@ export interface RepertoireComplianceFilterOption {
 export interface RepertoireComplianceReportFilterOptions {
   accounts: RepertoireComplianceFilterOption[];
   timeClasses: RepertoireComplianceFilterOption[];
+  categories: RepertoireComplianceFilterOption[];
 }
 
 export interface RepertoireComplianceReportGame {
@@ -85,6 +94,7 @@ export const DEFAULT_REPERTOIRE_COMPLIANCE_REPORT_FILTERS: RepertoireComplianceR
   result: null,
   timeClass: null,
   date: 'all',
+  category: 'owner',
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -153,6 +163,8 @@ function recordMatchesFilters(
   now: number,
 ): boolean {
   if (record.status !== 'diverged' || record.category === null) return false;
+  if (filters.category === 'owner' && record.category === 'opponent-left') return false;
+  if (filters.category === 'opponent' && record.category !== 'opponent-left') return false;
   if (filters.accountId !== null && record.accountId !== filters.accountId) return false;
   if (filters.ownerColor !== null && record.ownerColor !== filters.ownerColor) return false;
   if (filters.result !== null && repertoireComplianceOutcomeFromRecord(record) !== filters.result) return false;
@@ -251,20 +263,27 @@ function linePrefixIdentity(record: RepertoireMatchRecord): string {
     .join('|');
 }
 
+function categoryFilterOptionLabel(value: string): string {
+  return value === 'opponent' ? 'Opponent' : 'Your divergences';
+}
+
 function buildFilterOptions(
   records: readonly RepertoireMatchRecord[],
   games: readonly ImportedGame[],
 ): RepertoireComplianceReportFilterOptions {
   const accountCounts = new Map<string, number>();
   const timeClassCounts = new Map<string, number>();
+  const categoryCounts = new Map<string, number>();
   for (const record of records) {
     if (record.status !== 'diverged' || record.category === null) continue;
     addOptionCount(accountCounts, record.accountId);
     addOptionCount(timeClassCounts, record.timeClass);
+    addOptionCount(categoryCounts, record.category === 'opponent-left' ? 'opponent' : 'owner');
   }
   return {
     accounts: optionList(accountCounts, value => accountLabel(value, games)),
     timeClasses: optionList(timeClassCounts, value => value.charAt(0).toUpperCase() + value.slice(1)),
+    categories: optionList(categoryCounts, categoryFilterOptionLabel),
   };
 }
 
@@ -342,7 +361,14 @@ export function buildRepertoireComplianceReport(
   const sourceById = new Map(
     [...input.sources].sort(sourceSort).map((source, index) => [source.id, { source, index }] as const),
   );
-  const divergenceRecords = input.records.filter(record => record.status === 'diverged' && record.category !== null);
+  // Enabled-aware exclusion (P2-REP-3 T0 note): a record whose source is missing entirely or has
+  // been disabled never counts as a divergence at all. Independent of the category filter below —
+  // there is no "show disabled sources" toggle, disabled means disabled.
+  const divergenceRecords = input.records.filter(record => {
+    if (record.status !== 'diverged' || record.category === null) return false;
+    const known = sourceById.get(record.sourceId);
+    return known !== undefined && known.source.enabled;
+  });
   const filteredRecords = divergenceRecords.filter(record => recordMatchesFilters(record, filters, now));
 
   const grouped = new Map<string, RepertoireComplianceReportGroup>();
@@ -426,5 +452,6 @@ export function repertoireComplianceReportFiltersActive(filters: RepertoireCompl
     || filters.ownerColor !== null
     || filters.result !== null
     || filters.timeClass !== null
-    || filters.date !== 'all';
+    || filters.date !== 'all'
+    || filters.category !== 'owner';
 }

@@ -16,6 +16,13 @@ import { lichess } from '../import/lichess';
 import { parsePgn } from 'chessops/pgn';
 import { thumbnailFen } from './thumbPosition';
 
+
+
+import {
+  questionnaireBranch, findQuestionnaireOption, STORY_OPTIONS, DECIDER_OPTIONS,
+  type QuestionnaireOption,
+} from '../analyse/questionnaire/model';
+
 // ---------------------------------------------------------------------------
 // Minimal local duplicates of view.ts's getUserColor / gameResult (see file header).
 // ---------------------------------------------------------------------------
@@ -624,9 +631,10 @@ function computeTags(reviewState: ReviewControlState, inputs: RichRowTagInputs):
   if (inputs.generatedPuzzleCount) {
     tags.push({ cls: '--puzzles', label: `${inputs.generatedPuzzleCount} puzzle${inputs.generatedPuzzleCount === 1 ? '' : 's'}` });
   }
-  if (reviewState.kind === 'reviewed') {
-    tags.push({ cls: '--reviewed', label: 'Reviewed' });
-  }
+
+
+
+
   for (const label of inputs.manualTags ?? []) {
     tags.push({ cls: '--manual', label });
   }
@@ -669,8 +677,90 @@ export function renderTagArea(
 
 
 
-export function renderReviewedChip(reviewState: ReviewControlState): VNode | null {
-  return reviewState.kind === 'reviewed' ? h('span.grr__chip.--reviewed', '✓ Reviewed') : null;
+
+
+
+
+
+
+export function renderStudiedPulse(reviewState: ReviewControlState, studied: boolean): VNode | null {
+  if (studied) {
+    return h('span.qnr-pulse.qnr-pulse--satisfied.grr__studied-pulse', {
+      attrs: { title: 'Studied — post-game questionnaire complete' },
+    }, '✓');
+  }
+  if (reviewState.kind === 'reviewed') {
+    return h('span.qnr-pulse.qnr-pulse--unsatisfied.grr__studied-pulse', {
+      attrs: { title: 'Not yet studied — run the post-game questionnaire' },
+    });
+  }
+  return null;
+}
+
+// Minimal local subset of src/analyse/questionnaire/questionnaireView.ts's Lucide-grammar
+// ICON_PATHS (identical path data, identical `props: { innerHTML }` inline-SVG idiom this
+// codebase already uses elsewhere, e.g. src/main.ts's move-list context-menu icons). Duplicated
+// rather than imported: src/analyse/questionnaire/* is data-import-only for this task, and
+// questionnaireView.ts does not export its icon renderer. Scoped to only the slugs
+// STORY_OPTIONS/DECIDER_OPTIONS actually use (win + loss pools) — Opening Eval's icons never
+// surface on a games-list row, so its slugs are deliberately omitted.
+const STORY_CHIP_ICON_PATHS: Record<string, string> = {
+  'check-circle-2': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  shuffle:          '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H20"/><path d="m17 2 4 4-4 4"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.8 1.1 2 1.7 3.3 1.7H20"/><path d="m17 14 4 4-4 4"/>',
+  flag:             '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>',
+  'book-open':      '<path d="M2 4h5a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z"/><path d="M22 4h-5a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h6Z"/>',
+  clock:            '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  'trending-down':  '<polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/>',
+  'alert-triangle': '<path d="m21.7 18.4-8.2-14a1.7 1.7 0 0 0-3 0l-8.2 14A1.7 1.7 0 0 0 3.8 21h16.4a1.7 1.7 0 0 0 1.5-2.6Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  crown:            '<path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7Z"/><path d="M5 20h14"/>',
+  zap:              '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/>',
+  'piece-drop':     '<circle cx="10" cy="6" r="2.4"/><path d="M7.5 11c0-1.5 1-2.7 2.5-2.7s2.5 1.2 2.5 2.7l1 6H6.5Z"/><path d="M5.5 20h9"/><path d="M17 5l3 2"/><path d="M18 9l3 1"/>',
+  hourglass:        '<path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4a2 2 0 0 0 .6-1.4V2"/>',
+  'trending-up':    '<polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/>',
+  compass:          '<circle cx="12" cy="12" r="10"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/>',
+  'eye-off':        '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6 0 10 8 10 8a17.5 17.5 0 0 1-2.16 3.19"/><path d="M6.1 6.1C3.6 7.7 2 10 2 10s4 8 10 8a9 9 0 0 0 4.9-1.44"/><path d="M9.5 9.5a3 3 0 0 0 4.24 4.24"/><line x1="2" y1="2" x2="22" y2="22"/>',
+  skull:            '<path d="M12 3a8 8 0 0 0-8 8c0 3 1.5 4.5 2.5 6 .5.7.5 1.5.5 2h10c0-.5 0-1.3.5-2 1-1.5 2.5-3 2.5-6a8 8 0 0 0-8-8Z"/><circle cx="9" cy="11" r="1.4"/><circle cx="15" cy="11" r="1.4"/><path d="M9.5 19v2"/><path d="M14.5 19v2"/>',
+  map:              '<path d="M3 6.4v13.2a1 1 0 0 0 1.4.9L9 18l6 2.5 5-2V4.9a1 1 0 0 0-1.4-.9L14 6 9 3.5 3.6 5.5A1 1 0 0 0 3 6.4Z"/><path d="M9 3.5v14.8"/><path d="M15 6v14.5"/>',
+};
+
+function storyChipIcon(slug: string): VNode {
+  const inner = STORY_CHIP_ICON_PATHS[slug] ?? '';
+  return h('span.grr__chip-icon', {
+    props: {
+      innerHTML: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`,
+    },
+  });
+}
+
+/**
+ * Resolves the games-list story chip's option (P2-QST-7): the PRIMARY decider (`deciders[0]`,
+ * ranks 2-3 never chip here — left-column-only per the v2 lookbook §03/§08) when one was picked,
+ * falling back to the Game story pick otherwise (no decider recorded). Returns undefined for an
+ * unstudied game or one whose recorded ids no longer resolve in the option pool (never renders a
+ * broken chip).
+ */
+function primaryStoryChipOption(game: ImportedGame): QuestionnaireOption | undefined {
+  const q = game.questionnaire;
+  if (!q) return undefined;
+  const branch = questionnaireBranch(q);
+  const primary = q.deciders[0] ? findQuestionnaireOption(DECIDER_OPTIONS[branch], q.deciders[0]) : undefined;
+  return primary ?? findQuestionnaireOption(STORY_OPTIONS[branch], q.story);
+}
+
+/**
+ * Games-list story chip (P2-QST-7) — inherits the primary decider's (or story fallback's)
+ * semantic hue family + icon glyph; single source of truth is
+ * `src/analyse/questionnaire/model.ts`. Shared by the full card's chips row and the compact row's
+ * Line 2 tertiary status chips so a completed questionnaire looks identical on both densities.
+ * Returns null for an unstudied game (renders nothing).
+ */
+export function renderStoryChip(game: ImportedGame): VNode | null {
+  const option = primaryStoryChipOption(game);
+  if (!option) return null;
+  return h('span.grr__chip.--studied.--fam-' + option.family, { attrs: { title: option.label } }, [
+    storyChipIcon(option.icon),
+    h('span.grr__chip-label', option.label),
+  ]);
 }
 
 
@@ -689,14 +779,23 @@ export function renderLibraryChip(addLibrary: { onAdd: () => void } | null | und
   }, '+ Library');
 }
 
+
+
+
+
+
+
+
 function renderRichChipsRow(
+  game: ImportedGame,
   reviewState: ReviewControlState,
   tacticIcons: RichRowIcon[],
   addLibrary: { onAdd: () => void } | null | undefined,
 ): VNode {
   const reviewed = reviewState.kind === 'reviewed';
   return h('div.grr__chips', [
-    renderReviewedChip(reviewState),
+    renderStudiedPulse(reviewState, !!game.questionnaire),
+    renderStoryChip(game),
     reviewed && tacticIcons.length > 0
       ? h('span.grr__chip-icons', tacticIcons.map(icon =>
           h('span.grr__icon.' + icon.cls, { attrs: { title: icon.title } }, icon.glyph)))
@@ -962,6 +1061,7 @@ export interface RichGameRowDeps {
 
 
 
+
   tags?:        RichRowTagInputs;
   /** Present + non-null when a Study Library add flow is wired up; omitted/null renders disabled. */
   addLibrary?:  { onAdd: () => void } | null;
@@ -1025,7 +1125,7 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
       ),
       h('hr.grr__hairline'),
       renderOpeningLine(game),
-      renderRichChipsRow(deps.reviewState, tacticIcons, deps.addLibrary),
+      renderRichChipsRow(game, deps.reviewState, tacticIcons, deps.addLibrary),
     ]),
     // Rail zones (owner request 2026-07-05): time class anchored top, review control (all
     // states share this slot) vertically centered, played date/time anchored bottom.

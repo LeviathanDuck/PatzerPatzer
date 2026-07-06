@@ -41,6 +41,8 @@ import {
   renderReviewControl,
   renderSecondaryActions,
   renderLibraryChip,
+  renderStudiedPulse,
+  renderStoryChip,
   playerDotClass,
   gameExtras,
   formatDelta,
@@ -322,7 +324,11 @@ export function renderCompactGameRow(
 
 
 
+
+
   const statusChips = extras?.reviewState !== undefined ? h('div.grr__chips', [
+    renderStudiedPulse(extras.reviewState, !!game.questionnaire),
+    renderStoryChip(game),
     renderLibraryChip(extras.addLibrary),
   ]) : null;
 
