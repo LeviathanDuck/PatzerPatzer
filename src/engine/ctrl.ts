@@ -3,6 +3,9 @@
 
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
+import { Chess } from 'chessops/chess';
+import { parseFen } from 'chessops/fen';
+import { parseUci } from 'chessops/util';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { StockfishProtocol } from '../ceval/protocol';
 import { evalWinChances, classifyLoss, type MoveLabel } from './winchances';
@@ -15,7 +18,10 @@ import { type EngineMode, type EngineStrengthConfig, STRENGTH_LEVELS, DEFAULT_ST
 import { record, Severity } from '../diagnostics';
 import {
   contextFromNodeList,
+  engineFenEquals,
+  engineFenHash,
   fenOnlyPositionContext,
+  normalizeEngineFen,
   type EnginePositionContext,
 } from './positionContext';
 
@@ -127,8 +133,31 @@ export let currentEval: PositionEval = {};
 // When set, evalCurrentPosition() evaluates this position instead of ctrl.node.fen
 // and the analysis-board stale-path guards are bypassed.
 let _evalPositionOverride: EnginePositionContext | null = null;
-export function setEvalPositionOverride(context: EnginePositionContext | null): void {
+let _evalPositionOverrideOwner: SharedProtocolBusyOwner | null = null;
+export function setEvalPositionOverride(owner: SharedProtocolBusyOwner, context: EnginePositionContext): void {
+  _evalPositionOverrideOwner = owner;
   _evalPositionOverride = context;
+}
+export function clearEvalPositionOverride(owner: SharedProtocolBusyOwner): void {
+  if (_evalPositionOverrideOwner !== owner) return;
+  _evalPositionOverride = null;
+  _evalPositionOverrideOwner = null;
+  _activeOverrideFen = null;
+  invalidateForegroundSearchIdentity();
+}
+export function forceClearEvalPositionOverride(_reason: string): void {
+  const hadOverride = _evalPositionOverride !== null || _evalPositionOverrideOwner !== null || _activeOverrideFen !== null;
+  _evalPositionOverride = null;
+  _evalPositionOverrideOwner = null;
+  _activeOverrideFen = null;
+  if (hadOverride) {
+    invalidateForegroundSearchIdentity();
+    if (engineEnabled && engineReady && engineMode === 'analysis' && protocol.isAnalyzing()) {
+      pendingStopCount++;
+      protocol.stop();
+      pendingEval = true;
+    }
+  }
 }
 /**
  * Records the exact FEN that the currently-running override search was started for.
@@ -248,6 +277,7 @@ let pendingLivePromotion: {
   nodePath:   string;
   nodePly:    number;
   parentPath: string;
+  identity:   ForegroundEvalIdentity;
   snapshot:   PositionEval;
 } | null = null;
 
@@ -260,8 +290,11 @@ let       threatEval: PositionEval = {};
 
 // --- Setters for external write access ---
 
-export function resetCurrentEval(): void          { currentEval = {}; }
-export function setCurrentEval(ev: PositionEval): void { currentEval = { ...ev }; }
+export function resetCurrentEval(): void          { currentEval = {}; currentEvalIdentity = null; }
+export function setCurrentEval(ev: PositionEval, identity?: CurrentEvalIdentityInput): void {
+  currentEval = { ...ev };
+  setCurrentEvalIdentity(identity);
+}
 export function clearEvalCache(): void            { evalCache.clear(); bumpEvalCacheRevision(); }
 export function setMultiPv(v: number): void          { multiPv = v; localStorage.setItem('patzer.multiPv', String(v)); }
 export function setAnalysisDepth(v: number): void    { analysisDepth = v; localStorage.setItem('patzer.analysisDepth', String(v)); }
@@ -285,6 +318,171 @@ export interface SharedProtocolBusyState {
   owner: SharedProtocolBusyOwner | null;
   surface: string | null;
   analyzing: boolean;
+}
+
+interface ForegroundEvalIdentity {
+  owner: SharedProtocolBusyOwner;
+  fen: string;
+  fenHash: string;
+  generation: number;
+  path?: string;
+}
+
+export interface CurrentEvalIdentityInput {
+  owner: SharedProtocolBusyOwner;
+  fen: string;
+  path?: string;
+}
+
+let foregroundSearchGeneration = 0;
+let activeForegroundSearchIdentity: ForegroundEvalIdentity | null = null;
+let currentEvalIdentity: ForegroundEvalIdentity | null = null;
+const visibleGuidanceDropLogAt = new Map<string, number>();
+const VISIBLE_GUIDANCE_DROP_THROTTLE_MS = 15_000;
+
+function identityFromContext(owner: SharedProtocolBusyOwner, context: EnginePositionContext): ForegroundEvalIdentity | null {
+  const normalizedFen = normalizeEngineFen(context.currentFen);
+  if (normalizedFen === null) return null;
+  return {
+    owner,
+    fen: normalizedFen,
+    fenHash: engineFenHash(normalizedFen),
+    generation: ++foregroundSearchGeneration,
+    ...(context.path !== undefined ? { path: context.path } : {}),
+  };
+}
+
+function identityFromInput(input: CurrentEvalIdentityInput): ForegroundEvalIdentity | null {
+  const normalizedFen = normalizeEngineFen(input.fen);
+  if (normalizedFen === null) return null;
+  return {
+    owner: input.owner,
+    fen: normalizedFen,
+    fenHash: engineFenHash(normalizedFen),
+    generation: foregroundSearchGeneration,
+    ...(input.path !== undefined ? { path: input.path } : {}),
+  };
+}
+
+function beginForegroundSearch(owner: SharedProtocolBusyOwner, context: EnginePositionContext): ForegroundEvalIdentity | null {
+  const identity = identityFromContext(owner, context);
+  activeForegroundSearchIdentity = identity;
+  currentEvalIdentity = null;
+  return identity;
+}
+
+function acceptCurrentEvalIdentity(): void {
+  currentEvalIdentity = activeForegroundSearchIdentity ? { ...activeForegroundSearchIdentity } : null;
+}
+
+function setCurrentEvalIdentity(input: CurrentEvalIdentityInput | null | undefined): void {
+  currentEvalIdentity = input ? identityFromInput(input) : null;
+}
+
+function invalidateForegroundSearchIdentity(): void {
+  foregroundSearchGeneration++;
+  activeForegroundSearchIdentity = null;
+  currentEvalIdentity = null;
+}
+
+function targetForCurrentForegroundSearch(): CurrentEvalIdentityInput | null {
+  if (isSilentEvalActive()) return activeForegroundSearchIdentity?.owner === 'lfym-silent-eval' ? activeForegroundSearchIdentity : null;
+  if (evalIsThreat) return activeForegroundSearchIdentity?.owner === 'analysis-threat' ? activeForegroundSearchIdentity : null;
+  if (_evalPositionOverride && _evalPositionOverrideOwner) {
+    return {
+      owner: _evalPositionOverrideOwner,
+      fen: _evalPositionOverride.currentFen,
+      ...(_evalPositionOverride.path !== undefined ? { path: _evalPositionOverride.path } : {}),
+    };
+  }
+  const ctrl = _getCtrl();
+  return {
+    owner: ctrlRetroFeedbackIsEval() ? 'lfym-visible-eval' : 'analysis-live',
+    fen: ctrl.node.fen,
+    path: ctrl.path,
+  };
+}
+
+function foregroundSearchStillCurrent(): boolean {
+  if (!activeForegroundSearchIdentity) return false;
+  const target = targetForCurrentForegroundSearch();
+  if (!target) return false;
+  return identityMatchesTarget(activeForegroundSearchIdentity, target);
+}
+
+function identityMatchesTarget(identity: ForegroundEvalIdentity, target: CurrentEvalIdentityInput): boolean {
+  if (identity.owner !== target.owner) return false;
+  if (target.path !== undefined && identity.path !== target.path) return false;
+  return engineFenEquals(identity.fen, target.fen);
+}
+
+function hasVisibleEvalData(): boolean {
+  return currentEval.cp !== undefined
+    || currentEval.mate !== undefined
+    || currentEval.best !== undefined
+    || (currentEval.moves?.length ?? 0) > 0
+    || (currentEval.lines?.length ?? 0) > 0;
+}
+
+function recordVisibleGuidanceDrop(reason: string, visibleFen: string, uci?: string): void {
+  const visibleFenHash = engineFenHash(visibleFen);
+  const evalFenHash = currentEvalIdentity?.fenHash ?? activeForegroundSearchIdentity?.fenHash ?? null;
+  const owner = currentEvalIdentity?.owner ?? activeForegroundSearchIdentity?.owner ?? _evalPositionOverrideOwner ?? 'unknown';
+  const key = `${reason}|${owner}|${visibleFenHash}|${evalFenHash ?? 'none'}|${uci ?? ''}`;
+  const now = Date.now();
+  const last = visibleGuidanceDropLogAt.get(key) ?? 0;
+  if (now - last < VISIBLE_GUIDANCE_DROP_THROTTLE_MS) return;
+  visibleGuidanceDropLogAt.set(key, now);
+  record({
+    kind: 'engine',
+    severity: Severity.Warn,
+    source: 'engine.ctrl',
+    sourceTag: 'engine',
+    message: 'live-ceval-visible-guidance-drop',
+    metadata: {
+      reason,
+      owner,
+      surface: protocol.currentPositionContext()?.surface ?? null,
+      route: location.hash || location.pathname,
+      visibleFenHash,
+      evalFenHash,
+      overrideActive: _evalPositionOverride !== null,
+      uci: uci ?? null,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+export function currentEvalMatchesFen(fen: string): boolean {
+  if (!hasVisibleEvalData()) return false;
+  if (!currentEvalIdentity) {
+    recordVisibleGuidanceDrop('missing-eval-identity', fen);
+    return false;
+  }
+  const matches = engineFenEquals(currentEvalIdentity.fen, fen);
+  if (!matches) recordVisibleGuidanceDrop('eval-fen-mismatch', fen);
+  return matches;
+}
+
+export function visibleEvalForFen(fen: string): PositionEval {
+  return currentEvalMatchesFen(fen) ? currentEval : {};
+}
+
+export function isUciLegalInFen(fen: string, uci: string): boolean {
+  const setup = parseFen(fen);
+  if (!setup.isOk) return false;
+  const position = Chess.fromSetup(setup.value);
+  if (!position.isOk) return false;
+  const move = parseUci(uci);
+  return !!move && position.value.isLegal(move);
+}
+
+export function evalLineFirstMoveLegalInFen(fen: string, ev: Pick<EvalLine, 'best' | 'moves'>): boolean {
+  const uci = ev.moves?.[0] ?? ev.best;
+  if (!uci) return true;
+  const legal = isUciLegalInFen(fen, uci);
+  if (!legal) recordVisibleGuidanceDrop('illegal-visible-pv-first-move', fen, uci);
+  return legal;
 }
 
 let playMoveRequestPending = false;
@@ -515,10 +713,11 @@ export function buildArrowShapes(): DrawShape[] {
     if (nextNode?.uci) {
       const uci = nextNode.uci;
       const nextEval = evalCache.get(ctrl.path + nextNode.id);
+      const visibleEval = visibleEvalForFen(ctrl.node.fen);
       // Use plain red without lineWidth modifier so the arrowhead uses the well-known
       // 'r' brush key (marker arrowhead-r is guaranteed in defs).
       // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts compute() played-move brush.
-      const playedEval = currentEval.best !== uci ? nextEval : undefined;
+      const playedEval = visibleEval.best !== uci ? nextEval : undefined;
       shapes.push(buildArrowShape(uci, 'red'));
       const labelShape = buildArrowLabelShape(uci, playedEval);
       if (labelShape) shapes.push(labelShape);
@@ -554,17 +753,22 @@ export function setExtraAutoShapesProvider(fn: (() => DrawShape[]) | null): void
   _extraAutoShapesProvider = fn;
 }
 
-export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean }): DrawShape[] {
+export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean; fen?: string }): DrawShape[] {
   const shapes: DrawShape[] = [];
   const suppress = opts?.suppress === true;
   const includeThreat = opts?.includeThreat !== false;
+  const visibleFen = opts?.fen ?? _getCtrl().node.fen;
 
-  if (engineEnabled && showEngineArrows && !suppress) {
+  if (engineEnabled && showEngineArrows && !suppress && currentEvalMatchesFen(visibleFen)) {
     if (currentEval.best) {
       const uci = currentEval.best;
-      shapes.push(buildArrowShape(uci, 'paleBlue'));
-      const labelShape = buildArrowLabelShape(uci, currentEval);
-      if (labelShape) shapes.push(labelShape);
+      if (isUciLegalInFen(visibleFen, uci)) {
+        shapes.push(buildArrowShape(uci, 'paleBlue'));
+        const labelShape = buildArrowLabelShape(uci, currentEval);
+        if (labelShape) shapes.push(labelShape);
+      } else {
+        recordVisibleGuidanceDrop('illegal-visible-best-arrow', visibleFen, uci);
+      }
     }
     // Secondary PV lines — paleGrey with lineWidth scaled by win% diff
     // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts compute()
@@ -577,9 +781,13 @@ export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThrea
         if (shift >= 0.2) continue;
         const lineWidth = Math.max(2, Math.round(12 - shift * 50));
         const uci = line.best;
-        shapes.push(buildArrowShape(uci, 'paleGrey', { lineWidth }));
-        const labelShape = buildArrowLabelShape(uci, line);
-        if (labelShape) shapes.push(labelShape);
+        if (isUciLegalInFen(visibleFen, uci)) {
+          shapes.push(buildArrowShape(uci, 'paleGrey', { lineWidth }));
+          const labelShape = buildArrowLabelShape(uci, line);
+          if (labelShape) shapes.push(labelShape);
+        } else {
+          recordVisibleGuidanceDrop('illegal-visible-line-arrow', visibleFen, uci);
+        }
       }
     }
   }
@@ -699,7 +907,8 @@ const KO_SVG_HTML = [
 ].join('');
 
 function buildKoOverlayShape(fen: string): DrawShape | null {
-  if (currentEval.mate !== 0) return null;
+  const visibleEval = visibleEvalForFen(fen);
+  if (visibleEval.mate !== 0) return null;
   const losingColor = fen.split(' ')[1] === 'b' ? 'black' : 'white';
   const kingSquare = findKingSquare(fen, losingColor);
   if (!kingSquare) return null;
@@ -824,10 +1033,8 @@ function flushLiveEngineUiRefresh(): void {
     // navigated away (or the override position may have changed) in the interim. Mirrors
     // the bestmove branch's own stale-path re-check (ctrl.ts:877), which itself mirrors
     // lichess-org/lila onNewCeval's `node.fen !== ev.fen` guard.
-    const stillCurrent = _evalPositionOverride
-      ? _activeOverrideFen === _evalPositionOverride.currentFen
-      : candidate.nodePath === _getCtrl().path;
-    if (stillCurrent) {
+    const target = targetForCurrentForegroundSearch();
+    if (target && identityMatchesTarget(candidate.identity, target)) {
       promoteLiveEval(candidate.nodePath, candidate.nodePly, candidate.parentPath, candidate.snapshot);
     }
   }
@@ -944,6 +1151,7 @@ function parseEngineLine(line: string): void {
     cancelLiveEngineUiRefresh();
     pendingStopCount--;
     currentEval  = {};
+    currentEvalIdentity = null;
     pendingLines = [];
     engineSearchActive = false;
     if (pendingStopCount === 0 && _pendingPlayDispatch) {
@@ -1013,7 +1221,8 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: only allow output through when the active search FEN matches the current
       // override FEN — drops stale output for a superseded override position.
-      if (!evalIsThreat && !isSilentEvalActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return;
+      if (!foregroundSearchStillCurrent()) return;
+      if (!evalIsThreat) acceptCurrentEvalIdentity();
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
         // Normalize to white's perspective — odd plies are black to move, so negate.
@@ -1037,12 +1246,16 @@ function parseEngineLine(line: string): void {
 
 
           if (currentEval.depth !== undefined && (currentEval.cp !== undefined || currentEval.mate !== undefined)) {
-            pendingLivePromotion = {
-              nodePath:   evalNodePath,
-              nodePly:    evalNodePly,
-              parentPath: evalParentPath,
-              snapshot:   { ...currentEval },
-            };
+            const identity = activeForegroundSearchIdentity;
+            if (identity) {
+              pendingLivePromotion = {
+                nodePath:   evalNodePath,
+                nodePly:    evalNodePly,
+                parentPath: evalParentPath,
+                identity:   { ...identity },
+                snapshot:   { ...currentEval },
+              };
+            }
           }
         }
         scheduleLiveEngineUiRefresh(!evalIsThreat);
@@ -1050,7 +1263,8 @@ function parseEngineLine(line: string): void {
     } else if (!evalIsThreat && score !== undefined) {
       // Secondary PV line (MultiPV 2, 3, …).
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
-      if (!(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) return; // stale path guard (override: only pass when active search FEN matches current override FEN)
+      if (!foregroundSearchStillCurrent()) return; // stale owner/FEN guard
+      acceptCurrentEvalIdentity();
       const s = evalNodePly % 2 === 1 ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
@@ -1088,7 +1302,7 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onNewCeval `path === this.path` gate.
       // Override mode: additionally reject bestmove if the active search FEN no longer matches
       // the current override FEN (i.e. the override position changed mid-search).
-      if (!isSilentEvalActive() && !(_evalPositionOverride && _activeOverrideFen === _evalPositionOverride.currentFen) && evalNodePath !== _getCtrl().path) {
+      if (!foregroundSearchStillCurrent()) {
 
 
         // Instrument stale bestmove drop for the live engine: record event type, depth, and movetime.
@@ -1114,6 +1328,7 @@ function parseEngineLine(line: string): void {
         else if (threatMode) evalThreatPosition();
         return;
       }
+      acceptCurrentEvalIdentity();
       currentEval.best = parts[1];
       const stored: PositionEval = { ...currentEval };
       pendingLines = [];
@@ -1177,11 +1392,13 @@ export function evalThreatPosition(): void {
   threatEval   = {};
   evalIsThreat = true;
   protocol.stop();
-  protocol.setPositionContext(fenOnlyPositionContext(
+  const context = fenOnlyPositionContext(
     flipFenColor(_getCtrl().node.fen),
     'analysis-threat',
     'threat-mode-flips-side-to-move',
-  ));
+  );
+  beginForegroundSearch('analysis-threat', context);
+  protocol.setPositionContext(context);
   protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
 }
 
@@ -1213,6 +1430,7 @@ export function evalCurrentPosition(): void {
     const positionOverride = _evalPositionOverride;
     cancelLiveEngineUiRefresh();
     currentEval  = {};
+    currentEvalIdentity = null;
     pendingLines = [];
     syncArrow();
     arrowSuppressUntil = Date.now() + ARROW_SETTLE_MS;
@@ -1230,6 +1448,8 @@ export function evalCurrentPosition(): void {
     evalParentPath     = '';
     // Record the FEN this override search is actually evaluating so the three stale
     // guards can reject output when the override position changes before bestmove arrives.
+    const owner = _evalPositionOverrideOwner ?? sharedProtocolOwnerForSurface(positionOverride.surface);
+    beginForegroundSearch(owner, positionOverride);
     _activeOverrideFen = positionOverride.currentFen;
     protocol.setPositionContext(positionOverride);
 
@@ -1246,6 +1466,11 @@ export function evalCurrentPosition(): void {
   if (cached && cachedHasLines) {
     cancelLiveEngineUiRefresh();
     currentEval = { ...cached };
+    setCurrentEvalIdentity({
+      owner: ctrlRetroFeedbackIsEval() ? 'lfym-visible-eval' : 'analysis-live',
+      fen: ctrl.node.fen,
+      path: ctrl.path,
+    });
     syncArrow();
     _redraw();
     if (threatMode) evalThreatPosition();
@@ -1253,6 +1478,11 @@ export function evalCurrentPosition(): void {
   }
   cancelLiveEngineUiRefresh();
   currentEval  = cached ? { ...cached } : {};
+  setCurrentEvalIdentity(cached ? {
+    owner: ctrlRetroFeedbackIsEval() ? 'lfym-visible-eval' : 'analysis-live',
+    fen: ctrl.node.fen,
+    path: ctrl.path,
+  } : null);
   pendingLines = [];
   // Clear old arrows immediately, THEN arm the suppress window.
   // Order matters: syncArrow() resets arrowSuppressUntil = 0, so setting the
@@ -1294,7 +1524,10 @@ export function evalCurrentPosition(): void {
   // Non-override search: clear the active override FEN so stale override guards
   // do not interfere with normal path-based evaluation.
   _activeOverrideFen = null;
-  protocol.setPositionContext(contextFromNodeList(ctrl.nodeList, 'analysis-live', ctrl.path));
+  const context = contextFromNodeList(ctrl.nodeList, 'analysis-live', ctrl.path);
+  beginForegroundSearch(ctrlRetroFeedbackIsEval() ? 'lfym-visible-eval' : 'analysis-live', context);
+  if (cached) acceptCurrentEvalIdentity();
+  protocol.setPositionContext(context);
   protocol.go(analysisDepth, multiPv, searchUntilDepth ? undefined : searchTime);
 }
 
@@ -1304,6 +1537,7 @@ export function evalCurrentPosition(): void {
 export function toggleEngine(): void {
   engineEnabled = !engineEnabled;
   if (engineEnabled) {
+    if (location.hash.startsWith('#/analysis')) forceClearEvalPositionOverride('analysis-toggle-on');
     if (!engineInitialized) {
       engineInitialized = true;
       // Load Stockfish 18 (smallnet) via @lichess-org/stockfish-web.
@@ -1322,8 +1556,10 @@ export function toggleEngine(): void {
     cancelLiveEngineUiRefresh();
     protocol.stop();
     currentEval  = {};
+    currentEvalIdentity = null;
     evalIsThreat = false;
     threatEval   = {};
+    forceClearEvalPositionOverride('engine-toggle-off');
     syncArrow();
   }
   _redraw();
@@ -1417,7 +1653,9 @@ export function evalPositionSilent(
   engineSearchActive = true;
   searchStartedAt    = Date.now();
   currentEval        = {};
+  currentEvalIdentity = null;
   pendingLines       = [];
+  beginForegroundSearch('lfym-silent-eval', positionContext);
   protocol.setPositionContext(positionContext);
   protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
 }

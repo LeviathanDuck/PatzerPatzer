@@ -1450,7 +1450,7 @@ function findSyncDrivingOperation(snapshot: RemoteSyncProgressSnapshot): RemoteS
 interface SyncPillSpec {
   /** Arrows breathe only while a transfer is actively visible. */
   breathing: boolean;
-  glyph: '✓' | '!' | '✕' | null;
+  glyph: '✓' | '✕' | null;
   /** "done/total" item counter — only shown when the driving operation exposes real counts. */
   countText: string | null;
   meter: boolean;
@@ -1467,7 +1467,7 @@ function syncTriggerPillSpec(
     return { breathing: false, glyph: '✕', countText: null, meter: false, meterPercent: null };
   }
   if (severity === 'warning') {
-    return { breathing: false, glyph: '!', countText: null, meter: false, meterPercent: null };
+    return { breathing: false, glyph: null, countText: null, meter: false, meterPercent: null };
   }
   if (busyVisible) {
     const hasCounts = driving && typeof driving.total === 'number' && typeof driving.done === 'number' && driving.total > 0;
@@ -1669,6 +1669,7 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
       class: {
         active: showSyncProgressMenu,
         [`sync-menu__trigger--${syncPillState}`]: true,
+        'sync-menu__trigger--counted': syncPillSpec.countText !== null,
         'sync-severity--active': busyVisible,
         'sync-severity--warning': snapshot.severity === 'warning',
         'sync-severity--error': snapshot.severity === 'error',

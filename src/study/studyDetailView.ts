@@ -23,7 +23,8 @@ import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
   protocol, currentEval, engineReady,
-  setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved,
+  clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved,
+  visibleEvalForFen,
 } from '../engine/ctrl';
 import { listPracticeLines, savePracticeLine, deletePracticeLine } from './studyDb';
 import { progressMap } from './studyCtrl';
@@ -161,7 +162,7 @@ function startStudyEngine(redraw: () => void): void {
   const context = studyPositionContext();
   if (!context) return;
   _studyEngineOn = true;
-  setEvalPositionOverride(context);
+  setEvalPositionOverride('study-detail', context);
   setOnLiveEvalImproved(redraw);
   evalCurrentPosition();
   redraw();
@@ -170,7 +171,7 @@ function startStudyEngine(redraw: () => void): void {
 function stopStudyEngine(redraw: () => void): void {
   _studyEngineOn = false;
   protocol.stop();
-  setEvalPositionOverride(null);
+  clearEvalPositionOverride('study-detail');
   setOnLiveEvalImproved(null);
   redraw();
 }
@@ -185,13 +186,14 @@ function syncStudyEngine(redraw: () => void): void {
   if (!_studyEngineOn) return;
   const context = studyPositionContext();
   if (!context) return;
-  setEvalPositionOverride(context);
+  setEvalPositionOverride('study-detail', context);
   evalCurrentPosition();
 }
 
 function renderStudyEval(): VNode | null {
   if (!_studyEngineOn) return null;
-  const ev = currentEval;
+  const node = detailNode();
+  const ev = node ? visibleEvalForFen(node.fen) : currentEval;
   const score = formatScore(ev);
   const depth = ev.depth ?? 0;
   const ready = engineReady;

@@ -15,7 +15,7 @@ import { renderToggleRow } from '../ui';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   protocol,
-  currentEval, resetCurrentEval,
+  resetCurrentEval,
   engineEnabled, engineReady,
   multiPv, setMultiPv,
   showEngineArrows, setShowEngineArrows,
@@ -26,8 +26,13 @@ import {
   isEngineSearching, getSearchProgress,
   clearPendingLines,
   syncArrow, toggleEngine, evalCurrentPosition,
+  clearEvalPositionOverride,
+  evalLineFirstMoveLegalInFen,
+  forceClearEvalPositionOverride,
   setEvalPositionOverride,
+  visibleEvalForFen,
   type EvalLine, type PositionEval,
+  type SharedProtocolBusyOwner,
 } from '../engine/ctrl';
 import {
   reviewDepth, setReviewDepth,
@@ -47,9 +52,22 @@ let _redraw:   () => void = () => {};
 
 /** Optional position override — bypasses _getCtrl().node.fen in ceval UI and engine eval. */
 let _positionOverride: EnginePositionContext | null = null;
-export function setCevalPositionOverride(context: EnginePositionContext | null): void {
+let _positionOverrideOwner: SharedProtocolBusyOwner | null = null;
+export function setCevalPositionOverride(owner: SharedProtocolBusyOwner, context: EnginePositionContext): void {
+  _positionOverrideOwner = owner;
   _positionOverride = context;
-  setEvalPositionOverride(context); // keep engine/ctrl in sync
+  setEvalPositionOverride(owner, context); // keep engine/ctrl in sync
+}
+export function clearCevalPositionOverride(owner: SharedProtocolBusyOwner): void {
+  if (_positionOverrideOwner !== owner) return;
+  _positionOverrideOwner = null;
+  _positionOverride = null;
+  clearEvalPositionOverride(owner);
+}
+export function forceClearCevalPositionOverride(reason: string): void {
+  _positionOverrideOwner = null;
+  _positionOverride = null;
+  forceClearEvalPositionOverride(reason);
 }
 
 export function initCevalView(deps: {
@@ -108,11 +126,13 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
   // during the attempt spoils the puzzle by revealing the position's objective score.
   // Mirrors lichess-org/lila: showCevalPvs: !ctrl.retro?.isSolving() pattern.
   const retroSolving = opts?.retroSolving === true;
+  const renderFen = _positionOverride?.currentFen ?? _getCtrl().node.fen;
+  const visibleEval = visibleEvalForFen(renderFen);
   const visibleEngineEnabled = retroHiddenByDefault ? retroVisibleEngineEnabled : engineEnabled;
   const reviewProgress = currentReviewQueueDisplay();
-  const hasEval  = visibleEngineEnabled && !retroSolving && (currentEval.cp !== undefined || currentEval.mate !== undefined);
+  const hasEval  = visibleEngineEnabled && !retroSolving && (visibleEval.cp !== undefined || visibleEval.mate !== undefined);
   const pearlStr = visibleEngineEnabled && !retroSolving && engineEnabled
-    ? (hasEval ? formatScore(currentEval) : (engineReady ? '…' : ''))
+    ? (hasEval ? formatScore(visibleEval) : (engineReady ? '…' : ''))
     : '';
 
   const engineLabel = protocol.engineName ?? 'Stockfish 18';
@@ -131,7 +151,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
   // Progress bar along the top: fills left-to-right while searching, stays solid at 100% when done.
   // Width tracks whichever of depth-fraction or time-fraction is further along.
   const evalDone = visibleEngineEnabled && engineEnabled && engineReady &&
-    !isEngineSearching() && currentEval.depth !== undefined;
+    !isEngineSearching() && visibleEval.depth !== undefined;
   const progressPct = evalDone ? 100 : Math.round(getSearchProgress() * 100);
   const progressBar = visibleEngineEnabled && engineEnabled && engineReady
     ? h('div.ceval__progress', [
@@ -171,7 +191,7 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
 
     // Pearl — large eval number (flex: 1 0 auto, font-size: 1.6em, bold)
     // Mirrors lichess-org/lila: ui/lib/src/ceval/view/main.ts pearl element
-    h('pearl', { class: { 'ceval__ko': currentEval.mate === 0 } }, pearlStr),
+    h('pearl', { class: { 'ceval__ko': visibleEval.mate === 0 } }, pearlStr),
 
     // Engine name + status info (flex: 2 1 auto, small text)
     h('div.engine', [
@@ -284,15 +304,17 @@ export function renderPvBox(): VNode | null {
   if (!engineEnabled) return null;
 
   const fen = _positionOverride?.currentFen ?? _getCtrl().node.fen;
+  const visibleEval = visibleEvalForFen(fen);
   const reviewProgress = currentReviewQueueDisplay();
 
   function pvRowForSlot(slotIdx: number): VNode {
     // Slot 0 = primary line (currentEval); slots 1+ = secondary lines (currentEval.lines[i-1])
-    const ev: PositionEval | EvalLine | undefined =
+    const candidate: PositionEval | EvalLine | undefined =
       slotIdx === 0
-        ? (currentEval.cp !== undefined || currentEval.mate !== undefined || currentEval.moves?.length
-            ? currentEval : undefined)
-        : currentEval.lines?.[slotIdx - 1];
+        ? (visibleEval.cp !== undefined || visibleEval.mate !== undefined || visibleEval.moves?.length
+            ? visibleEval : undefined)
+        : visibleEval.lines?.[slotIdx - 1];
+    const ev = candidate && evalLineFirstMoveLegalInFen(fen, candidate) ? candidate : undefined;
 
     if (!ev) {
       // Empty placeholder — fixed 2em height so panel never jumps as lines arrive.

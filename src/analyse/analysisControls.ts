@@ -36,6 +36,7 @@ import {
   startPractice,
   stopPractice,
 } from './practice/practiceCtrl';
+import { requestSelectedGameAnalysis } from './pgnExport';
 
 // --- Action-menu open/close state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
@@ -300,6 +301,14 @@ export function renderActionMenu(): VNode | null {
         attrs: { title: 'Open a fresh standard analysis board' },
         on:    { click: () => { deps.onNewBoard(); close(); } },
       }, 'New Board'),
+
+      ...(analysisComplete ? [h('button', {
+        attrs: { title: 'Re-analyze this game — replaces the stored review' },
+        on: { click: () => {
+          requestSelectedGameAnalysis();
+          close();
+        } },
+      }, 'Re-analyze')] : []),
 
 
       h('button', {

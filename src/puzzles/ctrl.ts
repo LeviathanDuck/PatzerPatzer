@@ -34,10 +34,11 @@ import {
   protocol as engineProtocol,
   engineEnabled as sharedEngineEnabled,
   engineReady as sharedEngineReady,
-  currentEval as sharedCurrentEval,
-  multiPv,
-  analysisDepth,
+  clearEvalPositionOverride,
+  evalCurrentPosition,
   setEngineEnabledFlag,
+  setEvalPositionOverride,
+  visibleEvalForFen,
   type PositionEval,
 } from '../engine/ctrl';
 import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
@@ -790,7 +791,7 @@ export class PuzzleRoundCtrl {
     // we record the structure and leave evalBefore/evalAfter undefined.
     // The engine assist layer (enablePuzzleEngine) can fill these in later.
     // For now, if the shared engine has a cached eval, use it.
-    const currentEngineEval = this.puzzleEngineEnabled ? sharedCurrentEval : {};
+    const currentEngineEval = this.getPuzzleEval();
     const evalBefore = (currentEngineEval.cp !== undefined || currentEngineEval.mate !== undefined)
       ? { cp: currentEngineEval.cp, mate: currentEngineEval.mate }
       : undefined;
@@ -1432,19 +1433,18 @@ export class PuzzleRoundCtrl {
 
     // Use the current board position (tracks analysis-mode navigation)
     const positionContext = this.currentEnginePositionContext();
+    setEvalPositionOverride('puzzle-post-solve', positionContext);
 
     if (sharedEngineReady) {
-      // Engine already running — send position directly
-      engineProtocol.setPositionContext(positionContext);
-      engineProtocol.go(analysisDepth, multiPv);
+      evalCurrentPosition();
       redraw();
     } else {
       // Engine not yet initialized — start it, then evaluate on ready
       redraw();
       void engineProtocol.init('/stockfish-web').then(() => {
         if (this.puzzleEngineEnabled) {
-          engineProtocol.setPositionContext(this.currentEnginePositionContext());
-          engineProtocol.go(analysisDepth, multiPv);
+          setEvalPositionOverride('puzzle-post-solve', this.currentEnginePositionContext());
+          evalCurrentPosition();
           redraw();
         }
       }).catch((err: unknown) => {
@@ -1477,6 +1477,7 @@ export class PuzzleRoundCtrl {
     if (!this.puzzleEngineEnabled) return;
     this.puzzleEngineEnabled = false;
     setEngineEnabledFlag(false);
+    clearEvalPositionOverride('puzzle-post-solve');
     engineProtocol.stop();
   }
 
@@ -1488,7 +1489,7 @@ export class PuzzleRoundCtrl {
    */
   getPuzzleEval(): PositionEval {
     if (!this.puzzleEngineEnabled) return {};
-    return sharedCurrentEval;
+    return visibleEvalForFen(this.currentEnginePositionContext().currentFen);
   }
 
   // --- Rated assistance warning handlers ---
