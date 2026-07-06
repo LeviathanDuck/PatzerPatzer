@@ -94,7 +94,7 @@ export const SYSTEM_LENSES: readonly NavigationPaneLensDef[] = [
   { id: 'unsorted', label: 'Unsorted' },
   { id: 'favorites', label: 'Favorites' },
   { id: 'tags', label: 'Tags' },
-  { id: 'studied', label: 'Studied' },
+  { id: 'studied', label: 'Reviewed' },
   { id: 'saved-puzzles', label: 'Saved Puzzles' },
 ];
 

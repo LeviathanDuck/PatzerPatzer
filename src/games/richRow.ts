@@ -486,7 +486,7 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
       return h('span.grr__review.--queued', {
-        attrs: { title: `Queued for Bulk Review — wave ${state.wave} of ${state.totalWaves}` },
+        attrs: { title: `Queued for Analysis — wave ${state.wave} of ${state.totalWaves}` },
       }, [
         '⏲ Queued · wave ',
         h('span.grr__review-num', `${state.wave}`),
@@ -538,8 +538,17 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
         on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
       }, [
         h('span.grr__review-main', [
-          h('span.grr__review-check', '✓'),
-          opts.compact ? h('span.grr__review-collapse', ' Review') : ' Review',
+
+
+
+
+          h('span.grr__review-mark', {
+            attrs: { 'aria-hidden': 'true' },
+            props: {
+              innerHTML: '<svg viewBox="0 0 1024 1024" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="438" cy="418" r="228" stroke="#F3F4EF" stroke-width="86"/><path d="M608 590 L780 762" stroke="#F3F4EF" stroke-width="86"/><path d="M344 438 L438 532 L594 356" stroke="#42BDA8" stroke-width="84"/></svg>',
+            },
+          }),
+          opts.compact ? h('span.grr__review-collapse', ' Analysis') : ' Analysis',
         ]),
         h('span.grr__review-icon-cell', { attrs: { 'aria-hidden': 'true' } }, '↗'),
       ]);
@@ -547,7 +556,7 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
     case 'stalled':
       return h('button.grr__review.--stalled', {
-        attrs: { type: 'button', title: 'Review appears stalled — click to resume' },
+        attrs: { type: 'button', title: 'Analysis appears stalled — click to resume' },
         on:    { click: (e: Event) => stopAnd(e, opts.onResume) },
       }, '⚠ Stalled — resume?');
 
@@ -590,10 +599,10 @@ function computeIcons(reviewState: ReviewControlState, inputs: RichRowIconInputs
     icons.push({ cls: '--missed-tactic', glyph: '!'.repeat(inputs.missedTacticSeverity), title: 'Missed tactic' });
   }
   if (reviewState.kind === 'reviewed') {
-    icons.push({ cls: '--complete', glyph: '✓', title: 'Review complete' });
+    icons.push({ cls: '--complete', glyph: '✓', title: 'Analysis complete' });
   }
   if (reviewState.kind === 'incomplete') {
-    icons.push({ cls: '--incomplete', glyph: '◐', title: 'Review incomplete — never shown as complete' });
+    icons.push({ cls: '--incomplete', glyph: '◐', title: 'Analysis incomplete — never shown as complete' });
   }
   if (reviewState.kind === 'failed') {
     icons.push({ cls: '--failed', glyph: '⚠', title: 'Analysis failed' });
@@ -686,12 +695,12 @@ export function renderTagArea(
 export function renderStudiedPulse(reviewState: ReviewControlState, studied: boolean): VNode | null {
   if (studied) {
     return h('span.qnr-pulse.qnr-pulse--satisfied.grr__studied-pulse', {
-      attrs: { title: 'Studied — post-game questionnaire complete' },
+      attrs: { title: 'Reviewed — post-game questions complete' },
     }, '✓');
   }
   if (reviewState.kind === 'reviewed') {
     return h('span.qnr-pulse.qnr-pulse--unsatisfied.grr__studied-pulse', {
-      attrs: { title: 'Not yet studied — run the post-game questionnaire' },
+      attrs: { title: 'Not yet reviewed — run the Post Game Review Questions' },
     });
   }
   return null;

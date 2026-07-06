@@ -235,10 +235,26 @@ let _viewMode: StudyViewMode = 'list';
 export function viewMode(): StudyViewMode             { return _viewMode; }
 export function setViewMode(m: StudyViewMode): void   { _viewMode = m; }
 
-// --- Multi-select state ---
 
-const _selectedIds     = new Set<string>();
-let   _lastSelectedIdx = -1;   // index in the currently displayed filtered list
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const _selectedIds = new Set<string>();
+let   _cursorId: string | null = null; // id-keyed cursor/anchor; replaces the old display-index _lastSelectedIdx
 
 // --- Accessors ---
 
@@ -318,32 +334,159 @@ export function studyNavigationTree(): StudyNavigationTree {
 export function selectedIds(): ReadonlySet<string>  { return _selectedIds; }
 export function isSelected(id: string): boolean     { return _selectedIds.has(id); }
 export function selectionCount(): number            { return _selectedIds.size; }
-export function clearSelection(): void              { _selectedIds.clear(); _lastSelectedIdx = -1; }
+export function cursorId(): string | null           { return _cursorId; }
+export function clearSelection(): void              { _selectedIds.clear(); _cursorId = null; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function toggleSelectId(id: string, displayedIds: readonly string[]): void {
+  const isDeselecting = _selectedIds.has(id);
+  if (isDeselecting && _selectedIds.size === 1) return; // refuse: would deselect the last item
+  if (isDeselecting) {
+    _selectedIds.delete(id);
+    if (_cursorId === id) {
+      _cursorId = displayedIds.find(candidateId => _selectedIds.has(candidateId)) ?? null;
+    }
+  } else {
+    _selectedIds.add(id);
+    _cursorId = id;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function rangeSelectToId(id: string, displayedIds: readonly string[]): void {
+  const targetIdx = displayedIds.indexOf(id);
+  if (targetIdx === -1) { _cursorId = id; return; } // clicked item isn't in the displayed list
+  const cursorIdx = _cursorId !== null ? displayedIds.indexOf(_cursorId) : -1;
+  const lo = cursorIdx === -1 ? targetIdx : Math.min(cursorIdx, targetIdx);
+  const hi = cursorIdx === -1 ? targetIdx : Math.max(cursorIdx, targetIdx);
+  for (let i = lo; i <= hi; i++) {
+    const itemId = displayedIds[i];
+    if (itemId !== undefined) _selectedIds.add(itemId);
+  }
+  _cursorId = id;
+}
 
 /**
- * Handle a click on a study row at the given index within the filtered+sorted list.
- * - Cmd/Ctrl+click: toggle single item
- * - Shift+click: range-select from last selected index to current
- * - Plain click: toggle selection (same as Cmd/Ctrl for simplicity)
+ * Shift+Arrow extend/shrink (§2.1 `handleShiftArrowSelection`), Apple-Notes-style "jump over
+ * already-selected neighbors." The cursor doubles as the anchor — no separate anchor index is
+ * tracked (§2.1). `direction` is +1 (next) or -1 (previous) within `displayedIds` order.
+ *
+ * Two of the four departure/arrival cases are quoted verbatim in §2.1 and are BINDING:
+ *   - departing-selected -> arriving-unselected: select the arrival too (both stay selected);
+ *     stop.
+ *   - departing-selected -> arriving-selected: deselect the departure, then keep jumping in the
+ *     same direction through the run of already-selected cells until an unselected cell or the
+ *     list boundary is hit.
+ * The remaining two departure/arrival combinations are not spelled out verbatim in the quoted
+ * prose. Resolved here (implementation judgment, recorded per the repo's ambiguity-resolution
+ * rule) with the same arrival-selected/unselected split that governs the two quoted cases —
+ * departure state only decides whether the departure cell itself gets toggled off:
+ *   - departing-unselected -> arriving-unselected: no active run yet (e.g. the very first
+ *     shift-arrow before any prior click) — select BOTH cells; stop.
+ *   - departing-unselected -> arriving-selected: nothing to toggle off (departure was never
+ *     selected) — move the cursor across this already-selected neighbor and keep jumping,
+ *     identical to the quoted jump-through-a-run continuation.
+ * In other words: "arrival already selected" always means jump-through (toggle departure off only
+ * if it was on, then continue); "arrival not yet selected" always means stop-and-extend (select
+ * the arrival, and the departure too if it wasn't already selected).
  */
-export function handleStudyClick(id: string, idx: number, e: MouseEvent): void {
-  const displayedItems = studies();  // filtered+sorted list at this moment
-  if (e.shiftKey && _lastSelectedIdx >= 0) {
-    const lo = Math.min(_lastSelectedIdx, idx);
-    const hi = Math.max(_lastSelectedIdx, idx);
-    for (let i = lo; i <= hi; i++) {
-      const item = displayedItems[i];
-      if (item) _selectedIds.add(item.id);
+export function shiftArrowSelect(direction: 1 | -1, displayedIds: readonly string[]): void {
+  if (displayedIds.length === 0) return;
+  let idx = _cursorId !== null ? displayedIds.indexOf(_cursorId) : -1;
+  if (idx === -1) {
+
+
+
+
+    _cursorId = displayedIds[0] ?? null;
+    return;
+  }
+  for (;;) {
+    const nextIdx = idx + direction;
+    if (nextIdx < 0 || nextIdx >= displayedIds.length) break; // list boundary — stop
+    const departureId = displayedIds[idx]!;
+    const arrivalId = displayedIds[nextIdx]!;
+    if (_selectedIds.has(arrivalId)) {
+      _selectedIds.delete(departureId); // no-op if departure wasn't selected (case 4)
+      idx = nextIdx;
+      _cursorId = arrivalId;
+      continue; // keep jumping through the run of already-selected cells
     }
-  } else if (e.metaKey || e.ctrlKey) {
-    if (_selectedIds.has(id)) _selectedIds.delete(id);
-    else _selectedIds.add(id);
-    _lastSelectedIdx = idx;
+    _selectedIds.add(arrivalId);
+    _selectedIds.add(departureId); // no-op if departure was already selected (case 1)
+    idx = nextIdx;
+    _cursorId = arrivalId;
+    break;
+  }
+}
+
+/**
+ * Cmd/Ctrl+A select-all (§2.1). Selects every id in `displayedIds`. Keeps the cursor on whichever
+ * item is currently the cursor if it's part of this view, else falls back to the first displayed
+ * item — never resets to none (§2.1: "keeping the cursor on the currently-selected file (or the
+ * first file) rather than resetting it").
+ */
+export function selectAllDisplayed(displayedIds: readonly string[]): void {
+  for (const id of displayedIds) _selectedIds.add(id);
+  if (_cursorId === null || !displayedIds.includes(_cursorId)) {
+    _cursorId = displayedIds[0] ?? null;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function handleStudyClick(id: string, _idx: number, e: MouseEvent): void {
+  const displayedIds = studies().map(s => s.id); // filtered+sorted list at this moment
+  if (e.shiftKey && _cursorId !== null) {
+    rangeSelectToId(id, displayedIds);
   } else {
-    // Plain click: toggle like Cmd/Ctrl
-    if (_selectedIds.has(id)) _selectedIds.delete(id);
-    else _selectedIds.add(id);
-    _lastSelectedIdx = idx;
+    // Cmd/Ctrl+click and plain click share the same toggle transition in this slice.
+    toggleSelectId(id, displayedIds);
   }
 }
 
@@ -355,7 +498,7 @@ export async function bulkDeleteStudies(): Promise<void> {
     await deleteStudy(id);
   }
   _selectedIds.clear();
-  _lastSelectedIdx = -1;
+  _cursorId = null;
 }
 
 /**

@@ -873,9 +873,9 @@ function renderReviewTriggerPillContent(spec: ReviewPillSpec): VNode[] {
 
 function renderReviewMenuPanelHeader(redraw: () => void): VNode {
   return h('div.review-menu__panel-header', [
-    h('div.review-menu__panel-title', 'Review Queue'),
+    h('div.review-menu__panel-title', 'Analysis Queue'),
     h('button.review-menu__panel-close', {
-      attrs: { type: 'button', title: 'Close review queue menu', 'aria-label': 'Close review queue menu' },
+      attrs: { type: 'button', title: 'Close analysis queue menu', 'aria-label': 'Close analysis queue menu' },
       on: { click: () => { showReviewMenu = false; redraw(); } },
     }, 'x'),
   ]);
@@ -2506,13 +2506,13 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       // Navigate to the analysis board to review the currently loaded game.
       // Disabled when no game is selected — nothing to review.
       h('button.global-menu__item', {
-        attrs: { disabled: !hasGame, title: hasGame ? 'Review current game on analysis board' : 'Select a game first' },
+        attrs: { disabled: !hasGame, title: hasGame ? 'Open current game on the analysis board' : 'Select a game first' },
         on: { click: () => {
           if (!hasGame) return;
           closeGlobalMenu(redraw);
           writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
         }},
-      }, 'Game Review'),
+      }, 'Analysis'),
 
 
 

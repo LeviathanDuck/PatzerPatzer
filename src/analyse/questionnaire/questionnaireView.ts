@@ -290,7 +290,7 @@ function renderSummaryStage(ctrl: QuestionnaireCtrl): VNode {
     h('div.qnr-module__title', [
       h('div.qnr-module__title-main', [
         h('span.qnr-pulse.qnr-pulse--satisfied', '✓'),
-        h('span', 'Studied'),
+        h('span', 'Reviewed'),
       ]),
     ]),
     h('div.qnr-module__body', [
@@ -328,6 +328,7 @@ function renderWizChrome(ctrl: QuestionnaireCtrl, body: VNode): VNode {
     }));
   }
   return h('div.qnr-wiz', [
+    h('div.qnr-wiz__heading', 'Post Game Review Questions'),
     h('div.qnr-wiz__top', [
       h('span.qnr-wiz__label', `Step ${ctrl.stepNumber} of ${ctrl.stepCount}`),
       h('div.qnr-wiz__dots', dots),

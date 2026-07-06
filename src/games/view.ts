@@ -1495,20 +1495,20 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         class: { active: gameListFilterReview === 'reviewed' },
         attrs: {
           type: 'button',
-          title: 'Show reviewed games',
+          title: 'Show analyzed games',
           'aria-pressed': String(gameListFilterReview === 'reviewed'),
         },
         on: { click: () => toggleReview('reviewed') },
-      }, 'Reviewed'),
+      }, 'Analyzed'),
       h('button.games-view__pill.--review-filter', {
         class: { active: gameListFilterReview === 'not-reviewed' },
         attrs: {
           type: 'button',
-          title: 'Show games without a completed review',
+          title: 'Show games without a completed analysis',
           'aria-pressed': String(gameListFilterReview === 'not-reviewed'),
         },
         on: { click: () => toggleReview('not-reviewed') },
-      }, 'Not reviewed'),
+      }, 'Not analyzed'),
       ...(['win', 'loss', 'draw'] as const).map(r =>
         h('button.games-view__pill', {
           class: { active: gameListFilterResults.has(r) },
@@ -2113,12 +2113,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ]),
 
     h('div.games-view__filter-group', [
-      h('span.games-view__filter-label', 'Review'),
+      h('span.games-view__filter-label', 'Analysis'),
       h('button.games-view__pill.--quick', {
         class: { active: gamesFilterReviewIssues === 'failed-skipped' },
         attrs: {
           type: 'button',
-          title: 'Show games with failed or skipped review state',
+          title: 'Show games with failed or skipped analysis state',
           'aria-pressed': String(gamesFilterReviewIssues === 'failed-skipped'),
         },
         on: { click: () => {
