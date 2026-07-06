@@ -4,7 +4,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
-  studies, allStudies, isLoaded,
+  allStudies, isLoaded,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
   studyTags, updateStudy, deleteStudy, importPgnToLibrary,
@@ -16,7 +16,7 @@ import {
   createFolder, renameFolder, removeFolderEntity, moveStudyToFolder, addStudyToFolderByName,
   selectedIds, isSelected, selectionCount, clearSelection,
   handleStudyClick, bulkDeleteStudies, bulkAddToFolder, bulkSetFavorite,
-  viewMode, setViewMode, resetPagination, studyLibraryRouteSnapshot,
+  resetPagination, studyLibraryRouteSnapshot,
   seedSampleStudies, isSeeding,
   listOrpPracticeLines,
   repertoireSources, repertoireSourcesLoaded, repertoireSourcesError, loadRepertoireSources,
@@ -30,9 +30,11 @@ import {
   repertoireComplianceReport, repertoireComplianceReportLoaded, repertoireComplianceReportError,
   repertoireComplianceReportFilters, setRepertoireComplianceReportFilters,
   resetRepertoireComplianceReportFilters, loadRepertoireComplianceReport,
+  studyNavigationTree,
   type StudySortKey,
   type OrpPracticeLineView,
 } from './studyCtrl';
+import { renderNavigatorShell } from './navigatorShellView';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
 import {
@@ -2020,6 +2022,22 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
 
 
+
+
+  if (isRepertoireSourceBrowseOpen()) {
+    return h('div.study-page', [
+      h('div.study-page__header', [
+        h('h1', 'Study Library'),
+      ]),
+      renderRepertoireSourceBrowse(redraw),
+    ]);
+  }
+
+
+
+
+
+
   if (_orpDrillPending) {
     _orpDrillPending = false;
     _orpLoaded       = false;
@@ -2027,79 +2045,13 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     loadOrpLines(redraw);
   }
 
-  // Lazy-load folder data if not yet loaded.
+  // Lazy-load folder data if not yet loaded -- the P1 navigation-index tree needs real folders.
   if (!foldersLoaded()) loadFolders(redraw);
 
-  const items = studies();
-  // id -> display name lookup for rendering item.folders chips (P2-LIB-11: membership is
-  // id-keyed, folder name is display-only and resolved here rather than stored on the item).
-  const folderNameById = new Map(folders().map(f => [f.id, f.name]));
-  const libraryMainNodes = isRepertoireSourceBrowseOpen()
-    ? [renderRepertoireSourceBrowse(redraw)]
-    : [
-        renderRepertoireComplianceSection(redraw),
-        renderRepertoireSourcesSection(redraw),
-        h('div.repertoire__studies-heading', 'Studies'),
-        renderFilterBar(redraw),
-        renderSortControls(redraw),
-        renderBulkActionBar(redraw),
-
-        items.length === 0
-          ? h('div.study-page__empty', [
-              h('p', 'No studies yet.'),
-              h('p', 'Right-click any move on the analysis board to save it here.'),
-              allStudies().length === 0
-                ? isSeeding()
-                  ? h('p.study-page__seeding', 'Seeding sample studies…')
-                  : h('button.study-btn.study-btn--seed', {
-                      on: { click: () => { void seedSampleStudies(redraw); } },
-                    }, 'Seed sample studies')
-                : null,
-            ])
-          : viewMode() === 'grid'
-            ? h('div.study-grid', items.map((item, idx) => renderStudyCard(item, idx, redraw)))
-            : h('div.study-list', items.map((item, idx) => renderStudyRow(item, idx, redraw, folderNameById))),
-
-        hasMore()
-          ? h('div.study-list__load-more', [
-              isLoadingMore()
-                ? h('span.study-list__loading', 'Loading…')
-                : h('button.study-btn.study-btn--load-more', {
-                    on: { click: () => {
-                      void loadNextPage(redraw).then(loaded => {
-                        if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
-                      });
-                    } },
-                  }, 'Load more'),
-            ])
-          : null,
-      ];
-
-  return h('div.study-page', [
+  return h('div.study-page.study-page--dual-pane', [
     h('div.study-page__header', [
       h('h1', 'Study Library'),
       h('div.study-page__header-actions', [
-        // View mode toggle
-        h('div.study-view-toggle', [
-          h('button.study-view-toggle__btn', {
-            class: { active: viewMode() === 'list' },
-            attrs: { title: 'List view', 'aria-label': 'List view' },
-            on: { click: () => {
-              setViewMode('list');
-              writeStudyLibraryRoute({ view: 'list' });
-              redraw();
-            } },
-          }, '☰'),
-          h('button.study-view-toggle__btn', {
-            class: { active: viewMode() === 'grid' },
-            attrs: { title: 'Grid view', 'aria-label': 'Grid view' },
-            on: { click: () => {
-              setViewMode('grid');
-              writeStudyLibraryRoute({ view: 'grid' });
-              redraw();
-            } },
-          }, '⊞'),
-        ]),
         h('button.study-btn.study-btn--import', {
           on: { click: () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); } },
         }, 'Import PGN'),
@@ -2112,12 +2064,56 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
     renderOrpSection(redraw),
 
-    // Two-column layout: folder sidebar + main content area
-    h('div.study-library-layout', [
-      renderFolderSidebar(redraw),
+    // First-run onboarding hint, preserved from the pre-navigator empty state -- keyed off the
+    // WHOLE library being empty (not the current nav-pane selection, which has no "seed sample
+    // studies" concept of its own). D05/D06 already render their own graceful per-section/
+    // per-folder empty states ("No items yet" / "No games") below regardless of this hint.
+    allStudies().length === 0
+      ? h('div.study-page__empty', [
+          h('p', 'No studies yet.'),
+          h('p', 'Right-click any move on the analysis board to save it here.'),
+          isSeeding()
+            ? h('p.study-page__seeding', 'Seeding sample studies…')
+            : h('button.study-btn.study-btn--seed', {
+                on: { click: () => { void seedSampleStudies(redraw); } },
+              }, 'Seed sample studies'),
+        ])
+      : null,
 
-      h('div.study-library-main', libraryMainNodes),
-    ]),
+
+
+
+
+
+
+
+
+
+    renderRepertoireComplianceSection(redraw),
+    renderRepertoireSourcesSection(redraw),
+
+    // T5-D07: the dual-pane Study Navigator shell (P2-LIB-1 first amendment) -- replaces the flat
+    // folder-sidebar + game-list/grid layout. Composes T5-D05 (navigationPaneView.ts) + T5-D06
+    // (itemListView.ts) + the new pane-resize divider (paneResize.ts) with basic single-selection.
+    renderNavigatorShell(studyNavigationTree(), allStudies(), redraw),
+
+    // Pagination is unchanged (CR-2/CR-3: studies load via IDB cursor pages, never an eager full
+    // scan) -- "Load more" still appends additional pages into the same in-memory studies state
+    // the navigator tree/item-list both read on every render, so a library beyond one page keeps
+    // working exactly as before, just relocated below the shell instead of below the old flat list.
+    hasMore()
+      ? h('div.study-list__load-more', [
+          isLoadingMore()
+            ? h('span.study-list__loading', 'Loading…')
+            : h('button.study-btn.study-btn--load-more', {
+                on: { click: () => {
+                  void loadNextPage(redraw).then(loaded => {
+                    if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
+                  });
+                } },
+              }, 'Load more'),
+        ])
+      : null,
 
     _showImportModal ? renderImportModal(redraw) : null,
   ]);
