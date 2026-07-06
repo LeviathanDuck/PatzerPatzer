@@ -132,3 +132,22 @@ fs.mkdirSync('public/css', { recursive: true });
 const result = sass.compile('src/styles/main.scss');
 fs.writeFileSync('public/css/main.css', cgCss + '\n' + result.css);
 console.log('  public/css/main.css');
+
+
+
+
+
+const indexHtmlPath = 'public/index.html';
+if (fs.existsSync(indexHtmlPath)) {
+  const html = fs.readFileSync(indexHtmlPath, 'utf8');
+  const bustedHtml = html.replace(
+    /(\/(?:css\/main\.css|js\/main\.js))\?v=[^"']*/g,
+    `$1?v=${buildId}`,
+  );
+  if (bustedHtml !== html) {
+    fs.writeFileSync(indexHtmlPath, bustedHtml);
+    console.log(`  public/index.html (cache-bust ?v=${buildId})`);
+  } else {
+    console.log(`  public/index.html (cache-bust already ?v=${buildId})`);
+  }
+}
