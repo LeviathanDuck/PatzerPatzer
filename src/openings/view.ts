@@ -32,6 +32,7 @@ import {
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
   refreshRegistryAccounts, invalidateImportedSpeeds, getImportedSpeedsForAccount,
   openingsPage, activeCollection, activeGames, sessionNode, sessionPath, openingTree, sampleGames,
+  openingsSessionUrlSnapshot,
   boardOrientation, flipBoard, colorFilter, setColorFilter, speedFilter, setSpeedFilter,
   routeRecoveryMessage,
   sampleGamesSortMode, setSampleGamesSortMode, sampleGamesResultFilter, setSampleGamesResultFilter,
@@ -106,6 +107,8 @@ import {
   markNav, currentGenerationToken, isGenerationCurrent, onSettle, isRapid,
 } from './scheduler';
 import { renderExplorerDbTabs, renderExplorerConfigPanel, renderExplorerPanel } from './explorerView';
+import { opponentsEntryHref } from './routeOrchestration';
+import { enterAnalysisMode, renderAnalysisModeToggleButton } from '../board/analysisModeToggle';
 
 // Exported (read-only usage) so explorerView.ts can resolve the openings board for
 // explorer/repertoire move-row hover interactions without duplicating board-mount state.
@@ -2368,6 +2371,20 @@ function renderActiveOpeningsSaveFlowModal(): VNode | null {
   return _activeOpeningsSaveFlow ? renderSaveFlowModal(_activeOpeningsSaveFlow) : null;
 }
 
+
+
+function sanSequenceForPath(tree: OpeningTreeNode, path: readonly string[]): string[] {
+  const sans: string[] = [];
+  let current: OpeningTreeNode = tree;
+  for (const uci of path) {
+    const child = current.children.find(c => c.uci === uci);
+    if (!child) break;
+    sans.push(child.san);
+    current = child;
+  }
+  return sans;
+}
+
 function handleSaveToLibrary(path: readonly string[], redraw: () => void): void {
   // Guard: canonical helper requires at least 3 half-moves to produce a drillable sequence.
   // Show a specific message rather than silently doing nothing.
@@ -2381,21 +2398,50 @@ function handleSaveToLibrary(path: readonly string[], redraw: () => void): void 
 
   const trainAs   = boardOrientation();
   const collection = activeCollection();
-
-  // Derive SAN sequence by walking the opening tree along the path.
   const tree = openingTree();
-  const sans: string[] = [];
-  if (tree) {
-    let current: import('./tree').OpeningTreeNode = tree;
-    for (const uci of path) {
-      const child = current.children.find(c => c.uci === uci);
-      if (!child) break;
-      sans.push(child.san);
-      current = child;
-    }
-  }
+  const sans = tree ? sanSequenceForPath(tree, path) : [];
 
   openOpeningsSaveFlow(path, sans, trainAs, collection, redraw);
+}
+
+
+
+
+/**
+ * Wires the generalized seed-analysis handoff (main.ts's openAnalysisBoardFromEditor) into the
+ * tree's own Analysis-mode toggle. Set once at bootstrap, mirroring
+ * setOpeningsSessionStateChangeHandler's injection pattern in ctrl.ts.
+ */
+let _onEnterAnalysisMode: ((pgn: string) => void) | null = null;
+export function setOpeningsAnalysisModeEntryHandler(handler: ((pgn: string) => void) | null): void {
+  _onEnterAnalysisMode = handler;
+}
+
+
+
+
+
+
+
+
+function enterAnalysisModeFromTree(path: readonly string[]): void {
+  const snapshot = openingsSessionUrlSnapshot();
+  const tree = openingTree();
+  if (!snapshot || !tree || !_onEnterAnalysisMode) return;
+
+  const sans = sanSequenceForPath(tree, path);
+
+  cancelTreeEval();
+  markNav();
+
+  const { pgn } = enterAnalysisMode({
+    surfaceId:   'opening-tree',
+    priorRoute:  opponentsEntryHref(snapshot),
+    resumeState: snapshot,
+    rootFen:     tree.fen,
+    sans,
+  });
+  _onEnterAnalysisMode(pgn);
 }
 
 function renderOpeningsMoveList(
@@ -2436,7 +2482,12 @@ function renderOpeningsMoveNavBar(
   const canPrev = path.length > 0;
   const canNext = node !== null && node.children.length > 0;
 
-  return renderMoveNavBar([], {
+
+
+
+  return renderMoveNavBar([
+    renderAnalysisModeToggleButton(false, () => enterAnalysisModeFromTree(path)),
+  ], {
     canPrev,
     canNext,
     first:      () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); },
