@@ -89,6 +89,11 @@ interface AnalysisControlsDeps {
   onTogglePractice?: () => void;
 
   getOrientation?: () => Color;
+
+
+
+
+  onToggleQuestionnaire?: () => void;
 }
 
 
@@ -242,6 +247,9 @@ export function renderActionMenu(): VNode | null {
   const canLFYM  = analysisComplete;
 
 
+  const canQuestionnaire = analysisComplete;
+
+
 
   const canCompareWithLichess = !!deps.hasCompletedReviewForSelectedGame?.();
 
@@ -392,6 +400,23 @@ export function renderActionMenu(): VNode | null {
         h('span.lfym-badge', { class: { 'lfym-badge--inverted': hasRetro } }, '?!'),
         hasRetro ? ' Close Mistakes' : ' Learn From Your Mistakes',
       ]),
+
+
+
+
+
+
+
+      ...(deps.onToggleQuestionnaire ? [h('button', {
+        attrs: {
+          title: canQuestionnaire ? 'Post Game Review Questions' : 'Analyze the game first',
+          disabled: !canQuestionnaire,
+        },
+        on: { click: () => { if (canQuestionnaire) { deps.onToggleQuestionnaire!(); close(); } } },
+      }, [
+        h('span.qnr-pulse.qnr-pulse--unsatisfied'),
+        ' Post Game Review Questions',
+      ])] : []),
 
 
       h('button', {
