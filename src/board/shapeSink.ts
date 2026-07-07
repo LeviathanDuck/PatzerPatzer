@@ -11,6 +11,7 @@
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { AnalyseCtrl } from '../analyse/ctrl';
+import { keyProvider, providerIsLive, type KeyedProvider } from '../analyse/workspaceCore';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { formatScore } from '../analyse/evalView';
 import {
@@ -46,12 +47,17 @@ import { buildPremovePreviewShapes } from './premoves';
 // reshaping any of the exported provider-registration or sync functions below. For now there is
 // exactly one instance (Analysis) — this preserves today's singleton behavior exactly; no
 // per-instance plumbing is built here.
+// Providers are instance-keyed via workspaceCore's keyProvider/providerIsLive (D-core-06, ledger
+// F3): a provider registered under one workspace instance becomes a no-op once a different instance
+// is active. Today Analysis is the only instance and every setter runs after its mount, so every
+// provider is always live — byte-identical arrows; the keying only bites once a genuine second
+// workspace instance exists.
 interface ShapeSinkState {
   getCtrl:                      () => AnalyseCtrl;
   getCgInstance:                () => CgApi | undefined;
-  repertoireArrowShapeProvider: () => DrawShape[];
-  extraArrowSuppressProvider:   (() => boolean) | null;
-  extraAutoShapesProvider:      (() => DrawShape[]) | null;
+  repertoireArrowShapeProvider: KeyedProvider<() => DrawShape[]>;
+  extraArrowSuppressProvider:   KeyedProvider<() => boolean> | null;
+  extraAutoShapesProvider:      KeyedProvider<() => DrawShape[]> | null;
   arrowDebounceTimer:           ReturnType<typeof setTimeout> | null;
   arrowSuppressUntil:           number;
   lastAutoShapesHash:           string | null;
@@ -61,7 +67,7 @@ interface ShapeSinkState {
 const sink: ShapeSinkState = {
   getCtrl:                      () => { throw new Error('shape sink not initialised'); },
   getCgInstance:                () => undefined,
-  repertoireArrowShapeProvider: () => [],
+  repertoireArrowShapeProvider: { fn: () => [], instanceId: null },
   extraArrowSuppressProvider:   null,
   extraAutoShapesProvider:      null,
   arrowDebounceTimer:           null,
@@ -83,7 +89,7 @@ export function initShapeSink(deps: {
 }
 
 export function setRepertoireArrowShapeProvider(provider: (() => DrawShape[]) | null): void {
-  sink.repertoireArrowShapeProvider = provider ?? (() => []);
+  sink.repertoireArrowShapeProvider = keyProvider(provider ?? (() => []));
 }
 
 // --- Arrow rendering ---
@@ -106,11 +112,14 @@ export function buildArrowShapes(): DrawShape[] {
   // lichess-org/lila practiceCtrl hiding ceval UI during practice). Combined with retroHidden
   // below for every gate except the retro-only candidate-arrow branch, which requires
   // ctrl.retro itself and stays keyed on retroHidden alone.
-  const externallyHidden = sink.extraArrowSuppressProvider?.() ?? false;
+  const externallyHidden =
+    sink.extraArrowSuppressProvider && providerIsLive(sink.extraArrowSuppressProvider)
+      ? sink.extraArrowSuppressProvider.fn()
+      : false;
   const engineGuidanceHidden = retroHidden || externallyHidden;
 
-  if (ctrl.retro === undefined) {
-    shapes.push(...sink.repertoireArrowShapeProvider());
+  if (ctrl.retro === undefined && providerIsLive(sink.repertoireArrowShapeProvider)) {
+    shapes.push(...sink.repertoireArrowShapeProvider.fn());
   }
 
   shapes.push(...buildEngineArrowShapes({ suppress: engineGuidanceHidden, includeThreat: false }));
@@ -161,7 +170,9 @@ export function buildArrowShapes(): DrawShape[] {
   if (koOverlay) shapes.push(koOverlay);
 
 
-  shapes.push(...(sink.extraAutoShapesProvider?.() ?? []));
+  shapes.push(...(sink.extraAutoShapesProvider && providerIsLive(sink.extraAutoShapesProvider)
+    ? sink.extraAutoShapesProvider.fn()
+    : []));
 
   // Board-owned queued-premove preview. Kept outside the single extra-shape provider so practice
   // hints and stack previews compose instead of replacing one another.
@@ -178,14 +189,14 @@ export function buildArrowShapes(): DrawShape[] {
 
 
 export function setExtraArrowSuppressProvider(fn: (() => boolean) | null): void {
-  sink.extraArrowSuppressProvider = fn;
+  sink.extraArrowSuppressProvider = fn ? keyProvider(fn) : null;
 }
 
 // Extra auto-shape provider seam — lets a feature module (e.g. analysis practice) merge
 // its own shapes into the shared auto-shape pipeline without owning cg.setAutoShapes.
 // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts practice hint/hover shape merge.
 export function setExtraAutoShapesProvider(fn: (() => DrawShape[]) | null): void {
-  sink.extraAutoShapesProvider = fn;
+  sink.extraAutoShapesProvider = fn ? keyProvider(fn) : null;
 }
 
 export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean; fen?: string }): DrawShape[] {

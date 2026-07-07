@@ -139,3 +139,24 @@ export function mountWorkspace(adapter: WorkspaceAdapter): WorkspaceInstance {
   workspaceSlot.set(instance, `mount:${adapter.id}`);
   return instance;
 }
+
+// --- Instance-keyed providers (D-core-06 / ledger F3) ---
+//
+// A callback tagged with the workspace-instance id active when it was registered. A keyed provider
+// is LIVE only while its registering instance is still the active workspace — one left behind by a
+// superseded/torn-down instance becomes a guaranteed no-op (the single-active-slot stale-drop
+// discipline above, extended to registered callbacks). A null id (registered before any workspace
+// mounted) is treated as NOT instance-scoped = ALWAYS live, so a pre-mount registration is never
+// silently dropped. Used by src/board/shapeSink.ts's arrow/shape provider registration.
+export interface KeyedProvider<T> {
+  fn: T;
+  instanceId: string | null;
+}
+
+export function keyProvider<T>(fn: T): KeyedProvider<T> {
+  return { fn, instanceId: activeWorkspace()?.instanceId ?? null };
+}
+
+export function providerIsLive(p: { instanceId: string | null }): boolean {
+  return p.instanceId === null || p.instanceId === (activeWorkspace()?.instanceId ?? null);
+}
