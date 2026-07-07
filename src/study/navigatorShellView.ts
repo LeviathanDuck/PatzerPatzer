@@ -57,6 +57,20 @@ import {
 import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
 import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './navigatorSettings';
+import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
+import {
+  createFolder,
+  folders,
+  searchQuery,
+  setSearch,
+  sortDir,
+  setSortDir,
+  sortKey,
+  setSortKey,
+  type StudySortDir,
+  type StudySortKey,
+} from './studyCtrl';
+import { writeHashRoute } from '../router';
 
 // ---------------------------------------------------------------------------------------------
 // Selection model — BASIC single-selection only (T5-D09 owns multi-select). Kept as a single
@@ -193,7 +207,23 @@ function findFolderGroup(
   return null;
 }
 
-function resolveSelectedItemIds(tree: StudyNavigationTree, selection: NavigatorSelection): string[] {
+
+
+
+
+
+
+
+
+
+
+
+
+function resolveSelectedItemIds(
+  tree: StudyNavigationTree,
+  selection: NavigatorSelection,
+  includeDescendants: boolean,
+): string[] {
 
 
   if (selection.kind === 'lens') return [];
@@ -217,8 +247,15 @@ function resolveSelectedItemIds(tree: StudyNavigationTree, selection: NavigatorS
 
 
 
+
   const folder = findFolderGroup(section.folders, selection.folderId);
-  return folder ? Array.from(new Set(folder.itemIds)) : [];
+  if (!folder) return [];
+  if (includeDescendants) {
+    const ids = new Set<string>();
+    collectFolderItemIdsRecursive(folder, ids);
+    return Array.from(ids);
+  }
+  return Array.from(new Set(folder.itemIds));
 }
 
 function resolveItems(ids: readonly string[], byId: ReadonlyMap<string, StudyItem>): StudyItem[] {
@@ -296,61 +333,17 @@ const ITEM_LIST_DENSITY: ItemListDensity = 'full';
 
 
 
-function railIcon(children: VNode[]): VNode {
-  return h('svg.lib-rail__icon', {
-    attrs: {
-      viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none',
-      stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-      'aria-hidden': 'true', focusable: 'false',
-    },
-  }, children);
-}
 
-function iconLibrarySurface(): VNode {
-  // Open-book glyph for the Library surface.
-  return railIcon([
-    h('path', { attrs: { d: 'M4 5.5C4 4.67 4.67 4 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5v-13z' } }),
-    h('path', { attrs: { d: 'M20 5.5c0-.83-.67-1.5-1.5-1.5H13v16h5.5c.83 0 1.5-.67 1.5-1.5v-13z' } }),
-    h('line', { attrs: { x1: 12, y1: 4, x2: 12, y2: 20 } }),
-  ]);
-}
 
-function iconRepertoireBuilderSurface(): VNode {
-  // Branch glyph — Repertoire Builder grows/merges opening lines.
-  return railIcon([
-    h('line', { attrs: { x1: 6, y1: 3, x2: 6, y2: 15 } }),
-    h('circle', { attrs: { cx: 18, cy: 6, r: 3 } }),
-    h('circle', { attrs: { cx: 6, cy: 18, r: 3 } }),
-    h('path', { attrs: { d: 'M18 9a9 9 0 0 1-9 9' } }),
-  ]);
-}
 
-function iconComplianceToolkitSurface(): VNode {
-  // Shield-check glyph — repertoire divergence/compliance scanning.
-  return railIcon([
-    h('path', { attrs: { d: 'M12 3l7 3v6c0 5-3.5 8.5-7 9c-3.5-.5-7-4-7-9V6z' } }),
-    h('path', { attrs: { d: 'M9 12l2 2 4-4' } }),
-  ]);
-}
-
-function iconOrpSurface(): VNode {
-  // Repeat-loop glyph — Opening Repetition Practice.
-  return railIcon([
-    h('path', { attrs: { d: 'M17 2l4 4-4 4' } }),
-    h('path', { attrs: { d: 'M3 11V9a4 4 0 0 1 4-4h14' } }),
-    h('path', { attrs: { d: 'M7 22l-4-4 4-4' } }),
-    h('path', { attrs: { d: 'M21 13v2a4 4 0 0 1-4 4H3' } }),
-  ]);
-}
-
-type RailSurface = { id: string; label: string; icon: () => VNode; active: boolean; disabled: boolean };
+type RailSurface = { id: string; label: string; icon: NavIconName; active: boolean; disabled: boolean };
 
 function railSurfaces(): RailSurface[] {
   return [
-    { id: 'library', label: 'Library', icon: iconLibrarySurface, active: true, disabled: false },
-    { id: 'repertoire-builder', label: 'Repertoire Builder', icon: iconRepertoireBuilderSurface, active: false, disabled: true },
-    { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: iconComplianceToolkitSurface, active: false, disabled: true },
-    { id: 'orp', label: 'Opening Repetition Practice', icon: iconOrpSurface, active: false, disabled: true },
+    { id: 'library', label: 'Library', icon: 'library', active: true, disabled: false },
+    { id: 'repertoire-builder', label: 'Repertoire Builder', icon: 'hammer', active: false, disabled: true },
+    { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: 'shield-check', active: false, disabled: true },
+    { id: 'orp', label: 'Opening Repetition Practice', icon: 'repeat', active: false, disabled: true },
   ];
 }
 
@@ -366,9 +359,10 @@ function renderRail(): VNode {
         ...(surface.active ? { 'aria-pressed': 'true' } : {}),
         ...(surface.disabled ? { 'aria-disabled': 'true' } : {}),
       },
-    }, [surface.icon()])),
+    }, [navIcon(surface.icon, { size: 18, className: 'lib-rail__icon' })])),
   );
 }
+
 
 
 
@@ -394,29 +388,319 @@ let _settingsOpen = false;
 
 
 
-function renderItemListTempHeader(redraw: () => void, onImportPgnClick: () => void): VNode {
-  return h('div.lib-items-temp-header', [
-    h('button.study-btn.study-btn--import', { on: { click: onImportPgnClick } }, 'Import PGN'),
-    h('button.nav-settings-trigger', {
-      class: { '--active': _settingsOpen },
+
+
+
+
+
+
+
+
+
+
+
+
+let _newFolderMode = false;
+let _newFolderValue = '';
+
+
+
+
+
+function selectionSectionId(selection: NavigatorSelection): StudySectionId | null {
+  return selection.kind === 'lens' ? null : selection.sectionId;
+}
+
+/** Whether the current selection can parent a new folder (anything but a lens). */
+function canParentNewFolder(selection: NavigatorSelection): boolean {
+  return selection.kind !== 'lens';
+}
+
+/** `createFolder`'s existing signature returns `Promise<void>` (studyCtrl.ts is a no-touch,
+ * exports-only file this slice does not edit to add a return value) — so the newly created
+ * folder's id is recovered by reading `folders()` right after the awaited call resolves.
+ * `createFolder` always appends the new record (`_folders = [..._folders, folder]`), so the last
+ * element of the post-create array is always the just-created folder; the `name` check below is a
+ * defensive sanity assertion, not the actual lookup mechanism. */
+async function commitNewFolder(selection: NavigatorSelection, redraw: () => void): Promise<void> {
+  const name = _newFolderValue.trim();
+  _newFolderMode = false;
+  _newFolderValue = '';
+  const sectionId = selectionSectionId(selection);
+  if (!name || sectionId === null) {
+    redraw();
+    return;
+  }
+  const parentId = selection.kind === 'folder' ? selection.folderId : undefined;
+  await createFolder(name, parentId);
+  const all = folders();
+  const created = all.length > 0 ? all[all.length - 1] : undefined;
+  if (created && created.name === name) {
+    _selection = { kind: 'folder', sectionId, folderId: created.id };
+  }
+  redraw();
+}
+
+function renderNavToolbar(redraw: () => void, selection: NavigatorSelection): VNode {
+  if (_newFolderMode) {
+    return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
+      h('input.nav-toolbar__new-folder-input', {
+        attrs: { type: 'text', placeholder: 'Folder name…', value: _newFolderValue },
+        hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
+        on: {
+          input: (e: Event) => { _newFolderValue = (e.target as HTMLInputElement).value; },
+          blur: () => { void commitNewFolder(selection, redraw); },
+          keydown: (e: KeyboardEvent) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') { _newFolderMode = false; _newFolderValue = ''; redraw(); }
+          },
+        },
+      }),
+    ]);
+  }
+  const canCreate = canParentNewFolder(selection);
+  return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
+    h('button.nav-toolbar__btn', {
       attrs: {
         type: 'button',
-        title: 'Appearance settings',
-        'aria-label': 'Appearance settings',
-        'aria-expanded': String(_settingsOpen),
+        title: canCreate ? 'New folder' : 'Select a section or folder to add a new folder',
+        'aria-label': 'New folder',
+        ...(canCreate ? {} : { 'aria-disabled': 'true' }),
       },
-      on: { click: () => { _settingsOpen = !_settingsOpen; redraw(); } },
-    }, [
-      h('span.nav-settings-trigger__icon', '⚙'),
-      h('span.nav-settings-trigger__label', 'Appearance'),
+      on: canCreate ? { click: () => { _newFolderMode = true; _newFolderValue = ''; redraw(); } } : {},
+    }, [navIcon('folder-plus', { size: 16 })]),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+let _itemSearchOpen = false;
+let _sortMenuOpen = false;
+let _importMenuOpen = false;
+let _includeDescendants = false;
+
+function filterItemsBySearch(items: StudyItem[], query: string): StudyItem[] {
+  if (!query.trim()) return items;
+  const q = query.trim().toLowerCase();
+  // Title + player-name matching only — studyCtrl.ts's own private `applyFilters` (the classic
+  // flat library view's search) also matches its annotation index (notes/tags/PGN comments), but
+  // that index and the function reading it are not exported (studyCtrl.ts is a no-touch,
+  // exports-only file here), so this navigator-scoped filter is a disclosed narrower subset of
+  // the classic library search rather than a re-derived guess at the private annotation format.
+  return items.filter(item =>
+    item.title.toLowerCase().includes(q) ||
+    (item.white ?? '').toLowerCase().includes(q) ||
+    (item.black ?? '').toLowerCase().includes(q));
+}
+
+function sortItemsForList(items: StudyItem[], key: StudySortKey, dir: StudySortDir): StudyItem[] {
+  const factor = dir === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    if (key === 'title') return factor * a.title.localeCompare(b.title);
+    return factor * (a[key] - b[key]);
+  });
+}
+
+function renderSearchButton(redraw: () => void): VNode {
+  return h('button.item-toolbar__btn', {
+    class: { '--active': _itemSearchOpen },
+    attrs: {
+      type: 'button', title: 'Search', 'aria-label': 'Search', 'aria-expanded': String(_itemSearchOpen),
+    },
+    on: {
+      click: () => {
+        _itemSearchOpen = !_itemSearchOpen;
+        // Closing the toggle clears the query rather than leaving an invisible active filter
+        // silently narrowing the list with no visible control showing why (there is no other
+        // "clear search" affordance in this slice).
+        if (!_itemSearchOpen) setSearch('');
+        redraw();
+      },
+    },
+  }, [navIcon('search', { size: 16 })]);
+}
+
+function renderSearchInputRow(redraw: () => void): VNode {
+  return h('div.item-toolbar__search-row', [
+    h('input.item-toolbar__search-input', {
+      attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery() },
+      hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
+      on: {
+        input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); redraw(); },
+        keydown: (e: KeyboardEvent) => {
+          if (e.key === 'Escape') { _itemSearchOpen = false; setSearch(''); redraw(); }
+        },
+      },
+    }),
+  ]);
+}
+
+function renderDescendantsButton(redraw: () => void): VNode {
+  return h('button.item-toolbar__btn', {
+    class: { '--active': _includeDescendants },
+    attrs: {
+      type: 'button',
+      title: 'Show games from subfolders',
+      'aria-label': 'Show games from subfolders',
+      'aria-pressed': String(_includeDescendants),
+    },
+    on: { click: () => { _includeDescendants = !_includeDescendants; redraw(); } },
+  }, [navIcon('layers', { size: 16 })]);
+}
+
+// Field rows for the sort menu (inventory §2's "Date edited/Date created/Title" rows, narrowed to
+// Patzer's actual three StudySortKey values). Field icons reuse NN's own mapping 1:1 where a
+// Patzer field matches an NN one: created -> `calendar-plus`, modified -> `calendar-clock`,
+// title -> `type`; NN's fourth field (filename -> `file-text`) has no Patzer analog (StudyItem has
+// no filename), so it is not offered.
+const SORT_FIELDS: ReadonlyArray<{ key: StudySortKey; label: string; icon: NavIconName }> = [
+  { key: 'createdAt', label: 'Date saved', icon: 'calendar-plus' },
+  { key: 'updatedAt', label: 'Last modified', icon: 'calendar-clock' },
+  { key: 'title', label: 'Title', icon: 'type' },
+];
+
+// Patzer's one global sort default (studyCtrl.ts's own `_sortKey`/`_sortDir` initial values) is
+// the analog of NN's per-folder "default sort" — the one config nothing has overridden yet.
+const DEFAULT_SORT_KEY: StudySortKey = 'createdAt';
+
+/** The toolbar button's OWN icon mirrors NN's real sort-icon logic (inventory §2): while the
+ * FIELD is still Patzer's own default (`createdAt` — direction may still vary), show a generic
+ * direction glyph (`sort-asc`/`sort-desc`, i.e. this file's own aliases for
+ * `arrow-up-narrow-wide`/`arrow-down-wide-narrow`) rather than naming the field, exactly matching
+ * R4's own reference screenshot (a plain arrow, not a calendar icon, at rest); once the FIELD is
+ * overridden away from that default, the button switches to that field's own icon so it's clear
+ * which field is now driving sort. */
+function sortButtonIcon(): NavIconNameOrAlias {
+  if (sortKey() === DEFAULT_SORT_KEY) return sortDir() === 'asc' ? 'sort-asc' : 'sort-desc';
+  return SORT_FIELDS.find(f => f.key === sortKey())?.icon ?? 'arrow-up-down';
+}
+
+function renderSortButton(redraw: () => void): VNode {
+  return h('button.item-toolbar__btn', {
+    class: { '--active': _sortMenuOpen },
+    attrs: {
+      type: 'button', title: 'Change sort', 'aria-label': 'Change sort', 'aria-expanded': String(_sortMenuOpen),
+    },
+    on: { click: () => { _sortMenuOpen = !_sortMenuOpen; redraw(); } },
+  }, [navIcon(sortButtonIcon(), { size: 16 })]);
+}
+
+/** NN-shaped sort menu (inventory §2's "Sort & Group" popover): disabled "Sort by" header, field
+ * rows with check state, a separator, then Ascending/Descending rows with check state. NN's
+ * manual-sort row, "Edit sort order...", "Remove sort property", and the entire "Group by" section
+ * are DEFERRED (no Patzer manual-sort or grouping model exists yet) — disclosed, not silently
+ * dropped. No vendored Lucide "check" glyph exists in the ISC set this slice transcribes from, so
+ * check state uses a plain "✓" text glyph, consistent with this codebase's existing use of plain
+ * unicode accents elsewhere (e.g. libraryView.ts's own ✎/× folder-action glyphs). */
+function renderSortMenu(redraw: () => void): VNode | null {
+  if (!_sortMenuOpen) return null;
+  const closeAnd = (fn: () => void) => () => { fn(); _sortMenuOpen = false; redraw(); };
+  return h('div.nav-menu.item-toolbar__sort-menu', { attrs: { role: 'menu', 'aria-label': 'Sort and group' } }, [
+    h('div.nav-menu__header', { attrs: { role: 'presentation', 'aria-disabled': 'true' } }, [
+      navIcon('arrow-up-down', { size: 14 }),
+      h('span', 'Sort by'),
     ]),
+    h('div.nav-menu__sep'),
+    ...SORT_FIELDS.map(field => h('button.nav-menu__item', {
+      key: field.key,
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortKey() === field.key) },
+      on: { click: closeAnd(() => setSortKey(field.key)) },
+    }, [
+      h('span.nav-menu__check', sortKey() === field.key ? '✓' : ''),
+      navIcon(field.icon, { size: 14 }),
+      h('span', field.label),
+    ])),
+    h('div.nav-menu__sep'),
+    h('button.nav-menu__item', {
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'asc') },
+      on: { click: closeAnd(() => setSortDir('asc')) },
+    }, [h('span.nav-menu__check', sortDir() === 'asc' ? '✓' : ''), h('span', 'Ascending')]),
+    h('button.nav-menu__item', {
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'desc') },
+      on: { click: closeAnd(() => setSortDir('desc')) },
+    }, [h('span.nav-menu__check', sortDir() === 'desc' ? '✓' : ''), h('span', 'Descending')]),
+  ]);
+}
+
+function renderAppearanceButton(redraw: () => void): VNode {
+  // Carries BOTH `.item-toolbar__btn` (this slice's new toolbar styling) and the ORIGINAL
+  // `.nav-settings-trigger` class (see the T5-D08 comment block above for why the old class stays).
+  return h('button.item-toolbar__btn.nav-settings-trigger', {
+    class: { '--active': _settingsOpen },
+    attrs: {
+      type: 'button', title: 'Appearance', 'aria-label': 'Appearance', 'aria-expanded': String(_settingsOpen),
+    },
+    on: { click: () => { _settingsOpen = !_settingsOpen; redraw(); } },
+  }, [navIcon('palette', { size: 16 })]);
+}
+
+function renderNewNoteButton(redraw: () => void): VNode {
+  return h('button.item-toolbar__btn', {
+    class: { '--active': _importMenuOpen },
+    attrs: {
+      type: 'button', title: 'New game entry', 'aria-label': 'New game entry', 'aria-expanded': String(_importMenuOpen),
+    },
+    on: { click: () => { _importMenuOpen = !_importMenuOpen; redraw(); } },
+  }, [navIcon('square-pen', { size: 16 })]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderImportMenu(redraw: () => void, onImportPgnClick: () => void): VNode | null {
+  if (!_importMenuOpen) return null;
+  const closeAnd = (fn: () => void) => () => { fn(); _importMenuOpen = false; redraw(); };
+  return h('div.nav-menu.item-toolbar__import-menu', { attrs: { role: 'menu', 'aria-label': 'New game entry' } }, [
+    h('button.nav-menu__item', {
+      attrs: { type: 'button', role: 'menuitem' },
+      on: { click: closeAnd(onImportPgnClick) },
+    }, [navIcon('file-plus', { size: 14 }), h('span', 'Import PGN')]),
+    h('button.nav-menu__item', {
+      attrs: { type: 'button', role: 'menuitem' },
+      on: { click: closeAnd(() => { writeHashRoute('#/editor'); }) },
+    }, [navIcon('external-link', { size: 14 }), h('span', 'Paste FEN / position')]),
+  ]);
+}
+
+function renderItemListToolbar(redraw: () => void, onImportPgnClick: () => void): VNode {
+  return h('div.item-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Item list actions' } }, [
+    renderSearchButton(redraw),
+    renderDescendantsButton(redraw),
+    h('div.item-toolbar__group', [renderSortButton(redraw), renderSortMenu(redraw)]),
+    renderAppearanceButton(redraw),
+    h('div.item-toolbar__group', [renderNewNoteButton(redraw), renderImportMenu(redraw, onImportPgnClick)]),
   ]);
 }
 
 /**
- * Render the Study Navigator's composing shell: tool rail (OD-2) + nav pane (T5-D05) + resize
- * divider + item-list pane (T5-D06, with its own temp header row), wired with BASIC
- * single-selection over the P1 navigation-index tree.
+ * Render the Study Navigator's composing shell: tool rail (OD-2) + nav pane (T5-D05, with its own
+ * new-folder toolbar, OD-3) + resize divider + item-list pane (T5-D06, with its own NN icon
+ * toolbar, OD-3/OD-4), wired with BASIC single-selection over the P1 navigation-index tree.
  *
  * `tree` is the current `studyNavigationTree()` snapshot; `allItems` is the currently-loaded
  * `StudyItem[]` (`allStudies()`) those tree itemIds are resolved against. `onImportPgnClick` opens
@@ -446,12 +730,16 @@ export function renderNavigatorShell(
   wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
 
   const byId = new Map(allItems.map(item => [item.id, item] as const));
-  const items = resolveItems(resolveSelectedItemIds(tree, _selection), byId);
+  const rawItems = resolveItems(resolveSelectedItemIds(tree, _selection, _includeDescendants), byId);
+  // Search narrows the resolved item set; sort reorders it. Both are applied here (the shell) —
+  // itemListView.ts's own `renderGroupedRows` still re-sorts its OWN copy by `updatedAt` descending
+  // for its date-bucket headers (a no-touch file this slice does not edit), so the search filter's
+  // effect is fully visible (items are actually removed) but the sort field/direction's effect on
+  // final ROW ORDER is not currently visible beyond that forced date-bucket grouping — a disclosed,
+  // itemListView.ts-owned limitation, not a wiring gap in this file. See this slice's completion
+  // report.
+  const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
   const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw);
-
-
-
-
 
 
 
@@ -460,10 +748,14 @@ export function renderNavigatorShell(
     attrs: { style: _navDivider.styleDeclaration() },
   }, [
     renderRail(),
-    navPane,
+    h('div.lib-nav-wrap', [
+      renderNavToolbar(redraw, _selection),
+      navPane,
+    ]),
     renderDivider(redraw),
     h('div.lib-items-wrap', [
-      renderItemListTempHeader(redraw, onImportPgnClick),
+      renderItemListToolbar(redraw, onImportPgnClick),
+      _itemSearchOpen ? renderSearchInputRow(redraw) : null,
       _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
       itemListPane,
     ]),
