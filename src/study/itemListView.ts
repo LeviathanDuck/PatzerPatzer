@@ -75,6 +75,15 @@
 
 
 
+
+
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
@@ -88,12 +97,14 @@ import {
   folders,
   isSelected,
   rangeSelectToId,
+  selectAllDisplayed,
+  selectAllInScope,
   selectedIds,
   selectionCount,
   sortKey,
   toggleSelectId,
 } from './studyCtrl';
-import { deriveHomeFolderId } from './studyDb';
+import { collectStudyIdsInScope, deriveHomeFolderId } from './studyDb';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import {
   openGameContextMenu,
@@ -563,6 +574,139 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderSelectAllPageControl(redraw: () => void, displayedIds: readonly string[]): VNode | null {
+  if (displayedIds.length === 0) return null;
+  const allSelected = displayedIds.length > 0 && displayedIds.every(id => isSelected(id));
+  const label = allSelected
+    ? `All ${displayedIds.length} on this page selected`
+    : `Select all ${displayedIds.length} on this page`;
+  return h('div.sentry-select-all-page', [
+    h('input.sentry-select-all-page__checkbox', {
+      attrs: {
+        type: 'checkbox',
+        title: allSelected ? 'Clear selection' : label,
+        'aria-label': allSelected ? 'Clear selection' : label,
+      },
+      props: { checked: allSelected },
+      on: {
+        click: (e: Event) => {
+          e.stopPropagation();
+          if (allSelected) clearSelection();
+          else selectAllDisplayed(displayedIds);
+          redraw();
+        },
+      },
+    }),
+    h('span.sentry-select-all-page__label', label),
+  ]);
+}
+
+// Cached "true total in this folder" fetch -- keyed to the folder id it was computed for so a
+// redraw never shows a stale count carried over from a different folder. Reset whenever the
+// loaded page stops being fully selected (see `renderSelectAllScopeBanner` below) so re-selecting
+// later always re-fetches a fresh total rather than showing a leftover number.
+let _scopeBannerFolderId: string | null = null;
+let _scopeBannerIds: string[] | null = null;
+let _scopeBannerPending = false;
+
+function folderScopePredicate(folderId: string): (item: Pick<StudyItem, 'id' | 'folders'>) => boolean {
+  // Mirrors studyCtrl.ts's OWN existing folder-membership test (`applyFilters`'s
+  // `s.folders.includes(_activeFolderId)`) -- the same simple field predicate every other
+  // folder-membership call site in this app already uses (bulkAddToFolder, rehomeGame, the
+  // navigation-index tree's own `item.folders` walk), so this scope query stays consistent with
+  // the rest of the app rather than inventing a second membership rule.
+  return item => item.folders.includes(folderId);
+}
+
+/** Fires the one-time id-only cursor scan (`studyDb.collectStudyIdsInScope`) to learn a folder's
+ * TRUE total, caching the result against `folderId` so a subsequent redraw doesn't re-trigger it.
+ * A response for a folder the caller has since navigated away from is dropped (`_scopeBannerFolderId`
+ * changed while the cursor was in flight). */
+function ensureScopeBannerIds(folderId: string, redraw: () => void): void {
+  if (_scopeBannerFolderId === folderId && (_scopeBannerIds !== null || _scopeBannerPending)) return;
+  _scopeBannerFolderId = folderId;
+  _scopeBannerIds = null;
+  _scopeBannerPending = true;
+  void collectStudyIdsInScope(folderScopePredicate(folderId)).then(ids => {
+    if (_scopeBannerFolderId !== folderId) return; // scope changed mid-flight -- drop this response
+    _scopeBannerIds = ids;
+    _scopeBannerPending = false;
+    redraw();
+  });
+}
+
+function renderSelectAllScopeBanner(
+  redraw: () => void,
+  folderContext: string | null,
+  displayedIds: readonly string[],
+): VNode | null {
+  if (folderContext === null) return null; // section/lens scope total: out of scope this slice (see header comment)
+  if (displayedIds.length === 0) return null;
+
+  const allLoadedSelected = displayedIds.every(id => isSelected(id));
+  if (!allLoadedSelected) {
+    if (_scopeBannerFolderId === folderContext) {
+      _scopeBannerFolderId = null;
+      _scopeBannerIds = null;
+      _scopeBannerPending = false;
+    }
+    return null;
+  }
+
+  ensureScopeBannerIds(folderContext, redraw);
+  if (_scopeBannerIds === null) return null; // still loading (or a fetch was just kicked off)
+  if (_scopeBannerIds.length <= displayedIds.length) return null; // the loaded page already IS the whole scope
+
+  const folderName = folders().find(f => f.id === folderContext)?.name ?? 'this folder';
+  const scopeIds = _scopeBannerIds;
+  const fullScopeSelected = scopeIds.every(id => isSelected(id));
+
+  if (fullScopeSelected) {
+    return h('div.sentry-bulk-bar.sentry-scope-banner', [
+      h('span.sentry-scope-banner__text', `All ${scopeIds.length} in ${folderName} selected.`),
+    ]);
+  }
+
+  return h('div.sentry-bulk-bar.sentry-scope-banner', [
+    h('span.sentry-scope-banner__text', `All ${displayedIds.length} on this page selected.`),
+    h('button.sentry-scope-banner__action', {
+      attrs: { type: 'button' },
+      on: {
+        click: () => {
+          void selectAllInScope(folderScopePredicate(folderContext)).then(redraw);
+        },
+      },
+    }, `Select all ${scopeIds.length} in ${folderName}`),
+  ]);
+}
+
+
+
+
+
+
 function renderItemRow(
   item: StudyItem,
   density: ItemListDensity,
@@ -810,6 +954,8 @@ export function renderItemListPane(
   const restItems = items.filter(i => !pinnedSet.has(i.id));
 
   return h('div.lib-items', [
+    renderSelectAllPageControl(redraw, displayedIds),
+    renderSelectAllScopeBanner(redraw, folderContext, displayedIds),
     renderBulkActionBar(redraw, folderContext),
     h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
       pinnedItems.length > 0

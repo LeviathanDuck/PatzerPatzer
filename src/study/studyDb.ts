@@ -203,6 +203,50 @@ export async function getStudiesPaginated(
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function collectStudyIdsInScope(
+  predicate: (item: Pick<StudyItem, 'id' | 'folders'>) => boolean,
+): Promise<string[]> {
+  try {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('studies', 'readonly').objectStore('studies').openCursor();
+      const ids: string[] = [];
+
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) { resolve(ids); return; }
+        const record = cursor.value as StudyItem;
+        if (predicate(record)) ids.push(record.id);
+        cursor.continue(); // record is discarded here — never pushed onto an accumulating array
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    recordStudyIdbReadFail('studies', e);
+    console.warn('[studyDb] collectStudyIdsInScope failed', e);
+    return [];
+  }
+}
+
 export async function deleteStudy(id: string): Promise<void> {
   try {
     const db = await openDb();

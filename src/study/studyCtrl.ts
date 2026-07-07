@@ -3,7 +3,7 @@
 // Adapted from lichess-org/lila: ui/study/src/studyCtrl.ts state model.
 
 import { parsePgn } from 'chessops/pgn';
-import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
+import { listStudies, getStudiesPaginated, collectStudyIdsInScope, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
@@ -461,6 +461,27 @@ export function selectAllDisplayed(displayedIds: readonly string[]): void {
   for (const id of displayedIds) _selectedIds.add(id);
   if (_cursorId === null || !displayedIds.includes(_cursorId)) {
     _cursorId = displayedIds[0] ?? null;
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+export async function selectAllInScope(
+  scopeMatcher: (item: Pick<StudyItem, 'id' | 'folders'>) => boolean,
+): Promise<void> {
+  const ids = await collectStudyIdsInScope(scopeMatcher);
+  for (const id of ids) _selectedIds.add(id);
+  if (_cursorId === null || !ids.includes(_cursorId)) {
+    _cursorId = ids[0] ?? null;
   }
 }
 
