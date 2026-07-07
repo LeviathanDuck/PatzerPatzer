@@ -1112,6 +1112,34 @@ export async function renameFolder(id: string, newName: string): Promise<void> {
   await saveFolder(updated);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function reparentFolder(id: string, newParentId: string | null): Promise<void> {
+  const idx = _folders.findIndex(f => f.id === id);
+  if (idx === -1) return;
+  const old = _folders[idx]!;
+  const updated: StudyFolder = { ...old, updatedAt: Date.now() };
+  if (newParentId) updated.parentId = newParentId;
+  else delete updated.parentId;
+  _folders = [..._folders.slice(0, idx), updated, ..._folders.slice(idx + 1)];
+  await saveFolder(updated);
+}
+
 /**
  * Add a study to a folder by id (idempotent — skips if already in folder). Used by
  * drag-and-drop to assign a study to a folder without replacing existing assignments

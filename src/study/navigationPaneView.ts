@@ -59,6 +59,20 @@ import {
   type StudySectionId,
 } from './navigationIndexProvider';
 import { navIcon } from './navIcons';
+import {
+  beginFolderDrag,
+  draggingIds,
+  draggingKind,
+  dropTargetHandlers,
+  endDrag,
+  isDropTargetHovered,
+  moveGamesToFolder,
+  reparentFolderTo,
+  shouldSuppressClick,
+  unfileGames,
+  unparentFolder,
+  wouldCreateFolderCycle,
+} from './navigatorDragDrop';
 
 // ---------------------------------------------------------------------------------------------
 // System lenses (P2-LIB-2) — fixed structural label list, not computed lens content (T5-D13 owns
@@ -116,6 +130,11 @@ function isCollapsed(id: string): boolean {
 }
 
 function toggleCollapsed(id: string, redraw: () => void): void {
+
+
+
+
+  if (shouldSuppressClick()) return;
   if (_collapsedIds.has(id)) _collapsedIds.delete(id);
   else _collapsedIds.add(id);
   redraw();
@@ -193,6 +212,59 @@ function countSectionItems(section: StudyNavigationSectionNode): number {
   return total;
 }
 
+
+
+
+
+
+
+
+
+
+function canAcceptDropOnFolder(targetFolderId: string): boolean {
+  const kind = draggingKind();
+  if (kind === 'game') return true;
+  if (kind === 'folder') {
+    const draggedId = draggingIds()[0];
+    return draggedId !== undefined && !wouldCreateFolderCycle(draggedId, targetFolderId);
+  }
+  return false;
+}
+
+function canAcceptDropOnSection(): boolean {
+  return draggingKind() !== null;
+}
+
+/** Commits a drop onto a folder row -- games re-home there; a dragged folder reparents under it.
+ * Chains a `redraw()` after the mutation's async IDB write settles: the drop's OWN synchronous
+ * redraw (dropTargetHandlers) only reflects the FIRST id's in-memory update for a multi-selection
+ * drag (studyCtrl.updateStudy awaits per id, sequentially), so a second redraw once the whole
+ * batch resolves is required for the rest of the dragged selection to visibly move. */
+function commitDropOnFolder(targetFolderId: string, redraw: () => void): void {
+  const kind = draggingKind();
+  const ids = draggingIds();
+  if (kind === 'game') {
+    void moveGamesToFolder(ids, targetFolderId).then(redraw);
+  } else if (kind === 'folder') {
+    const draggedId = ids[0];
+    if (draggedId) void reparentFolderTo(draggedId, targetFolderId).then(redraw);
+  }
+}
+
+/** Commits a drop onto a section header -- games un-file (see navigatorDragDrop.ts's disclosed
+ * simplification note); a dragged folder un-parents to root level. Same chained-redraw reasoning
+ * as commitDropOnFolder above. */
+function commitDropOnSection(redraw: () => void): void {
+  const kind = draggingKind();
+  const ids = draggingIds();
+  if (kind === 'game') {
+    void unfileGames(ids).then(redraw);
+  } else if (kind === 'folder') {
+    const draggedId = ids[0];
+    if (draggedId) void unparentFolder(draggedId).then(redraw);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Row renderers
 // ---------------------------------------------------------------------------------------------
@@ -223,17 +295,50 @@ function renderFolderRow(
   // 12px base mirrors the base row's own horizontal padding set in main.scss's `.nav-row` rule.
   const indentStyle = `padding-left:calc(12px + var(--nav-indent, 16px) * ${depth + 1})`;
 
-  const attrs: Record<string, string> = { role: 'treeitem', title: group.name, style: indentStyle };
+  const attrs: Record<string, string> = {
+    role: 'treeitem',
+    title: group.name,
+    style: indentStyle,
+    draggable: 'true',
+    'data-drop-zone': 'folder',
+    'data-drop-key': collapseKey,
+  };
   if (hasChildren) attrs['aria-expanded'] = String(!collapsed);
 
-  // exactOptionalPropertyTypes forbids `on: undefined`, so a leaf folder (nothing to toggle) omits
-  // the `on` key entirely rather than setting it to an empty/undefined handler.
-  const data: VNodeData = { key: `folder-${sectionId}-${group.id}`, attrs };
-  if (hasChildren) data.on = { click: () => toggleCollapsed(collapseKey, redraw) };
+  const dropHandlers = dropTargetHandlers(
+    {
+      key: collapseKey,
+      canAccept: () => canAcceptDropOnFolder(group.id),
+      onDrop: () => commitDropOnFolder(group.id, redraw),
+      ...(hasChildren
+        ? { springLoad: { isExpanded: () => !isCollapsed(collapseKey), expand: () => toggleCollapsed(collapseKey, redraw) } }
+        : {}),
+    },
+    redraw,
+  );
+
+  const data: VNodeData = {
+    key: `folder-${sectionId}-${group.id}`,
+    attrs,
+    on: {
+      ...dropHandlers,
+      ...(hasChildren ? { click: () => toggleCollapsed(collapseKey, redraw) } : {}),
+      dragstart: (e: DragEvent) => { beginFolderDrag(group.id, group.name, e); redraw(); },
+      dragend: () => { endDrag(); redraw(); },
+    },
+  };
+
+  const dragging = draggingKind() === 'folder' && draggingIds().includes(group.id);
 
   const row = h(
     'div.nav-row.--folder',
-    data,
+    {
+      ...data,
+      class: {
+        'nav-row--drop-over': isDropTargetHovered(collapseKey),
+        'nav-row--dragging': dragging,
+      },
+    },
     [
       hasChildren ? h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸') : null,
       h('span.nav-row__icon', '▤'),
@@ -255,13 +360,31 @@ function renderSectionEmptyHint(sectionId: StudySectionId): VNode {
 
 function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => void): VNode[] {
   const collapsed = isCollapsed(section.id);
+  const sectionDropKey = `section:${section.id}`;
+
+  const dropHandlers = dropTargetHandlers(
+    {
+      key: sectionDropKey,
+      canAccept: canAcceptDropOnSection,
+      onDrop: () => commitDropOnSection(redraw),
+      springLoad: { isExpanded: () => !collapsed, expand: () => toggleCollapsed(section.id, redraw) },
+    },
+    redraw,
+  );
 
   const header = h(
     'div.nav-row.--section',
     {
       key: `section-${section.id}`,
-      attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed), title: section.label },
-      on: { click: () => toggleCollapsed(section.id, redraw) },
+      attrs: {
+        role: 'treeitem',
+        'aria-expanded': String(!collapsed),
+        title: section.label,
+        'data-drop-zone': 'section',
+        'data-drop-key': sectionDropKey,
+      },
+      class: { 'nav-row--drop-over': isDropTargetHovered(sectionDropKey) },
+      on: { ...dropHandlers, click: () => toggleCollapsed(section.id, redraw) },
     },
     [
       h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
@@ -278,6 +401,9 @@ function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => v
 
   return [header, ...section.folders.flatMap(folder => renderFolderRow(section.id, folder, 0, redraw))];
 }
+
+
+
 
 
 

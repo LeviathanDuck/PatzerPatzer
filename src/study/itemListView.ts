@@ -80,6 +80,13 @@ import {
   renderGameContextMenu,
   type GameMenuContext,
 } from './navigatorContextMenu';
+import {
+  beginGameDrag,
+  draggingIds,
+  draggingKind,
+  endDrag,
+  shouldSuppressClick,
+} from './navigatorDragDrop';
 
 export type ItemListDensity = 'compact' | 'full';
 
@@ -167,6 +174,10 @@ function dateGroupLabel(updatedAt: number, now: number): string {
 
 
 function handleItemListClick(id: string, displayedIds: readonly string[], e: MouseEvent): void {
+
+
+
+  if (shouldSuppressClick()) return;
   if (e.shiftKey && cursorId() !== null) {
     rangeSelectToId(id, displayedIds);
   } else {
@@ -374,12 +385,16 @@ function renderItemRow(
       } satisfies RichGameRowDeps)
     : h('div.game-list__row', renderCompactGameRow(gameLike, false, false, undefined, extras));
 
+  const dragging = draggingKind() === 'game' && draggingIds().includes(item.id);
+
   return h('div.sentry-row', {
     key: item.id,
+    attrs: { draggable: 'true' },
     class: {
       'sentry-row--selected': selected,
       'sentry-row--adj-above': Boolean(selected && adjacency?.above),
       'sentry-row--adj-below': Boolean(selected && adjacency?.below),
+      'sentry-row--dragging': dragging,
     },
     on: {
 
@@ -400,6 +415,17 @@ function renderItemRow(
       touchend: cancelLongPress,
       touchmove: cancelLongPress,
       touchcancel: cancelLongPress,
+
+
+
+      dragstart: (e: DragEvent) => {
+        beginGameDrag(item.id, item.title, e);
+        redraw();
+      },
+      dragend: () => {
+        endDrag();
+        redraw();
+      },
     },
   }, [
     h('div.sentry-stack', [
