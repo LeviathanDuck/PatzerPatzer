@@ -2,11 +2,26 @@ import { nodeListAt } from '../tree/ops';
 import type { TreeNode, TreePath } from '../tree/types';
 
 export type StudyDetailOrientation = 'white' | 'black';
-export type StudyDetailRouteField = 'path' | 'orientation';
+export type StudyDetailRouteField = 'path' | 'orientation' | 'tools' | 'toolTab';
 
 export interface StudyDetailRouteState {
   path: TreePath;
   orientation: StudyDetailOrientation;
+  /**
+   * State-3-open flag (owner-approved default: State 3 is deep-linkable). Optional
+   * (unlike `path`/`orientation`) so existing call sites that construct a
+   * `StudyDetailRouteState` literal without it (e.g. `studyDetailCtrl.ts`'s route
+   * snapshot, out of scope for this slice) keep compiling unchanged; parse/default
+   * here always populate a concrete `false` when absent.
+   */
+  tools?: boolean;
+  /**
+   * Active tool-tab id when `tools` is open. Kept as an open/defensive string here —
+   * this slice does not define the tab list (that lands with B4); unknown/invalid
+   * values normalize to '' rather than throwing. Optional for the same reason as
+   * `tools` above; parse/default here always populate a concrete `''` when absent.
+   */
+  toolTab?: string;
 }
 
 export interface StudyDetailRouteInvalidParam {
@@ -54,11 +69,12 @@ export interface StudyDetailPathRecovery {
 
 const STUDY_DETAIL_ROUTE = '#/study';
 const PATH_MAX_LENGTH = 120;
-const PARAM_ORDER: readonly StudyDetailRouteField[] = ['path', 'orientation'];
+const TOOL_TAB_MAX_LENGTH = 40;
+const PARAM_ORDER: readonly StudyDetailRouteField[] = ['path', 'orientation', 'tools', 'toolTab'];
 const KNOWN_PARAMS = new Set<StudyDetailRouteField>(PARAM_ORDER);
 
 export function defaultStudyDetailRouteState(): StudyDetailRouteState {
-  return { path: '', orientation: 'white' };
+  return { path: '', orientation: 'white', tools: false, toolTab: '' };
 }
 
 function queryFromInput(input: string): string {
@@ -146,12 +162,36 @@ function parsePathValue(value: string, invalidParams: StudyDetailRouteInvalidPar
   return normalized;
 }
 
+// Mirrors parsePathValue's defensive shape (trim / length / payload-like / charset)
+// but does not validate against a known tab-id set — that set is defined in B4.
+function parseToolTabValue(value: string, invalidParams: StudyDetailRouteInvalidParam[]): string {
+  const normalized = value.trim();
+  if (!normalized) return '';
+  if (normalized.length > TOOL_TAB_MAX_LENGTH) {
+    invalidParams.push(invalid('toolTab', value, '', 'too-long'));
+    return '';
+  }
+  if (looksPayloadLike(normalized)) {
+    invalidParams.push(invalid('toolTab', value, '', 'payload-like'));
+    return '';
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
+    invalidParams.push(invalid('toolTab', value, '', 'invalid-characters'));
+    return '';
+  }
+  return normalized;
+}
+
 export function serializeStudyDetailRouteState(studyId: string, state: StudyDetailRouteState): string {
   const normalizedId = encodeURIComponent(studyId.trim());
   const baseRoute = normalizedId ? `${STUDY_DETAIL_ROUTE}/${normalizedId}` : STUDY_DETAIL_ROUTE;
   const params = new URLSearchParams();
   if (state.path) params.set('path', state.path);
   if (state.orientation === 'black') params.set('orientation', 'black');
+  if (state.tools) {
+    params.set('tools', '1');
+    if (state.toolTab) params.set('toolTab', state.toolTab);
+  }
   const query = params.toString();
   return query ? `${baseRoute}?${query}` : baseRoute;
 }
@@ -181,6 +221,17 @@ export function parseStudyDetailRouteState(input: string): StudyDetailRouteState
     else if (normalized === 'black') state.orientation = 'black';
     else invalidParams.push(invalid('orientation', orientationValue, 'white', 'invalid-orientation'));
   }
+
+  const toolsValue = lastValue(grouped, 'tools', duplicateParams);
+  if (toolsValue !== null) {
+    const normalized = toolsValue.trim().toLowerCase();
+    if (normalized === '' || normalized === '0' || normalized === 'false') state.tools = false;
+    else if (normalized === '1' || normalized === 'true') state.tools = true;
+    else invalidParams.push(invalid('tools', toolsValue, 'false', 'invalid-boolean'));
+  }
+
+  const toolTabValue = lastValue(grouped, 'toolTab', duplicateParams);
+  if (toolTabValue !== null) state.toolTab = parseToolTabValue(toolTabValue, invalidParams);
 
   const canonicalRoute = serializeStudyDetailCanonicalQuery(state);
   return {
