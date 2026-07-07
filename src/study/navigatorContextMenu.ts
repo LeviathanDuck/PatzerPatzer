@@ -53,6 +53,11 @@
 
 
 
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
@@ -67,6 +72,7 @@ import {
   setActiveFolderId,
   updateStudy,
 } from './studyCtrl';
+import { addShortcut, isShortcut, removeShortcut } from './shortcuts';
 import { deriveHomeFolderId } from './studyDb';
 import { writeHashRoute } from '../router';
 
@@ -258,11 +264,33 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
   }
   entries.push(menuSeparator('sep-tags'));
 
-  // 4. Shortcuts+Pin block. "Add/Remove from shortcuts" (single) and "Add {N} to shortcuts" (multi)
-  // are DEFERRED to A6 (no Shortcuts system exists yet) — disclosed, not built. Pin/unpin ships:
-  // icon is ALWAYS `pin` (inventory §4 — wording alone carries state), single toggles the one
-  // clicked item, multi pins every unpinned target if any is unpinned, else unpins all (inventory
-  // §3's own multi-pin rule).
+
+
+
+
+
+
+
+
+  if (!isMulti) {
+    const shortcutTargetId = ids[0]!;
+    const isShortcutted = isShortcut('game', shortcutTargetId);
+    entries.push(menuItem({
+      key: 'shortcut',
+      label: isShortcutted ? 'Remove from shortcuts' : 'Add to shortcuts',
+      icon: isShortcutted ? 'star-off' : 'star',
+      onClick: () => {
+        if (isShortcutted) removeShortcut('game', shortcutTargetId);
+        else addShortcut('game', shortcutTargetId);
+        redraw();
+      },
+    }));
+    entries.push(menuSeparator('sep-shortcut'));
+  }
+
+  // Pin/unpin: icon is ALWAYS `pin` (inventory §4 — wording alone carries state), single toggles
+  // the one clicked item, multi pins every unpinned target if any is unpinned, else unpins all
+  // (inventory §3's own multi-pin rule).
   if (!isMulti) {
     const pinned = ctx.isPinned(ids[0]!);
     entries.push(menuItem({

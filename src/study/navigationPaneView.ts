@@ -73,6 +73,18 @@ import {
   unparentFolder,
   wouldCreateFolderCycle,
 } from './navigatorDragDrop';
+import { shortcuts, type ShortcutEntry } from './shortcuts';
+
+
+
+
+
+
+
+
+
+import { allStudies } from './studyCtrl';
+import { writeHashRoute } from '../router';
 
 // ---------------------------------------------------------------------------------------------
 // System lenses (P2-LIB-2) — fixed structural label list, not computed lens content (T5-D13 owns
@@ -691,6 +703,137 @@ function renderReorderPanel(tree: StudyNavigationTree, redraw: () => void): VNod
   );
 }
 
+
+
+
+
+
+
+
+const SHORTCUTS_COLLAPSE_KEY = 'shortcuts-block'; // distinct namespace: never collides with a bare
+// StudySectionId/StudyLensId (both plain ids with no prefix) or a `folder:<section>:<folder>` key.
+
+/** Walks the tree's own folder groups (any section, any depth) to find the ONE this shortcut
+ * targets, returning its owning section id (needed for the exact `folder-<sectionId>-<folderId>`
+ * selection key below) plus its current display name. A folder that legitimately appears under more
+ * than one section (P2-LIB-8 multi-membership) resolves to whichever section is found first --
+ * the same disclosed ambiguity `navigatorShellView.ts`'s own folder-selection model already
+ * accepts elsewhere, not a new one introduced here. */
+function findFolderShortcutTarget(
+  tree: StudyNavigationTree,
+  folderId: string,
+): { sectionId: StudySectionId; name: string } | null {
+  const walk = (
+    sectionId: StudySectionId,
+    groups: readonly StudyNavigationFolderGroup[],
+  ): { sectionId: StudySectionId; name: string } | null => {
+    for (const group of groups) {
+      if (group.id === folderId) return { sectionId, name: group.name };
+      const found = walk(sectionId, group.children);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const section of tree.sections) {
+    const found = walk(section.id, section.folders);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Renders one Shortcuts row, or null when the shortcut's target no longer exists (a stale
+ * localStorage entry -- the deleted game/folder is simply skipped, not surfaced as an error).
+ *
+ * Game rows navigate via `writeHashRoute('study/<id>')` -- byte-for-byte the SAME action the game
+ * context menu's own "Open" row already uses (`navigatorContextMenu.ts`), the only existing
+ * "navigate to a specific game" action in this subsystem.
+ *
+ * Folder rows carry the EXACT `folder-<sectionId>-<folderId>` Snabbdom key `renderFolderRow` above
+ * assigns its own row. `navigatorShellView.ts`'s `wireSelectionHandlers` (no-touch this slice)
+ * composes real selection/navigation wiring onto ANY row in the returned nav-pane vnode tree whose
+ * key matches its own selection index -- by reusing that exact key here, this row is picked up by
+ * that EXISTING mechanism for free (it attaches its own click handler and `--active` state), with
+ * no change needed to the no-touch shell. Disclosed alternative considered and rejected: the
+ * legacy `studyCtrl.ts` `setActiveFolderId`/`activeFolderId()` pair (used by this file's sibling
+ * `navigatorContextMenu.ts`'s "Go to home folder" row) does NOT drive the current navigator shell's
+ * item-list pane at all -- `navigatorShellView.ts` resolves its item list from its own private
+ * `_selection` state, never from `studyCtrl.ts`'s `activeFolderId` (confirmed by reading both
+ * files) -- so that path would not visibly navigate anything in the currently-mounted UI.
+ */
+function renderShortcutRow(
+  entry: ShortcutEntry,
+  tree: StudyNavigationTree,
+  itemTitleById: ReadonlyMap<string, string>,
+): VNode | null {
+  if (entry.kind === 'game') {
+    const title = itemTitleById.get(entry.id);
+    if (title === undefined) return null;
+    return h(
+      'div.nav-row',
+      {
+        key: `shortcut-game-${entry.id}`,
+        attrs: { role: 'treeitem', title },
+        on: { click: () => { writeHashRoute(`study/${entry.id}`); } },
+      },
+      [
+        h('span.nav-row__icon', '♟'),
+        h('span.nav-row__label', title),
+      ],
+    );
+  }
+
+  const target = findFolderShortcutTarget(tree, entry.id);
+  if (!target) return null;
+  return h(
+    'div.nav-row',
+    {
+      key: `folder-${target.sectionId}-${entry.id}`,
+      attrs: { role: 'treeitem', title: target.name },
+    },
+    [
+      h('span.nav-row__icon', '▤'),
+      h('span.nav-row__label', target.name),
+    ],
+  );
+}
+
+/** The Shortcuts block itself -- collapsible (mirrors `renderSectionBlock`'s own header/chevron/
+ * `_collapsedIds` mechanism, reusing it rather than inventing a second collapse model), hidden
+ * entirely when there are no shortcuts (or every persisted one is stale). Reuses the EXISTING
+ * `.lib-nav__pinned` wrapper class (the Lenses block's own chrome-block styling: padding + bottom
+ * border) and the existing `.nav-row`/`.nav-row--section`/`.nav-row__icon`/`.nav-row__label`/
+ * `.nav-chevron` row classes -- no new main.scss rule is added or needed (a concurrent A7 lane
+ * owns main.scss this slice). */
+function renderShortcutsBlock(tree: StudyNavigationTree, redraw: () => void): VNode | null {
+  const entries = shortcuts();
+  if (entries.length === 0) return null;
+
+  const itemTitleById = new Map(allStudies().map(item => [item.id, item.title] as const));
+  const rows = entries
+    .map(entry => renderShortcutRow(entry, tree, itemTitleById))
+    .filter((row): row is VNode => row !== null);
+  if (rows.length === 0) return null;
+
+  const collapsed = isCollapsed(SHORTCUTS_COLLAPSE_KEY);
+  return h('div.lib-nav__pinned', { attrs: { role: 'tree', 'aria-label': 'Shortcuts' } }, [
+    h(
+      'div.nav-row.--section',
+      {
+        key: 'shortcuts-header',
+        attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
+        on: { click: () => toggleCollapsed(SHORTCUTS_COLLAPSE_KEY, redraw) },
+      },
+      [
+        h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
+        navIcon('star', { size: 13, className: 'nav-row__icon' }),
+        h('span.nav-row__label', 'Shortcuts'),
+      ],
+    ),
+    ...(collapsed ? [] : rows),
+  ]);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pane chrome / scroller / content assembly (NN §1.2 anatomy)
 // ---------------------------------------------------------------------------------------------
@@ -743,8 +886,9 @@ export function renderNavigationPane(
     return h('div.lib-nav', [renderReorderPanel(tree, redraw)]);
   }
   return h('div.lib-nav', [
-    // Chrome: fixed, outside the scroller (NN §1.2) — the pinned lens block.
-    h('div.lib-nav__chrome', [renderPinnedLensesBlock(lenses)]),
+    // Chrome: fixed, outside the scroller (NN §1.2) — Shortcuts (OD-9, above everything else per
+    // inventory §4), then the pinned lens block.
+    h('div.lib-nav__chrome', [renderShortcutsBlock(tree, redraw), renderPinnedLensesBlock(lenses)]),
     // Scroller + content: the four fixed sections and their nested folders scroll independently of
     // the chrome above.
     h('div.lib-nav__scroller', { attrs: { 'data-pane': 'navigation' } }, [
