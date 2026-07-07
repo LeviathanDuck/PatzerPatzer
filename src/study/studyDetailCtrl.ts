@@ -189,7 +189,12 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
     setStudyDetailOrientation(parsed.state.orientation);
     _loaded = true;
 
-    const canonicalState = studyDetailRouteSnapshot();
+
+
+
+
+
+    const canonicalState = { ...studyDetailRouteSnapshot(), tools: parsed.state.tools ?? false, toolTab: parsed.state.toolTab ?? '' };
     const canonicalRoute = serializeStudyDetailRouteState(id, canonicalState);
     const needsCanonicalCleanup =
       parsed.canonical.hadUnknownParams ||
