@@ -61,11 +61,25 @@
 
 
 
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
 import { renderCompactGameRow, type CompactRowExtras } from '../games/view';
 import { renderRichGameRow, type RichGameRowDeps, type ReviewControlState } from '../games/richRow';
+import { cursorId, isSelected, rangeSelectToId, selectedIds, toggleSelectId } from './studyCtrl';
+import { navIcon } from './navIcons';
+import {
+  openGameContextMenu,
+  renderGameContextMenu,
+  type GameMenuContext,
+} from './navigatorContextMenu';
 
 export type ItemListDensity = 'compact' | 'full';
 
@@ -143,6 +157,154 @@ function dateGroupLabel(updatedAt: number, now: number): string {
 
 
 
+
+
+
+
+
+
+
+
+
+function handleItemListClick(id: string, displayedIds: readonly string[], e: MouseEvent): void {
+  if (e.shiftKey && cursorId() !== null) {
+    rangeSelectToId(id, displayedIds);
+  } else {
+    toggleSelectId(id, displayedIds);
+  }
+}
+
+/** Selection-adjacency lookup for the contiguous-run corner-squaring CSS (NN's own
+ * `.nn-has-selected-above`/`-below` mechanic, adapted into `.sentry-row--adj-above`/`-below` in
+ * main.scss). Computed once per rendered row SEQUENCE (the pinned group and the regular list are
+ * two separate sequences, each with their own adjacency), against whatever order that sequence is
+ * actually rendered in. */
+function withSelectionAdjacency(
+  orderedIds: readonly string[],
+  selected: ReadonlySet<string>,
+): Map<string, { above: boolean; below: boolean }> {
+  const info = new Map<string, { above: boolean; below: boolean }>();
+  for (let i = 0; i < orderedIds.length; i++) {
+    const id = orderedIds[i]!;
+    if (!selected.has(id)) continue;
+    const above = i > 0 && selected.has(orderedIds[i - 1]!);
+    const below = i < orderedIds.length - 1 && selected.has(orderedIds[i + 1]!);
+    info.set(id, { above, below });
+  }
+  return info;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+const PINNED_IDS_STORAGE_KEY = 'patzer.studyPinnedItemIds';
+
+function loadPinnedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(PINNED_IDS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return new Set(); // corrupt/unavailable localStorage -- falls back to "nothing pinned".
+  }
+}
+
+function persistPinnedIds(ids: ReadonlySet<string>): void {
+  try {
+    localStorage.setItem(PINNED_IDS_STORAGE_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // Best-effort only (private browsing, quota) -- pins simply reset to none next load.
+  }
+}
+
+let _pinnedIds: Set<string> = loadPinnedIds();
+
+export function isItemPinned(id: string): boolean {
+  return _pinnedIds.has(id);
+}
+
+/** Toggle-pin over a set of ids in ONE call -- serves both the single-item menu row ([id], a
+ * trivial toggle) and the multi-select row (inventory §3: pins every unpinned target if ANY of
+ * `ids` is unpinned, otherwise unpins every one of them). */
+export function toggleItemsPinned(ids: readonly string[]): void {
+  const anyUnpinned = ids.some(id => !_pinnedIds.has(id));
+  const next = new Set(_pinnedIds);
+  for (const id of ids) {
+    if (anyUnpinned) next.add(id);
+    else next.delete(id);
+  }
+  _pinnedIds = next;
+  persistPinnedIds(_pinnedIds);
+}
+
+let _pinnedGroupCollapsed = false;
+
+function openRowContextMenu(
+  clickedId: string,
+  itemsById: ReadonlyMap<string, StudyItem>,
+  x: number,
+  y: number,
+  redraw: () => void,
+): void {
+  const ctx: GameMenuContext = {
+    clickedId,
+    selectedIds: selectedIds(),
+    itemsById,
+    isPinned: isItemPinned,
+    onTogglePin: toggleItemsPinned,
+  };
+  openGameContextMenu(ctx, x, y, redraw);
+}
+
+
+
+
+const LONG_PRESS_MS = 500;
+let _longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+function beginLongPress(
+  itemId: string,
+  itemsById: ReadonlyMap<string, StudyItem>,
+  e: TouchEvent,
+  redraw: () => void,
+): void {
+  cancelLongPress();
+  const touch = e.touches[0];
+  if (!touch) return;
+  const x = touch.clientX;
+  const y = touch.clientY;
+  _longPressTimer = setTimeout(() => {
+    _longPressTimer = null;
+    openRowContextMenu(itemId, itemsById, x, y, redraw);
+  }, LONG_PRESS_MS);
+}
+
+function cancelLongPress(): void {
+  if (_longPressTimer !== null) {
+    clearTimeout(_longPressTimer);
+    _longPressTimer = null;
+  }
+}
+
+
+
+
+
+
+
+
+
 const _expandedRailIds = new Set<string>();
 
 function toggleRailExpanded(id: string, redraw: () => void): void {
@@ -186,19 +348,23 @@ function renderActionRail(itemId: string, redraw: () => void): VNode {
   ]);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Row renderer -- reuses the games-list v2/V4 baseline; adds only the two named Study
-// customizations (title line, action rail) around it.
-// ---------------------------------------------------------------------------------------------
+
+
+
+
 
 function renderItemRow(
   item: StudyItem,
   density: ItemListDensity,
   onOpenItem: ((item: StudyItem) => void) | undefined,
   redraw: () => void,
+  displayedIds: readonly string[],
+  adjacency: { above: boolean; below: boolean } | undefined,
+  itemsById: ReadonlyMap<string, StudyItem>,
 ): VNode {
   const gameLike = studyItemAsGameRow(item);
   const extras: CompactRowExtras = { reviewState: INERT_REVIEW_STATE, addLibrary: null };
+  const selected = isSelected(item.id);
 
   const reusedRow = density === 'full'
     ? renderRichGameRow(gameLike, {
@@ -210,7 +376,31 @@ function renderItemRow(
 
   return h('div.sentry-row', {
     key: item.id,
-    on: { click: () => onOpenItem?.(item) },
+    class: {
+      'sentry-row--selected': selected,
+      'sentry-row--adj-above': Boolean(selected && adjacency?.above),
+      'sentry-row--adj-below': Boolean(selected && adjacency?.below),
+    },
+    on: {
+
+
+
+
+      click: (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('button, a, input, textarea')) return;
+        handleItemListClick(item.id, displayedIds, e);
+        redraw();
+      },
+      contextmenu: (e: MouseEvent) => {
+        e.preventDefault();
+        openRowContextMenu(item.id, itemsById, e.clientX, e.clientY, redraw);
+      },
+      touchstart: (e: TouchEvent) => beginLongPress(item.id, itemsById, e, redraw),
+      touchend: cancelLongPress,
+      touchmove: cancelLongPress,
+      touchcancel: cancelLongPress,
+    },
   }, [
     h('div.sentry-stack', [
       h('div.sentry-title', { attrs: { title: item.title || 'Untitled' } }, item.title || 'Untitled'),
@@ -229,8 +419,11 @@ function renderGroupedRows(
   density: ItemListDensity,
   onOpenItem: ((item: StudyItem) => void) | undefined,
   redraw: () => void,
+  displayedIds: readonly string[],
+  itemsById: ReadonlyMap<string, StudyItem>,
 ): VNode[] {
   const sorted = [...items].sort((a, b) => b.updatedAt - a.updatedAt);
+  const adjacency = withSelectionAdjacency(sorted.map(i => i.id), selectedIds());
   const now = Date.now();
   const nodes: VNode[] = [];
   let currentLabel: string | null = null;
@@ -241,10 +434,47 @@ function renderGroupedRows(
       nodes.push(h('div.sentry-group-header', { key: `group-${label}` }, label));
       currentLabel = label;
     }
-    nodes.push(renderItemRow(item, density, onOpenItem, redraw));
+    nodes.push(renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById));
   }
   return nodes;
 }
+
+/**
+ * Renders the collapsible "Pinned" group at the very top of the item list (OD-6 game half,
+ * inventory §4). `pinnedItems` is a partition of the CALLER's already-sorted `items` array (see
+ * `renderItemListPane`), so its own row order tracks the active sort exactly -- inventory §4's
+ * "pinned notes always float to the top as a group, but within that group they re-sort themselves
+ * whenever the active sort option changes", satisfied by construction rather than by re-deriving a
+ * sort here. No per-item date-grouping inside this group (NN's own pinned group has none either);
+ * `_pinnedGroupCollapsed` is this module's own ephemeral per-session collapse toggle.
+ */
+function renderPinnedGroup(
+  pinnedItems: readonly StudyItem[],
+  density: ItemListDensity,
+  onOpenItem: ((item: StudyItem) => void) | undefined,
+  redraw: () => void,
+  displayedIds: readonly string[],
+  itemsById: ReadonlyMap<string, StudyItem>,
+): VNode {
+  const ids = pinnedItems.map(i => i.id);
+  const adjacency = withSelectionAdjacency(ids, selectedIds());
+  return h('div.sentry-pinned-group', [
+    h('div.sentry-group-header.sentry-group-header--pinned', {
+      attrs: { role: 'button', 'aria-expanded': String(!_pinnedGroupCollapsed) },
+      on: { click: () => { _pinnedGroupCollapsed = !_pinnedGroupCollapsed; redraw(); } },
+    }, [
+      navIcon(_pinnedGroupCollapsed ? 'chevron-right' : 'chevron-down', { size: 13, className: 'sentry-group-header__chevron' }),
+      h('span', 'Pinned'),
+    ]),
+    _pinnedGroupCollapsed
+      ? null
+      : h('div.sentry-pinned-group__rows', pinnedItems.map(item =>
+          renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById))),
+  ]);
+}
+
+
+
 
 
 
@@ -268,10 +498,21 @@ export function renderItemListPane(
   redraw: () => void,
   onOpenItem?: (item: StudyItem) => void,
 ): VNode {
+  const displayedIds = items.map(i => i.id);
+  const itemsById = new Map(items.map(i => [i.id, i] as const));
+  const pinnedItems = items.filter(i => isItemPinned(i.id));
+  const pinnedSet = new Set(pinnedItems.map(i => i.id));
+  const restItems = items.filter(i => !pinnedSet.has(i.id));
+
   return h('div.lib-items', [
-    h('div.sentry-list', { attrs: { 'data-pane': 'items' } },
-      items.length === 0
+    h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
+      pinnedItems.length > 0
+        ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById)
+        : null,
+      ...(items.length === 0
         ? [renderEmptyState()]
-        : renderGroupedRows(items, density, onOpenItem, redraw)),
+        : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById)),
+    ]),
+    renderGameContextMenu(redraw),
   ]);
 }
