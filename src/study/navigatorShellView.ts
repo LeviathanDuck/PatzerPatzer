@@ -65,6 +65,7 @@ import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
 import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './navigatorSettings';
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
+import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   createFolder,
   folders,
@@ -500,6 +501,32 @@ function renderExpandCollapseAllButton(redraw: () => void, tree: StudyNavigation
   }, [navIcon(anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down', { size: 16 })]);
 }
 
+
+
+
+
+
+
+
+
+
+function renderHiddenItemsToggleButton(redraw: () => void): VNode {
+  const active = showHiddenItems();
+  const label = active ? 'Hide hidden folders, tags, and notes' : 'Show hidden folders, tags, and notes';
+  return h('button.nav-toolbar__btn', {
+    class: { '--active': active },
+    attrs: {
+      type: 'button',
+      title: label,
+      'aria-label': label,
+      'aria-pressed': String(active),
+    },
+    on: {
+      click: () => { toggleShowHidden(); redraw(); },
+    },
+  }, [navIcon('eye', { size: 16 })]);
+}
+
 /** The owner's "re-arrange button" (OD-5): toggles navigationPaneView.ts's reorder-mode render
  * (plumbed through `renderNavToolbar`'s caller below) via a plain module-level flag, the same
  * pattern `_settingsOpen`/`_newFolderMode` already use in this file. Entering reorder mode closes
@@ -587,6 +614,7 @@ function renderNavToolbar(redraw: () => void, selection: NavigatorSelection, tre
   const canCreate = canParentNewFolder(selection) && !_reorderMode;
   return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
     renderExpandCollapseAllButton(redraw, tree),
+    renderHiddenItemsToggleButton(redraw),
     renderReorderToggleButton(redraw),
     h('button.nav-toolbar__btn', {
       attrs: {

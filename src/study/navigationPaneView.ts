@@ -74,6 +74,8 @@ import {
   wouldCreateFolderCycle,
 } from './navigatorDragDrop';
 import { shortcuts, type ShortcutEntry } from './shortcuts';
+import { isHidden, showHiddenItems } from './hiddenItems';
+import { openFolderContextMenu, renderFolderContextMenu } from './navigatorContextMenu';
 
 
 
@@ -300,13 +302,27 @@ function renderFolderRow(
   depth: number,
   redraw: () => void,
 ): VNode[] {
+
+
+
+
+
+
+
+
+  const hidden = isHidden('folder', group.id);
+  if (hidden && !showHiddenItems()) return [];
+
   const hasChildren = group.children.length > 0;
   const collapseKey = folderCollapseKey(sectionId, group.id);
   const collapsed = hasChildren && isCollapsed(collapseKey);
-  // --nav-indent is a T5-D08 appearance-setting hook (falls back to NN's own default of 16px,
-  // Study §3.3's `navIndent`); this view only consumes it, never defines the slider. The literal
-  // 12px base mirrors the base row's own horizontal padding set in main.scss's `.nav-row` rule.
-  const indentStyle = `padding-left:calc(12px + var(--nav-indent, 16px) * ${depth + 1})`;
+
+
+
+
+
+
+  const indentStyle = `padding-left:calc(12px + var(--nav-indent, 16px) * ${depth + 1})${hidden ? ';opacity:0.5' : ''}`;
 
   const attrs: Record<string, string> = {
     role: 'treeitem',
@@ -338,6 +354,12 @@ function renderFolderRow(
       ...(hasChildren ? { click: () => toggleCollapsed(collapseKey, redraw) } : {}),
       dragstart: (e: DragEvent) => { beginFolderDrag(group.id, group.name, e); redraw(); },
       dragend: () => { endDrag(); redraw(); },
+
+
+      contextmenu: (e: MouseEvent) => {
+        e.preventDefault();
+        openFolderContextMenu({ folderId: group.id }, e.clientX, e.clientY, redraw);
+      },
     },
   };
 
@@ -350,6 +372,7 @@ function renderFolderRow(
       class: {
         'nav-row--drop-over': isDropTargetHovered(collapseKey),
         'nav-row--dragging': dragging,
+        'nav-row--hidden': hidden,
       },
     },
     [
@@ -975,5 +998,13 @@ export function renderNavigationPane(
     h('div.lib-nav__scroller', { attrs: { 'data-pane': 'navigation' } }, [
       h('div.lib-nav__content', [renderSectionsBlock(tree, redraw)]),
     ]),
+
+
+
+
+
+
+
+    renderFolderContextMenu(redraw),
   ]);
 }

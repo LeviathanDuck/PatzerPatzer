@@ -58,6 +58,10 @@
 
 
 
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
@@ -73,6 +77,7 @@ import {
   updateStudy,
 } from './studyCtrl';
 import { addShortcut, isShortcut, removeShortcut } from './shortcuts';
+import { hideItem, isHidden, unhideItem } from './hiddenItems';
 import { deriveHomeFolderId } from './studyDb';
 import { writeHashRoute } from '../router';
 
@@ -443,6 +448,11 @@ interface OpenMenuState {
 
 let _menu: OpenMenuState | null = null;
 let _openSubmenuKey: string | null = null;
+// Shared across BOTH the game menu and (T5 Wave A6d) the folder menu below -- safe because only
+// one of these floating menus can ever be open at once: each renders its own full-viewport
+// `.nav-ctx-overlay`, so opening one is the topmost hit-test target for any subsequent right-click,
+// making simultaneous game+folder menus unreachable in practice. `openGameContextMenu`/
+// `openFolderContextMenu` additionally close the OTHER menu explicitly as belt-and-suspenders.
 let _escapeListener: ((e: KeyboardEvent) => void) | null = null;
 
 function detachEscapeListener(): void {
@@ -458,11 +468,14 @@ function closeGameContextMenu(): void {
   detachEscapeListener();
 }
 
-function attachEscapeListener(redraw: () => void): void {
+/** Generic escape-to-close wiring, parameterized by WHICH menu's close function to invoke --
+ * shared by the game menu and (A6d) the folder menu, rather than duplicating this listener
+ * plumbing per menu. */
+function attachEscapeListener(redraw: () => void, close: () => void): void {
   detachEscapeListener();
   _escapeListener = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
-      closeGameContextMenu();
+      close();
       redraw();
     }
   };
@@ -472,9 +485,10 @@ function attachEscapeListener(redraw: () => void): void {
 /** Opens the game context menu at (x, y) with items computed ONCE from the current selection
  * state — later selection changes do not retroactively alter an already-open menu. */
 export function openGameContextMenu(ctx: GameMenuContext, x: number, y: number, redraw: () => void): void {
+  closeFolderContextMenu();
   _menu = { entries: buildGameMenuEntries(ctx, redraw), x, y };
   _openSubmenuKey = null;
-  attachEscapeListener(redraw);
+  attachEscapeListener(redraw, closeGameContextMenu);
   redraw();
 }
 
@@ -482,13 +496,18 @@ export function isGameContextMenuOpen(): boolean {
   return _menu !== null;
 }
 
-function runEntryAction(entry: ContextMenuItemEntry, redraw: () => void): void {
-  closeGameContextMenu();
+/** Generic "run an entry's action, then close whichever menu it belongs to" -- parameterized by
+ * `close` (A6d addition) so this one implementation serves both the game and folder menus. */
+function runEntryAction(entry: ContextMenuItemEntry, redraw: () => void, close: () => void): void {
+  close();
   entry.onClick();
   redraw();
 }
 
-function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void): VNode[] {
+/** Renders one menu's entry list -- parameterized by `close` (A6d addition) so the SAME rendering/
+ * submenu-toggle logic serves both the game menu and the folder menu below, rather than a second
+ * copy of this widget. */
+function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void, close: () => void): VNode[] {
   return entries.map(entry => {
     if (entry.kind === 'separator') return h('div.nav-ctx-menu__sep', { key: entry.key });
 
@@ -511,7 +530,7 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void)
               redraw();
               return;
             }
-            runEntryAction(entry, redraw);
+            runEntryAction(entry, redraw, close);
           },
         },
       }, [
@@ -520,7 +539,7 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void)
         hasSubmenu ? navIcon('chevron-right', { size: 13, className: 'nav-ctx-menu__caret' }) : null,
       ]),
       submenuOpen
-        ? h('div.nav-ctx-menu__submenu', { attrs: { role: 'menu' } }, renderEntries(entry.submenu, redraw))
+        ? h('div.nav-ctx-menu__submenu', { attrs: { role: 'menu' } }, renderEntries(entry.submenu, redraw, close))
         : null,
     ]);
   });
@@ -556,6 +575,84 @@ export function renderGameContextMenu(redraw: () => void): VNode | null {
         insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),
         postpatch: (_old, vnode) => clampMenuPosition(vnode.elm as HTMLElement, x, y),
       },
-    }, renderEntries(entries, redraw)),
+    }, renderEntries(entries, redraw, closeGameContextMenu)),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface FolderMenuContext {
+  /** The id of the folder that was right-clicked. */
+  folderId: string;
+}
+
+function buildFolderMenuEntries(ctx: FolderMenuContext, redraw: () => void): ContextMenuEntry[] {
+  const hidden = isHidden('folder', ctx.folderId);
+  return [
+    menuItem({
+      key: 'hide-folder',
+      label: hidden ? 'Unhide folder' : 'Hide folder',
+      icon: hidden ? 'eye' : 'eye-off',
+      onClick: () => {
+        if (hidden) unhideItem('folder', ctx.folderId);
+        else hideItem('folder', ctx.folderId);
+        redraw();
+      },
+    }),
+  ];
+}
+
+let _folderMenu: OpenMenuState | null = null;
+
+function closeFolderContextMenu(): void {
+  _folderMenu = null;
+  detachEscapeListener();
+}
+
+/** Opens the folder context menu at (x, y) with items computed ONCE at open time (mirrors
+ * `openGameContextMenu`'s own "computed once, not retroactive" behavior). */
+export function openFolderContextMenu(ctx: FolderMenuContext, x: number, y: number, redraw: () => void): void {
+  closeGameContextMenu();
+  _folderMenu = { entries: buildFolderMenuEntries(ctx, redraw), x, y };
+  attachEscapeListener(redraw, closeFolderContextMenu);
+  redraw();
+}
+
+export function isFolderContextMenuOpen(): boolean {
+  return _folderMenu !== null;
+}
+
+/** Renders the currently-open folder context menu, or null when closed. Callers
+ * (navigationPaneView.ts) include this in their own render tree once per render pass; it is a
+ * no-op when no menu is open — mirrors `renderGameContextMenu`'s own shape exactly. */
+export function renderFolderContextMenu(redraw: () => void): VNode | null {
+  if (!_folderMenu) return null;
+  const { entries, x, y } = _folderMenu;
+  return h('div.nav-ctx-overlay', {
+    on: {
+      click: () => { closeFolderContextMenu(); redraw(); },
+      contextmenu: (e: Event) => e.preventDefault(),
+    },
+  }, [
+    h('div.nav-ctx-menu', {
+      attrs: { role: 'menu' },
+      on: { click: (e: Event) => e.stopPropagation() },
+      hook: {
+        insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),
+        postpatch: (_old, vnode) => clampMenuPosition(vnode.elm as HTMLElement, x, y),
+      },
+    }, renderEntries(entries, redraw, closeFolderContextMenu)),
   ]);
 }
