@@ -1100,7 +1100,10 @@ function renderGameOpenShell(
     ? resolveItems(scope.itemIds, byId)
     : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
   const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
-  const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, scope?.folderId ?? null);
+
+
+
+  const itemListPane = renderItemListPane(items, 'compact', redraw, undefined, scope?.folderId ?? null);
 
   const exitPlain = () => { writeHashRoute('#/study'); };
   const exitToFolder = () => {
