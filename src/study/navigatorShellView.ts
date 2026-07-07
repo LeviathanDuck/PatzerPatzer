@@ -50,6 +50,7 @@ import {
   collapseAllSections,
   expandAllSections,
   hasAnyExpanded,
+  nonInternalTagCounts,
   renderNavigationPane,
   SYSTEM_LENSES,
   type StudyLensId,
@@ -90,7 +91,12 @@ import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navig
 export type NavigatorSelection =
   | { kind: 'lens'; lensId: StudyLensId }
   | { kind: 'section'; sectionId: StudySectionId }
-  | { kind: 'folder'; sectionId: StudySectionId; folderId: string };
+  | { kind: 'folder'; sectionId: StudySectionId; folderId: string }
+
+
+
+
+  | { kind: 'tag'; tagName: string };
 
 /** Module-level, per-session (mirrors navigationPaneView.ts's own `_collapsedIds` pattern) — not
  * persisted to IDB/localStorage; a fresh page load re-defaults via `defaultSelection` below. */
@@ -111,14 +117,22 @@ function defaultSelection(): NavigatorSelection {
 function selectionKey(selection: NavigatorSelection): string {
   if (selection.kind === 'lens') return `lens-${selection.lensId}`;
   if (selection.kind === 'section') return `section-${selection.sectionId}`;
+  if (selection.kind === 'tag') return `tag-${selection.tagName}`;
   return `folder-${selection.sectionId}-${selection.folderId}`;
 }
 
-/** Builds the full key -> Selection index for the CURRENT tree/lens set, independently of
- * whatever subset of rows D05 actually rendered (which depends on its own private collapse
- * state) — every lens/section/folder gets an entry regardless of collapse state, so a click on
- * any row D05 chooses to render always resolves. */
-function buildSelectionIndex(tree: StudyNavigationTree): Map<string, NavigatorSelection> {
+
+
+
+
+
+
+
+
+function buildSelectionIndex(
+  tree: StudyNavigationTree,
+  allItems: readonly StudyItem[],
+): Map<string, NavigatorSelection> {
   const index = new Map<string, NavigatorSelection>();
   for (const lens of SYSTEM_LENSES) {
     const selection: NavigatorSelection = { kind: 'lens', lensId: lens.id };
@@ -135,6 +149,10 @@ function buildSelectionIndex(tree: StudyNavigationTree): Map<string, NavigatorSe
     const selection: NavigatorSelection = { kind: 'section', sectionId: section.id };
     index.set(selectionKey(selection), selection);
     walkFolders(section.id, section.folders);
+  }
+  for (const tag of nonInternalTagCounts(allItems)) {
+    const selection: NavigatorSelection = { kind: 'tag', tagName: tag.name };
+    index.set(selectionKey(selection), selection);
   }
   return index;
 }
@@ -262,7 +280,13 @@ function resolveSelectedItemIds(
 ): string[] {
 
 
-  if (selection.kind === 'lens') return [];
+
+
+
+
+
+
+  if (selection.kind === 'lens' || selection.kind === 'tag') return [];
 
   const section = tree.sections.find(s => s.id === selection.sectionId);
   if (!section) return [];
@@ -557,13 +581,15 @@ function renderReorderToggleButton(redraw: () => void): VNode {
 
 
 
+
 function selectionSectionId(selection: NavigatorSelection): StudySectionId | null {
-  return selection.kind === 'lens' ? null : selection.sectionId;
+  return selection.kind === 'section' || selection.kind === 'folder' ? selection.sectionId : null;
 }
 
-/** Whether the current selection can parent a new folder (anything but a lens). */
+/** Whether the current selection can parent a new folder (a section or a folder only — neither a
+ * lens nor a tag, T5 Wave A6c, has a folder tree to parent one under). */
 function canParentNewFolder(selection: NavigatorSelection): boolean {
-  return selection.kind !== 'lens';
+  return selection.kind === 'section' || selection.kind === 'folder';
 }
 
 /** `createFolder`'s existing signature returns `Promise<void>` (studyCtrl.ts is a no-touch,
@@ -875,14 +901,15 @@ export function renderNavigatorShell(
 
   if (_selection === null) _selection = defaultSelection();
 
-  const keyIndex = buildSelectionIndex(tree);
+  const keyIndex = buildSelectionIndex(tree, allItems);
   const activeKey = selectionKey(_selection);
   const onSelect = (selection: NavigatorSelection): void => {
     _selection = selection;
     redraw();
   };
 
-  const navPane = renderNavigationPane(tree, redraw, SYSTEM_LENSES, _reorderMode);
+  const navPane = renderNavigationPane(tree, redraw, allItems, SYSTEM_LENSES, _reorderMode);
+
 
 
 
@@ -893,7 +920,16 @@ export function renderNavigatorShell(
   const navVisibleOrder = _reorderMode ? [] : wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
 
   const byId = new Map(allItems.map(item => [item.id, item] as const));
-  const rawItems = resolveItems(resolveSelectedItemIds(tree, _selection, _includeDescendants), byId);
+
+
+
+
+
+
+  const selection = _selection;
+  const rawItems = selection.kind === 'tag'
+    ? allItems.filter(item => item.tags.includes(selection.tagName))
+    : resolveItems(resolveSelectedItemIds(tree, selection, _includeDescendants), byId);
   // Search narrows the resolved item set; sort reorders it. Both are applied here (the shell) —
   // itemListView.ts's own `renderGroupedRows` still re-sorts its OWN copy by `updatedAt` descending
   // for its date-bucket headers (a no-touch file this slice does not edit), so the search filter's

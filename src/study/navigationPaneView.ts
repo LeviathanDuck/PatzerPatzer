@@ -50,6 +50,11 @@
 
 
 
+
+
+
+
+
 import { h, type VNode, type VNodeData } from 'snabbdom';
 import {
   STUDY_SECTIONS,
@@ -75,7 +80,12 @@ import {
 } from './navigatorDragDrop';
 import { shortcuts, type ShortcutEntry } from './shortcuts';
 import { isHidden, showHiddenItems } from './hiddenItems';
-import { openFolderContextMenu, renderFolderContextMenu } from './navigatorContextMenu';
+import {
+  openFolderContextMenu,
+  openTagContextMenu,
+  renderFolderContextMenu,
+  renderTagContextMenu,
+} from './navigatorContextMenu';
 
 
 
@@ -979,9 +989,175 @@ function renderSectionsBlock(tree: StudyNavigationTree, redraw: () => void): VNo
 
 
 
+
+
+
+
+
+
+
+
+
+const INTERNAL_TAG_STUDIED = 'studied';
+const INTERNAL_TAG_MASTER_GAME = 'master-game';
+const INTERNAL_TAG_COLLECTION_PREFIX = 'collection:';
+
+function isInternalTag(tag: string): boolean {
+  return tag === INTERNAL_TAG_STUDIED
+    || tag === INTERNAL_TAG_MASTER_GAME
+    || tag.startsWith(INTERNAL_TAG_COLLECTION_PREFIX);
+}
+
+export interface TagCount {
+  name: string;
+  count: number;
+}
+
+/**
+ * Non-internal tag names across `allItems`, each paired with its member count
+ * (`allItems.filter(i => i.tags.includes(tag)).length` per tag, computed here as one pass over
+ * `allItems` rather than N passes). Sorted alphabetically (matches `studyCtrl.ts`'s own
+ * `studyTags()` `.sort()`). Exported so `navigatorShellView.ts`'s tag-selection index/resolution
+ * and `scripts/test-study-tags-tree.mjs` both read the IDENTICAL list this block renders — one
+ * source of truth for "what counts as a real tag," not two independently-maintained copies.
+ */
+export function nonInternalTagCounts(allItems: readonly StudyItem[]): TagCount[] {
+  const counts = new Map<string, number>();
+  for (const item of allItems) {
+    for (const tag of item.tags) {
+      if (isInternalTag(tag)) continue;
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  return Array.from(counts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const TAGS_COLLAPSE_KEY = 'tags-block'; // distinct namespace, same reasoning as
+// SHORTCUTS_COLLAPSE_KEY/RECENT_COLLAPSE_KEY above: never collides with a bare
+// StudySectionId/StudyLensId or a `folder:<section>:<folder>`/`shortcuts-block`/`recent-block` key.
+
+/**
+ * One real tag row — icon `tag` (inventory §5), label + `(count)`. Dimmed via the SAME
+ * `nav-row--hidden` class + inline-opacity treatment `renderFolderRow` (A6d) already uses for
+ * hidden folders (not a new main.scss rule — matching that slice's own "no new CSS for the
+ * dim-reveal itself" precedent) when `isHidden('tag', name)` is true AND the eye toggle is on;
+ * omitted entirely (returns null) when hidden and the eye toggle is off. Right-click opens the tag
+ * context menu (A6c's own `openTagContextMenu`, mirroring `renderFolderRow`'s `contextmenu` wiring
+ * for `openFolderContextMenu`). This row's Snabbdom `key` (`tag-<name>`) is the EXACT string
+ * `navigatorShellView.ts`'s `selectionKey`/`buildSelectionIndex` use for a tag selection — that
+ * shell composes a click handler onto this row by matching that key, the same mechanism every
+ * lens/section/folder row already relies on (see that file's own `wireSelectionHandlers` comment).
+ */
+function renderTagRow(name: string, count: number, redraw: () => void): VNode | null {
+  const hidden = isHidden('tag', name);
+  if (hidden && !showHiddenItems()) return null;
+
+  return h(
+    'div.nav-row',
+    {
+      key: `tag-${name}`,
+      attrs: {
+        role: 'treeitem',
+        title: name,
+        style: hidden ? 'opacity:0.5' : '',
+      },
+      class: { 'nav-row--hidden': hidden },
+      on: {
+        contextmenu: (e: MouseEvent) => {
+          e.preventDefault();
+          openTagContextMenu({ tagName: name }, e.clientX, e.clientY, redraw);
+        },
+      },
+    },
+    [
+      navIcon('tag', { size: 13, className: 'nav-row__icon' }),
+      h('span.nav-row__label', name),
+      h('span.nav-row__count', `(${count})`),
+    ],
+  );
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VNode {
+  const collapsed = isCollapsed(TAGS_COLLAPSE_KEY);
+  const header = h(
+    'div.nav-row.--section',
+    {
+      key: 'tags-header',
+      attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
+      on: { click: () => toggleCollapsed(TAGS_COLLAPSE_KEY, redraw) },
+    },
+    [
+      h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
+      navIcon('tags', { size: 13, className: 'nav-row__icon' }),
+      h('span.nav-row__label', 'Tags'),
+    ],
+  );
+
+  if (collapsed) {
+    return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header]);
+  }
+
+  const tags = nonInternalTagCounts(allItems);
+  if (tags.length === 0) {
+    // Real emptiness (no non-internal tags exist at all yet) — distinct from "every tag is
+    // currently hidden and the eye toggle is off," which instead renders zero rows below the
+    // header with NO empty-state text (mirrors how a hidden folder disappears silently, with no
+    // "N folders hidden" message either — see `renderFolderRow`'s own comment).
+    return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [
+      header,
+      h('div.nav-row.--empty', { key: 'tags-empty' }, 'No tags yet'),
+    ]);
+  }
+
+  const rows = tags
+    .map(tag => renderTagRow(tag.name, tag.count, redraw))
+    .filter((row): row is VNode => row !== null);
+
+  return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header, ...rows]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function renderNavigationPane(
   tree: StudyNavigationTree,
   redraw: () => void,
+  allItems: readonly StudyItem[],
   lenses: readonly NavigationPaneLensDef[] = SYSTEM_LENSES,
   reorderMode = false,
 ): VNode {
@@ -993,10 +1169,11 @@ export function renderNavigationPane(
     // inventory §4), then Recent (OD-9, A6b — directly below Shortcuts, above the pinned lens
     // block), then the pinned lens block.
     h('div.lib-nav__chrome', [renderShortcutsBlock(tree, redraw), renderRecentBlock(redraw), renderPinnedLensesBlock(lenses)]),
-    // Scroller + content: the four fixed sections and their nested folders scroll independently of
-    // the chrome above.
+
+
+
     h('div.lib-nav__scroller', { attrs: { 'data-pane': 'navigation' } }, [
-      h('div.lib-nav__content', [renderSectionsBlock(tree, redraw)]),
+      h('div.lib-nav__content', [renderSectionsBlock(tree, redraw), renderTagsBlock(allItems, redraw)]),
     ]),
 
 
@@ -1006,5 +1183,8 @@ export function renderNavigationPane(
 
 
     renderFolderContextMenu(redraw),
+
+
+    renderTagContextMenu(redraw),
   ]);
 }

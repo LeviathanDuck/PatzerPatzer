@@ -23,7 +23,15 @@
 
 
 
-export type HiddenItemKind = 'folder' | 'game';
+
+
+
+
+
+
+
+
+export type HiddenItemKind = 'folder' | 'game' | 'tag';
 
 export interface HiddenItemEntry {
   kind: HiddenItemKind;
@@ -33,7 +41,7 @@ export interface HiddenItemEntry {
 const HIDDEN_ITEMS_STORAGE_KEY = 'patzer.studyHiddenItems';
 
 function isHiddenItemKind(value: unknown): value is HiddenItemKind {
-  return value === 'folder' || value === 'game';
+  return value === 'folder' || value === 'game' || value === 'tag';
 }
 
 function loadHiddenItems(): HiddenItemEntry[] {

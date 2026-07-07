@@ -66,11 +66,16 @@
 
 
 
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
 import {
   addAliasToFolder,
+  allStudies,
   bulkAddToFolder,
   bulkDeleteStudies,
   deleteStudy,
@@ -473,11 +478,12 @@ interface OpenMenuState {
 
 let _menu: OpenMenuState | null = null;
 let _openSubmenuKey: string | null = null;
-// Shared across BOTH the game menu and (T5 Wave A6d) the folder menu below -- safe because only
-// one of these floating menus can ever be open at once: each renders its own full-viewport
-// `.nav-ctx-overlay`, so opening one is the topmost hit-test target for any subsequent right-click,
-// making simultaneous game+folder menus unreachable in practice. `openGameContextMenu`/
-// `openFolderContextMenu` additionally close the OTHER menu explicitly as belt-and-suspenders.
+
+
+
+
+
+
 let _escapeListener: ((e: KeyboardEvent) => void) | null = null;
 
 function detachEscapeListener(): void {
@@ -511,6 +517,7 @@ function attachEscapeListener(redraw: () => void, close: () => void): void {
  * state — later selection changes do not retroactively alter an already-open menu. */
 export function openGameContextMenu(ctx: GameMenuContext, x: number, y: number, redraw: () => void): void {
   closeFolderContextMenu();
+  closeTagContextMenu();
   _menu = { entries: buildGameMenuEntries(ctx, redraw), x, y };
   _openSubmenuKey = null;
   attachEscapeListener(redraw, closeGameContextMenu);
@@ -650,6 +657,7 @@ function closeFolderContextMenu(): void {
  * `openGameContextMenu`'s own "computed once, not retroactive" behavior). */
 export function openFolderContextMenu(ctx: FolderMenuContext, x: number, y: number, redraw: () => void): void {
   closeGameContextMenu();
+  closeTagContextMenu();
   _folderMenu = { entries: buildFolderMenuEntries(ctx, redraw), x, y };
   attachEscapeListener(redraw, closeFolderContextMenu);
   redraw();
@@ -679,5 +687,132 @@ export function renderFolderContextMenu(redraw: () => void): VNode | null {
         postpatch: (_old, vnode) => clampMenuPosition(vnode.elm as HTMLElement, x, y),
       },
     }, renderEntries(entries, redraw, closeFolderContextMenu)),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface TagMenuContext {
+  /** The literal tag string that was right-clicked (already excludes internal tags — see
+   * navigationPaneView.ts's `isInternalTag`; those never render as a plain tag row at all, so this
+   * context can never carry one). */
+  tagName: string;
+}
+
+/** Renames a tag GLOBALLY across every study that carries it — mirrors `buildGameMenuEntries`'s own
+ * existing bulk tag-remove loop shape (this file's "3. Tag ops" block above), but iterating
+ * `allStudies()` (every currently-loaded study) rather than one menu's resolved selection, since a
+ * tag has no "selection" of its own — it is a property of whichever items happen to carry it. */
+function renameTagEverywhere(oldName: string, nextName: string, redraw: () => void): void {
+  for (const item of allStudies()) {
+    if (item.tags.includes(oldName)) {
+      void updateStudy({ id: item.id, tags: item.tags.map(t => (t === oldName ? nextName : t)) }).then(redraw);
+    }
+  }
+}
+
+/** Deletes a tag GLOBALLY — same loop shape as `renameTagEverywhere` above, filtering the tag out
+ * of each carrying item's `tags` instead of remapping it. Other tags on the same items are left
+ * untouched (only the exact `tagName` entry is removed from each item's own `tags` array). */
+function deleteTagEverywhere(tagName: string, redraw: () => void): void {
+  for (const item of allStudies()) {
+    if (item.tags.includes(tagName)) {
+      void updateStudy({ id: item.id, tags: item.tags.filter(t => t !== tagName) }).then(redraw);
+    }
+  }
+}
+
+function buildTagMenuEntries(ctx: TagMenuContext, redraw: () => void): ContextMenuEntry[] {
+  const hidden = isHidden('tag', ctx.tagName);
+  return [
+    menuItem({
+      key: 'hide-tag',
+      label: hidden ? 'Unhide tag' : 'Hide tag',
+      icon: hidden ? 'eye' : 'eye-off',
+      onClick: () => {
+        if (hidden) unhideItem('tag', ctx.tagName);
+        else hideItem('tag', ctx.tagName);
+        redraw();
+      },
+    }),
+    menuItem({
+      key: 'rename-tag',
+      label: 'Rename tag',
+      icon: 'pencil',
+      onClick: () => {
+        const next = prompt('Rename tag:', ctx.tagName)?.trim();
+        if (!next || next === ctx.tagName) return;
+        renameTagEverywhere(ctx.tagName, next, redraw);
+      },
+    }),
+    menuItem({
+      key: 'delete-tag',
+      label: 'Delete tag',
+      icon: 'trash',
+      warning: true,
+      onClick: () => {
+        // Confirm-dialog convention: matches this file's own "Delete game everywhere…" gate above
+        // (a global, irreversible mutation across every carrying item — the same severity as a
+        // multi-item delete, not a single-field rename).
+        if (!confirm(`Delete tag "${ctx.tagName}" from every game?`)) return;
+        deleteTagEverywhere(ctx.tagName, redraw);
+      },
+    }),
+  ];
+}
+
+let _tagMenu: OpenMenuState | null = null;
+
+function closeTagContextMenu(): void {
+  _tagMenu = null;
+  detachEscapeListener();
+}
+
+/** Opens the tag context menu at (x, y) with items computed ONCE at open time (mirrors
+ * `openGameContextMenu`/`openFolderContextMenu`'s own "computed once, not retroactive" behavior). */
+export function openTagContextMenu(ctx: TagMenuContext, x: number, y: number, redraw: () => void): void {
+  closeGameContextMenu();
+  closeFolderContextMenu();
+  _tagMenu = { entries: buildTagMenuEntries(ctx, redraw), x, y };
+  attachEscapeListener(redraw, closeTagContextMenu);
+  redraw();
+}
+
+export function isTagContextMenuOpen(): boolean {
+  return _tagMenu !== null;
+}
+
+/** Renders the currently-open tag context menu, or null when closed. Callers
+ * (navigationPaneView.ts) include this in their own render tree once per render pass; it is a
+ * no-op when no menu is open — mirrors `renderFolderContextMenu`'s own shape exactly. */
+export function renderTagContextMenu(redraw: () => void): VNode | null {
+  if (!_tagMenu) return null;
+  const { entries, x, y } = _tagMenu;
+  return h('div.nav-ctx-overlay', {
+    on: {
+      click: () => { closeTagContextMenu(); redraw(); },
+      contextmenu: (e: Event) => e.preventDefault(),
+    },
+  }, [
+    h('div.nav-ctx-menu', {
+      attrs: { role: 'menu' },
+      on: { click: (e: Event) => e.stopPropagation() },
+      hook: {
+        insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),
+        postpatch: (_old, vnode) => clampMenuPosition(vnode.elm as HTMLElement, x, y),
+      },
+    }, renderEntries(entries, redraw, closeTagContextMenu)),
   ]);
 }
