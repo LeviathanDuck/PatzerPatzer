@@ -18,6 +18,7 @@ import {
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
 import { record, Severity } from '../diagnostics';
+import { WorkspaceSession } from '../analyse/workspaceSession';
 
 function classifyStudyError(error: unknown): string {
   if (error instanceof DOMException) return error.name || 'DOMException';
@@ -54,9 +55,15 @@ function recordStudyRouteEmpty(): void {
 
 // --- Module-level state ---
 
+// Tree cursor unit (root/path/node/nodeList/mainline) — owned by an internal WorkspaceSession
+// (Phase 2 T5-D21 extraction, mirroring D-core-02's AnalyseCtrl adoption: see
+// src/analyse/ctrl.ts and src/analyse/workspaceSession.ts). Reconstructed on each study load
+// since a new study means a new tree root; exposed below as delegating accessors so every
+// existing read site (detailRoot/detailPath/detailNode) keeps working unchanged.
+// NOTE: this is cursor-model adoption only — it does NOT call mountWorkspace() / register with
+// workspaceCore's active-workspace slot (that would supersede Analysis's session; see T5-D22).
+let _session:     WorkspaceSession | null = null;
 let _study:       StudyItem | null = null;
-let _root:        TreeNode  | null = null;
-let _path:        string          = '';
 let _orientation: 'white' | 'black' = 'white';
 let _dirty        = false;
 let _loaded       = false;
@@ -68,11 +75,11 @@ let _autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
 // --- Accessors ---
 
 export function studyDetail(): StudyItem | null { return _study; }
-export function detailRoot():  TreeNode  | null { return _root; }
-export function detailPath():  string          { return _path; }
+export function detailRoot():  TreeNode  | null { return _session?.root ?? null; }
+export function detailPath():  string          { return _session?.path ?? ''; }
 export function detailNode():  TreeNode  | null {
-  if (!_root) return null;
-  return nodeAtPath(_root, _path) ?? _root;
+  if (!_session) return null;
+  return _session.node;
 }
 export function detailOrientation(): 'white' | 'black' { return _orientation; }
 export function detailLoaded(): boolean { return _loaded; }
@@ -82,7 +89,7 @@ export function setCgRef(cg: CgApi): void { _cgRef = cg; }
 export function getCgRef(): CgApi | undefined { return _cgRef; }
 
 export function studyDetailRouteSnapshot(): StudyDetailRouteState {
-  return { path: _path, orientation: _orientation };
+  return { path: _session?.path ?? '', orientation: _orientation };
 }
 
 function setStudyDetailOrientation(orientation: StudyDetailOrientation): void {
@@ -96,10 +103,9 @@ export function loadStudyDetail(id: string, redraw: () => void): Promise<void> {
   _loaded = false;
   _loadTargetId = id;
   _loadRouteKey = `${id}?`;
-  _study  = null;
-  _root   = null;
-  _path   = '';
-  _dirty  = false;
+  _study   = null;
+  _session = null;
+  _dirty   = false;
   clearTimeout(_autoSaveTimer);
   return getStudy(id).then(item => {
     if (!item) {
@@ -109,13 +115,14 @@ export function loadStudyDetail(id: string, redraw: () => void): Promise<void> {
       return;
     }
     _study = item;
+    let root: TreeNode;
     try {
-      _root = pgnToTree(item.pgn);
+      root = pgnToTree(item.pgn);
     } catch (e) {
       recordStudyLoadFail(e);
-      _root = pgnToTree(''); // empty tree on parse failure
+      root = pgnToTree(''); // empty tree on parse failure
     }
-    _path = '';
+    _session = new WorkspaceSession(root, 'study-detail');
     _loaded = true;
     redraw();
   }).catch(e => {
@@ -138,10 +145,9 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
   _loaded = false;
   _loadTargetId = id;
   _loadRouteKey = `${id}?${query}`;
-  _study = null;
-  _root = null;
-  _path = '';
-  _dirty = false;
+  _study   = null;
+  _session = null;
+  _dirty   = false;
   clearTimeout(_autoSaveTimer);
 
   void getStudy(id).then(item => {
@@ -153,14 +159,16 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
       return;
     }
     _study = item;
+    let root: TreeNode;
     try {
-      _root = pgnToTree(item.pgn);
+      root = pgnToTree(item.pgn);
     } catch (e) {
       recordStudyLoadFail(e);
-      _root = pgnToTree('');
+      root = pgnToTree('');
     }
-    const recovery = resolveStudyDetailPath(_root, parsed.state.path);
-    _path = recovery.resolvedPath;
+    _session = new WorkspaceSession(root, 'study-detail');
+    const recovery = resolveStudyDetailPath(root, parsed.state.path);
+    _session.setPath(recovery.resolvedPath);
     setStudyDetailOrientation(parsed.state.orientation);
     _loaded = true;
 
@@ -190,41 +198,41 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
 // --- Navigation ---
 
 export function navigateTo(path: string, redraw: () => void): void {
-  if (!_root) return;
-  const node = nodeAtPath(_root, path);
-  if (node !== undefined || path === '') { _path = path; redraw(); }
+  if (!_session) return;
+  const node = nodeAtPath(_session.root, path);
+  if (node !== undefined || path === '') { _session.setPath(path); redraw(); }
 }
 
 export function navigateFirst(redraw: () => void): void {
-  _path = '';
+  _session?.setPath('');
   redraw();
 }
 
 /** Walk the mainline to the end and navigate there. */
 export function navigateLast(redraw: () => void): void {
-  if (!_root) return;
-  let node = _root;
+  if (!_session) return;
+  let node = _session.root;
   let path = '';
   while (node.children.length > 0) {
     const child = node.children[0]!;
     path += child.id;
     node  = child;
   }
-  _path = path;
+  _session.setPath(path);
   redraw();
 }
 
 export function navigatePrev(redraw: () => void): void {
-  if (_path === '') return;
-  _path = pathInit(_path);
+  if (!_session || _session.path === '') return;
+  _session.setPath(pathInit(_session.path));
   redraw();
 }
 
 export function navigateNext(redraw: () => void): void {
-  if (!_root) return;
-  const node = nodeAtPath(_root, _path) ?? _root;
+  if (!_session) return;
+  const node = _session.node;
   if (node.children.length > 0) {
-    _path = _path + node.children[0]!.id;
+    _session.setPath(_session.path + node.children[0]!.id);
     redraw();
   }
 }
@@ -232,8 +240,8 @@ export function navigateNext(redraw: () => void): void {
 // --- Move handling (study mode — always creates variations) ---
 
 export function handleStudyMove(uci: string, san: string, fen: string, redraw: () => void): void {
-  if (!_root) return;
-  const parentNode = nodeAtPath(_root, _path) ?? _root;
+  if (!_session) return;
+  const parentNode = _session.node;
   const ply  = parentNode.ply + 1;
   // ID generation mirrors lichess-org/lila: ui/lib/src/tree/tree.ts
   const id   = (san[0]?.toLowerCase() ?? 'a') + (ply % 10).toString();
@@ -251,10 +259,10 @@ export function handleStudyMove(uci: string, san: string, fen: string, redraw: (
   // Check if node already exists (same id = same move), navigate to existing.
   const existing = parentNode.children.find(c => c.id === id);
   if (existing) {
-    _path = _path + existing.id;
+    _session.setPath(_session.path + existing.id);
   } else {
-    addNode(_root, _path, newNode);
-    _path  = _path + id;
+    addNode(_session.root, _session.path, newNode);
+    _session.setPath(_session.path + id);
     _dirty = true;
     scheduleAutoSave();
   }
@@ -281,7 +289,7 @@ export function markDirty(): void {
 }
 
 async function persistStudy(): Promise<void> {
-  if (!_study || !_root || !_dirty) return;
+  if (!_study || !_session || !_dirty) return;
   const updated: StudyItem = { ..._study, pgn: buildStudyPgn(), updatedAt: Date.now() };
   _study = updated;
   _dirty = false;
@@ -411,7 +419,7 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean, pendingVariat
 }
 
 export function buildStudyPgn(): string {
-  if (!_root || !_study) return '';
+  if (!_session || !_study) return '';
   // Header set follows the Phase 2 T1 persistence/portability contract §2 roster
   // spirit: White/Black from study metadata when known (carried from the source
   // PGN's headers at import/save time), else the PGN-spec "?" unknown placeholder.
@@ -424,7 +432,7 @@ export function buildStudyPgn(): string {
     ['Result', '*'],
   ];
   const headerStr = headers.map(([k, v]) => `[${k} "${v}"]`).join('\n');
-  const movesStr  = serializeStudyNode(_root, false).trim();
+  const movesStr  = serializeStudyNode(_session.root, false).trim();
   return `${headerStr}\n\n${movesStr} *\n`;
 }
 
