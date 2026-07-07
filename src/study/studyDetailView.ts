@@ -29,7 +29,8 @@ import {
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
   flipStudyBoard, studyDetailRouteSnapshot,
 } from './studyDetailCtrl';
-import { serializeStudyDetailRouteState } from './detailRouteState';
+import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
+import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
@@ -50,10 +51,84 @@ let _practiceLinesStudyId: string | null        = null;
 let _renamingLineId:       string | null        = null;
 let _renamingLineValue     = '';
 
+
+
+
+
+
+
+
+
+let _toolsOpen = false;
+let _activeToolTab: StudyToolTabId = 'comments';
+let _toolsRouteSyncKey: string | null = null;
+
+function syncToolsStateFromRoute(routeKey: string, routeQuery: string): void {
+  if (_toolsRouteSyncKey === routeKey) return;
+  _toolsRouteSyncKey = routeKey;
+  const parsed = parseStudyDetailRouteState(routeQuery).state;
+  _toolsOpen = parsed.tools ?? false;
+  _activeToolTab = normalizeStudyToolTab(parsed.toolTab);
+}
+
+// Strips `tools`/`toolTab` out of a raw route query string. `studyDetailCtrl.ts`'s
+// `hydrateStudyDetailRoute` (a no-touch, fenced file for this slice) ends its own load with a
+// canonicalization pass that rebuilds the route from ONLY the fields its own
+// `studyDetailRouteSnapshot()` knows about (`path`/`orientation`) and `replaceHashRoute`s over
+// whatever is actually in the URL when they differ — since that snapshot has no `tools`/`toolTab`
+// fields, any hydration pass silently strips them back out of the URL. DISCLOSED, verified by
+// direct repro: toggling Manual Review without this guard wrote `tools=1` then had it erased
+// within the same interaction, because the query-string change ALSO tripped this file's own
+// `detailLoadRouteKey()` mismatch check below, re-entering `hydrateStudyDetailRoute` and running
+// straight into that cleanup. Fix (in-fence, this file only): compare/hydrate on the
+// tools-stripped "core" query — a Manual Review toggle or tab switch no longer looks like a
+// path/orientation change, so it no longer re-enters hydration (and its stripping cleanup) at all.
+// Known residual gap (see this slice's completion report): a FRESH deep link straight into
+// `#/study/:id?tools=1...` still hits the ctrl's cleanup on its own unavoidable FIRST hydration and
+// has `tools` stripped there — closing that fully needs `studyDetailRouteSnapshot()` itself to
+// carry `tools`/`toolTab`, which is out of this slice's fenced files.
+function coreRouteQuery(routeQuery: string): string {
+  const params = new URLSearchParams(routeQuery);
+  params.delete('tools');
+  params.delete('toolTab');
+  return params.toString();
+}
+
 function writeStudyDetailRoute(): void {
   const study = studyDetail();
   if (!study) return;
-  writeHashRoute(serializeStudyDetailRouteState(study.id, studyDetailRouteSnapshot()), { mode: 'replace' });
+  const snapshot = studyDetailRouteSnapshot();
+  writeHashRoute(serializeStudyDetailRouteState(study.id, {
+    ...snapshot,
+    tools: _toolsOpen,
+    toolTab: _toolsOpen ? _activeToolTab : '',
+  }), { mode: 'replace' });
+}
+
+function toggleManualReview(redraw: () => void): void {
+  _toolsOpen = !_toolsOpen;
+  writeStudyDetailRoute();
+  redraw();
+}
+
+
+
+
+function renderManualReviewToggle(redraw: () => void): VNode {
+  const label = _toolsOpen ? 'Close Manual Review' : 'Manual Review';
+  return h('button.study-manual-review-toggle', {
+    class: { 'study-manual-review-toggle--active': _toolsOpen },
+    attrs: {
+      type: 'button',
+      title: label,
+      'aria-label': label,
+      'aria-pressed': String(_toolsOpen),
+    },
+    on: { click: () => toggleManualReview(redraw) },
+  }, [
+    h('span.study-manual-review-toggle__icon', { attrs: { 'aria-hidden': 'true' } }, _toolsOpen ? '◉' : '○'),
+    h('span.study-manual-review-toggle__label', 'Manual Review'),
+  ]);
 }
 
 // Defined at module scope so it survives the shared board's insert hook closure and any hook
@@ -631,9 +706,16 @@ function renderColorPicker(title: string, root: import('../tree/types').TreeNode
 export function renderStudyDetail(id: string, redraw: () => void, routeQuery = ''): VNode {
   _studyRedraw = redraw;
 
+
+
+
+
   const routeKey = `${id}?${routeQuery}`;
-  if (detailLoadRouteKey() !== routeKey) {
-    hydrateStudyDetailRoute(id, routeQuery, redraw);
+  syncToolsStateFromRoute(routeKey, routeQuery);
+  const hydrationQuery = coreRouteQuery(routeQuery);
+  const hydrationKey = `${id}?${hydrationQuery}`;
+  if (detailLoadRouteKey() !== hydrationKey) {
+    hydrateStudyDetailRoute(id, hydrationQuery, redraw);
   }
   if (!detailLoaded()) {
     return h('div.study-detail', h('div.study-detail__loading', 'Loading…'));
@@ -722,6 +804,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
       }, [
         renderStudyBoardArea(),
         renderStudyNavBar(redraw),
+        renderManualReviewToggle(redraw),
         renderStudyEval(),
         _glyphQuickSelectOpen ? renderGlyphQuickSelect(redraw) : null,
       ]),

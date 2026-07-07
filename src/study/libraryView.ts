@@ -34,8 +34,9 @@ import {
   type StudySortKey,
   type OrpPracticeLineView,
 } from './studyCtrl';
-import { renderNavigatorShell } from './navigatorShellView';
+import { renderNavigatorShell, normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { renderStudyDetail } from './studyDetailView';
+import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
 import {
@@ -2198,10 +2199,29 @@ export function renderStudyDetailShell(id: string, redraw: () => void, routeQuer
 
   const openImportModal = () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); };
 
+
+
+
+
+
+
+
+  const detailRoute = parseStudyDetailRouteState(routeQuery).state;
+  const toolsOpen = detailRoute.tools ?? false;
+  const activeToolTab = normalizeStudyToolTab(detailRoute.toolTab);
+  const writeToolsRoute = (next: { tools: boolean; toolTab: StudyToolTabId | '' }): void => {
+    writeHashRoute(serializeStudyDetailRouteState(id, { ...detailRoute, ...next }), { mode: 'replace' });
+    redraw();
+  };
+
   return h('div.study-page.study-page--dual-pane', [
     renderNavigatorShell(studyNavigationTree(), allStudies(), redraw, openImportModal, {
       openItemId: id,
       mainContent: renderStudyDetail(id, redraw, routeQuery),
+      toolsOpen,
+      activeToolTab,
+      onCloseTools: () => writeToolsRoute({ tools: false, toolTab: '' }),
+      onSelectToolTab: (tab) => writeToolsRoute({ tools: true, toolTab: tab }),
     }),
     _showImportModal ? renderImportModal(redraw) : null,
   ]);

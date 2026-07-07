@@ -1072,13 +1072,91 @@ function armGameOpenEscape(onExit: () => void): void {
   });
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type StudyToolTabId = 'comments' | 'questionnaire' | 'organize' | 'orp';
+
+const STUDY_TOOL_TABS: ReadonlyArray<{ id: StudyToolTabId; label: string }> = [
+  { id: 'comments', label: 'Comments' },
+  { id: 'questionnaire', label: 'Questionnaire' },
+  { id: 'organize', label: 'Organize' },
+  { id: 'orp', label: 'ORP' },
+];
+
+export function normalizeStudyToolTab(value: string | undefined): StudyToolTabId {
+  return STUDY_TOOL_TABS.some(tab => tab.id === value) ? (value as StudyToolTabId) : 'comments';
+}
+
+
+
+
+const STUDY_TOOL_TAB_PLACEHOLDER: Readonly<Record<StudyToolTabId, string>> = {
+  comments:      'Move-tree comments — coming soon.',
+  questionnaire: 'Questionnaire answers — coming soon.',
+  organize:      'Title / Organize / Assign to Study — coming soon.',
+  orp:           'ORP flag — coming soon.',
+};
+
+function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
+  return h('div.study-tools-col__back-wrap', [
+    h('button.study-tools-col__back', {
+      attrs: { type: 'button', title: 'Back to game list', 'aria-label': 'Back to game list' },
+      on: { click: opts.onCloseTools },
+    }, [navIcon('chevron-left', { size: 16 }), h('span', 'Back to game list')]),
+    h('div.study-tools-col__tabs', { attrs: { role: 'tablist', 'aria-label': 'Study tools' } },
+      STUDY_TOOL_TABS.map(tab => h('button.study-tools-col__tab', {
+        key: tab.id,
+        class: { '--active': tab.id === opts.activeToolTab },
+        attrs: {
+          type: 'button',
+          role: 'tab',
+          'aria-selected': String(tab.id === opts.activeToolTab),
+        },
+        on: { click: () => opts.onSelectToolTab(tab.id) },
+      }, tab.label))),
+    h('div.study-tools-col__placeholder', STUDY_TOOL_TAB_PLACEHOLDER[opts.activeToolTab]),
+  ]);
+}
+
 export interface GameOpenShellOptions {
   /** The `StudyItem.id` currently open on the board — drives the item-list rescope. */
   openItemId: string;
   /** The main-region content to mount in the freed nav-pane width — `studyDetailView.ts`'s
    * `renderStudyDetail` output, unchanged board mount, per this slice's fence. */
   mainContent: VNode;
+
+
+
+
+
+  toolsOpen: boolean;
+  /** Active tool-tab id when `toolsOpen` — route `toolTab`, default `comments`. */
+  activeToolTab: StudyToolTabId;
+  /** Clears `tools` → State 2. Wired to the tools column's "Back to game list" affordance AND
+   * (below) State 3's first Escape step. */
+  onCloseTools: () => void;
+  /** Writes `toolTab` (and ensures `tools=1`) for the clicked tab. */
+  onSelectToolTab: (tab: StudyToolTabId) => void;
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -1095,15 +1173,6 @@ function renderGameOpenShell(
   opts: GameOpenShellOptions,
 ): VNode {
   const scope = resolveGameOpenScope(tree, allItems, opts.openItemId);
-  const byId = new Map(allItems.map(item => [item.id, item] as const));
-  const rawItems = scope
-    ? resolveItems(scope.itemIds, byId)
-    : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
-  const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
-
-
-
-  const itemListPane = renderItemListPane(items, 'compact', redraw, undefined, scope?.folderId ?? null);
 
   const exitPlain = () => { writeHashRoute('#/study'); };
   const exitToFolder = () => {
@@ -1114,24 +1183,50 @@ function renderGameOpenShell(
     }
     writeHashRoute('#/study');
   };
-  armGameOpenEscape(exitPlain);
+  // State 3's first Escape step closes tools (→ State 2); State 2's own second step (this same
+  // exitPlain, re-armed once toolsOpen is false on the next render) is unchanged.
+  armGameOpenEscape(opts.toolsOpen ? opts.onCloseTools : exitPlain);
+
+  // Item-list pane is only built when it will actually be shown (State 2) — skipping
+  // `renderItemListPane` while the tools column is open avoids rendering a hidden pane's rows for
+  // no visible benefit (CR-3/CR-4); none of the module-level list state (search/sort/divider
+  // width) is read or mutated by skipping this, so State 2's own list is unchanged when the user
+  // returns via "Back to game list". State 2's children stay a flat array directly under
+  // `.lib-items-wrap` (unchanged DOM shape from before this slice); State 3 swaps in the single
+  // study-tools-column vnode instead.
+  const itemListWrapChildren: Array<VNode | null> = opts.toolsOpen
+    ? [renderStudyToolsColumn(opts)]
+    : (() => {
+        const byId = new Map(allItems.map(item => [item.id, item] as const));
+        const rawItems = scope
+          ? resolveItems(scope.itemIds, byId)
+          : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
+        const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
+
+
+
+
+        const itemListPane = renderItemListPane(items, 'compact', redraw, undefined, scope?.folderId ?? null);
+        return [
+          renderGameOpenItemListHeader(scope?.label ?? null, exitPlain, exitToFolder),
+          renderItemListToolbar(redraw, onImportPgnClick),
+          _itemSearchOpen ? renderSearchInputRow(redraw) : null,
+          _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
+          itemListPane,
+        ];
+      })();
 
   return h('div.lib-shell.lib-shell--game-open', {
     attrs: { style: _itemListDivider.styleDeclaration() },
   }, [
     renderRail(),
     h('div.lib-items-wrap', {
+      class: { 'lib-items-wrap--tools': opts.toolsOpen },
       on: {
         click: () => setFocusedPane('list'),
         focusin: () => setFocusedPane('list'),
       },
-    }, [
-      renderGameOpenItemListHeader(scope?.label ?? null, exitPlain, exitToFolder),
-      renderItemListToolbar(redraw, onImportPgnClick),
-      _itemSearchOpen ? renderSearchInputRow(redraw) : null,
-      _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
-      itemListPane,
-    ]),
+    }, itemListWrapChildren),
     renderDivider(redraw, _itemListDivider),
     h('div.lib-main-region', [opts.mainContent]),
   ]);
