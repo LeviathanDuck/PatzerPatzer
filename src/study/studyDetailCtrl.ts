@@ -1,13 +1,21 @@
-// Study Detail controller — module-level state for the annotation workspace.
-// Owns the current tree, path, navigation, and dirty tracking.
-// Does NOT depend on AnalyseCtrl or src/board/index.ts.
-// Mirrors the state model in lichess-org/lila: ui/study/src/ctrl.ts (simplified).
 
-import type { Api as CgApi } from '@lichess-org/chessground/api';
+
+
+
+
+
+
+
+
+
+
+
 import { pgnToTree } from '../tree/pgn';
 import { nodeAtPath, addNode, pathInit, pathLast } from '../tree/ops';
 import { getStudy, saveStudy } from './studyDb';
 import { replaceHashRoute } from '../router';
+import { setOrientation } from '../board/index';
+import { mountWorkspace, type WorkspaceAdapter } from '../analyse/workspaceCore';
 import {
   parseStudyDetailRouteState,
   resolveStudyDetailPath,
@@ -19,6 +27,13 @@ import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
 import { record, Severity } from '../diagnostics';
 import { WorkspaceSession } from '../analyse/workspaceSession';
+import { INITIAL_FEN } from 'chessops/fen';
+
+// Null-safe cursor fallback for the brief window between `_session = null` (start of a new
+// load) and the next load's `mountWorkspace` call — the shared board can call the mounted
+// adapter's `getCursor()` at any time. A minimal valid empty-board TreeNode (NOT `pgnToTree('')`,
+// which throws — `parsePgn('')` returns zero games, see chessops/pgn parsePgn).
+const EMPTY_STUDY_TREE: TreeNode = { id: '00', ply: 0, fen: INITIAL_FEN, children: [] };
 
 function classifyStudyError(error: unknown): string {
   if (error instanceof DOMException) return error.name || 'DOMException';
@@ -60,8 +75,8 @@ function recordStudyRouteEmpty(): void {
 // src/analyse/ctrl.ts and src/analyse/workspaceSession.ts). Reconstructed on each study load
 // since a new study means a new tree root; exposed below as delegating accessors so every
 // existing read site (detailRoot/detailPath/detailNode) keeps working unchanged.
-// NOTE: this is cursor-model adoption only — it does NOT call mountWorkspace() / register with
-// workspaceCore's active-workspace slot (that would supersede Analysis's session; see T5-D22).
+// T5-D22b/c: Study now calls mountWorkspace() (mountStudyWorkspace, below) once its tree loads,
+// registering with workspaceCore's active-workspace slot so the shared board reads this session.
 let _session:     WorkspaceSession | null = null;
 let _study:       StudyItem | null = null;
 let _orientation: 'white' | 'black' = 'white';
@@ -69,7 +84,6 @@ let _dirty        = false;
 let _loaded       = false;
 let _loadTargetId: string | null = null;
 let _loadRouteKey: string | null = null;
-let _cgRef:       CgApi | undefined;
 let _autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 // --- Accessors ---
@@ -85,8 +99,6 @@ export function detailOrientation(): 'white' | 'black' { return _orientation; }
 export function detailLoaded(): boolean { return _loaded; }
 export function detailLoadTargetId(): string | null { return _loadTargetId; }
 export function detailLoadRouteKey(): string | null { return _loadRouteKey; }
-export function setCgRef(cg: CgApi): void { _cgRef = cg; }
-export function getCgRef(): CgApi | undefined { return _cgRef; }
 
 export function studyDetailRouteSnapshot(): StudyDetailRouteState {
   return { path: _session?.path ?? '', orientation: _orientation };
@@ -94,7 +106,10 @@ export function studyDetailRouteSnapshot(): StudyDetailRouteState {
 
 function setStudyDetailOrientation(orientation: StudyDetailOrientation): void {
   _orientation = orientation;
-  _cgRef?.set({ orientation: _orientation });
+  // T5-D22b/c: the physical chessground instance is now the SHARED one (src/board/index.ts),
+  // not a Study-owned `_cgRef` — push through the shared setter so a flip/route-restore actually
+  // repaints the live board. See the orientation subtlety note on mountStudyWorkspace below.
+  setOrientation(_orientation);
 }
 
 // --- Load ---
@@ -123,6 +138,7 @@ export function loadStudyDetail(id: string, redraw: () => void): Promise<void> {
       root = pgnToTree(''); // empty tree on parse failure
     }
     _session = new WorkspaceSession(root, 'study-detail');
+    mountStudyWorkspace(redraw);
     _loaded = true;
     redraw();
   }).catch(e => {
@@ -167,6 +183,7 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
       root = pgnToTree('');
     }
     _session = new WorkspaceSession(root, 'study-detail');
+    mountStudyWorkspace(redraw);
     const recovery = resolveStudyDetailPath(root, parsed.state.path);
     _session.setPath(recovery.resolvedPath);
     setStudyDetailOrientation(parsed.state.orientation);
@@ -237,36 +254,60 @@ export function navigateNext(redraw: () => void): void {
   }
 }
 
-// --- Move handling (study mode — always creates variations) ---
-
-export function handleStudyMove(uci: string, san: string, fen: string, redraw: () => void): void {
-  if (!_session) return;
-  const parentNode = _session.node;
-  const ply  = parentNode.ply + 1;
-  // ID generation mirrors lichess-org/lila: ui/lib/src/tree/tree.ts
-  const id   = (san[0]?.toLowerCase() ?? 'a') + (ply % 10).toString();
-  const newNode: TreeNode = {
-    id,
-    ply,
-    uci,
-    san,
-    fen,
-    glyphs:   [],
-    children: [],
-    comments: [],
+// --- Workspace mount (T5-D22b/c) ---
+//
+// Study's WorkspaceAdapter (design doc §6b "D22b/c BUILD DESIGN"): the shared board (src/board/
+// index.ts, driven from studyDetailView.ts) reads this session's cursor/orientation and routes
+// board-committed moves into handleUserMove below, in place of the old standalone
+// handleStudyMove (retired — nothing outside this file called it; confirmed by grep before
+// removal). `boardInputMode: 'always-new-variation'` names Study's input semantics for any future
+// consumer of that field (per workspaceCore.ts's open-string-union design).
+//
+// ID-SCHEME DISCLOSURE: the retired handleStudyMove minted ids as
+// `san[0].toLowerCase()+(ply%10)`. The shared board (src/board/index.ts applyMoveToTree) instead
+// mints new nodes with `scalachessCharPair(move)` (chessops/compat) BEFORE calling
+// handleUserMove — the SAME id scheme src/tree/pgn.ts's pgnToTree already stamps on every loaded
+// study's nodes. So Study's newly-created nodes now match its own loaded tree's id scheme (a
+// consistency fix), which is a behavior change from the old san-based ids. Existing-child
+// following in the shared board's move pipeline is UCI-based (`node.uci === normUci`), not
+// id-based, so it is unaffected by this id-scheme change.
+function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
+  return {
+    id: 'study-detail',
+    boardInputMode: 'always-new-variation',
+    getCursor: () => ({
+      root:     _session?.root     ?? EMPTY_STUDY_TREE,
+      path:     _session?.path     ?? '',
+      node:     _session?.node     ?? EMPTY_STUDY_TREE,
+      nodeList: _session?.nodeList ?? [EMPTY_STUDY_TREE],
+      mainline: _session?.mainline ?? [EMPTY_STUDY_TREE],
+    }),
+    getOrientation: () => _orientation,
+    redraw,
+    // Study's existing side effects (mirrors the retired handleStudyMove), taking the
+    // board-computed node instead of re-deriving san/uci/fen locally. markDirty() already calls
+    // scheduleAutoSave() internally (see below), so a separate scheduleAutoSave() call here would
+    // be redundant. `redraw()` is required here (unlike Analysis's handleUserMove, which gets a
+    // redraw for free from its own navigate() call) — Study has no equivalent navigation
+    // primitive yet, so this adapter triggers it directly.
+    handleUserMove: (parentPath, node) => {
+      if (!_session) return;
+      addNode(_session.root, parentPath, node);
+      _session.setPath(parentPath + node.id);
+      markDirty();
+      redraw();
+    },
   };
+}
 
-  // Check if node already exists (same id = same move), navigate to existing.
-  const existing = parentNode.children.find(c => c.id === id);
-  if (existing) {
-    _session.setPath(_session.path + existing.id);
-  } else {
-    addNode(_session.root, _session.path, newNode);
-    _session.setPath(_session.path + id);
-    _dirty = true;
-    scheduleAutoSave();
-  }
-  redraw();
+/**
+ * Mount (or re-mount) the Study workspace instance so the shared board reads/writes through this
+ * session while Study is the active surface. Called from loadStudyDetail/hydrateStudyDetailRoute
+ * right after `_session` is (re)built — every later call supersedes whatever was mounted before
+ * (Analysis, or an earlier study), per workspaceCore's single-active-slot design.
+ */
+export function mountStudyWorkspace(redraw: () => void): void {
+  mountWorkspace(buildStudyWorkspaceAdapter(redraw));
 }
 
 // --- Orientation ---

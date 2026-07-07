@@ -3,17 +3,10 @@
 
 
 
-import { Chessground as makeChessground } from '@lichess-org/chessground';
-import type { Api as CgApi } from '@lichess-org/chessground/api';
+
+
 import type { DrawShape } from '@lichess-org/chessground/draw';
-import { uciToMove } from '@lichess-org/chessground/util';
-import { Chess } from 'chessops/chess';
-import { chessgroundDests } from 'chessops/compat';
-import { parseFen } from 'chessops/fen';
-import { makeSanAndPlay } from 'chessops/san';
-import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
-import type { Key } from '@lichess-org/chessground/types';
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore } from '../analyse/evalView';
 import { renderMoveNavBar } from '../analyse/analysisControls';
@@ -32,17 +25,18 @@ import { countDuePositions } from './practice/sessionBuilder';
 import type { TrainableSequence } from './types';
 import { deleteNodeAt, promoteAt, pathInit, nodeListAt } from '../tree/ops';
 import {
-  studyDetail, detailRoot, detailPath, detailNode, detailLoaded, detailOrientation,
+  studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
-  handleStudyMove, flipStudyBoard, setCgRef, getCgRef, studyDetailRouteSnapshot,
+  flipStudyBoard, studyDetailRouteSnapshot,
 } from './studyDetailCtrl';
 import { serializeStudyDetailRouteState } from './detailRouteState';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
-import { chessBoardAnimationConfig, onBoardAnimationChange } from '../board/animation';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
+import { activeWorkspace } from '../analyse/workspaceCore';
+import { cgInstance, onBoardUserMove, renderBoard, renderPromotionDialog, syncBoard } from '../board/index';
 
 
 let _showColorPicker   = false;
@@ -62,74 +56,74 @@ function writeStudyDetailRoute(): void {
   writeHashRoute(serializeStudyDetailRouteState(study.id, studyDetailRouteSnapshot()), { mode: 'replace' });
 }
 
-// --- Standalone dests cache (mirrors src/board/index.ts cachedDests) ---
-const _destsCache = new Map<string, Map<Key, Key[]>>();
-
-function computeStudyDests(fen: string): Map<Key, Key[]> {
-  const cached = _destsCache.get(fen);
-  if (cached) return cached;
-  try {
-    const setup = parseFen(fen).unwrap();
-    const pos   = Chess.fromSetup(setup).unwrap();
-    const dests = chessgroundDests(pos) as Map<Key, Key[]>;
-    _destsCache.set(fen, dests);
-    return dests;
-  } catch {
-    return new Map();
-  }
-}
-
-// --- Move handler (study move = always creates/navigates variation) ---
-// Defined at module scope so it survives the insert hook closure.
+// Defined at module scope so it survives the shared board's insert hook closure and any hook
+// callback fired outside a render pass.
 let _studyRedraw: () => void = () => {};
 
-function onStudyMove(orig: string, dest: string): void {
-  const node = detailNode();
-  if (!node) return;
-  try {
-    const setup = parseFen(node.fen).unwrap();
-    const pos   = Chess.fromSetup(setup).unwrap();
-    const move  = parseUci(`${orig}${dest}`);
-    if (!move) return;
-    const san    = makeSanAndPlay(pos, move);
-    const newFen = pos.toString(); // after play
-    const uci    = `${orig}${dest}`;
-    handleStudyMove(uci, san, newFen, _studyRedraw);
-    syncStudyBoard(_studyRedraw);
-    writeStudyDetailRoute();
-  } catch (e) {
-    console.warn('[studyDetailView] move error', e);
-  }
+// --- Move input: consumed via the SHARED board (T5-D22b/c) ---
+// board/index.ts's renderBoard() wires its own onUserMove -> applyMoveToTree, which (D22a) calls
+// activeWorkspace().handleUserMove(parentPath, newNode) for a brand-new node, or navigates
+// directly to an existing child. Study's own move-shaping logic (handleStudyMove) has been
+// retired — see studyDetailCtrl.ts buildStudyWorkspaceAdapter's handleUserMove.
+//
+// route into main.ts's initGround() `navigate` closure for the existing-child-follow branch: this
+// is invoked (via activeWorkspace-aware routing in main.ts, T5-D22b/c) instead of Analysis's own
+// navigate() when Study is the mounted workspace, so it must apply the same tail effects Study's
+// own nav-button/move-list handlers already apply (session update, board resync, route write).
+export function studyBoardNavigate(path: string, redraw: () => void): void {
+  navigateTo(path, redraw);
+  syncStudyBoard(redraw);
+  writeStudyDetailRoute();
 }
 
-// --- Board sync ---
-export function syncStudyBoard(redraw?: () => void): void {
-  if (redraw) syncStudyEngine(redraw);
-  const cg = getCgRef();
-  if (!cg) return;
+// --- Hand-drawn shape (arrow/circle) persistence ---
+// board/index.ts's shared renderBoard()/syncBoard() only wire `drawable.enabled` — they have no
+// per-node shape save/restore (that's Study's own annotation feature: [%cal]/[%csl] round-tripped
+// through buildStudyPgn/pgnToTree). Layered here via cgInstance.set() (an already-exported seam)
+// so switching to the shared board does not silently drop it. Not editing board/index.ts.
+function onStudyShapesChange(cgShapes: DrawShape[]): void {
+  const converted = cgShapes.map(s => ({
+    orig:  s.orig as string,
+    ...(s.dest  ? { dest:  s.dest  as string } : {}),
+    ...(s.brush ? { brush: s.brush            } : {}),
+  }));
+  updateCurrentNodeShapes(converted, _studyRedraw);
+}
+
+function currentStudyNodeShapes(): DrawShape[] {
   const node = detailNode();
-  if (!node) return;
-  const dests    = computeStudyDests(node.fen);
-  const lastMove = uciToMove(node.uci);
-  // Restore user-drawn shapes from the node — clear when none saved.
-  // Adapted from lichess-org/lila: ui/analyse/src/study/studyCtrl.ts setNode
-  const shapes: DrawShape[] = (node.shapes ?? []).map(s =>
+  return (node?.shapes ?? []).map(s =>
     s.dest
       ? { orig: s.orig as DrawShape['orig'], dest: s.dest as NonNullable<DrawShape['dest']>, brush: s.brush ?? 'green' }
       : { orig: s.orig as DrawShape['orig'], brush: s.brush ?? 'green' }
   );
-  cg.set({
-    fen:       node.fen,
-    animation: chessBoardAnimationConfig(),
-    turnColor: node.ply % 2 === 0 ? 'white' : 'black',
-    movable: {
-      color: node.ply % 2 === 0 ? 'white' : 'black',
-      dests,
-    },
-    drawable: { shapes },
-    ...(lastMove ? { lastMove } : {}),
-  });
 }
+
+// Always pass enabled+onChange+shapes together — chessground's `.set()` does not guarantee
+// partial-field merge of `drawable` across calls, so a shapes-only or onChange-only `.set()` could
+// silently drop the other.
+function syncStudyShapeDrawable(): void {
+  cgInstance?.set({ drawable: { enabled: true, onChange: onStudyShapesChange, shapes: currentStudyNodeShapes() } });
+}
+
+// --- Board sync ---
+// Guarded on Study actually being the mounted workspace: this touches the SHARED cgInstance, and
+// (unlike the retired standalone board) that instance is also used by Analysis — calling this
+// while Analysis is mounted would stomp Analysis's board with Study's stale node/shapes.
+export function syncStudyBoard(redraw?: () => void): void {
+  if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
+  if (redraw) syncStudyEngine(redraw);
+  syncBoard();
+  syncStudyShapeDrawable();
+}
+
+// Re-syncs the shared board after ANY committed board move while Study is mounted — covers both
+// the "new variation" branch (studyDetailCtrl's handleUserMove already ran addNode/setPath/
+// markDirty/redraw by the time this fires) and the "existing child, follow it" branch (handled by
+// studyBoardNavigate above, which already calls syncStudyBoard itself — this call is then a
+// harmless, idempotent no-op-ish re-sync). Registered once; safe to fire on Analysis's own moves
+// too since syncStudyBoard() no-ops unless Study is the active workspace.
+onBoardUserMove(() => { syncStudyBoard(); });
 
 
 
@@ -203,56 +197,17 @@ function renderStudyEval(): VNode | null {
   ]);
 }
 
-// --- Board VNode (standalone Chessground, own lifecycle) ---
-function renderStudyBoard(): VNode {
-  return h('div.cg-wrap', {
-    key: 'study-board',
-    hook: {
-      insert: (vnode) => {
-        const node = detailNode();
-        if (!node) return;
-        const dests    = computeStudyDests(node.fen);
-        const lastMove = uciToMove(node.uci);
-        // drawable.onChange: save user-drawn shapes onto the current tree node.
-        // Adapted from lichess-org/lila: ui/analyse/src/study/studyCtrl.ts mutateCgConfig
-        const onShapesChange = (cgShapes: DrawShape[]): void => {
-          const converted = cgShapes.map(s => ({
-            orig:  s.orig as string,
-            ...(s.dest  ? { dest:  s.dest  as string } : {}),
-            ...(s.brush ? { brush: s.brush            } : {}),
-          }));
-          updateCurrentNodeShapes(converted, _studyRedraw);
-        };
-
-        const cg: CgApi = makeChessground(vnode.elm as HTMLElement, {
-          orientation:  detailOrientation(),
-          viewOnly:     false,
-          animation:    chessBoardAnimationConfig(),
-          drawable:     { enabled: true, onChange: onShapesChange },
-          fen:          node.fen,
-          turnColor:    node.ply % 2 === 0 ? 'white' : 'black',
-          movable: {
-            free:      false,
-            color:     node.ply % 2 === 0 ? 'white' : 'black',
-            dests,
-            showDests: true,
-          },
-          events: { move: onStudyMove },
-          ...(lastMove ? { lastMove } : {}),
-        });
-        setCgRef(cg);
-      },
-      destroy: () => {
-        getCgRef()?.destroy();
-        setCgRef(undefined as unknown as CgApi);
-      },
-    },
-  });
+// --- Board VNode (T5-D22b/c: the shared board, board/index.ts renderBoard()) ---
+// Wrapped in a keyed parent whose OWN insert hook fires after the child's (Snabbdom fires insert
+// hooks bottom-up: a vnode's children are created/inserted before the vnode itself is pushed onto
+// the insert queue), so cgInstance already exists by the time syncStudyShapeDrawable() runs here,
+// attaching Study's shape-drawing persistence without editing board/index.ts.
+function renderStudyBoardArea(): VNode {
+  return h('div.study-board-wrap', {
+    key: 'study-board-wrap',
+    hook: { insert: () => syncStudyShapeDrawable() },
+  }, [renderBoard(), renderPromotionDialog()]);
 }
-
-onBoardAnimationChange('chess', () => {
-  getCgRef()?.set({ animation: chessBoardAnimationConfig() });
-});
 
 
 
@@ -759,7 +714,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
         attrs: { tabindex: '0' },
         on:    { keydown: (e: KeyboardEvent) => handleStudyKeydown(e, redraw) },
       }, [
-        renderStudyBoard(),
+        renderStudyBoardArea(),
         renderStudyNavBar(redraw),
         renderStudyEval(),
         _glyphQuickSelectOpen ? renderGlyphQuickSelect(redraw) : null,
