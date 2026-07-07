@@ -51,12 +51,14 @@
 
 
 import { h, type VNode, type VNodeData } from 'snabbdom';
-import type {
-  StudyNavigationFolderGroup,
-  StudyNavigationSectionNode,
-  StudyNavigationTree,
-  StudySectionId,
+import {
+  STUDY_SECTIONS,
+  type StudyNavigationFolderGroup,
+  type StudyNavigationSectionNode,
+  type StudyNavigationTree,
+  type StudySectionId,
 } from './navigationIndexProvider';
+import { navIcon } from './navIcons';
 
 // ---------------------------------------------------------------------------------------------
 // System lenses (P2-LIB-2) — fixed structural label list, not computed lens content (T5-D13 owns
@@ -126,6 +128,53 @@ function toggleCollapsed(id: string, redraw: () => void): void {
 // under one section never silently affects its (independent) row under another section.
 function folderCollapseKey(sectionId: StudySectionId, folderId: string): string {
   return `folder:${sectionId}:${folderId}`;
+}
+
+
+
+
+
+
+
+
+
+/** Every id this pane can independently collapse for the CURRENT tree: every section header
+ * (always collapsible, per `renderSectionBlock` below) plus every folder that has children
+ * (leaf folders have no chevron and are never "collapsed" — see `renderFolderRow`). */
+function collectCollapsibleIds(tree: StudyNavigationTree): string[] {
+  const ids: string[] = [];
+  const walkFolders = (sectionId: StudySectionId, groups: readonly StudyNavigationFolderGroup[]): void => {
+    for (const group of groups) {
+      if (group.children.length > 0) ids.push(folderCollapseKey(sectionId, group.id));
+      walkFolders(sectionId, group.children);
+    }
+  };
+  for (const section of tree.sections) {
+    ids.push(section.id);
+    walkFolders(section.id, section.folders);
+  }
+  return ids;
+}
+
+/** True when at least one collapsible node in the CURRENT tree is not in `_collapsedIds` — i.e.
+ * currently rendering expanded. Scoped to this tree's own ids (not whatever `_collapsedIds`
+ * happens to contain) so a stale id left over from a folder that no longer exists can never make
+ * this report "something is expanded" when nothing currently on screen actually is. */
+export function hasAnyExpanded(tree: StudyNavigationTree): boolean {
+  return collectCollapsibleIds(tree).some(id => !_collapsedIds.has(id));
+}
+
+/** Expands every section/folder. Clearing the WHOLE `_collapsedIds` set (not just this tree's own
+ * ids) is intentional and safe — every id ever stored in it is either a section id or a
+ * `folderCollapseKey(...)` string, both scoped exclusively to this pane, so there is no other
+ * consumer whose state this could disturb. */
+export function expandAllSections(): void {
+  _collapsedIds.clear();
+}
+
+/** Collapses every section/folder in the CURRENT tree. */
+export function collapseAllSections(tree: StudyNavigationTree): void {
+  for (const id of collectCollapsibleIds(tree)) _collapsedIds.add(id);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -230,6 +279,292 @@ function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => v
   return [header, ...section.folders.flatMap(folder => renderFolderRow(section.id, folder, 0, redraw))];
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const SECTION_ORDER_STORAGE_KEY = 'patzer.studyNavSectionOrder';
+
+function defaultSectionOrder(): StudySectionId[] {
+  return STUDY_SECTIONS.map(section => section.id);
+}
+
+function normalizeSectionOrder(candidate: readonly string[]): StudySectionId[] {
+  const known = new Set<string>(defaultSectionOrder());
+  const seen = new Set<string>();
+  const order: StudySectionId[] = [];
+  for (const id of candidate) {
+    if (known.has(id) && !seen.has(id)) {
+      seen.add(id);
+      order.push(id as StudySectionId);
+    }
+  }
+
+
+
+
+  for (const id of defaultSectionOrder()) {
+    if (!seen.has(id)) order.push(id);
+  }
+  return order;
+}
+
+function loadSectionOrder(): StudySectionId[] {
+  try {
+    const raw = localStorage.getItem(SECTION_ORDER_STORAGE_KEY);
+    if (!raw) return defaultSectionOrder();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaultSectionOrder();
+    return normalizeSectionOrder(parsed.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    return defaultSectionOrder(); // corrupt/unavailable localStorage — fall back to defaults.
+  }
+}
+
+function persistSectionOrder(order: readonly StudySectionId[]): void {
+  try {
+    localStorage.setItem(SECTION_ORDER_STORAGE_KEY, JSON.stringify(order));
+  } catch {
+    // Best-effort only: a failed write just means the order resets to default next mount.
+  }
+}
+
+// Read-once-then-cache module state (navigatorSettings.ts §2.4 precedent) — per-device only, no
+// synced-vs-local toggle (matches the appearance-settings model's own [DEFAULT]).
+let _sectionOrder: StudySectionId[] = loadSectionOrder();
+
+export function getSectionOrder(): readonly StudySectionId[] {
+  return _sectionOrder;
+}
+
+export function setSectionOrder(order: readonly StudySectionId[]): void {
+  _sectionOrder = normalizeSectionOrder(order);
+  persistSectionOrder(_sectionOrder);
+}
+
+/** Applies the persisted section order to a tree's own `sections` array. Consumed by BOTH the
+ * normal tree render (`renderSectionsBlock` below — so a completed reorder is actually visible in
+ * the real nav tree, not just persisted invisibly) and the reorder panel itself. A section id
+ * present in the tree but not yet in the persisted order (should not normally happen — the tree
+ * always carries all four STUDY_SECTIONS — but handled defensively) appends in the tree's own
+ * already-P2-LIB-2-ordered order. */
+function orderedTreeSections(tree: StudyNavigationTree): StudyNavigationSectionNode[] {
+  const bySectionId = new Map(tree.sections.map(section => [section.id, section] as const));
+  const ordered: StudyNavigationSectionNode[] = [];
+  for (const id of _sectionOrder) {
+    const section = bySectionId.get(id);
+    if (section) {
+      ordered.push(section);
+      bySectionId.delete(id);
+    }
+  }
+  for (const section of tree.sections) {
+    if (bySectionId.has(section.id)) ordered.push(section);
+  }
+  return ordered;
+}
+
+function moveSectionOrderStep(sectionId: StudySectionId, delta: number, redraw: () => void): void {
+  const order = _sectionOrder.slice();
+  const idx = order.indexOf(sectionId);
+  const target = idx + delta;
+  if (idx === -1 || target < 0 || target >= order.length) return;
+  order.splice(idx, 1);
+  order.splice(target, 0, sectionId);
+  setSectionOrder(order);
+  redraw();
+}
+
+/**
+ * Pointerdown handler for a reorder row's drag handle. Mirrors `PaneResizeController.startDrag`'s
+ * own shape (primary-button-only, pointer capture, direct DOM writes during the active drag, a
+ * single redraw() at drag-end) adapted from a 1-D size drag to a list-position drag: every OTHER
+ * row previews the reorder live via a `translateY` shift (the classic "make room" list-reorder
+ * technique), the dragged row itself tracks the pointer 1:1, and the final index is committed to
+ * `_sectionOrder` (via `setSectionOrder`) only on pointerup.
+ */
+function startSectionReorderDrag(event: PointerEvent, sectionId: StudySectionId, redraw: () => void): void {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  const handle = event.currentTarget as HTMLElement | null;
+  const row = handle?.closest('.nav-reorder-row') as HTMLElement | null;
+  const list = handle?.closest('.nav-reorder-list') as HTMLElement | null;
+  if (!handle || !row || !list) return;
+
+  const rows = Array.from(list.querySelectorAll<HTMLElement>('.nav-reorder-row'));
+  const startIndex = rows.indexOf(row);
+  const rowHeight = row.getBoundingClientRect().height;
+  if (startIndex === -1 || rows.length < 2 || !(rowHeight > 0)) return;
+  event.preventDefault();
+
+  const pointerId = event.pointerId;
+  const startClientY = event.clientY;
+  let targetIndex = startIndex;
+
+  row.classList.add('--dragging');
+  handle.setPointerCapture?.(pointerId);
+  document.body.classList.add('study-nav-reordering');
+
+  const applyShiftPreview = (newTargetIndex: number): void => {
+    rows.forEach((r, i) => {
+      if (i === startIndex) return;
+      let shift = 0;
+      if (newTargetIndex < startIndex && i >= newTargetIndex && i < startIndex) shift = 1;
+      else if (newTargetIndex > startIndex && i <= newTargetIndex && i > startIndex) shift = -1;
+      r.style.transform = shift === 0 ? '' : `translateY(${shift * rowHeight}px)`;
+    });
+  };
+
+  const handleMove = (moveEvent: PointerEvent): void => {
+    if (moveEvent.pointerId !== pointerId) return;
+    const deltaY = moveEvent.clientY - startClientY;
+    row.style.transform = `translateY(${deltaY}px)`;
+    const rawIndex = startIndex + Math.round(deltaY / rowHeight);
+    const nextTarget = Math.max(0, Math.min(rows.length - 1, rawIndex));
+    if (nextTarget !== targetIndex) {
+      targetIndex = nextTarget;
+      applyShiftPreview(targetIndex);
+    }
+  };
+
+  const endDrag = (endEvent: PointerEvent): void => {
+    if (endEvent.pointerId !== pointerId) return;
+    window.removeEventListener('pointermove', handleMove);
+    window.removeEventListener('pointerup', endDrag);
+    window.removeEventListener('pointercancel', endDrag);
+    document.body.classList.remove('study-nav-reordering');
+    rows.forEach(r => {
+      r.style.transform = '';
+      r.classList.remove('--dragging');
+    });
+
+    if (targetIndex !== startIndex) {
+      const next = _sectionOrder.slice();
+      const idx = next.indexOf(sectionId);
+      if (idx !== -1) {
+        next.splice(idx, 1);
+        next.splice(targetIndex, 0, sectionId);
+        setSectionOrder(next);
+      }
+    }
+    redraw();
+  };
+
+  window.addEventListener('pointermove', handleMove);
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+}
+
+/** One draggable root-section row in reorder mode: a CSS-drawn grip handle (`.nav-reorder-handle`
+ * — no new icon vendored for this, drawn purely in main.scss, consistent with this pane's own
+ * existing plain-glyph convention for lens icons), the section's label, and up/down move buttons
+ * (reusing the already-vendored `chevron-down` glyph, rotated 180deg for "up" — the same
+ * single-glyph-rotated-by-CSS trick `.nav-chevron.--open` already uses elsewhere in this file's
+ * own stylesheet) as a keyboard/pointer-optional alternative to the drag handle. */
+function renderReorderRow(
+  sectionId: StudySectionId,
+  label: string,
+  index: number,
+  total: number,
+  redraw: () => void,
+): VNode {
+  const canMoveUp = index > 0;
+  const canMoveDown = index < total - 1;
+  return h(
+    'div.nav-reorder-row',
+    { key: `reorder-section-${sectionId}`, attrs: { role: 'listitem' } },
+    [
+      h('span.nav-reorder-handle', {
+        // Pointer-only affordance (mirrors NN's own model: its dnd-kit sensors are
+        // Mouse/TouchSensor only, no KeyboardSensor — the up/down buttons below are NN's own
+        // real keyboard-operable path, not this handle). `aria-hidden` + no tabindex/role is
+        // deliberate: a focusable "button" with no keydown handler would be a real, silently
+        // broken affordance for keyboard/screen-reader users. `title` is kept for a sighted
+        // mouse-user tooltip only.
+        attrs: { title: `Drag to reorder ${label}`, 'aria-hidden': 'true' },
+        on: { pointerdown: (e: Event) => startSectionReorderDrag(e as PointerEvent, sectionId, redraw) },
+      }),
+      h('span.nav-row__label', label),
+      h('div.nav-reorder-row__controls', [
+        h(
+          'button.nav-reorder-move',
+          {
+            attrs: {
+              type: 'button',
+              title: `Move ${label} up`,
+              'aria-label': `Move ${label} up`,
+              ...(canMoveUp ? {} : { 'aria-disabled': 'true' }),
+            },
+            on: canMoveUp ? { click: () => moveSectionOrderStep(sectionId, -1, redraw) } : {},
+          },
+          [navIcon('chevron-down', { size: 14, className: 'nav-reorder-move__icon --up' })],
+        ),
+        h(
+          'button.nav-reorder-move',
+          {
+            attrs: {
+              type: 'button',
+              title: `Move ${label} down`,
+              'aria-label': `Move ${label} down`,
+              ...(canMoveDown ? {} : { 'aria-disabled': 'true' }),
+            },
+            on: canMoveDown ? { click: () => moveSectionOrderStep(sectionId, 1, redraw) } : {},
+          },
+          [navIcon('chevron-down', { size: 14, className: 'nav-reorder-move__icon' })],
+        ),
+      ]),
+    ],
+  );
+}
+
+/** The reorder-mode panel — REPLACES `.lib-nav`'s normal chrome/scroller/content entirely (see
+ * `renderNavigationPane` below) so that: (1) no lens/section/folder row keys this mode renders
+ * ever match `navigatorShellView.ts`'s `section-<id>`/`folder-<sectionId>-<folderId>`/`lens-<id>`
+ * selection-wiring keys, which is what suspends normal selection/navigation while this mode is
+ * active without this file needing to know anything about that shell's selection model; and (2)
+ * it reads as an obvious, deliberate mode switch (matching NN's own `NavigationRootReorderPanel`
+ * taking over the same screen area) rather than an overlay bolted onto the normal tree. */
+function renderReorderPanel(tree: StudyNavigationTree, redraw: () => void): VNode {
+  const sections = orderedTreeSections(tree);
+  return h(
+    'div.lib-nav__reorder',
+    { attrs: { role: 'region', 'aria-label': 'Reorder navigation sections' } },
+    [
+      h('div.nav-reorder-header', [
+        h('div.nav-reorder-header__title', 'Reorder navigation'),
+        h('div.nav-reorder-header__hint', 'Drag a section, or use the up/down buttons, to change its position.'),
+      ]),
+      h(
+        'div.nav-reorder-list',
+        { attrs: { role: 'list', 'aria-label': 'Sections' } },
+        sections.map((section, index) => renderReorderRow(section.id, section.label, index, sections.length, redraw)),
+      ),
+    ],
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pane chrome / scroller / content assembly (NN §1.2 anatomy)
 // ---------------------------------------------------------------------------------------------
@@ -246,29 +581,41 @@ function renderPinnedLensesBlock(lenses: readonly NavigationPaneLensDef[]): VNod
 function renderSectionsBlock(tree: StudyNavigationTree, redraw: () => void): VNode {
   return h('div.lib-nav__sections', { attrs: { role: 'tree', 'aria-label': 'Sections' } }, [
     h('div.lib-nav__label', 'Sections'),
-    ...tree.sections.flatMap(section => renderSectionBlock(section, redraw)),
+
+
+
+    ...orderedTreeSections(tree).flatMap(section => renderSectionBlock(section, redraw)),
   ]);
 }
 
-/**
- * Render the Study Navigator's navigation (LEFT) pane. Pure function of its inputs: given the same
- * tree/lenses and this module's current collapse-state Set, always produces the same VNode tree.
- *
- * `tree` comes from the P1 navigation-index layer (`StudyNavigationIndex.buildTree()` in
- * navigationIndexProvider.ts, already instantiated in studyCtrl.ts) — always all four P2-LIB-2
- * sections, in fixed order, per that module's own contract; folders nest via `parentId` at any
- * depth (T5-D01/D02). `lenses` defaults to the fixed six-lens structural list (SYSTEM_LENSES); pass
- * a richer list (with `count` populated) once a lens-membership layer exists (T5-D13) — this
- * function does not need to change to consume that.
- *
- * T5-D07's shell mounts this alongside the (not-yet-built) item-list pane; this function does not
- * mount itself anywhere and does not compose the pane divider.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function renderNavigationPane(
   tree: StudyNavigationTree,
   redraw: () => void,
   lenses: readonly NavigationPaneLensDef[] = SYSTEM_LENSES,
+  reorderMode = false,
 ): VNode {
+  if (reorderMode) {
+    return h('div.lib-nav', [renderReorderPanel(tree, redraw)]);
+  }
   return h('div.lib-nav', [
     // Chrome: fixed, outside the scroller (NN §1.2) — the pinned lens block.
     h('div.lib-nav__chrome', [renderPinnedLensesBlock(lenses)]),

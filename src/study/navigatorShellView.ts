@@ -46,7 +46,14 @@
 
 
 import { h, type VNode } from 'snabbdom';
-import { renderNavigationPane, SYSTEM_LENSES, type StudyLensId } from './navigationPaneView';
+import {
+  collapseAllSections,
+  expandAllSections,
+  hasAnyExpanded,
+  renderNavigationPane,
+  SYSTEM_LENSES,
+  type StudyLensId,
+} from './navigationPaneView';
 import { renderItemListPane, type ItemListDensity } from './itemListView';
 import {
   STUDY_SECTIONS,
@@ -407,6 +414,68 @@ let _newFolderValue = '';
 
 
 
+
+
+
+
+
+
+let _reorderMode = false;
+
+/** NN row-1 semantics: "toggles by whether anything is expanded" — `hasAnyExpanded(tree)` reads
+ * navigationPaneView.ts's own existing `_collapsedIds` state (via its exported query), so this
+ * button never owns a second copy of expansion state. Disabled (aria-disabled, matching this
+ * shell's own convention elsewhere) while reorder mode is active — the reorder panel replaces the
+ * normal tree entirely, so there is nothing for expand/collapse to act on until the user exits. */
+function renderExpandCollapseAllButton(redraw: () => void, tree: StudyNavigationTree): VNode {
+  const anyExpanded = hasAnyExpanded(tree);
+  const label = anyExpanded ? 'Collapse items' : 'Expand all items';
+  return h('button.nav-toolbar__btn', {
+    attrs: {
+      type: 'button',
+      title: label,
+      'aria-label': label,
+      ...(_reorderMode ? { 'aria-disabled': 'true' } : {}),
+    },
+    on: _reorderMode ? {} : {
+      click: () => {
+        if (anyExpanded) collapseAllSections(tree); else expandAllSections();
+        redraw();
+      },
+    },
+  }, [navIcon(anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down', { size: 16 })]);
+}
+
+/** The owner's "re-arrange button" (OD-5): toggles navigationPaneView.ts's reorder-mode render
+ * (plumbed through `renderNavToolbar`'s caller below) via a plain module-level flag, the same
+ * pattern `_settingsOpen`/`_newFolderMode` already use in this file. Entering reorder mode closes
+ * an open new-folder input (belt-and-suspenders — the new-folder button itself is also disabled
+ * below while reordering, so this should already be false, but a stale open input would otherwise
+ * survive underneath the reorder panel with no visible affordance to commit/cancel it). */
+function renderReorderToggleButton(redraw: () => void): VNode {
+  const label = _reorderMode ? 'Done reordering' : 'Reorder navigation';
+  return h('button.nav-toolbar__btn', {
+    class: { '--active': _reorderMode },
+    attrs: {
+      type: 'button',
+      title: label,
+      'aria-label': label,
+      'aria-pressed': String(_reorderMode),
+    },
+    on: {
+      click: () => {
+        _reorderMode = !_reorderMode;
+        if (_reorderMode) { _newFolderMode = false; _newFolderValue = ''; }
+        redraw();
+      },
+    },
+  }, [navIcon('list-tree', { size: 16 })]);
+}
+
+
+
+
+
 function selectionSectionId(selection: NavigatorSelection): StudySectionId | null {
   return selection.kind === 'lens' ? null : selection.sectionId;
 }
@@ -441,7 +510,7 @@ async function commitNewFolder(selection: NavigatorSelection, redraw: () => void
   redraw();
 }
 
-function renderNavToolbar(redraw: () => void, selection: NavigatorSelection): VNode {
+function renderNavToolbar(redraw: () => void, selection: NavigatorSelection, tree: StudyNavigationTree): VNode {
   if (_newFolderMode) {
     return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
       h('input.nav-toolbar__new-folder-input', {
@@ -458,8 +527,13 @@ function renderNavToolbar(redraw: () => void, selection: NavigatorSelection): VN
       }),
     ]);
   }
-  const canCreate = canParentNewFolder(selection);
+  // New folder is also disabled while reorder mode is active (matching the expand/collapse-all
+  // button just above it) — reorder mode replaces the tree entirely, so there is no rendered
+  // section/folder row to parent a new folder under until the user exits.
+  const canCreate = canParentNewFolder(selection) && !_reorderMode;
   return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
+    renderExpandCollapseAllButton(redraw, tree),
+    renderReorderToggleButton(redraw),
     h('button.nav-toolbar__btn', {
       attrs: {
         type: 'button',
@@ -726,8 +800,14 @@ export function renderNavigatorShell(
     redraw();
   };
 
-  const navPane = renderNavigationPane(tree, redraw);
-  wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
+  const navPane = renderNavigationPane(tree, redraw, SYSTEM_LENSES, _reorderMode);
+
+
+
+
+
+
+  if (!_reorderMode) wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
 
   const byId = new Map(allItems.map(item => [item.id, item] as const));
   const rawItems = resolveItems(resolveSelectedItemIds(tree, _selection, _includeDescendants), byId);
@@ -749,7 +829,7 @@ export function renderNavigatorShell(
   }, [
     renderRail(),
     h('div.lib-nav-wrap', [
-      renderNavToolbar(redraw, _selection),
+      renderNavToolbar(redraw, _selection, tree),
       navPane,
     ]),
     renderDivider(redraw),
