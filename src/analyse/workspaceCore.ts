@@ -62,17 +62,27 @@ export interface WorkspaceAdapter {
   getCursor: () => WorkspaceCursor;
   getOrientation: () => Color;
   redraw: () => void;
+  /**
+   * Commit a user-move-created node at `parentPath` and navigate to it. D-core-22a: the board
+   * lifecycle's `applyMoveToTree` ADD path calls this instead of hardcoding `addNode`+`_navigate`,
+   * so a future Study mount can commit moves its own way (e.g. always-new-variation + autosave)
+   * without forking the board. Analysis's adapter implementation is add-and-navigate verbatim.
+   */
+  handleUserMove: (parentPath: TreePath, node: TreeNode) => void;
 }
 
 /**
- * A mounted workspace. D-core-03 wires only `session()` (read by the board lifecycle) plus identity
- * and teardown; `navigate`/`handleUserMove`/`flip`/`registerShapeProvider`/`restore` are added by
- * D-core-04..06 (declared in the design §3.2 seam, implemented incrementally).
+ * A mounted workspace. D-core-03 wired `session()` (read by the board lifecycle) plus identity and
+ * teardown; D-core-22a adds `handleUserMove`. `navigate`/`flip`/`registerShapeProvider`/`restore`
+ * are added by later D-core slices (declared in the design §3.2 seam, implemented incrementally).
  */
 export interface WorkspaceInstance {
   readonly instanceId: string;
   readonly boardInputMode: BoardInputMode;
   session(): WorkspaceSessionSnapshot;
+  /** Commit a user-move-created node at `parentPath` and navigate to it. Delegates to the mounting
+   *  adapter's `handleUserMove` (see WorkspaceAdapter doc above). */
+  handleUserMove(parentPath: TreePath, node: TreeNode): void;
   /** Release anything this instance owns. D-core-03 owns nothing releasable yet (cgInstance and the
    *  orientation store stay module singletons per design §5); later slices tear down their own
    *  provider/nav registrations here so a superseded instance's work becomes a guaranteed no-op. */
@@ -131,6 +141,9 @@ export function mountWorkspace(adapter: WorkspaceAdapter): WorkspaceInstance {
         orientation: adapter.getOrientation(),
         instanceId,
       };
+    },
+    handleUserMove(parentPath: TreePath, node: TreeNode): void {
+      adapter.handleUserMove(parentPath, node);
     },
     teardown(_reason: string): void {
       // D-core-03: nothing owned to release yet — see interface doc above.

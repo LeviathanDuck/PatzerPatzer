@@ -308,13 +308,23 @@ function applyMoveToTree(move: NormalMove, pos: Chess): void {
     fen: makeFen(pos.toSetup()),
     children: [],
   };
-  addNode(ctrl.root, ctrl.path, newNode);
+  // Capture the parent node/path before the commit below — ctrl.node/ctrl.path are getters that
+  // move on to the new node once navigation happens, so the log must snapshot these first to keep
+  // reporting the parent's post-insertion child count exactly as before this change.
+  const parentNode = ctrl.node;
+  const parentPath = ctrl.path;
+  const ws = activeWorkspace();
+  if (ws) {
+    ws.handleUserMove(parentPath, newNode);
+  } else {
+    addNode(ctrl.root, parentPath, newNode);
+    _navigate(parentPath + newNode.id);
+  }
   console.log('[variation] inserted', {
     id: newNode.id, ply: newNode.ply, san: newNode.san, uci: newNode.uci,
-    parentPath: ctrl.path, newPath: ctrl.path + newNode.id,
-    parentChildCount: (ctrl.node.children.length),
+    parentPath, newPath: parentPath + newNode.id,
+    parentChildCount: parentNode.children.length,
   });
-  _navigate(ctrl.path + newNode.id);
 }
 
 export function playUciMove(uci: string): void {
