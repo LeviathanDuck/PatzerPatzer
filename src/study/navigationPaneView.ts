@@ -413,8 +413,20 @@ function renderFolderRow(
       },
     },
     [
-      hasChildren ? h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸') : null,
-      h('span.nav-row__icon', '▤'),
+
+
+
+
+
+
+
+
+      hasChildren
+        ? navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } })
+        : null,
+
+
+      navIcon('folder', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', group.name),
       h('span.nav-row__count', String(countFolderItemsRecursive(group))),
     ],
@@ -460,7 +472,11 @@ function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => v
       on: { ...dropHandlers, click: () => toggleCollapsed(section.id, redraw) },
     },
     [
-      h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
+
+
+
+      navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
+      navIcon('folder', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', section.label),
       h('span.nav-row__count', String(countSectionItems(section))),
     ],
@@ -853,7 +869,10 @@ function renderShortcutRow(
       attrs: { role: 'treeitem', title: target.name },
     },
     [
-      h('span.nav-row__icon', '▤'),
+
+
+
+      navIcon('folder', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', target.name),
     ],
   );
@@ -886,8 +905,8 @@ function renderShortcutsBlock(tree: StudyNavigationTree, redraw: () => void): VN
         on: { click: () => toggleCollapsed(SHORTCUTS_COLLAPSE_KEY, redraw) },
       },
       [
-        h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
-        navIcon('star', { size: 13, className: 'nav-row__icon' }),
+        navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
+        navIcon('star', { size: 16, className: 'nav-row__icon' }),
         h('span.nav-row__label', 'Shortcuts'),
       ],
     ),
@@ -965,8 +984,8 @@ function renderRecentBlock(redraw: () => void): VNode | null {
         on: { click: () => toggleCollapsed(RECENT_COLLAPSE_KEY, redraw) },
       },
       [
-        h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
-        navIcon('history', { size: 13, className: 'nav-row__icon' }),
+        navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
+        navIcon('history', { size: 16, className: 'nav-row__icon' }),
         h('span.nav-row__label', 'Recent'),
       ],
     ),
@@ -1099,7 +1118,7 @@ function renderTagRow(name: string, count: number, redraw: () => void): VNode | 
       },
     },
     [
-      navIcon('tag', { size: 13, className: 'nav-row__icon' }),
+      navIcon('tag', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', name),
       h('span.nav-row__count', `(${count})`),
     ],
@@ -1147,8 +1166,8 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
       on: { click: () => toggleCollapsed(TAGS_COLLAPSE_KEY, redraw) },
     },
     [
-      h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
-      navIcon('tags', { size: 13, className: 'nav-row__icon' }),
+      navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
+      navIcon('tags', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', 'Tags'),
     ],
   );

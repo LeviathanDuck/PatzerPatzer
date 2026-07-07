@@ -161,6 +161,12 @@ const ICONS = {
     p('m21 21-1.9-1.9'),
     c(17, 17, 3),
   ],
+
+
+
+
+
+  folder: [p('M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z')],
   'git-branch': [ln(6, 3, 6, 15), c(18, 6, 3), c(6, 18, 3), p('M18 9a9 9 0 0 1-9 9')],
   hammer: [
     p('m15 12-8.373 8.373a1 1 0 1 1-3-3L12 9'),
@@ -302,6 +308,13 @@ export interface NavIconOptions {
   size?: number;
   /** Extra class appended after the base `nav-icon` class, for per-call-site sizing/spacing hooks. */
   className?: string;
+
+
+
+
+
+
+  toggleClass?: Record<string, boolean>;
 }
 
 function resolveIconName(name: NavIconNameOrAlias): NavIconName {
@@ -340,6 +353,7 @@ export function navIcon(name: NavIconNameOrAlias, opts: NavIconOptions = {}): VN
         'aria-hidden': 'true',
         focusable: 'false',
       },
+      ...(opts.toggleClass ? { class: opts.toggleClass } : {}),
     },
     def.map(iconElementToVNode),
   );
