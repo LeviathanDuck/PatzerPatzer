@@ -106,6 +106,7 @@ import {
   endDrag,
   shouldSuppressClick,
 } from './navigatorDragDrop';
+import { openMoveAliasDialog, renderMoveAliasDialog } from './moveAliasDialog';
 
 export type ItemListDensity = 'compact' | 'full';
 
@@ -429,6 +430,16 @@ function resolveHomeFolderName(homeId: string | null): string {
 
 
 
+
+
+
+
+
+
+
+
+
+
 export interface BulkActionBarAction {
   key: string;
   /** Singular/plural label, D09/A4 precedent (see navigatorContextMenu.ts's own `isMulti` labels). */
@@ -439,7 +450,18 @@ export interface BulkActionBarAction {
   run: (ids: readonly string[]) => void | Promise<void>;
 }
 
+let _bulkBarRedraw: (() => void) | null = null;
+let _bulkBarFolderContext: string | null = null;
+
 const LIBRARY_BULK_ACTIONS: readonly BulkActionBarAction[] = [
+  {
+    key: 'move',
+    label: count => `Move ${count} game${count === 1 ? '' : 's'}…`,
+    icon: 'folder-input',
+    run: ids => {
+      if (_bulkBarRedraw) openMoveAliasDialog(ids, _bulkBarFolderContext, _bulkBarRedraw);
+    },
+  },
   {
     key: 'favorite',
     label: count => `Favorite ${count} game${count === 1 ? '' : 's'}`,
@@ -458,10 +480,12 @@ const LIBRARY_BULK_ACTIONS: readonly BulkActionBarAction[] = [
   },
 ];
 
-function renderBulkActionBar(redraw: () => void): VNode | null {
+function renderBulkActionBar(redraw: () => void, currentFolderId: string | null): VNode | null {
   const count = selectionCount();
   if (count === 0) return null;
   const ids = Array.from(selectedIds());
+  _bulkBarRedraw = redraw;
+  _bulkBarFolderContext = currentFolderId;
 
   const runAction = (action: BulkActionBarAction) => {
     void Promise.resolve(action.run(ids)).then(redraw);
@@ -713,7 +737,7 @@ export function renderItemListPane(
   const restItems = items.filter(i => !pinnedSet.has(i.id));
 
   return h('div.lib-items', [
-    renderBulkActionBar(redraw),
+    renderBulkActionBar(redraw, folderContext),
     h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
       pinnedItems.length > 0
         ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)
@@ -723,5 +747,6 @@ export function renderItemListPane(
         : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)),
     ]),
     renderGameContextMenu(redraw),
+    renderMoveAliasDialog(redraw),
   ]);
 }
