@@ -90,6 +90,7 @@ import {
   rangeSelectToId,
   selectedIds,
   selectionCount,
+  sortKey,
   toggleSelectId,
 } from './studyCtrl';
 import { deriveHomeFolderId } from './studyDb';
@@ -146,13 +147,29 @@ function studyItemAsGameRow(item: StudyItem): ImportedGame {
 // page's own rows currently pass `addLibrary: null` unconditionally too) -- not a Study-specific gap.
 const INERT_REVIEW_STATE: ReviewControlState = { kind: 'unreviewed' };
 
-// ---------------------------------------------------------------------------------------------
-// Date-grouping headers (Study §1.5: Today / Yesterday / Previous 7 days / Previous 30 days / month
-// name within the current year / bare year for older material). Buckets by StudyItem.updatedAt
-// (last-modified) -- the closest universally-populated analog to NN's file mtime/ctime grouping
-// key; StudyItem has no single "date played" field that is meaningful across all four P2-LIB-2
-// sections (a repertoire line or masters import has no played date).
-// ---------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -162,18 +179,47 @@ function startOfDay(ms: number): number {
   return d.getTime();
 }
 
-function dateGroupLabel(updatedAt: number, now: number): string {
-  const diffDays = Math.floor((startOfDay(now) - startOfDay(updatedAt)) / DAY_MS);
+function dateGroupLabel(dateValue: number, now: number): string {
+  const diffDays = Math.floor((startOfDay(now) - startOfDay(dateValue)) / DAY_MS);
   if (diffDays <= 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
   if (diffDays <= 7) return 'Previous 7 days';
   if (diffDays <= 30) return 'Previous 30 days';
-  const itemDate = new Date(updatedAt);
+  const itemDate = new Date(dateValue);
   const nowDate = new Date(now);
   if (itemDate.getFullYear() === nowDate.getFullYear()) {
     return itemDate.toLocaleDateString(undefined, { month: 'long' });
   }
   return String(itemDate.getFullYear());
+}
+
+
+
+
+
+
+const _collapsedDateGroups = new Set<string>();
+
+function isDateGroupCollapsed(label: string): boolean {
+  return _collapsedDateGroups.has(label);
+}
+
+function toggleDateGroupCollapsed(label: string, redraw: () => void): void {
+  if (_collapsedDateGroups.has(label)) _collapsedDateGroups.delete(label);
+  else _collapsedDateGroups.add(label);
+  redraw();
+}
+
+function renderDateGroupHeader(label: string, redraw: () => void): VNode {
+  const collapsed = isDateGroupCollapsed(label);
+  return h('div.sentry-group-header.sentry-group-header--date', {
+    key: `group-${label}`,
+    attrs: { role: 'button', 'aria-expanded': String(!collapsed) },
+    on: { click: () => toggleDateGroupCollapsed(label, redraw) },
+  }, [
+    navIcon(collapsed ? 'chevron-right' : 'chevron-down', { size: 13, className: 'sentry-group-header__chevron' }),
+    h('span', label),
+  ]);
 }
 
 
@@ -645,18 +691,45 @@ function renderGroupedRows(
   itemsById: ReadonlyMap<string, StudyItem>,
   currentFolderId: string | null,
 ): VNode[] {
-  const sorted = [...items].sort((a, b) => b.updatedAt - a.updatedAt);
-  const adjacency = withSelectionAdjacency(sorted.map(i => i.id), selectedIds());
+  const activeSortKey = sortKey();
+
+  const dateField: 'createdAt' | 'updatedAt' | null =
+    activeSortKey === 'createdAt' || activeSortKey === 'updatedAt' ? activeSortKey : null;
+
+  // Non-date sort (Title/etc.): flat list in the caller's already-sorted order (navigatorShellView.
+  // ts's `sortItemsForList`) -- NO date buckets. This is the A2 fix: previously every render forced
+  // an `updatedAt`-descending re-bucket here regardless of `items`' real incoming order, so a Title
+  // sort never actually rendered as a flat A->Z list.
+  if (dateField === null) {
+    const adjacency = withSelectionAdjacency(items.map(i => i.id), selectedIds());
+    return items.map(item =>
+      renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById, currentFolderId));
+  }
+
+  // Date sort: group into date-bucket headers IN THE CALLER'S INCOMING ORDER (already sorted by
+  // this same field + direction upstream) -- this function no longer re-sorts anything itself.
+  // Collapsed groups' rows are omitted from the render entirely; the adjacency map is computed
+  // against only the VISIBLE row sequence so contiguous-selection corner-squaring never treats two
+  // rows straddling a collapsed group as adjacent.
   const now = Date.now();
+  const labelForItem = new Map<string, string>();
+  const visibleIds: string[] = [];
+  for (const item of items) {
+    const label = dateGroupLabel(item[dateField], now);
+    labelForItem.set(item.id, label);
+    if (!isDateGroupCollapsed(label)) visibleIds.push(item.id);
+  }
+  const adjacency = withSelectionAdjacency(visibleIds, selectedIds());
+
   const nodes: VNode[] = [];
   let currentLabel: string | null = null;
-
-  for (const item of sorted) {
-    const label = dateGroupLabel(item.updatedAt, now);
+  for (const item of items) {
+    const label = labelForItem.get(item.id)!;
     if (label !== currentLabel) {
-      nodes.push(h('div.sentry-group-header', { key: `group-${label}` }, label));
+      nodes.push(renderDateGroupHeader(label, redraw));
       currentLabel = label;
     }
+    if (isDateGroupCollapsed(label)) continue;
     nodes.push(renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById, currentFolderId));
   }
   return nodes;
