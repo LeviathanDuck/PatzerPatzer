@@ -1125,7 +1125,7 @@ function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
         },
         on: { click: () => opts.onSelectToolTab(tab.id) },
       }, tab.label))),
-    h('div.study-tools-col__placeholder', STUDY_TOOL_TAB_PLACEHOLDER[opts.activeToolTab]),
+    opts.toolPanelContent ?? h('div.study-tools-col__placeholder', STUDY_TOOL_TAB_PLACEHOLDER[opts.activeToolTab]),
   ]);
 }
 
@@ -1143,6 +1143,13 @@ export interface GameOpenShellOptions {
   toolsOpen: boolean;
   /** Active tool-tab id when `toolsOpen` — route `toolTab`, default `comments`. */
   activeToolTab: StudyToolTabId;
+
+
+
+
+
+
+  toolPanelContent?: VNode;
   /** Clears `tools` → State 2. Wired to the tools column's "Back to game list" affordance AND
    * (below) State 3's first Escape step. */
   onCloseTools: () => void;

@@ -23,6 +23,7 @@ import { listPracticeLines, savePracticeLine, deletePracticeLine } from './study
 import { progressMap } from './studyCtrl';
 import { countDuePositions } from './practice/sessionBuilder';
 import type { TrainableSequence } from './types';
+import type { TreeNode } from '../tree/types';
 import { deleteNodeAt, promoteAt, pathInit, nodeListAt } from '../tree/ops';
 import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
@@ -71,27 +72,28 @@ function syncToolsStateFromRoute(routeKey: string, routeQuery: string): void {
   _activeToolTab = normalizeStudyToolTab(parsed.toolTab);
 }
 
-// Strips `tools`/`toolTab` out of a raw route query string. `studyDetailCtrl.ts`'s
-// `hydrateStudyDetailRoute` (a no-touch, fenced file for this slice) ends its own load with a
-// canonicalization pass that rebuilds the route from ONLY the fields its own
-// `studyDetailRouteSnapshot()` knows about (`path`/`orientation`) and `replaceHashRoute`s over
-// whatever is actually in the URL when they differ — since that snapshot has no `tools`/`toolTab`
-// fields, any hydration pass silently strips them back out of the URL. DISCLOSED, verified by
-// direct repro: toggling Manual Review without this guard wrote `tools=1` then had it erased
-// within the same interaction, because the query-string change ALSO tripped this file's own
-// `detailLoadRouteKey()` mismatch check below, re-entering `hydrateStudyDetailRoute` and running
-// straight into that cleanup. Fix (in-fence, this file only): compare/hydrate on the
-// tools-stripped "core" query — a Manual Review toggle or tab switch no longer looks like a
-// path/orientation change, so it no longer re-enters hydration (and its stripping cleanup) at all.
-// Known residual gap (see this slice's completion report): a FRESH deep link straight into
-// `#/study/:id?tools=1...` still hits the ctrl's cleanup on its own unavoidable FIRST hydration and
-// has `tools` stripped there — closing that fully needs `studyDetailRouteSnapshot()` itself to
-// carry `tools`/`toolTab`, which is out of this slice's fenced files.
+// Strips `tools`/`toolTab` out of a raw route query string, used ONLY to decide whether a route
+// change looks like a path/orientation change (the actual value passed to `hydrateStudyDetailRoute`
+// is the FULL query — see the call site's comment below for why that split matters). Without this
+// stripped comparison, a Manual Review toggle or tab switch (which changes the query string but not
+// path/orientation) would itself look like a path change and needlessly re-enter hydration.
 function coreRouteQuery(routeQuery: string): string {
   const params = new URLSearchParams(routeQuery);
   params.delete('tools');
   params.delete('toolTab');
   return params.toString();
+}
+
+// Applies the same `tools`/`toolTab` stripping to a stored `detailLoadRouteKey()` value
+// (`"id?query"`, `studyDetailCtrl.ts`) so the retrigger comparison below ignores tools/toolTab on
+// BOTH sides — otherwise, once a real hydration call has been made with tools baked into the
+// stored key (see below), every subsequent render would see a permanent mismatch and re-hydrate on
+// every redraw.
+function coreLoadRouteKey(key: string | null): string | null {
+  if (key === null) return null;
+  const qIndex = key.indexOf('?');
+  if (qIndex === -1) return key;
+  return `${key.slice(0, qIndex)}?${coreRouteQuery(key.slice(qIndex + 1))}`;
 }
 
 function writeStudyDetailRoute(): void {
@@ -129,6 +131,88 @@ function renderManualReviewToggle(redraw: () => void): VNode {
     h('span.study-manual-review-toggle__icon', { attrs: { 'aria-hidden': 'true' } }, _toolsOpen ? '◉' : '○'),
     h('span.study-manual-review-toggle__label', 'Manual Review'),
   ]);
+}
+
+
+
+
+
+
+/** One move+comment row for the Comments live-echo panel. `path` is the SAME `TreePath` shape
+ * (concatenated 2-char node ids) `navigateTo`/the move list already use. */
+interface StudyCommentRow {
+  path: string;
+  node: TreeNode;
+}
+
+/** Walks the WHOLE study tree (mainline + variations — a comment can live on any node, not only
+ * the mainline), collecting every node with at least one non-blank comment. Mirrors this file's
+ * own path-building convention (`parentPath + child.id`, same as `moveList.ts`'s tree walk and
+ * `tree/ops.ts`'s `TreePath` doc comment: "a concatenation of 2-char node IDs"). The root itself
+ * (`path === ''`) has no move (`san`/`ply` describe the position BEFORE any move), so it is never
+ * included even if it somehow carried a comment — this panel is a list of MOVE+comment pairs.
+ */
+function collectCommentedNodes(root: TreeNode): StudyCommentRow[] {
+  const rows: StudyCommentRow[] = [];
+  const walk = (node: TreeNode, path: string): void => {
+    if (path !== '' && node.comments?.some(c => c.text.trim().length > 0)) {
+      rows.push({ path, node });
+    }
+    for (const child of node.children) walk(child, path + child.id);
+  };
+  walk(root, '');
+  return rows;
+}
+
+/** Same move-number/SAN formatting `moveList.ts`'s inline `renderMoveSpan` uses (`renderMoveList`
+ * itself is not reused here since it renders the whole move TREE with its own eval/context-menu/
+ * fold wiring — this panel is a flat filtered list, a different shape — but the index convention
+ * stays identical so a comment row reads the same way the move list already does: White is
+ * `"14."`, Black is `"14…"`). */
+function formatCommentRowMove(node: TreeNode): string {
+  const n = Math.ceil(node.ply / 2);
+  const index = node.ply % 2 === 1 ? `${n}.` : `${n}…`;
+  return `${index} ${node.san ?? ''}`;
+}
+
+/** Read-only echo of every move-tree comment — the board's own Comment box (`renderCommentPanel`,
+ * `annotationView.ts`) stays the ONLY editor; this panel never writes to `node.comments`. Clicking
+ * a row navigates the board to that node's path via the EXACT SAME three-call nav sequence the
+ * move list's own row click already uses (`navigateTo`/`syncStudyBoard`/`writeStudyDetailRoute`),
+ * so bookmark state, engine re-sync, and route-write behavior are all identical to a move-list
+ * click — no parallel nav path is introduced. */
+function renderCommentsToolPanel(redraw: () => void): VNode {
+  const root = detailRoot();
+  const rows = root ? collectCommentedNodes(root) : [];
+
+  if (rows.length === 0) {
+    return h('div.study-tools-col__panel.study-tools-col__comments', [
+      h('div.study-tools-col__empty', 'No comments yet.'),
+    ]);
+  }
+
+  return h('div.study-tools-col__panel.study-tools-col__comments',
+    rows.map(({ path, node }) => h('button.study-tools-col__comment-row', {
+      key: path,
+      attrs: { type: 'button' },
+      on: { click: () => { navigateTo(path, redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); } },
+    }, [
+      h('span.study-tools-col__comment-move', formatCommentRowMove(node)),
+      h('span.study-tools-col__comment-text', (node.comments ?? [])
+        .filter(c => c.text.trim().length > 0)
+        .map(c => c.text)
+        .join(' ')),
+    ])),
+  );
+}
+
+
+
+
+
+export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () => void): VNode | null {
+  if (activeToolTab !== 'comments') return null;
+  return renderCommentsToolPanel(redraw);
 }
 
 // Defined at module scope so it survives the shared board's insert hook closure and any hook
@@ -710,12 +794,26 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const routeKey = `${id}?${routeQuery}`;
   syncToolsStateFromRoute(routeKey, routeQuery);
   const hydrationQuery = coreRouteQuery(routeQuery);
   const hydrationKey = `${id}?${hydrationQuery}`;
-  if (detailLoadRouteKey() !== hydrationKey) {
-    hydrateStudyDetailRoute(id, hydrationQuery, redraw);
+  if (coreLoadRouteKey(detailLoadRouteKey()) !== hydrationKey) {
+    hydrateStudyDetailRoute(id, routeQuery, redraw);
   }
   if (!detailLoaded()) {
     return h('div.study-detail', h('div.study-detail__loading', 'Loading…'));

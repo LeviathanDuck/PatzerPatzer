@@ -35,7 +35,7 @@ import {
   type OrpPracticeLineView,
 } from './studyCtrl';
 import { renderNavigatorShell, normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
-import { renderStudyDetail } from './studyDetailView';
+import { renderStudyDetail, renderStudyToolPanel } from './studyDetailView';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
@@ -2214,12 +2214,21 @@ export function renderStudyDetailShell(id: string, redraw: () => void, routeQuer
     redraw();
   };
 
+
+
+
+
+  const toolPanelContent = toolsOpen ? renderStudyToolPanel(activeToolTab, redraw) : null;
+
   return h('div.study-page.study-page--dual-pane', [
     renderNavigatorShell(studyNavigationTree(), allStudies(), redraw, openImportModal, {
       openItemId: id,
       mainContent: renderStudyDetail(id, redraw, routeQuery),
       toolsOpen,
       activeToolTab,
+      // `exactOptionalPropertyTypes` means the field must be OMITTED (not set to `undefined`) when
+      // there's no real panel yet, so `renderStudyToolsColumn`'s `?? placeholder` fallback applies.
+      ...(toolPanelContent ? { toolPanelContent } : {}),
       onCloseTools: () => writeToolsRoute({ tools: false, toolTab: '' }),
       onSelectToolTab: (tab) => writeToolsRoute({ tools: true, toolTab: tab }),
     }),
