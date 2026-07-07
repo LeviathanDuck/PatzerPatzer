@@ -13,6 +13,7 @@ import {
 import { pathInit } from './tree/ops';
 import { current } from './router';
 import { getActiveRoundCtrl, puzzlePrev, puzzleNext, puzzleFirst, puzzleLast } from './puzzles/ctrl';
+import { clearPremoveQueue, getPremoveQueueState } from './board/premoves';
 
 // --- Injected deps ---
 
@@ -59,10 +60,22 @@ export function bindKeyboardHandlers(deps: {
 
 
     if (current().name === 'editor') return;
+    const routeName = current().name;
+
+    if (
+      e.key === 'Escape'
+      && (routeName === 'analysis' || routeName === 'analysis-game')
+      && getPremoveQueueState().intents.length > 0
+    ) {
+      e.preventDefault();
+      clearPremoveQueue('manual-clear');
+      _redraw();
+      return;
+    }
 
     // Puzzle round keyboard navigation.
     // Adapted from lichess-org/lila: ui/puzzle/src/control.ts prev/next/first/last
-    if (current().name === 'puzzle-round' && getActiveRoundCtrl()) {
+    if (routeName === 'puzzle-round' && getActiveRoundCtrl()) {
       if (e.key === 'ArrowLeft')  { e.preventDefault(); puzzlePrev(_redraw);  return; }
       if (e.key === 'ArrowRight') { e.preventDefault(); puzzleNext(_redraw);  return; }
       if (e.key === 'ArrowUp')    { e.preventDefault(); puzzleFirst(_redraw); return; }

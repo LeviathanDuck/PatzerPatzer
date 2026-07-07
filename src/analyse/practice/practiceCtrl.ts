@@ -29,8 +29,16 @@ import {
   getPlayStrengthLevel,
   setPlayStrengthLevel,
 } from '../../engine/ctrl';
-import { cancelPlayMove, requestPlayMove } from '../../engine/playMove';
+import { cancelPlayMove, playMoveWithDelay, requestPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
+import {
+  clearPremoveQueue,
+  executeNextQueuedPremoveAfterComputerReply,
+  getPlayVsComputerPremoveHost,
+  getPremoveQueueState,
+} from '../../board/premoves/controller';
+import type { PremoveQueueClearReason } from '../../board/premoves/host';
+import { schedulePracticeReply } from './replyScheduler';
 
 export type PracticeVerdict = 'goodMove' | 'inaccuracy' | 'mistake' | 'blunder';
 
@@ -279,12 +287,13 @@ function clearFallbackTimer(): void {
   }
 }
 
-function cancelPendingReply(): void {
+function cancelPendingReply(reason?: PremoveQueueClearReason): void {
   clearFallbackTimer();
   if (_replyRequestFen !== null) {
     _replyRequestFen = null;
     cancelPlayMove();
     if (engineMode === 'play') exitPlayMode();
+    if (reason && getPremoveQueueState().intents.length > 0) clearPremoveQueue(reason);
   }
 }
 
@@ -298,7 +307,7 @@ function requestReply(): void {
   // computer speed). requestPlayMove() itself defers the actual position/go send until the
   // shared engine is confirmed idle when a verdict-eval search is still in flight (see
   // enterPlayMode()'s readiness barrier in engine/ctrl.ts), so this is never premature.
-  requestPlayMove({
+  schedulePracticeReply({
     position: fenOnlyPositionContext(requestFen, 'analysis-practice-play', 'practice opponent reply'),
     strength: practiceStrengthConfig(),
     onMove: uci => {
@@ -309,13 +318,28 @@ function requestReply(): void {
       if (d.getPath() !== requestPath || currentNode().fen !== requestFen) return;
       d.playUciMove(uci);
       // Return the shared engine to analysis mode so the next verdict/hint evals run.
-      exitPlayMode();
+      if (engineMode === 'play') exitPlayMode();
+      _threefold = detectThreefold();
+      if (practiceEndState() !== null) {
+        if (getPremoveQueueState().intents.length > 0) clearPremoveQueue('terminal');
+        d.redraw();
+        return;
+      }
+      const afterReplyPath = d.getPath();
+      const afterReplyNode = currentNode();
+      if (afterReplyNode.fen !== requestFen || afterReplyPath !== requestPath) {
+        executeNextQueuedPremoveAfterComputerReply({ fen: afterReplyNode.fen, path: afterReplyPath });
+      }
     },
     onError: () => {
       _replyRequestFen = null;
       if (engineMode === 'play') exitPlayMode();
+      if (getPremoveQueueState().intents.length > 0) clearPremoveQueue('engine-error');
       d.redraw();
     },
+  }, getPlayVsComputerPremoveHost(), {
+    immediate: requestPlayMove,
+    delayed: (req, delayMs) => playMoveWithDelay(req, delayMs),
   });
 }
 
@@ -332,6 +356,13 @@ function checkState(): void {
   }
   const node = currentNode();
   const path = d.getPath();
+  const terminal = practiceEndState() !== null;
+  if (terminal) {
+    if (getPremoveQueueState().intents.length > 0) clearPremoveQueue('terminal');
+    clearFallbackTimer();
+    d.redraw();
+    return;
+  }
   if (isMyTurn()) {
     const h = _hinting;
     if (h) {
@@ -356,8 +387,7 @@ function checkState(): void {
         }
       }
     }
-    const terminal = practiceEndState() !== null;
-    if (!_played && !terminal) {
+    if (!_played) {
       // Wait for the verdict eval before flipping the engine into play mode, so the
       // shared protocol is used strictly sequentially. The fallback timer guarantees
       // a reply even if the analysis eval never reaches the gate.
@@ -429,7 +459,7 @@ export function startPractice(): void {
 }
 
 /** Stop the session and cancel any in-flight engine work owned by practice. */
-export function stopPractice(): void {
+export function stopPractice(reason: PremoveQueueClearReason = 'practice-reset'): void {
   if (!_active) return;
   _active = false;
   _running = false;
@@ -439,7 +469,8 @@ export function stopPractice(): void {
   _played = false;
   _sessionStartPath = null;
   _railSettingsOpen = false;
-  cancelPendingReply();
+  if (getPremoveQueueState().intents.length > 0) clearPremoveQueue(reason);
+  cancelPendingReply(reason);
   deps?.onShapesChanged();
   deps?.redraw();
 }
@@ -453,7 +484,8 @@ export function stopPractice(): void {
 export function practiceReset(): void {
   const d = deps;
   if (!_active || !d || _sessionStartPath === null) return;
-  cancelPendingReply();
+  if (getPremoveQueueState().intents.length > 0) clearPremoveQueue('practice-reset');
+  cancelPendingReply('practice-reset');
   _comment = null;
   _hovering = null;
   _hinting = null;
@@ -478,7 +510,7 @@ export function practiceOnJump(): void {
   if (!_active) return;
   _played = false;
   _hinting = null;
-  cancelPendingReply();
+  cancelPendingReply('engine-cancel');
   _threefold = detectThreefold();
   deps?.onShapesChanged();
   checkState();

@@ -6,7 +6,7 @@ import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import { key2pos, uciToMove } from '@lichess-org/chessground/util';
-import type { NormalMove, Role } from 'chessops';
+import type { NormalMove, Role, SquareName } from 'chessops';
 import { Chess, normalizeMove } from 'chessops/chess';
 import { chessgroundDests, scalachessCharPair } from 'chessops/compat';
 import { makeFen, parseFen } from 'chessops/fen';
@@ -21,6 +21,7 @@ import { addNode } from '../tree/ops';
 import type { Clock, TreeNode } from '../tree/types';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from './animation';
 import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from './arrowBrushes';
+import { capturePremoveInput, currentPremoveCaptureSnapshot } from './premoves';
 
 // --- Injected deps ---
 
@@ -255,6 +256,40 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
   applyMoveToTree(move, pos);
 }
 
+/**
+ * Apply a move that has already been accepted as a user-intent move by a board-level feature
+ * such as queued premoves. This preserves the same before/after hook contract as onUserMove()
+ * while allowing callers to provide an already-selected promotion role.
+ */
+export function applyLegalBoardUserMove(orig: string, dest: string, promotion?: Role): void {
+  const ctrl = _getCtrl();
+  const setup = parseFen(ctrl.node.fen).unwrap();
+  const pos = Chess.fromSetup(setup).unwrap();
+  const fromSq = parseSquare(orig);
+  const toSq = parseSquare(dest);
+  if (fromSq === undefined || toSq === undefined) return;
+  const move = normalizeMove(
+    pos,
+    promotion !== undefined ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq },
+  );
+  if (!('from' in move) || !pos.isLegal(move)) return;
+
+  const normUci = makeUci(move);
+  const fenBefore = ctrl.node.fen;
+  fireBeforeMoveHooks({ uci: normUci, fenBefore, path: ctrl.path });
+
+  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  if (existingChild) {
+    _navigate(ctrl.path + existingChild.id);
+    fireMoveHooks({ uci: normUci, fenBefore, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
+    return;
+  }
+
+  applyMoveToTree(move as NormalMove, pos);
+  const afterCtrl = _getCtrl();
+  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? normUci });
+}
+
 function applyMoveToTree(move: NormalMove, pos: Chess): void {
   const ctrl = _getCtrl();
   const normUci = makeUci(move);
@@ -342,16 +377,34 @@ export function syncBoard(): void {
   const node = ctrl.node;
   const dests = cachedDests(node.fen);
   const lastMove = uciToMove(node.uci);
+  const premoveCapture = currentPremoveCaptureSnapshot();
+  const turnColor = node.ply % 2 === 0 ? 'white' : 'black';
   cgInstance.set({
     fen: node.fen,
     animation: chessBoardAnimationConfig(),
-    turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+    turnColor,
     movable: {
-      color: node.ply % 2 === 0 ? 'white' : 'black',
-      dests,
+      color: premoveCapture?.humanColor ?? turnColor,
+      dests: premoveCapture ? new Map() : dests,
+    },
+    premovable: {
+      enabled: premoveCapture !== null,
+      showDests: true,
+      castle: true,
+      events: {
+        set: onPatzerPremoveSet,
+        unset: () => {},
+      },
     },
     ...(lastMove ? { lastMove } : {}),
   });
+}
+
+function onPatzerPremoveSet(orig: Key, dest: Key): void {
+  capturePremoveInput(orig as SquareName, dest as SquareName);
+  // Chessground stores only one premove. Clear it immediately so Patzer queue state remains the
+  // only stack source of truth while chessground still supplies premove input mechanics.
+  cgInstance?.cancelPremove();
 }
 
 // Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts (flip)
@@ -613,6 +666,8 @@ export function renderBoard(): VNode {
         const node = ctrl.node;
         const dests = cachedDests(node.fen);
         const lastMove = uciToMove(node.uci);
+        const premoveCapture = currentPremoveCaptureSnapshot();
+        const turnColor = node.ply % 2 === 0 ? 'white' : 'black';
         cgInstance = makeChessground(vnode.elm as HTMLElement, {
           orientation,
           viewOnly: false,
@@ -635,12 +690,21 @@ export function renderBoard(): VNode {
           },
           fen: node.fen,
           animation: chessBoardAnimationConfig(),
-          turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+          turnColor,
           movable: {
             free: false,
-            color: node.ply % 2 === 0 ? 'white' : 'black',
-            dests,
+            color: premoveCapture?.humanColor ?? turnColor,
+            dests: premoveCapture ? new Map() : dests,
             showDests: true,
+          },
+          premovable: {
+            enabled: premoveCapture !== null,
+            showDests: true,
+            castle: true,
+            events: {
+              set: onPatzerPremoveSet,
+              unset: () => {},
+            },
           },
           events: {
             move: onUserMove,

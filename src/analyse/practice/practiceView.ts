@@ -5,6 +5,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { renderPremoveQueueControls } from '../../board/premoves';
 import { renderStrengthSelector } from '../../engine/strengthView';
 import {
   isMyTurn,
@@ -159,12 +160,22 @@ export interface PracticeRailDeps {
 
 
 
+
 export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
-  if (!practiceActive()) return null;
+  const premoveControls = renderPremoveQueueControls(deps);
+  if (!practiceActive()) {
+    return premoveControls
+      ? h('div.practice-rail', {
+          class: { 'practice-rail--queue-visible': true },
+        }, [premoveControls])
+      : null;
+  }
   const hint = practiceHinting();
   const feedbackOn = practiceFeedbackEnabled();
   const settingsOpen = practiceRailSettingsOpen();
-  return h('div.practice-rail', [
+  return h('div.practice-rail', {
+    class: { 'practice-rail--queue-visible': premoveControls !== null },
+  }, [
     h('div.practice-rail__row', [
       h('button.practice-rail__btn', {
         attrs: { type: 'button', title: 'Restart from the position this session started at' },
@@ -194,6 +205,7 @@ export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
         on: { click: () => { setPracticeRailSettingsOpen(!settingsOpen); deps.redraw(); } },
       }, '⚙'),
     ]),
+    premoveControls,
     settingsOpen
       ? h('div.practice-rail__settings', [
           renderStrengthSelector(practiceStrengthLevel(), level => {

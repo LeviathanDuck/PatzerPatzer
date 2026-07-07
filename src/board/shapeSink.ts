@@ -36,6 +36,7 @@ import {
 import { evalWinChances, classifyLoss, type MoveLabel } from '../engine/winchances';
 import { pathInit, pathIsMainline } from '../tree/ops';
 import type { Glyph } from '../tree/types';
+import { buildPremovePreviewShapes } from './premoves';
 
 // --- Injected deps + singleton sink state ---
 //
@@ -161,6 +162,10 @@ export function buildArrowShapes(): DrawShape[] {
 
 
   shapes.push(...(sink.extraAutoShapesProvider?.() ?? []));
+
+  // Board-owned queued-premove preview. Kept outside the single extra-shape provider so practice
+  // hints and stack previews compose instead of replacing one another.
+  shapes.push(...buildPremovePreviewShapes({ fen: ctrl.node.fen, path: ctrl.path }));
 
   return shapes;
 }
