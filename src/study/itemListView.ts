@@ -84,6 +84,20 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
@@ -119,6 +133,7 @@ import {
   shouldSuppressClick,
 } from './navigatorDragDrop';
 import { openMoveAliasDialog, renderMoveAliasDialog } from './moveAliasDialog';
+import { isHidden, showHiddenItems } from './hiddenItems';
 
 export type ItemListDensity = 'compact' | 'full';
 
@@ -733,14 +748,21 @@ function renderItemRow(
   const isAlias = isAliasHere(item, currentFolderId);
   const homeName = isAlias ? resolveHomeFolderName(deriveHomeFolderId(item)) : null;
 
+
+
+
+
+  const hidden = isHidden('game', item.id);
+
   return h('div.sentry-row', {
     key: item.id,
-    attrs: { draggable: 'true' },
+    attrs: { draggable: 'true', ...(hidden ? { style: 'opacity:0.5' } : {}) },
     class: {
       'sentry-row--selected': selected,
       'sentry-row--adj-above': Boolean(selected && adjacency?.above),
       'sentry-row--adj-below': Boolean(selected && adjacency?.below),
       'sentry-row--dragging': dragging,
+      'sentry-row--hidden': hidden,
     },
     on: {
 
@@ -947,11 +969,16 @@ export function renderItemListPane(
   currentFolderId?: string | null,
 ): VNode {
   const folderContext = currentFolderId ?? null;
-  const displayedIds = items.map(i => i.id);
-  const itemsById = new Map(items.map(i => [i.id, i] as const));
-  const pinnedItems = items.filter(i => isItemPinned(i.id));
+
+
+
+
+  const visibleItems = showHiddenItems() ? items : items.filter(i => !isHidden('game', i.id));
+  const displayedIds = visibleItems.map(i => i.id);
+  const itemsById = new Map(visibleItems.map(i => [i.id, i] as const));
+  const pinnedItems = visibleItems.filter(i => isItemPinned(i.id));
   const pinnedSet = new Set(pinnedItems.map(i => i.id));
-  const restItems = items.filter(i => !pinnedSet.has(i.id));
+  const restItems = visibleItems.filter(i => !pinnedSet.has(i.id));
 
   return h('div.lib-items', [
     renderSelectAllPageControl(redraw, displayedIds),
@@ -961,7 +988,7 @@ export function renderItemListPane(
       pinnedItems.length > 0
         ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)
         : null,
-      ...(items.length === 0
+      ...(visibleItems.length === 0
         ? [renderEmptyState()]
         : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)),
     ]),

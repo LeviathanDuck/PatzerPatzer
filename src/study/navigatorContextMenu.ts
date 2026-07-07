@@ -62,6 +62,10 @@
 
 
 
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
@@ -311,6 +315,27 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       label: allPinned ? `Unpin ${count} games` : `Pin ${count} games`,
       icon: 'pin',
       onClick: () => ctx.onTogglePin(ids),
+    }));
+  }
+
+
+
+
+
+
+
+  if (!isMulti) {
+    const hideTargetId = ids[0]!;
+    const isGameHidden = isHidden('game', hideTargetId);
+    entries.push(menuItem({
+      key: 'hide-game',
+      label: isGameHidden ? 'Unhide game' : 'Hide game',
+      icon: isGameHidden ? 'eye' : 'eye-off',
+      onClick: () => {
+        if (isGameHidden) unhideItem('game', hideTargetId);
+        else hideItem('game', hideTargetId);
+        redraw();
+      },
     }));
   }
   entries.push(menuSeparator('sep-pin'));
