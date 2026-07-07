@@ -60,7 +60,13 @@
 
 
 
+
+
+
+
+
 import * as studyCtrl from './studyCtrl';
+import { deriveHomeFolderId } from './studyDb';
 
 // ---------------------------------------------------------------------------------------------
 // Drag state
@@ -300,12 +306,36 @@ export function dropTargetHandlers(config: DropTargetConfig, redraw: () => void)
 
 
 
-/** Re-home every dragged game id to `folderId` -- replaces each game's ENTIRE `folders` array
- * with just this one id (Finder-like: in this model a game has exactly one home folder). Uses the
- * already-exported studyCtrl.updateStudy; no new game-membership store method was needed. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export async function moveGamesToFolder(ids: readonly string[], folderId: string): Promise<void> {
   for (const id of ids) {
-    await studyCtrl.updateStudy({ id, folders: [folderId] });
+    const study = studyCtrl.allStudies().find(s => s.id === id);
+    const sourceFolderId = study ? deriveHomeFolderId(study) : null;
+    await studyCtrl.moveGameToFolder(id, folderId, sourceFolderId);
   }
 }
 

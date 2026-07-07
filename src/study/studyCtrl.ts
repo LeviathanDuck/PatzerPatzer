@@ -3,7 +3,7 @@
 // Adapted from lichess-org/lila: ui/study/src/studyCtrl.ts state model.
 
 import { parsePgn } from 'chessops/pgn';
-import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders } from './studyDb';
+import { listStudies, getStudiesPaginated, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
@@ -1170,10 +1170,122 @@ export async function addStudyToFolderByName(studyId: string, name: string): Pro
   await updateStudy({ id: studyId, folders: [...study.folders, folderId] });
 }
 
+
+
+
+
+
+
+
 /**
- * Delete a folder entity by id.
- * Removes the folder id from any study that references it (P2-LIB-11: membership is id-keyed).
+ * Explicit alias-add: adds `folderId` to `id`'s membership (`folders[]`) without ever touching
+ * `homeFolderId` (P2-LIB-8 amendment: "adding to a folder never removes it from another" now
+ * governs this EXPLICIT alias-add action specifically — OD-7 REVISED's DEFAULT drag is MOVE, see
+ * `rehomeGame` below, never this). No-op if `folderId` is already a membership entry (idempotent,
+ * mirrors `moveStudyToFolder`'s existing guard).
  */
+export async function addAliasToFolder(id: string, folderId: string): Promise<void> {
+  const study = _studies.find(s => s.id === id);
+  if (!study) return;
+  if (study.folders.includes(folderId)) return;
+  await updateStudy({ id, folders: [...study.folders, folderId] });
+}
+
+/**
+ * Remove `folderId` from `id`'s membership — but ONLY when it is not the item's home folder.
+ * Compares against the effective home via `deriveHomeFolderId` (not the raw `homeFolderId`
+ * field), so a legacy item with no explicit `homeFolderId` yet still refuses to remove its
+ * derived `folders[0]` home. Removing the home folder is a re-home, not a plain removal — see
+ * `rehomeGame` (explicit re-home) and `promoteOrClearHomeOnRemoval` (folder-deletion path, below).
+ * No-op if `folderId` is not currently a member.
+ */
+export async function removeAliasFromFolder(id: string, folderId: string): Promise<void> {
+  const study = _studies.find(s => s.id === id);
+  if (!study) return;
+  if (!study.folders.includes(folderId)) return;
+  if (folderId === deriveHomeFolderId(study)) return; // refuse — removing home is a re-home
+  await updateStudy({ id, folders: study.folders.filter(f => f !== folderId) });
+}
+
+/**
+ * Re-home `id` to `folderId`: sets it as the explicit `homeFolderId` AND ensures folder
+ * membership (adds `folderId` to `folders[]` if not already present) — the MOVE semantic (OD-7
+ * REVISED: "Default game drag = MOVE (re-home)"). Provided for A-alias-2 to route the navigator
+ * drag engine (`navigatorDragDrop.ts`) through — per this slice's out-of-scope fence, NOT wired
+ * into any view here.
+ */
+export async function rehomeGame(id: string, folderId: string): Promise<void> {
+  const study = _studies.find(s => s.id === id);
+  if (!study) return;
+  const folders = study.folders.includes(folderId) ? study.folders : [...study.folders, folderId];
+  await updateStudy({ id, folders, homeFolderId: folderId });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function moveGameToFolder(
+  id: string,
+  targetFolderId: string,
+  sourceFolderId: string | null,
+): Promise<void> {
+  await rehomeGame(id, targetFolderId);
+  if (
+    sourceFolderId != null &&
+    sourceFolderId !== targetFolderId &&
+    folders().some(f => f.id === sourceFolderId)
+  ) {
+    await removeAliasFromFolder(id, sourceFolderId);
+  }
+}
+
+/**
+ * When `id`'s home folder has just been removed from its membership (the game left its home
+ * folder, or that folder was deleted — see `removeFolderEntity` below), promote the OLDEST
+ * remaining alias (the first entry left in `folders[]`, insertion order) to the new home, or
+ * clear to `null` (falls to Unsorted/section-derived placement) if no alias remains. Never
+ * orphans a game (locked owner decision, OD-7 REVISED APPROVED 2026-07-06: "removing a game from
+ * its home folder auto-promotes the oldest alias to home ... falls to Unsorted if no alias
+ * exists — never orphaned"). Always writes an explicit `homeFolderId` (string or `null`), making
+ * the home designation authoritative going forward rather than leaving it to implicit
+ * `folders[0]` derivation (the "Do not preserve" instruction for this slice). Call this AFTER
+ * `folders[]` no longer contains the vacated home id — it reads the current `folders[]` as the
+ * remaining-aliases set.
+ */
+export async function promoteOrClearHomeOnRemoval(id: string): Promise<void> {
+  const study = _studies.find(s => s.id === id);
+  if (!study) return;
+  const nextHome = study.folders.length > 0 ? study.folders[0]! : null;
+  await updateStudy({ id, homeFolderId: nextHome });
+}
+
+
+
+
+
+
+
+
 export async function removeFolderEntity(id: string): Promise<void> {
   const folder = _folders.find(f => f.id === id);
   if (!folder) return;
@@ -1182,7 +1294,9 @@ export async function removeFolderEntity(id: string): Promise<void> {
   // Remove this folder's id from all studies that reference it.
   const affected = _studies.filter(s => s.folders.includes(folder.id));
   for (const study of affected) {
+    const wasHome = deriveHomeFolderId(study) === folder.id;
     await updateStudy({ id: study.id, folders: study.folders.filter(f => f !== folder.id) });
+    if (wasHome) await promoteOrClearHomeOnRemoval(study.id);
   }
   // Clear active folder filter if it was the deleted folder.
   if (_activeFolderId === folder.id) _activeFolderId = null;

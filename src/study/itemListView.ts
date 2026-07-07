@@ -68,13 +68,32 @@
 
 
 
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
 import { renderCompactGameRow, type CompactRowExtras } from '../games/view';
 import { renderRichGameRow, type RichGameRowDeps, type ReviewControlState } from '../games/richRow';
-import { cursorId, isSelected, rangeSelectToId, selectedIds, toggleSelectId } from './studyCtrl';
-import { navIcon } from './navIcons';
+import {
+  bulkDeleteStudies,
+  bulkSetFavorite,
+  clearSelection,
+  cursorId,
+  folders,
+  isSelected,
+  rangeSelectToId,
+  selectedIds,
+  selectionCount,
+  toggleSelectId,
+} from './studyCtrl';
+import { deriveHomeFolderId } from './studyDb';
+import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import {
   openGameContextMenu,
   renderGameContextMenu,
@@ -264,6 +283,7 @@ let _pinnedGroupCollapsed = false;
 function openRowContextMenu(
   clickedId: string,
   itemsById: ReadonlyMap<string, StudyItem>,
+  currentFolderId: string | null,
   x: number,
   y: number,
   redraw: () => void,
@@ -272,6 +292,7 @@ function openRowContextMenu(
     clickedId,
     selectedIds: selectedIds(),
     itemsById,
+    currentFolderId,
     isPinned: isItemPinned,
     onTogglePin: toggleItemsPinned,
   };
@@ -287,6 +308,7 @@ let _longPressTimer: ReturnType<typeof setTimeout> | null = null;
 function beginLongPress(
   itemId: string,
   itemsById: ReadonlyMap<string, StudyItem>,
+  currentFolderId: string | null,
   e: TouchEvent,
   redraw: () => void,
 ): void {
@@ -297,7 +319,7 @@ function beginLongPress(
   const y = touch.clientY;
   _longPressTimer = setTimeout(() => {
     _longPressTimer = null;
-    openRowContextMenu(itemId, itemsById, x, y, redraw);
+    openRowContextMenu(itemId, itemsById, currentFolderId, x, y, redraw);
   }, LONG_PRESS_MS);
 }
 
@@ -364,6 +386,113 @@ function renderActionRail(itemId: string, redraw: () => void): VNode {
 
 
 
+
+
+
+
+
+
+
+
+function isAliasHere(item: StudyItem, currentFolderId: string | null): boolean {
+  return currentFolderId !== null && deriveHomeFolderId(item) !== currentFolderId;
+}
+
+/** Resolves a home-folder id to its display name for the "from <home>" line, falling back to
+ * "Unsorted" when the derived home is `null` (no explicit home, falls to section-derived
+ * placement -- studyDb.ts's own deriveHomeFolderId doc comment) or points at a folder id that no
+ * longer exists (defensive -- e.g. a stale reference after the home folder itself was deleted). */
+function resolveHomeFolderName(homeId: string | null): string {
+  if (homeId === null) return 'Unsorted';
+  return folders().find(f => f.id === homeId)?.name ?? 'Unsorted';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface BulkActionBarAction {
+  key: string;
+  /** Singular/plural label, D09/A4 precedent (see navigatorContextMenu.ts's own `isMulti` labels). */
+  label: (count: number) => string;
+  icon: NavIconNameOrAlias;
+  /** Delete-style warning treatment. */
+  danger?: boolean;
+  run: (ids: readonly string[]) => void | Promise<void>;
+}
+
+const LIBRARY_BULK_ACTIONS: readonly BulkActionBarAction[] = [
+  {
+    key: 'favorite',
+    label: count => `Favorite ${count} game${count === 1 ? '' : 's'}`,
+    icon: 'star',
+    run: () => bulkSetFavorite(true),
+  },
+  {
+    key: 'delete',
+    label: count => `Delete ${count} game${count === 1 ? '' : 's'}`,
+    icon: 'trash-2',
+    danger: true,
+    run: ids => {
+      if (!confirm(`Delete ${ids.length} selected game${ids.length === 1 ? '' : 's'} everywhere?`)) return;
+      return bulkDeleteStudies();
+    },
+  },
+];
+
+function renderBulkActionBar(redraw: () => void): VNode | null {
+  const count = selectionCount();
+  if (count === 0) return null;
+  const ids = Array.from(selectedIds());
+
+  const runAction = (action: BulkActionBarAction) => {
+    void Promise.resolve(action.run(ids)).then(redraw);
+  };
+
+  return h('div.sentry-bulk-bar', [
+    h('span.sentry-bulk-bar__count', `${count} selected`),
+    h('div.sentry-bulk-bar__actions', LIBRARY_BULK_ACTIONS.map(action => h('button.sentry-bulk-bar__btn', {
+      key: action.key,
+      class: { 'sentry-bulk-bar__btn--danger': Boolean(action.danger) },
+      attrs: { type: 'button', title: action.label(count) },
+      on: { click: () => runAction(action) },
+    }, [
+      navIcon(action.icon, { size: 13 }),
+      h('span', action.label(count)),
+    ]))),
+    h('button.sentry-bulk-bar__btn.sentry-bulk-bar__btn--clear', {
+      attrs: { type: 'button', title: 'Clear selection' },
+      on: { click: () => { clearSelection(); redraw(); } },
+    }, [
+      navIcon('x', { size: 13 }),
+      h('span', 'Clear'),
+    ]),
+  ]);
+}
+
+
+
+
+
+
 function renderItemRow(
   item: StudyItem,
   density: ItemListDensity,
@@ -372,6 +501,7 @@ function renderItemRow(
   displayedIds: readonly string[],
   adjacency: { above: boolean; below: boolean } | undefined,
   itemsById: ReadonlyMap<string, StudyItem>,
+  currentFolderId: string | null,
 ): VNode {
   const gameLike = studyItemAsGameRow(item);
   const extras: CompactRowExtras = { reviewState: INERT_REVIEW_STATE, addLibrary: null };
@@ -386,6 +516,8 @@ function renderItemRow(
     : h('div.game-list__row', renderCompactGameRow(gameLike, false, false, undefined, extras));
 
   const dragging = draggingKind() === 'game' && draggingIds().includes(item.id);
+  const isAlias = isAliasHere(item, currentFolderId);
+  const homeName = isAlias ? resolveHomeFolderName(deriveHomeFolderId(item)) : null;
 
   return h('div.sentry-row', {
     key: item.id,
@@ -409,9 +541,9 @@ function renderItemRow(
       },
       contextmenu: (e: MouseEvent) => {
         e.preventDefault();
-        openRowContextMenu(item.id, itemsById, e.clientX, e.clientY, redraw);
+        openRowContextMenu(item.id, itemsById, currentFolderId, e.clientX, e.clientY, redraw);
       },
-      touchstart: (e: TouchEvent) => beginLongPress(item.id, itemsById, e, redraw),
+      touchstart: (e: TouchEvent) => beginLongPress(item.id, itemsById, currentFolderId, e, redraw),
       touchend: cancelLongPress,
       touchmove: cancelLongPress,
       touchcancel: cancelLongPress,
@@ -428,8 +560,48 @@ function renderItemRow(
       },
     },
   }, [
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    h('input.sentry-checkbox', {
+      attrs: {
+        type: 'checkbox',
+        title: selected ? 'Deselect' : 'Select',
+        'aria-label': `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`,
+      },
+      props: { checked: selected },
+      on: {
+        click: (e: Event) => {
+          e.stopPropagation();
+          handleItemListClick(item.id, displayedIds, e as MouseEvent);
+          redraw();
+        },
+      },
+    }),
     h('div.sentry-stack', [
-      h('div.sentry-title', { attrs: { title: item.title || 'Untitled' } }, item.title || 'Untitled'),
+      h('div.sentry-title-row', [
+
+
+
+        isAlias ? navIcon('corner-down-right', { size: 11, className: 'sentry-alias-badge' }) : null,
+        h('div.sentry-title', { attrs: { title: item.title || 'Untitled' } }, item.title || 'Untitled'),
+      ]),
+      isAlias ? h('div.sentry-alias-from', `↳ from ${homeName}`) : null,
       reusedRow,
     ]),
     renderActionRail(item.id, redraw),
@@ -447,6 +619,7 @@ function renderGroupedRows(
   redraw: () => void,
   displayedIds: readonly string[],
   itemsById: ReadonlyMap<string, StudyItem>,
+  currentFolderId: string | null,
 ): VNode[] {
   const sorted = [...items].sort((a, b) => b.updatedAt - a.updatedAt);
   const adjacency = withSelectionAdjacency(sorted.map(i => i.id), selectedIds());
@@ -460,7 +633,7 @@ function renderGroupedRows(
       nodes.push(h('div.sentry-group-header', { key: `group-${label}` }, label));
       currentLabel = label;
     }
-    nodes.push(renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById));
+    nodes.push(renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById, currentFolderId));
   }
   return nodes;
 }
@@ -481,6 +654,7 @@ function renderPinnedGroup(
   redraw: () => void,
   displayedIds: readonly string[],
   itemsById: ReadonlyMap<string, StudyItem>,
+  currentFolderId: string | null,
 ): VNode {
   const ids = pinnedItems.map(i => i.id);
   const adjacency = withSelectionAdjacency(ids, selectedIds());
@@ -495,9 +669,15 @@ function renderPinnedGroup(
     _pinnedGroupCollapsed
       ? null
       : h('div.sentry-pinned-group__rows', pinnedItems.map(item =>
-          renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById))),
+          renderItemRow(item, density, onOpenItem, redraw, displayedIds, adjacency.get(item.id), itemsById, currentFolderId))),
   ]);
 }
+
+
+
+
+
+
 
 
 
@@ -523,7 +703,9 @@ export function renderItemListPane(
   density: ItemListDensity,
   redraw: () => void,
   onOpenItem?: (item: StudyItem) => void,
+  currentFolderId?: string | null,
 ): VNode {
+  const folderContext = currentFolderId ?? null;
   const displayedIds = items.map(i => i.id);
   const itemsById = new Map(items.map(i => [i.id, i] as const));
   const pinnedItems = items.filter(i => isItemPinned(i.id));
@@ -531,13 +713,14 @@ export function renderItemListPane(
   const restItems = items.filter(i => !pinnedSet.has(i.id));
 
   return h('div.lib-items', [
+    renderBulkActionBar(redraw),
     h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
       pinnedItems.length > 0
-        ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById)
+        ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)
         : null,
       ...(items.length === 0
         ? [renderEmptyState()]
-        : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById)),
+        : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)),
     ]),
     renderGameContextMenu(redraw),
   ]);

@@ -31,6 +31,20 @@ export interface StudyItem {
   opening?: string;
   tags: string[];
   folders: string[];                // StudyFolder.id membership (P2-LIB-11; name-based pre-2026-07-06 migration — see studyDb.ts planStudyFolderMigration)
+
+
+
+
+
+
+
+
+
+
+
+
+
+  homeFolderId?: string | null;
   favorite: boolean;
   notes?: string;                  // game-level free-text notes
   bookmarks?: string[];            // TreePath strings for bookmarked positions

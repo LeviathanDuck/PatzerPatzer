@@ -819,7 +819,15 @@ export function renderNavigatorShell(
   // itemListView.ts-owned limitation, not a wiring gap in this file. See this slice's completion
   // report.
   const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
-  const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw);
+
+
+
+
+
+
+
+  const currentFolderId = _selection.kind === 'folder' ? _selection.folderId : null;
+  const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, currentFolderId);
 
 
 

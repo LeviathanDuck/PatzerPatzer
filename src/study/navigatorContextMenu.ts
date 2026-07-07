@@ -51,17 +51,23 @@
 
 
 
+
+
 import { h, type VNode } from 'snabbdom';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
 import {
+  addAliasToFolder,
   bulkAddToFolder,
   bulkDeleteStudies,
   deleteStudy,
   folders,
-  moveStudyToFolder,
+  moveGameToFolder,
+  removeAliasFromFolder,
+  setActiveFolderId,
   updateStudy,
 } from './studyCtrl';
+import { deriveHomeFolderId } from './studyDb';
 import { writeHashRoute } from '../router';
 
 // ---------------------------------------------------------------------------------------------
@@ -122,6 +128,15 @@ export interface GameMenuContext {
   selectedIds: ReadonlySet<string>;
   /** Every item the menu might need to look up (title/tags) for the clicked id and/or selection. */
   itemsById: ReadonlyMap<string, StudyItem>;
+
+
+
+
+
+
+
+
+  currentFolderId: string | null;
   /** Item-list-owned pin state (per-device localStorage set — see itemListView.ts). */
   isPinned: (id: string) => boolean;
   /** Item-list-owned pin toggle over a set of ids (single [id] or the whole multi-selection). */
@@ -269,8 +284,15 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
 
   // 5. SINGLE "Copy path"/"Reveal in folder": omitted (StudyItem has no filesystem path analog).
 
-  // 6. Terminal block: Move to... (submenu of folders()) — "Duplicate" omitted (no duplicate/copy
-  // API exists on studyCtrl.ts) — Delete (warning style, existing confirm-dialog convention).
+
+
+
+
+
+
+
+
+
   const availableFolders = folders();
   entries.push(menuItem({
     key: 'move',
@@ -286,11 +308,62 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
         if (isMulti) {
           void bulkAddToFolder(folder.id).then(redraw);
         } else {
-          void moveStudyToFolder(ids[0]!, folder.id).then(redraw);
+          void moveGameToFolder(ids[0]!, folder.id, ctx.currentFolderId).then(redraw);
         }
       },
     })),
   }));
+
+
+
+
+
+
+  if (!isMulti) {
+    const targetId = ids[0]!;
+    const item = ctx.itemsById.get(targetId);
+    const homeId = item ? deriveHomeFolderId(item) : null;
+    // "Remove alias from this folder" / "Go to home folder" only apply when THIS menu was opened
+    // from a row that is actually an alias in the CURRENT folder view (current folder ≠ home AND
+    // the game is a member here) — binding text quoted verbatim in this file's header-adjacent
+    // GameMenuContext doc comment. `ctx.currentFolderId` is null for section/lens views, where
+    // neither action applies (mirrors itemListView.ts's own isAliasHere gate).
+    const isAliasHere = item !== undefined
+      && ctx.currentFolderId !== null
+      && homeId !== ctx.currentFolderId
+      && item.folders.includes(ctx.currentFolderId);
+
+    entries.push(menuItem({
+      key: 'add-alias',
+      label: 'Add alias to folder…',
+      icon: 'link',
+      onClick: () => {},
+      disabled: availableFolders.length === 0,
+      submenu: availableFolders.map(folder => menuItem({
+        key: `add-alias-${folder.id}`,
+        label: folder.name,
+        icon: 'link',
+        onClick: () => { void addAliasToFolder(targetId, folder.id).then(redraw); },
+      })),
+    }));
+
+    if (isAliasHere) {
+      entries.push(menuItem({
+        key: 'remove-alias',
+        label: 'Remove alias from this folder',
+        icon: 'x',
+        onClick: () => { void removeAliasFromFolder(targetId, ctx.currentFolderId!).then(redraw); },
+      }));
+      if (homeId !== null) {
+        entries.push(menuItem({
+          key: 'go-home',
+          label: 'Go to home folder',
+          icon: 'folder-open',
+          onClick: () => { setActiveFolderId(homeId); redraw(); },
+        }));
+      }
+    }
+  }
 
   if (!isMulti) {
     const targetId = ids[0]!;
@@ -308,7 +381,10 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
 
   entries.push(menuItem({
     key: 'delete',
-    label: isMulti ? `Delete ${count} games` : 'Delete game',
+
+
+
+    label: isMulti ? `Delete ${count} games` : 'Delete game everywhere…',
     icon: 'trash',
     warning: true,
     onClick: () => {

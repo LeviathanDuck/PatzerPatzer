@@ -446,6 +446,37 @@ export async function deleteFolder(id: string): Promise<void> {
 
 
 
+/**
+ * Derive the effective home-folder id for a StudyItem. `homeFolderId` is `undefined` on every
+ * item written before this field existed — that legacy state (NOT an explicit "no home") derives
+ * to the first entry of `folders[]` (insertion order), or `null` if `folders` is empty (unfiled
+ * -> section-derived placement). An explicit `null` already stored on the record (set by
+ * `promoteOrClearHomeOnRemoval` in studyCtrl.ts when no alias remains after a home-folder
+ * removal) is authoritative and returned as-is — it must never be re-derived back to
+ * `folders[0]`.
+ *
+ * Pure and non-destructive: this is a READ-TIME default only — it does not persist anything.
+ * Mirrors the read-time-safe posture of `planStudyFolderMigration`/`migrateStudyFolders` above
+ * without forcing a batch rewrite of every legacy item just to backfill this field; the
+ * studyCtrl.ts semantics functions persist an explicit value going forward once they touch a
+ * record (e.g. `rehomeGame`, `promoteOrClearHomeOnRemoval`).
+ */
+export function deriveHomeFolderId(
+  item: Pick<StudyItem, 'homeFolderId' | 'folders'>,
+): string | null {
+  if (item.homeFolderId !== undefined) return item.homeFolderId;
+  // Same defensive treatment as planStudyFolderMigration below: IDB does not enforce TS types at
+  // read time, so a legacy or partially-written record may lack `.folders` entirely.
+  const folders = item.folders ?? [];
+  return folders.length > 0 ? folders[0]! : null;
+}
+
+
+
+
+
+
+
 
 
 export interface FolderMigrationCollision {
