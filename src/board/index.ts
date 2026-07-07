@@ -14,6 +14,7 @@ import { makeSan, makeSanAndPlay } from 'chessops/san';
 import { makeSquare, makeUci, parseSquare, parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from '../analyse/ctrl';
+import { activeWorkspace } from '../analyse/workspaceCore';
 import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
 import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
@@ -373,8 +374,9 @@ export function renderPromotionDialog(): VNode | null {
 
 export function syncBoard(): void {
   if (!cgInstance) return;
-  const ctrl = _getCtrl();
-  const node = ctrl.node;
+  // Cursor sourced from the active workspace instance when mounted (D-core-03), falling back to the
+  // legacy Analysis closure — byte-identical for Analysis (its instance reads the same AnalyseCtrl).
+  const node = activeWorkspace()?.session().node ?? _getCtrl().node;
   const dests = cachedDests(node.fen);
   const lastMove = uciToMove(node.uci);
   const premoveCapture = currentPremoveCaptureSnapshot();
@@ -662,8 +664,8 @@ export function renderBoard(): VNode {
     hook: {
       insert: vnode => {
         performance.mark('board-render-start');
-        const ctrl = _getCtrl();
-        const node = ctrl.node;
+        // D-core-03: cursor from the active workspace instance when mounted, else the legacy closure.
+        const node = activeWorkspace()?.session().node ?? _getCtrl().node;
         const dests = cachedDests(node.fen);
         const lastMove = uciToMove(node.uci);
         const premoveCapture = currentPremoveCaptureSnapshot();
