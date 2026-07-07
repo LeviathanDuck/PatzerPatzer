@@ -84,6 +84,7 @@ import { shortcuts, type ShortcutEntry } from './shortcuts';
 
 
 import { allStudies } from './studyCtrl';
+import type { StudyItem } from './types';
 import { writeHashRoute } from '../router';
 
 // ---------------------------------------------------------------------------------------------
@@ -834,6 +835,85 @@ function renderShortcutsBlock(tree: StudyNavigationTree, redraw: () => void): VN
   ]);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const RECENT_BLOCK_LIMIT = 20;
+const RECENT_COLLAPSE_KEY = 'recent-block'; // distinct namespace, same reasoning as
+// SHORTCUTS_COLLAPSE_KEY above: never collides with a bare StudySectionId/StudyLensId or a
+// `folder:<section>:<folder>`/`shortcuts-block` key.
+
+/** Pure selection logic: the `limit` most-recently-updated studies, most-recent first. Exported so
+ * `scripts/test-study-recent-block.mjs` can assert on it directly without needing to render a
+ * VNode tree. */
+export function selectRecentItems(items: readonly StudyItem[], limit: number = RECENT_BLOCK_LIMIT): StudyItem[] {
+  return [...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
+}
+
+/** One Recent-block row -- reuses the exact `.nav-row` shape and pawn glyph
+ * `renderShortcutRow`'s game branch already uses, and the identical `writeHashRoute` navigation
+ * action, so this is visually and behaviorally consistent with the Shortcuts block directly
+ * above it. Keyed distinctly (`recent-<id>`) from a Shortcuts game row's `shortcut-game-<id>` key
+ * so the SAME game can appear in both blocks at once without a Snabbdom key collision. */
+function renderRecentRow(item: StudyItem): VNode {
+  return h(
+    'div.nav-row',
+    {
+      key: `recent-${item.id}`,
+      attrs: { role: 'treeitem', title: item.title },
+      on: { click: () => { writeHashRoute(`study/${item.id}`); } },
+    },
+    [
+      h('span.nav-row__icon', '♟'),
+      h('span.nav-row__label', item.title),
+    ],
+  );
+}
+
+/** The Recent block itself -- collapsible (reuses `renderSectionBlock`'s own header/chevron/
+ * `_collapsedIds` mechanism, same as the Shortcuts block above; no second collapse model). Reuses
+ * the EXISTING `.lib-nav__pinned` wrapper class and `.nav-row`/`.nav-row--section`/
+ * `.nav-row__icon`/`.nav-row__label`/`.nav-chevron` row classes -- no new main.scss rule is added
+ * (this slice's own no-touch fence). */
+function renderRecentBlock(redraw: () => void): VNode | null {
+  const recent = selectRecentItems(allStudies());
+  if (recent.length === 0) return null;
+
+  const collapsed = isCollapsed(RECENT_COLLAPSE_KEY);
+  return h('div.lib-nav__pinned', { attrs: { role: 'tree', 'aria-label': 'Recent' } }, [
+    h(
+      'div.nav-row.--section',
+      {
+        key: 'recent-header',
+        attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
+        on: { click: () => toggleCollapsed(RECENT_COLLAPSE_KEY, redraw) },
+      },
+      [
+        h('span.nav-chevron', { class: { '--open': !collapsed } }, '▸'),
+        navIcon('history', { size: 13, className: 'nav-row__icon' }),
+        h('span.nav-row__label', 'Recent'),
+      ],
+    ),
+    ...(collapsed ? [] : recent.map(item => renderRecentRow(item))),
+  ]);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Pane chrome / scroller / content assembly (NN §1.2 anatomy)
 // ---------------------------------------------------------------------------------------------
@@ -887,8 +967,9 @@ export function renderNavigationPane(
   }
   return h('div.lib-nav', [
     // Chrome: fixed, outside the scroller (NN §1.2) — Shortcuts (OD-9, above everything else per
-    // inventory §4), then the pinned lens block.
-    h('div.lib-nav__chrome', [renderShortcutsBlock(tree, redraw), renderPinnedLensesBlock(lenses)]),
+    // inventory §4), then Recent (OD-9, A6b — directly below Shortcuts, above the pinned lens
+    // block), then the pinned lens block.
+    h('div.lib-nav__chrome', [renderShortcutsBlock(tree, redraw), renderRecentBlock(redraw), renderPinnedLensesBlock(lenses)]),
     // Scroller + content: the four fixed sections and their nested folders scroll independently of
     // the chrome above.
     h('div.lib-nav__scroller', { attrs: { 'data-pane': 'navigation' } }, [
