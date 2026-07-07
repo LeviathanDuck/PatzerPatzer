@@ -5,6 +5,7 @@
 import type { Role } from 'chessops';
 import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from './analyse/ctrl';
+import { activeWorkspace } from './analyse/workspaceCore';
 import {
   currentEval,
   toggleEngine, toggleThreatMode,
@@ -110,7 +111,9 @@ export function bindKeyboardHandlers(deps: {
  * Mirrors lichess-org/lila: ui/analyse/src/control.ts previousBranch
  */
 function previousBranch(): void {
-  const ctrl = _getCtrl();
+  // D-core-05: read the cursor from the active workspace instance when mounted (instance-aware
+  // branch navigation), falling back to the legacy Analysis closure. Byte-identical for Analysis.
+  const ctrl = activeWorkspace()?.session() ?? _getCtrl();
   let path = pathInit(ctrl.path);
   while (path.length > 0) {
     const parent = (() => {
@@ -135,7 +138,9 @@ function previousBranch(): void {
  * Mirrors lichess-org/lila: ui/analyse/src/control.ts nextBranch
  */
 function nextBranch(): void {
-  const ctrl = _getCtrl();
+  // D-core-05: read the cursor from the active workspace instance when mounted (instance-aware
+  // branch navigation), falling back to the legacy Analysis closure. Byte-identical for Analysis.
+  const ctrl = activeWorkspace()?.session() ?? _getCtrl();
   let path = ctrl.path;
   let node = ctrl.node;
   while (node.children.length === 1) {
@@ -154,7 +159,9 @@ function nextBranch(): void {
  * Mirrors lichess-org/lila: ui/analyse/src/keyboard.ts Shift+Down
  */
 function nextSibling(): void {
-  const ctrl = _getCtrl();
+  // D-core-05: read the cursor from the active workspace instance when mounted (instance-aware
+  // branch navigation), falling back to the legacy Analysis closure. Byte-identical for Analysis.
+  const ctrl = activeWorkspace()?.session() ?? _getCtrl();
   const parentPath = pathInit(ctrl.path);
   const parentNode = ctrl.nodeList[ctrl.nodeList.length - 2];
   if (!parentNode || parentNode.children.length < 2) return;
@@ -169,7 +176,9 @@ function nextSibling(): void {
  * Mirrors lichess-org/lila: ui/analyse/src/keyboard.ts Shift+Up
  */
 function prevSibling(): void {
-  const ctrl = _getCtrl();
+  // D-core-05: read the cursor from the active workspace instance when mounted (instance-aware
+  // branch navigation), falling back to the legacy Analysis closure. Byte-identical for Analysis.
+  const ctrl = activeWorkspace()?.session() ?? _getCtrl();
   const parentPath = pathInit(ctrl.path);
   const parentNode = ctrl.nodeList[ctrl.nodeList.length - 2];
   if (!parentNode || parentNode.children.length < 2) return;
