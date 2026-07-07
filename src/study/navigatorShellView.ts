@@ -78,6 +78,7 @@ import {
   type StudySortKey,
 } from './studyCtrl';
 import { writeHashRoute } from '../router';
+import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
 
 // ---------------------------------------------------------------------------------------------
 // Selection model — BASIC single-selection only (T5-D09 owns multi-select). Kept as a single
@@ -137,15 +138,25 @@ function buildSelectionIndex(tree: StudyNavigationTree): Map<string, NavigatorSe
   return index;
 }
 
-/**
- * Walks the vnode tree `renderNavigationPane` returned and, for every row whose `key` is in
- * `keyIndex`, merges in a click handler (composed with whatever click handler D05 already
- * attached — both fire, in this order: select, then D05's own collapse/expand toggle) plus an
- * `--active` class / `aria-selected` marker when that row is the current selection. Mutates the
- * FRESH vnode tree D05 just returned for THIS render pass only (a new tree every redraw, per this
- * codebase's re-render-from-scratch model) — never a previously-patched/live tree, and never
- * navigationPaneView.ts's own source.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Snabbdom's own `Listener<T>` type declares `this: VNode` and a specific event subtype per key
 // (e.g. MouseEvent for 'click'), which — combined with `On`'s index signature — resolves to an
 // unwieldy intersection type at the call site. This file only ever needs to call THROUGH an
@@ -159,17 +170,19 @@ function wireSelectionHandlers(
   keyIndex: ReadonlyMap<string, NavigatorSelection>,
   activeKey: string,
   onSelect: (selection: NavigatorSelection) => void,
-): void {
+): string[] {
+  const visibleOrder: string[] = [];
   const visit = (node: VNode): void => {
     const key = node.key;
     if (typeof key === 'string') {
       const selection = keyIndex.get(key);
       if (selection) {
+        visibleOrder.push(key);
         if (!node.data) node.data = {};
         const data = node.data;
         const isActive = key === activeKey;
         data.class = { ...(data.class ?? {}), '--active': isActive };
-        data.attrs = { ...(data.attrs ?? {}), 'aria-selected': String(isActive) };
+        data.attrs = { ...(data.attrs ?? {}), 'aria-selected': String(isActive), 'data-nav-key': key };
         const existingClick = data.on?.click as PlainClickHandler | PlainClickHandler[] | undefined;
         data.on = {
           ...(data.on ?? {}),
@@ -190,6 +203,21 @@ function wireSelectionHandlers(
     });
   };
   visit(root);
+  return visibleOrder;
+}
+
+/**
+ * Finds the live DOM element for a nav-pane row by the `data-nav-key` attribute
+ * `wireSelectionHandlers` stamps onto every matched row (see its own comment above). Used only by
+ * T5-D10's keyboard wiring (`renderNavigatorShell` below) to read `aria-expanded` and to dispatch a
+ * synthetic click that reuses D05's OWN existing expand/collapse toggle — no new expansion state.
+ * Manually escapes `"`/`\` (the only characters that matter inside a quoted attribute-selector
+ * value) rather than `CSS.escape` (that API escapes for CSS *identifiers*, a stricter and
+ * unnecessary rule for a quoted attribute value here).
+ */
+function findNavRowElement(key: string): HTMLElement | null {
+  const escaped = key.replace(/["\\]/g, match => `\\${match}`);
+  return document.querySelector<HTMLElement>(`.lib-nav-wrap [data-nav-key="${escaped}"]`);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -272,6 +300,32 @@ function resolveItems(ids: readonly string[], byId: ReadonlyMap<string, StudyIte
     if (item) items.push(item);
   }
   return items;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function collectItemRowOrder(root: VNode, knownIds: ReadonlySet<string>): string[] {
+  const order: string[] = [];
+  const visit = (node: VNode): void => {
+    const key = node.key;
+    if (typeof key === 'string' && knownIds.has(key)) order.push(key);
+    node.children?.forEach(child => {
+      if (child != null && typeof child !== 'string') visit(child);
+    });
+  };
+  visit(root);
+  return order;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -807,7 +861,8 @@ export function renderNavigatorShell(
 
 
 
-  if (!_reorderMode) wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
+
+  const navVisibleOrder = _reorderMode ? [] : wireSelectionHandlers(navPane, keyIndex, activeKey, onSelect);
 
   const byId = new Map(allItems.map(item => [item.id, item] as const));
   const rawItems = resolveItems(resolveSelectedItemIds(tree, _selection, _includeDescendants), byId);
@@ -828,6 +883,39 @@ export function renderNavigatorShell(
 
   const currentFolderId = _selection.kind === 'folder' ? _selection.folderId : null;
   const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, currentFolderId);
+  // See collectItemRowOrder's own comment: the TRUE on-screen row order (pinned-partition +
+  // updatedAt-desc regroup, both owned by itemListView.ts) rather than this shell's own `items`
+  // array order, which itemListView.ts does not always render 1:1.
+  const itemDisplayOrder = collectItemRowOrder(itemListPane, new Set(items.map(item => item.id)));
+
+
+
+
+
+
+
+
+  bindNavigatorKeyboard({
+    listDisplayedIds: () => itemDisplayOrder,
+    navDisplayedKeys: () => navVisibleOrder,
+    navSelectedKey: () => activeKey,
+    selectNavKey: (key: string) => {
+      const selection = keyIndex.get(key);
+      if (selection) onSelect(selection);
+    },
+    navIsExpandable: (key: string) => findNavRowElement(key)?.hasAttribute('aria-expanded') ?? false,
+    navIsExpanded: (key: string) => findNavRowElement(key)?.getAttribute('aria-expanded') === 'true',
+    toggleNavExpand: (key: string) => findNavRowElement(key)?.click(),
+    pageScroll: (pane: FocusedPane, direction: 1 | -1) => {
+      const el = document.querySelector<HTMLElement>(pane === 'navigation' ? '.lib-nav' : '.lib-items');
+      if (el) el.scrollBy({ top: direction * Math.round(el.clientHeight * 0.9) });
+    },
+    redraw,
+  });
+
+
+
+
 
 
 
@@ -836,12 +924,22 @@ export function renderNavigatorShell(
     attrs: { style: _navDivider.styleDeclaration() },
   }, [
     renderRail(),
-    h('div.lib-nav-wrap', [
+    h('div.lib-nav-wrap', {
+      on: {
+        click: () => setFocusedPane('navigation'),
+        focusin: () => setFocusedPane('navigation'),
+      },
+    }, [
       renderNavToolbar(redraw, _selection, tree),
       navPane,
     ]),
     renderDivider(redraw),
-    h('div.lib-items-wrap', [
+    h('div.lib-items-wrap', {
+      on: {
+        click: () => setFocusedPane('list'),
+        focusin: () => setFocusedPane('list'),
+      },
+    }, [
       renderItemListToolbar(redraw, onImportPgnClick),
       _itemSearchOpen ? renderSearchInputRow(redraw) : null,
       _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
