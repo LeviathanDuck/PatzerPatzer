@@ -133,6 +133,7 @@ import {
   shouldSuppressClick,
 } from './navigatorDragDrop';
 import { openMoveAliasDialog, renderMoveAliasDialog } from './moveAliasDialog';
+import { openBulkTagDialog, renderBulkTagDialog } from './bulkTagDialog';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
 export type ItemListDensity = 'compact' | 'full';
@@ -525,6 +526,13 @@ function resolveHomeFolderName(homeId: string | null): string {
 
 
 
+
+
+
+
+
+
+
 export interface BulkActionBarAction {
   key: string;
   /** Singular/plural label, D09/A4 precedent (see navigatorContextMenu.ts's own `isMulti` labels). */
@@ -545,6 +553,14 @@ const LIBRARY_BULK_ACTIONS: readonly BulkActionBarAction[] = [
     icon: 'folder-input',
     run: ids => {
       if (_bulkBarRedraw) openMoveAliasDialog(ids, _bulkBarFolderContext, _bulkBarRedraw);
+    },
+  },
+  {
+    key: 'tag',
+    label: count => `Tag ${count} game${count === 1 ? '' : 's'}…`,
+    icon: 'tag',
+    run: ids => {
+      if (_bulkBarRedraw) openBulkTagDialog(ids, _bulkBarRedraw);
     },
   },
   {
@@ -1036,5 +1052,6 @@ export function renderItemListPane(
     ]),
     renderGameContextMenu(redraw),
     renderMoveAliasDialog(redraw),
+    renderBulkTagDialog(redraw),
   ]);
 }

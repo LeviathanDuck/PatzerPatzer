@@ -545,6 +545,34 @@ export async function bulkSetFavorite(fav: boolean): Promise<void> {
   }
 }
 
+/**
+ * Adds the given tag(s) to every selected study — additive/union, mirroring `bulkAddToFolder`'s
+ * shape (read `_studies`, guard on membership, only write when something actually changes). Tags
+ * are v1 free text with no locked taxonomy (see `types.ts`'s own `tags` doc comment): each tag is
+ * trimmed, empty entries are dropped, and the result is merged into the study's EXISTING `tags`
+ * with exact-match dedupe — no tag is ever dropped, only added, matching the single-game "Add tag"
+ * flow's own `!item.tags.includes(tag)` guard in `navigatorContextMenu.ts`. No-op (per study and
+ * overall) when there is nothing new to add.
+ */
+export async function bulkAddTags(tags: readonly string[]): Promise<void> {
+  const newTags = Array.from(new Set(tags.map(t => t.trim()).filter(t => t.length > 0)));
+  if (newTags.length === 0) return;
+  const ids = Array.from(_selectedIds);
+  for (const id of ids) {
+    const study = _studies.find(s => s.id === id);
+    if (!study) continue;
+    const merged = new Set(study.tags);
+    let changed = false;
+    for (const tag of newTags) {
+      if (!merged.has(tag)) {
+        merged.add(tag);
+        changed = true;
+      }
+    }
+    if (changed) await updateStudy({ id, tags: Array.from(merged) });
+  }
+}
+
 // Computed from all studies — unique sorted tag names.
 export function studyTags(): string[] {
   const tags = new Set<string>();
