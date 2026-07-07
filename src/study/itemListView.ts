@@ -467,6 +467,19 @@ function renderActionRail(itemId: string, redraw: () => void): VNode {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 function isAliasHere(item: StudyItem, currentFolderId: string | null): boolean {
   return currentFolderId !== null && deriveHomeFolderId(item) !== currentFolderId;
 }
@@ -746,6 +759,12 @@ function renderItemRow(
 
   const dragging = draggingKind() === 'game' && draggingIds().includes(item.id);
   const isAlias = isAliasHere(item, currentFolderId);
+
+
+
+
+
+  const isHomeHere = currentFolderId !== null && !isAlias;
   const homeName = isAlias ? resolveHomeFolderName(deriveHomeFolderId(item)) : null;
 
 
@@ -763,6 +782,13 @@ function renderItemRow(
       'sentry-row--adj-below': Boolean(selected && adjacency?.below),
       'sentry-row--dragging': dragging,
       'sentry-row--hidden': hidden,
+
+
+
+
+
+
+      'sentry-row--alias': isAlias,
     },
     on: {
 
@@ -838,10 +864,22 @@ function renderItemRow(
 
 
 
+
+
+
         isAlias ? navIcon('corner-down-right', { size: 11, className: 'sentry-alias-badge' }) : null,
         h('div.sentry-title', { attrs: { title: item.title || 'Untitled' } }, item.title || 'Untitled'),
+
+
+
+
+
+        isAlias ? h('span.sentry-alias-chip', 'Alias') : null,
+        isHomeHere ? h('span.sentry-home-chip', 'Home') : null,
       ]),
-      isAlias ? h('div.sentry-alias-from', `↳ from ${homeName}`) : null,
+
+
+      isAlias && density === 'full' ? h('div.sentry-alias-from', `↳ from ${homeName}`) : null,
       reusedRow,
     ]),
     renderActionRail(item.id, redraw),
