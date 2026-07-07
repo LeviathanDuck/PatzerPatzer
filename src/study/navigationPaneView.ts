@@ -55,6 +55,14 @@
 
 
 
+
+
+
+
+
+
+
+
 import { h, type VNode, type VNodeData } from 'snabbdom';
 import {
   STUDY_SECTIONS,
@@ -124,17 +132,36 @@ const LENS_ICONS: Record<StudyLensId, string> = {
   'saved-puzzles': '?!',
 };
 
-/**
- * The six P2-LIB-2 system lenses, in the register's own listed order. "Unsorted" is the register's
- * own parenthetical: "Unsorted (the quick-save General area)" — the bucket StudyItem.uncategorized
- * quick-saves land in (src/study/types.ts). This is a label list only; every lens renders with no
- * count and no subtree until T5-D13 hands this module real computed data.
- */
+
+
+
+
+
+
+
+
 export const SYSTEM_LENSES: readonly NavigationPaneLensDef[] = [
-  { id: 'recent', label: 'Recent' },
   { id: 'unsorted', label: 'Unsorted' },
+];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const SYSTEM_SMART_TAGS: readonly NavigationPaneLensDef[] = [
   { id: 'favorites', label: 'Favorites' },
-  { id: 'tags', label: 'Tags' },
   { id: 'studied', label: 'Reviewed' },
   { id: 'saved-puzzles', label: 'Saved Puzzles' },
 ];
@@ -1079,6 +1106,24 @@ function renderTagRow(name: string, count: number, redraw: () => void): VNode | 
   );
 }
 
+/**
+ * Count of items matching a given `SYSTEM_SMART_TAGS` predicate — the row's own count badge (A6e's
+ * own "nice-to-have," `NavigationPaneLensDef.count`, "a one-line `.length` via the same predicate").
+ * Only feeds the RENDERED row's label here; the actual item-list SELECTION for a smart-tag click is
+ * resolved separately, at navigatorShellView.ts's own `rawItems` call site (mirroring how A6c
+ * splits tag rendering here from tag selection-resolution there). `default: 0` is defensive only —
+ * `SYSTEM_SMART_TAGS` above only ever supplies these three ids.
+ */
+function smartTagItemCount(id: StudyLensId, allItems: readonly StudyItem[]): number {
+  if (id === 'favorites') return allItems.filter(item => item.favorite === true).length;
+  if (id === 'studied') return allItems.filter(item => item.tags.includes('studied')).length;
+  if (id === 'saved-puzzles') return allItems.filter(item => item.source === 'puzzles').length;
+  return 0;
+}
+
+
+
+
 
 
 
@@ -1112,14 +1157,20 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
     return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header]);
   }
 
+  const smartTagRows = SYSTEM_SMART_TAGS.map(lens =>
+    renderLensRow({ ...lens, count: smartTagItemCount(lens.id, allItems) }),
+  );
+
   const tags = nonInternalTagCounts(allItems);
   if (tags.length === 0) {
     // Real emptiness (no non-internal tags exist at all yet) — distinct from "every tag is
-    // currently hidden and the eye toggle is off," which instead renders zero rows below the
-    // header with NO empty-state text (mirrors how a hidden folder disappears silently, with no
-    // "N folders hidden" message either — see `renderFolderRow`'s own comment).
+    // currently hidden and the eye toggle is off," which instead renders zero real-tag rows below
+    // the smart tags with NO empty-state text (mirrors how a hidden folder disappears silently,
+    // with no "N folders hidden" message either — see `renderFolderRow`'s own comment). The smart
+    // tags above still render in this branch — see this function's own header comment.
     return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [
       header,
+      ...smartTagRows,
       h('div.nav-row.--empty', { key: 'tags-empty' }, 'No tags yet'),
     ]);
   }
@@ -1128,7 +1179,7 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
     .map(tag => renderTagRow(tag.name, tag.count, redraw))
     .filter((row): row is VNode => row !== null);
 
-  return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header, ...rows]);
+  return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header, ...smartTagRows, ...rows]);
 }
 
 

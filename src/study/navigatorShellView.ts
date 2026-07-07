@@ -45,6 +45,13 @@
 
 
 
+
+
+
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import {
   collapseAllSections,
@@ -53,6 +60,7 @@ import {
   nonInternalTagCounts,
   renderNavigationPane,
   SYSTEM_LENSES,
+  SYSTEM_SMART_TAGS,
   type StudyLensId,
 } from './navigationPaneView';
 import { renderItemListPane, type ItemListDensity } from './itemListView';
@@ -134,7 +142,10 @@ function buildSelectionIndex(
   allItems: readonly StudyItem[],
 ): Map<string, NavigatorSelection> {
   const index = new Map<string, NavigatorSelection>();
-  for (const lens of SYSTEM_LENSES) {
+
+
+
+  for (const lens of [...SYSTEM_LENSES, ...SYSTEM_SMART_TAGS]) {
     const selection: NavigatorSelection = { kind: 'lens', lensId: lens.id };
     index.set(selectionKey(selection), selection);
   }
@@ -286,6 +297,9 @@ function resolveSelectedItemIds(
 
 
 
+
+
+
   if (selection.kind === 'lens' || selection.kind === 'tag') return [];
 
   const section = tree.sections.find(s => s.id === selection.sectionId);
@@ -325,6 +339,34 @@ function resolveItems(ids: readonly string[], byId: ReadonlyMap<string, StudyIte
     if (item) items.push(item);
   }
   return items;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function resolveLensItems(lensId: StudyLensId, allItems: readonly StudyItem[]): StudyItem[] {
+  switch (lensId) {
+    case 'favorites':
+      return allItems.filter(item => item.favorite === true);
+    case 'studied':
+      return allItems.filter(item => item.tags.includes('studied'));
+    case 'saved-puzzles':
+      return allItems.filter(item => item.source === 'puzzles');
+    case 'unsorted':
+      return allItems.filter(item => item.uncategorized === true);
+    default:
+      return [];
+  }
 }
 
 
@@ -927,9 +969,16 @@ export function renderNavigatorShell(
 
 
   const selection = _selection;
+
+
+
+
+
   const rawItems = selection.kind === 'tag'
     ? allItems.filter(item => item.tags.includes(selection.tagName))
-    : resolveItems(resolveSelectedItemIds(tree, selection, _includeDescendants), byId);
+    : selection.kind === 'lens'
+      ? resolveLensItems(selection.lensId, allItems)
+      : resolveItems(resolveSelectedItemIds(tree, selection, _includeDescendants), byId);
   // Search narrows the resolved item set; sort reorders it. Both are applied here (the shell) —
   // itemListView.ts's own `renderGroupedRows` still re-sorts its OWN copy by `updatedAt` descending
   // for its date-bucket headers (a no-touch file this slice does not edit), so the search filter's
