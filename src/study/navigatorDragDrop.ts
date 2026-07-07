@@ -65,6 +65,12 @@
 
 
 
+
+
+
+
+
+
 import * as studyCtrl from './studyCtrl';
 import { deriveHomeFolderId } from './studyDb';
 
@@ -77,6 +83,13 @@ export type DragSourceKind = 'game' | 'folder';
 interface DragState {
   kind: DragSourceKind;
   ids: readonly string[]; // game: 1+ StudyItem ids (whole D09 selection, or just the dragged row); folder: exactly 1 StudyFolder id
+
+
+
+
+
+
+  sourceFolderId: string | null;
 }
 
 let _drag: DragState | null = null;
@@ -93,8 +106,14 @@ export function draggingIds(): readonly string[] {
   return _drag?.ids ?? [];
 }
 
-function startDrag(kind: DragSourceKind, ids: readonly string[], label: string, event: DragEvent): void {
-  _drag = { kind, ids };
+function startDrag(
+  kind: DragSourceKind,
+  ids: readonly string[],
+  label: string,
+  event: DragEvent,
+  sourceFolderId: string | null = null,
+): void {
+  _drag = { kind, ids, sourceFolderId };
   _hoverKey = null;
   _springLoadFireCount = 0;
   clearSpringLoadTimer();
@@ -113,19 +132,32 @@ function startDrag(kind: DragSourceKind, ids: readonly string[], label: string, 
 
 
 
-export function beginGameDrag(rowId: string, title: string, event: DragEvent): void {
+
+
+
+
+
+
+export function beginGameDrag(
+  rowId: string,
+  title: string,
+  event: DragEvent,
+  sourceFolderId: string | null = null,
+): void {
   const selected = studyCtrl.selectedIds();
   const ids = selected.size > 0 && selected.has(rowId) ? Array.from(selected) : [rowId];
   const label = ids.length > 1 ? `${ids.length} games` : title || 'Untitled';
-  startDrag('game', ids, label, event);
+  startDrag('game', ids, label, event, sourceFolderId);
 }
 
 /**
  * Begin a drag from a nav-pane folder row. Folders are not part of the D09 selection model and
  * are always dragged singly (OD-7 REVISED: "Folders are single-location" -- no multi-folder drag).
+ * Folder drags have no browsed-folder SOURCE concept (that is a game-row/alias thing), so
+ * `sourceFolderId` is always null here.
  */
 export function beginFolderDrag(folderId: string, name: string, event: DragEvent): void {
-  startDrag('folder', [folderId], name, event);
+  startDrag('folder', [folderId], name, event, null);
 }
 
 /** Suppress-click-after-drop window (NN's own `suppressClickUntilRef` precedent): a completed
@@ -331,10 +363,23 @@ export function dropTargetHandlers(config: DropTargetConfig, redraw: () => void)
 
 
 
+
+
+
+
 export async function moveGamesToFolder(ids: readonly string[], folderId: string): Promise<void> {
+  // Captured synchronously, before any `await` below and before `endDrag()` (called by the
+  // `drop:` handler right after this async function is kicked off) can clear `_drag` -- see the
+  // dropTargetHandlers' own drop-ordering comment.
+  const browsedSourceFolderId = _drag?.kind === 'game' ? _drag.sourceFolderId : null;
   for (const id of ids) {
-    const study = studyCtrl.allStudies().find(s => s.id === id);
-    const sourceFolderId = study ? deriveHomeFolderId(study) : null;
+    let sourceFolderId: string | null;
+    if (browsedSourceFolderId !== null) {
+      sourceFolderId = browsedSourceFolderId;
+    } else {
+      const study = studyCtrl.allStudies().find(s => s.id === id);
+      sourceFolderId = study ? deriveHomeFolderId(study) : null;
+    }
     await studyCtrl.moveGameToFolder(id, folderId, sourceFolderId);
   }
 }

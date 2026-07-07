@@ -1265,11 +1265,45 @@ export async function rehomeGame(id: string, folderId: string): Promise<void> {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export async function moveGameToFolder(
   id: string,
   targetFolderId: string,
   sourceFolderId: string | null,
 ): Promise<void> {
+  const study = _studies.find(s => s.id === id);
+  const effectiveHome = study ? deriveHomeFolderId(study) : null;
+  const sourceIsAliasOnly =
+    sourceFolderId != null &&
+    sourceFolderId !== effectiveHome &&
+    folders().some(f => f.id === sourceFolderId);
+
+  if (sourceIsAliasOnly) {
+    // Dragging an ALIAS row: vacate the browsed source folder, add the target -- home unchanged.
+    if (sourceFolderId !== targetFolderId) {
+      await addAliasToFolder(id, targetFolderId);
+      await removeAliasFromFolder(id, sourceFolderId);
+    }
+    return;
+  }
+
+  // Dragging from home, or no folder-browsing context (null/unknown source) -- re-home MOVE.
   await rehomeGame(id, targetFolderId);
   if (
     sourceFolderId != null &&

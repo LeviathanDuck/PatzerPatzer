@@ -786,8 +786,12 @@ function renderItemRow(
 
 
 
+
+
+
+
       dragstart: (e: DragEvent) => {
-        beginGameDrag(item.id, item.title, e);
+        beginGameDrag(item.id, item.title, e, currentFolderId);
         redraw();
       },
       dragend: () => {
