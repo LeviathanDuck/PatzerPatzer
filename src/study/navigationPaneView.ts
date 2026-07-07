@@ -426,7 +426,9 @@ function renderFolderRow(
         : null,
 
 
-      navIcon('folder', { size: 16, className: 'nav-row__icon' }),
+
+
+      navIcon(hasChildren && !collapsed ? 'folder-open' : 'folder', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', group.name),
       h('span.nav-row__count', String(countFolderItemsRecursive(group))),
     ],
@@ -476,7 +478,8 @@ function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => v
 
 
       navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
-      navIcon('folder', { size: 16, className: 'nav-row__icon' }),
+
+      navIcon(collapsed ? 'folder' : 'folder-open', { size: 16, className: 'nav-row__icon' }),
       h('span.nav-row__label', section.label),
       h('span.nav-row__count', String(countSectionItems(section))),
     ],
