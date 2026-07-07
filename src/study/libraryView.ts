@@ -4,7 +4,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
-  allStudies, isLoaded,
+  allStudies, isLoaded, initStudyLibrary,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
   studyTags, updateStudy, deleteStudy, importPgnToLibrary,
@@ -35,6 +35,7 @@ import {
   type OrpPracticeLineView,
 } from './studyCtrl';
 import { renderNavigatorShell } from './navigatorShellView';
+import { renderStudyDetail } from './studyDetailView';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
 import {
@@ -2151,6 +2152,57 @@ export function renderStudyLibrary(redraw: () => void): VNode {
       _orpSectionOpen ? renderOrpSection(redraw) : null,
     ]),
 
+    _showImportModal ? renderImportModal(redraw) : null,
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function renderStudyDetailShell(id: string, redraw: () => void, routeQuery: string): VNode {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  if (!isLoaded()) {
+    initStudyLibrary(redraw);
+    return h('div.study-page', h('div.study-page__loading', 'Loading…'));
+  }
+
+  // Same lazy folder-load guard `renderStudyLibrary` uses above -- the P1 navigation-index tree
+  // (and this shell's item-list rescope) needs real folders to resolve the open game's home folder.
+  if (!foldersLoaded()) loadFolders(redraw);
+
+  const openImportModal = () => { _showImportModal = true; _importPgnText = ''; _importStatus = null; redraw(); };
+
+  return h('div.study-page.study-page--dual-pane', [
+    renderNavigatorShell(studyNavigationTree(), allStudies(), redraw, openImportModal, {
+      openItemId: id,
+      mainContent: renderStudyDetail(id, redraw, routeQuery),
+    }),
     _showImportModal ? renderImportModal(redraw) : null,
   ]);
 }

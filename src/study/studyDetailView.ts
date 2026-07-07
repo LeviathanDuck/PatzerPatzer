@@ -644,8 +644,12 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
   const study = studyDetail();
   if (!study) {
+
+
+
+
+
     return h('div.study-detail', [
-      h('a.study-back', { attrs: { href: '#/study' } }, '← Library'),
       h('div.study-detail__empty', 'Study not found.'),
     ]);
   }
@@ -667,9 +671,11 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
   }
 
   return h('div.study-detail', [
-    // Header
+
+
+
+
     h('div.study-detail__header', [
-      h('a.study-back', { attrs: { href: '#/study' } }, '← Library'),
       h('h1.study-detail__title', study.title),
 
       h('div.study-header-actions', [

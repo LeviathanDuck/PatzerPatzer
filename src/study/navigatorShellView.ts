@@ -87,8 +87,9 @@ import {
   type StudySortDir,
   type StudySortKey,
 } from './studyCtrl';
-import { writeHashRoute } from '../router';
+import { current, writeHashRoute } from '../router';
 import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
+import { deriveHomeFolderId } from './studyDb';
 
 // ---------------------------------------------------------------------------------------------
 // Selection model — BASIC single-selection only (T5-D09 owns multi-select). Kept as a single
@@ -332,6 +333,64 @@ function resolveSelectedItemIds(
   return Array.from(new Set(folder.itemIds));
 }
 
+
+
+
+
+
+
+
+
+
+
+
+function findFolderGroupContainingItem(
+  groups: readonly StudyNavigationFolderGroup[],
+  folderId: string,
+  itemId: string,
+): StudyNavigationFolderGroup | null {
+  for (const group of groups) {
+    if (group.id === folderId && group.itemIds.includes(itemId)) return group;
+    const found = findFolderGroupContainingItem(group.children, folderId, itemId);
+    if (found) return found;
+  }
+  return null;
+}
+
+interface GameOpenScope {
+  sectionId: StudySectionId;
+  folderId: string | null;
+  label: string;
+  itemIds: string[];
+}
+
+/**
+ * Resolves the open item's home-folder scope against the current tree snapshot, or `null` when
+ * the item cannot be located in it yet (still loading, or a stale/unresolvable home-folder
+ * reference) — callers fall back to showing just the single open item in that case, never the
+ * whole library (cross-folder browsing stays unavailable in this state, per the design doc).
+ */
+function resolveGameOpenScope(
+  tree: StudyNavigationTree,
+  allItems: readonly StudyItem[],
+  openItemId: string,
+): GameOpenScope | null {
+  const openItem = allItems.find(item => item.id === openItemId);
+  if (!openItem) return null;
+  const homeFolderId = deriveHomeFolderId(openItem);
+  for (const section of tree.sections) {
+    if (homeFolderId === null) {
+      if (section.unfiledItemIds.includes(openItemId)) {
+        return { sectionId: section.id, folderId: null, label: section.label, itemIds: section.unfiledItemIds };
+      }
+      continue;
+    }
+    const group = findFolderGroupContainingItem(section.folders, homeFolderId, openItemId);
+    if (group) return { sectionId: section.id, folderId: group.id, label: group.name, itemIds: group.itemIds };
+  }
+  return null;
+}
+
 function resolveItems(ids: readonly string[], byId: ReadonlyMap<string, StudyItem>): StudyItem[] {
   const items: StudyItem[] = [];
   for (const id of ids) {
@@ -417,9 +476,30 @@ const _navDivider = new PaneResizeController({
   bodyClassDuringDrag: 'study-nav-resizing',
 });
 
-function renderDivider(redraw: () => void): VNode {
+
+
+
+
+
+
+const ITEM_LIST_PANE_STORAGE_KEY = 'patzer.studyItemListPaneWidth';
+const ITEM_LIST_PANE_DEFAULT_WIDTH = 280;
+const ITEM_LIST_PANE_MIN_WIDTH = 220;
+const ITEM_LIST_PANE_CSS_VAR = '---study-item-list-pane-width';
+
+const _itemListDivider = new PaneResizeController({
+  orientation: 'horizontal',
+  defaultSize: ITEM_LIST_PANE_DEFAULT_WIDTH,
+  minSize: ITEM_LIST_PANE_MIN_WIDTH,
+  storageKey: ITEM_LIST_PANE_STORAGE_KEY,
+  cssVar: ITEM_LIST_PANE_CSS_VAR,
+  targetSelector: '.lib-shell',
+  bodyClassDuringDrag: 'study-nav-resizing',
+});
+
+function renderDivider(redraw: () => void, controller: PaneResizeController = _navDivider): VNode {
   return h('div.lib-divider', {
-    class: { '--dragging': _navDivider.isDragging() },
+    class: { '--dragging': controller.isDragging() },
     attrs: {
       role: 'separator',
       'aria-orientation': 'vertical',
@@ -427,7 +507,7 @@ function renderDivider(redraw: () => void): VNode {
       title: 'Resize navigation pane',
     },
     on: {
-      pointerdown: (event: PointerEvent) => _navDivider.startDrag(event, redraw),
+      pointerdown: (event: PointerEvent) => controller.startDrag(event, redraw),
     },
   }, [
     h('span.divider-badge'),
@@ -921,25 +1001,166 @@ function renderItemListToolbar(redraw: () => void, onImportPgnClick: () => void)
   ]);
 }
 
-/**
- * Render the Study Navigator's composing shell: tool rail (OD-2) + nav pane (T5-D05, with its own
- * new-folder toolbar, OD-3) + resize divider + item-list pane (T5-D06, with its own NN icon
- * toolbar, OD-3/OD-4), wired with BASIC single-selection over the P1 navigation-index tree.
- *
- * `tree` is the current `studyNavigationTree()` snapshot; `allItems` is the currently-loaded
- * `StudyItem[]` (`allStudies()`) those tree itemIds are resolved against. `onImportPgnClick` opens
- * libraryView.ts's Import PGN modal (its state stays private to that module).
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Chevron + single-segment breadcrumb sitting above the item-list toolbar, ONLY in `--game-open`
+ * mode. The chevron re-expands the nav pane and returns to State 1 as-is (no forced selection
+ * change) — the breadcrumb, when a real folder/section scope was resolved, jumps to State 1
+ * scoped to that folder/section (`exitToFolder`). A full multi-level breadcrumb PATH (the R2
+ * mockup's `08-Development / PatzerPro / ...`) is explicitly out of this slice's scope — this is
+ * the one segment needed for exit affordance (c). */
+function renderGameOpenItemListHeader(scopeLabel: string | null, exitPlain: () => void, exitToFolder: () => void): VNode {
+  return h('div.lib-game-open-header', [
+    h('button.lib-game-open-header__chevron', {
+      attrs: { type: 'button', title: 'Back to Library', 'aria-label': 'Back to Library' },
+      on: { click: exitPlain },
+    }, [navIcon('chevron-left', { size: 16 })]),
+    scopeLabel
+      ? h('button.lib-game-open-header__breadcrumb', {
+          attrs: { type: 'button', title: `Back to ${scopeLabel}`, 'aria-label': `Back to ${scopeLabel}` },
+          on: { click: exitToFolder },
+        }, scopeLabel)
+      : null,
+  ]);
+}
+
+/** Text-entry guard duplicated (not imported) from navigatorKeyboard.ts's own `isTextEntryTarget`
+ * — that file is outside this slice's edit fence, and this is a 3-line, self-contained check, not
+ * shared stateful logic, so a small disclosed duplication is preferable to widening the fence. */
+function isGameOpenEscapeTextEntryTarget(target: EventTarget | null): boolean {
+  const el = target as { tagName?: string; isContentEditable?: boolean } | null;
+  if (!el) return false;
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return true;
+  return el.isContentEditable === true;
+}
+
+/** `Escape` exit affordance (states-design §1: "Escape steps back one state, State 2 -> State
+ * 1"). Mirrors `bindNavigatorKeyboard`'s own established shape (`navigatorKeyboard.ts`): ONE
+ * idempotent document-level listener, route-gated (`study-detail` only, so this stays inert
+ * everywhere else including plain `study`, which already has its own D10 handler), refreshed via a
+ * module-level callback re-armed on every `--game-open` render rather than re-attaching a new
+ * listener each time. */
+let _gameOpenExit: (() => void) | null = null;
+let _gameOpenEscapeBound = false;
+
+function armGameOpenEscape(onExit: () => void): void {
+  _gameOpenExit = onExit;
+  if (_gameOpenEscapeBound) return;
+  _gameOpenEscapeBound = true;
+  document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key !== 'Escape') return;
+    if (current().name !== 'study-detail') return;
+    if (isGameOpenEscapeTextEntryTarget(event.target)) return;
+    _gameOpenExit?.();
+  });
+}
+
+export interface GameOpenShellOptions {
+  /** The `StudyItem.id` currently open on the board — drives the item-list rescope. */
+  openItemId: string;
+  /** The main-region content to mount in the freed nav-pane width — `studyDetailView.ts`'s
+   * `renderStudyDetail` output, unchanged board mount, per this slice's fence. */
+  mainContent: VNode;
+}
+
+
+
+
+
+
+
+
+function renderGameOpenShell(
+  tree: StudyNavigationTree,
+  allItems: readonly StudyItem[],
+  redraw: () => void,
+  onImportPgnClick: () => void,
+  opts: GameOpenShellOptions,
+): VNode {
+  const scope = resolveGameOpenScope(tree, allItems, opts.openItemId);
+  const byId = new Map(allItems.map(item => [item.id, item] as const));
+  const rawItems = scope
+    ? resolveItems(scope.itemIds, byId)
+    : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
+  const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
+  const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, scope?.folderId ?? null);
+
+  const exitPlain = () => { writeHashRoute('#/study'); };
+  const exitToFolder = () => {
+    if (scope) {
+      _selection = scope.folderId
+        ? { kind: 'folder', sectionId: scope.sectionId, folderId: scope.folderId }
+        : { kind: 'section', sectionId: scope.sectionId };
+    }
+    writeHashRoute('#/study');
+  };
+  armGameOpenEscape(exitPlain);
+
+  return h('div.lib-shell.lib-shell--game-open', {
+    attrs: { style: _itemListDivider.styleDeclaration() },
+  }, [
+    renderRail(),
+    h('div.lib-items-wrap', {
+      on: {
+        click: () => setFocusedPane('list'),
+        focusin: () => setFocusedPane('list'),
+      },
+    }, [
+      renderGameOpenItemListHeader(scope?.label ?? null, exitPlain, exitToFolder),
+      renderItemListToolbar(redraw, onImportPgnClick),
+      _itemSearchOpen ? renderSearchInputRow(redraw) : null,
+      _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
+      itemListPane,
+    ]),
+    renderDivider(redraw, _itemListDivider),
+    h('div.lib-main-region', [opts.mainContent]),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function renderNavigatorShell(
   tree: StudyNavigationTree,
   allItems: readonly StudyItem[],
   redraw: () => void,
   onImportPgnClick: () => void,
+  gameOpen?: GameOpenShellOptions,
 ): VNode {
   // Apply-on-mount + apply-on-every-render (T5-D08): cheap and idempotent (a handful of
   // `document.body.style.setProperty` calls), so re-running it on every redraw — including the
   // very first, i.e. "mount" — is simpler and safer than tracking a separate one-shot mount flag.
   applyNavigatorSettings();
+
+  if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen);
 
   if (_selection === null) _selection = defaultSelection();
 
