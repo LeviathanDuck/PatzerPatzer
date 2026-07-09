@@ -6,29 +6,40 @@
 
 
 import type { DrawShape } from '@lichess-org/chessground/draw';
+import { Chess } from 'chessops/chess';
+import { parseFen } from 'chessops/fen';
+import { makeSanAndPlay } from 'chessops/san';
+import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { renderMoveList } from '../analyse/moveList';
 import { formatScore } from '../analyse/evalView';
 import { renderMoveNavBar } from '../analyse/analysisControls';
 import type { MoveNavOverride } from '../analyse/analysisControls';
+import QuestionnaireCtrl, { type QuestionnaireStage } from '../analyse/questionnaire/questionnaireCtrl';
+import renderQuestionnaire, { renderQuestionnaireAnswerSummary } from '../analyse/questionnaire/questionnaireView';
+import { parseQuestionnaireFromPgn, type QuestionnaireAnswers } from '../analyse/questionnaire/model';
 import { renderToggleRow } from '../ui';
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
-  protocol, currentEval, engineReady,
+  protocol, engineReady,
   clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved,
-  visibleEvalForFen,
+  visibleEvalForFen, evalLineFirstMoveLegalInFen,
+  type EvalLine, type PositionEval,
 } from '../engine/ctrl';
 import { listPracticeLines, savePracticeLine, deletePracticeLine } from './studyDb';
-import { progressMap } from './studyCtrl';
+import { saveOrpLineToLibrary } from './saveAction';
+import {
+  folders, foldersLoaded, loadFolders, progressMap, updateStudy,
+} from './studyCtrl';
 import { countDuePositions } from './practice/sessionBuilder';
-import type { TrainableSequence } from './types';
+import type { OrpFlagScope, StudyItem, TrainableSequence } from './types';
 import type { TreeNode } from '../tree/types';
-import { deleteNodeAt, promoteAt, pathInit, nodeListAt } from '../tree/ops';
+import { deleteNodeAt, promoteAt, pathInit, nodeListAt, mainlineNodeList, pathIsMainline } from '../tree/ops';
 import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
-  flipStudyBoard, studyDetailRouteSnapshot,
+  flipStudyBoard, studyDetailRouteSnapshot, detailOrientation,
 } from './studyDetailCtrl';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
@@ -63,6 +74,17 @@ let _renamingLineValue     = '';
 let _toolsOpen = false;
 let _activeToolTab: StudyToolTabId = 'comments';
 let _toolsRouteSyncKey: string | null = null;
+let _organizeTitleDraftId: string | null = null;
+let _organizeTitleDraft = '';
+let _organizeTagDraftId: string | null = null;
+let _organizeTagDraft = '';
+let _studyQuestionnaireCtrl: QuestionnaireCtrl | null = null;
+let _studyQuestionnaireKey: string | null = null;
+const _studyQuestionnaireDrafts = new Map<string, QuestionnaireAnswers>();
+let _orpScope: OrpFlagScope = 'current-line';
+let _orpTrainAs: 'white' | 'black' = 'white';
+let _orpSaving = false;
+let _orpFeedback: { studyId: string; kind: 'saved' | 'error' | 'saving'; message: string } | null = null;
 
 function syncToolsStateFromRoute(routeKey: string, routeQuery: string): void {
   if (_toolsRouteSyncKey === routeKey) return;
@@ -206,13 +228,482 @@ function renderCommentsToolPanel(redraw: () => void): VNode {
   );
 }
 
+function syncOpenStudyMetadata(study: StudyItem, partial: Partial<Pick<StudyItem, 'title' | 'tags' | 'folders'>>): void {
+  Object.assign(study, partial, { updatedAt: Date.now() });
+}
 
+function commitOrganizeTitle(study: StudyItem, redraw: () => void): void {
+  const draft = _organizeTitleDraftId === study.id ? _organizeTitleDraft : study.title;
+  const title = draft.trim() || study.title;
+  _organizeTitleDraftId = null;
+  _organizeTitleDraft = '';
 
+  if (title === study.title) {
+    redraw();
+    return;
+  }
 
+  syncOpenStudyMetadata(study, { title });
+  redraw();
+  void updateStudy({ id: study.id, title }).then(redraw);
+}
 
+function commitOrganizeTag(study: StudyItem, redraw: () => void): void {
+  const tag = (_organizeTagDraftId === study.id ? _organizeTagDraft : '').trim();
+  _organizeTagDraftId = null;
+  _organizeTagDraft = '';
+
+  if (!tag || study.tags.includes(tag)) {
+    redraw();
+    return;
+  }
+
+  const tags = [...study.tags, tag];
+  syncOpenStudyMetadata(study, { tags });
+  redraw();
+  void updateStudy({ id: study.id, tags }).then(redraw);
+}
+
+function removeOrganizeTag(study: StudyItem, tag: string, redraw: () => void): void {
+  const tags = study.tags.filter(t => t !== tag);
+  if (tags.length === study.tags.length) return;
+  syncOpenStudyMetadata(study, { tags });
+  redraw();
+  void updateStudy({ id: study.id, tags }).then(redraw);
+}
+
+function addOrganizeFolder(study: StudyItem, folderId: string, redraw: () => void): void {
+  if (!folderId || study.folders.includes(folderId)) {
+    redraw();
+    return;
+  }
+  const folderIds = [...study.folders, folderId];
+  syncOpenStudyMetadata(study, { folders: folderIds });
+  redraw();
+  void updateStudy({ id: study.id, folders: folderIds }).then(redraw);
+}
+
+function renderOrganizeToolPanel(redraw: () => void): VNode {
+  const study = studyDetail();
+  if (!study) {
+    return h('div.study-tools-col__panel.study-tools-col__organize', [
+      h('div.study-tools-col__empty', 'Study not loaded.'),
+    ]);
+  }
+
+  if (!foldersLoaded()) loadFolders(redraw);
+
+  const folderList = [...folders()].sort((a, b) => a.name.localeCompare(b.name));
+  const folderNameById = new Map(folderList.map(folder => [folder.id, folder.name]));
+  const availableFolders = folderList.filter(folder => !study.folders.includes(folder.id));
+  const titleValue = _organizeTitleDraftId === study.id ? _organizeTitleDraft : study.title;
+  const tagValue = _organizeTagDraftId === study.id ? _organizeTagDraft : '';
+
+  return h('div.study-tools-col__panel.study-tools-col__organize', [
+    h('label.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Title'),
+      h('input.study-tools-col__title-input', {
+        attrs: { type: 'text', placeholder: 'Study title' },
+        props: { value: titleValue },
+        on: {
+          input: (e: Event) => {
+            _organizeTitleDraftId = study.id;
+            _organizeTitleDraft = (e.target as HTMLInputElement).value;
+          },
+          blur: () => commitOrganizeTitle(study, redraw),
+          keydown: (e: KeyboardEvent) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') {
+              _organizeTitleDraftId = null;
+              _organizeTitleDraft = '';
+              redraw();
+            }
+          },
+        },
+      }),
+    ]),
+
+    h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Assign to Study'),
+      study.folders.length > 0
+        ? h('div.study-tools-col__chips',
+            study.folders.map(folderId => h('span.study-tools-col__chip.study-tools-col__chip--folder', { key: folderId }, [
+              h('span.study-tools-col__chip-label', folderNameById.get(folderId) ?? 'Unknown folder'),
+            ])),
+          )
+        : h('div.study-tools-col__hint', 'No folder memberships yet.'),
+      foldersLoaded()
+        ? h('select.study-tools-col__folder-select', {
+            props: { value: '' },
+            attrs: { 'aria-label': 'Add to folder' },
+            on: {
+              change: (e: Event) => {
+                const select = e.target as HTMLSelectElement;
+                addOrganizeFolder(study, select.value, redraw);
+                select.value = '';
+              },
+            },
+          }, [
+            h('option', { attrs: { value: '', disabled: true } },
+              availableFolders.length > 0 ? 'Add to folder...' : 'All folders already assigned'),
+            ...availableFolders.map(folder => h('option', { key: folder.id, attrs: { value: folder.id } }, folder.name)),
+          ])
+        : h('div.study-tools-col__hint', 'Loading folders...'),
+    ]),
+
+    h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Tags'),
+      study.tags.length > 0
+        ? h('div.study-tools-col__chips',
+            study.tags.map(tag => h('span.study-tools-col__chip.study-tools-col__chip--tag', { key: tag }, [
+              h('span.study-tools-col__chip-label', tag),
+              h('button.study-tools-col__chip-remove', {
+                attrs: { type: 'button', title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
+                on: { click: () => removeOrganizeTag(study, tag, redraw) },
+              }, '×'),
+            ])),
+          )
+        : h('div.study-tools-col__hint', 'No tags yet.'),
+      h('input.study-tools-col__tag-input', {
+        attrs: { type: 'text', placeholder: 'Add tag' },
+        props: { value: tagValue },
+        on: {
+          input: (e: Event) => {
+            _organizeTagDraftId = study.id;
+            _organizeTagDraft = (e.target as HTMLInputElement).value;
+          },
+          blur: (e: Event) => {
+            commitOrganizeTag(study, redraw);
+            (e.target as HTMLInputElement).value = '';
+          },
+          keydown: (e: KeyboardEvent) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            if (e.key === 'Escape') {
+              _organizeTagDraftId = null;
+              _organizeTagDraft = '';
+              redraw();
+            }
+          },
+        },
+      }),
+    ]),
+  ]);
+}
+
+function questionnaireLineForStudy(study: StudyItem): string {
+  const parts = [
+    study.white && study.black ? `${study.white} vs ${study.black}` : undefined,
+    study.opening,
+  ].filter((part): part is string => !!part);
+  return parts.join(' · ') || study.title;
+}
+
+function studyQuestionnaireStageForRow(row: 'story' | 'decider' | 'opening-eval'): QuestionnaireStage {
+  if (row === 'opening-eval') return 'opening-eval';
+  return row;
+}
+
+function questionnaireAnswersForStudy(study: StudyItem): QuestionnaireAnswers | undefined {
+  return _studyQuestionnaireDrafts.get(study.id) ?? parseQuestionnaireFromPgn(study.pgn);
+}
+
+function ensureStudyQuestionnaireCtrl(study: StudyItem, answers: QuestionnaireAnswers, redraw: () => void): QuestionnaireCtrl {
+  const draft = _studyQuestionnaireDrafts.get(study.id);
+  const key = `${study.id}:${draft ? 'draft' : study.pgn}`;
+  if (_studyQuestionnaireCtrl && _studyQuestionnaireKey === key) return _studyQuestionnaireCtrl;
+
+  _studyQuestionnaireKey = key;
+  _studyQuestionnaireCtrl = QuestionnaireCtrl.fromAnswers(
+    answers,
+    {
+      context: { line: questionnaireLineForStudy(study) },
+      onComplete: completion => {
+        _studyQuestionnaireDrafts.set(study.id, completion.answers);
+        _studyQuestionnaireKey = `${study.id}:draft`;
+        redraw();
+      },
+    },
+    redraw,
+  );
+  return _studyQuestionnaireCtrl;
+}
+
+function renderQuestionnaireToolPanel(redraw: () => void): VNode {
+  const study = studyDetail();
+  if (!study) {
+    return h('div.study-tools-col__panel.study-tools-col__questionnaire', [
+      h('div.study-tools-col__empty', 'Study not loaded.'),
+    ]);
+  }
+
+  const answers = questionnaireAnswersForStudy(study);
+  if (!answers) {
+    _studyQuestionnaireCtrl = null;
+    _studyQuestionnaireKey = null;
+    return h('div.study-tools-col__panel.study-tools-col__questionnaire', [
+      h('div.study-tools-col__empty', 'No Post Game Review Questions recorded for this game.'),
+    ]);
+  }
+
+  const ctrl = ensureStudyQuestionnaireCtrl(study, answers, redraw);
+  if (ctrl.stage !== 'summary') {
+    return h('div.study-tools-col__panel.study-tools-col__questionnaire', [
+      renderQuestionnaire(ctrl),
+    ]);
+  }
+
+  const currentAnswers = ctrl.completion?.answers ?? answers;
+  return h('div.study-tools-col__panel.study-tools-col__questionnaire', [
+    h('div.study-tools-col__questionnaire-title', 'Post Game Review Questions'),
+    renderQuestionnaireAnswerSummary(currentAnswers, {
+      onChange: row => ctrl.jumpToStage(studyQuestionnaireStageForRow(row)),
+    }),
+    _studyQuestionnaireDrafts.has(study.id)
+      ? h('div.study-tools-col__hint.study-tools-col__hint--questionnaire',
+          'Changes are active in this Study session. Durable PGN rewrite needs the follow-up persistence slice.')
+      : null,
+  ]);
+}
+
+interface StudyOrpLine {
+  scope: OrpFlagScope;
+  label: string;
+  description: string;
+  ucis: string[];
+  sans: string[];
+  sourcePath: string;
+  stopPath: string;
+  stopPly: number;
+}
+
+function formatStudyMoveContext(node: TreeNode | null | undefined): string {
+  if (!node?.san || node.ply <= 0) return 'Root position';
+  const n = Math.ceil(node.ply / 2);
+  return `${node.ply % 2 === 1 ? `${n}.` : `${n}...`} ${node.san}`;
+}
+
+function lineFromNodes(
+  scope: OrpFlagScope,
+  label: string,
+  description: string,
+  nodes: TreeNode[],
+  sourcePath: string,
+  stopPath: string,
+): StudyOrpLine | null {
+  const moveNodes = nodes.slice(1).filter(node => node.uci && node.san);
+  if (moveNodes.length === 0) return null;
+  return {
+    scope,
+    label,
+    description,
+    ucis: moveNodes.map(node => node.uci!),
+    sans: moveNodes.map(node => node.san!),
+    sourcePath,
+    stopPath,
+    stopPly: moveNodes[moveNodes.length - 1]?.ply ?? 0,
+  };
+}
+
+function mainlinePathFromNodes(nodes: TreeNode[]): string {
+  return nodes.slice(1).map(node => node.id).join('');
+}
+
+function buildCurrentLineOption(root: TreeNode, path: string): StudyOrpLine | null {
+  if (!path) return null;
+  const nodes = nodeListAt(root, path);
+  return lineFromNodes(
+    'current-line',
+    'Current line',
+    `Stop at ${formatStudyMoveContext(nodes[nodes.length - 1])}`,
+    nodes,
+    path,
+    path,
+  );
+}
+
+function buildMainlineOption(root: TreeNode): StudyOrpLine | null {
+  const nodes = mainlineNodeList(root);
+  return lineFromNodes(
+    'mainline',
+    'Mainline',
+    'Full first-child line from this Study',
+    nodes,
+    '',
+    mainlinePathFromNodes(nodes),
+  );
+}
+
+function buildSelectedVariationOption(root: TreeNode, path: string): StudyOrpLine | null {
+  if (!path || pathIsMainline(root, path)) return null;
+  const nodes = nodeListAt(root, path);
+  let node = nodes[nodes.length - 1];
+  let stopPath = path;
+  while (node?.children[0]) {
+    node = node.children[0];
+    nodes.push(node);
+    stopPath += node.id;
+  }
+  return lineFromNodes(
+    'selected-variation',
+    'Selected variation',
+    `Variation through ${formatStudyMoveContext(nodes[nodes.length - 1])}`,
+    nodes,
+    path,
+    stopPath,
+  );
+}
+
+function buildOrpLineOptions(root: TreeNode, path: string): StudyOrpLine[] {
+  return [
+    buildCurrentLineOption(root, path),
+    buildMainlineOption(root),
+    buildSelectedVariationOption(root, path),
+  ].filter((line): line is StudyOrpLine => !!line);
+}
+
+function saveStudyOrpLine(study: StudyItem, line: StudyOrpLine, redraw: () => void): void {
+  if (_orpSaving) return;
+  if (line.ucis.length < 3) {
+    _orpFeedback = { studyId: study.id, kind: 'error', message: 'Need at least 3 moves.' };
+    redraw();
+    return;
+  }
+
+  _orpSaving = true;
+  _orpFeedback = { studyId: study.id, kind: 'saving', message: 'Saving...' };
+  redraw();
+
+  void saveOrpLineToLibrary(
+    line.ucis,
+    line.sans,
+    _orpTrainAs,
+    null,
+    study.opening,
+    study.eco,
+    {
+      title: `${study.title} - ${line.label}`,
+      extraTags: ['study', `source-study:${study.id}`, `scope:${line.scope}`],
+      mergeExistingTags: true,
+      sourceProvenance: {
+        source: 'study',
+        originalStudyItemId: study.id,
+        originalStudyTitle: study.title,
+        scope: line.scope,
+        sourcePath: line.sourcePath,
+        stopPath: line.stopPath,
+        stopPly: line.stopPly,
+        sourcePgn: study.pgn,
+      },
+    },
+  ).then(result => {
+    _orpSaving = false;
+    _orpFeedback = result
+      ? { studyId: study.id, kind: 'saved', message: 'Saved to ORP.' }
+      : { studyId: study.id, kind: 'error', message: 'Need at least 3 legal moves.' };
+    redraw();
+  }).catch(error => {
+    _orpSaving = false;
+    _orpFeedback = {
+      studyId: study.id,
+      kind: 'error',
+      message: error instanceof Error ? error.message : 'Could not save to ORP.',
+    };
+    redraw();
+  });
+}
+
+function renderOrpToolPanel(redraw: () => void): VNode {
+  const study = studyDetail();
+  const root = detailRoot();
+  if (!study || !root) {
+    return h('div.study-tools-col__panel.study-tools-col__orp', [
+      h('div.study-tools-col__empty', 'Study not loaded.'),
+    ]);
+  }
+
+  const currentPath = detailPath();
+  const currentNode = detailNode();
+  const options = buildOrpLineOptions(root, currentPath);
+  if (!options.some(option => option.scope === _orpScope)) _orpScope = options[0]?.scope ?? 'mainline';
+  const selected = options.find(option => option.scope === _orpScope) ?? options[0] ?? null;
+  const feedback = _orpFeedback?.studyId === study.id ? _orpFeedback : null;
+  const canSave = !!selected && selected.ucis.length >= 3 && !_orpSaving;
+
+  return h('div.study-tools-col__panel.study-tools-col__orp', [
+    h('div.study-tools-col__orp-head', [
+      h('div.study-tools-col__orp-title', 'Opening Repetition Practice'),
+      h('div.study-tools-col__orp-context', [
+        h('span.study-tools-col__orp-context-label', 'Current'),
+        h('span.study-tools-col__orp-context-value', formatStudyMoveContext(currentNode)),
+      ]),
+    ]),
+
+    h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Scope'),
+      h('div.study-tools-col__orp-scope-list',
+        options.map(option => h('button.study-tools-col__orp-scope', {
+          key: option.scope,
+          class: { 'study-tools-col__orp-scope--active': _orpScope === option.scope },
+          attrs: { type: 'button' },
+          on: { click: () => { _orpScope = option.scope; _orpFeedback = null; redraw(); } },
+        }, [
+          h('span.study-tools-col__orp-scope-name', option.label),
+          h('span.study-tools-col__orp-scope-detail', `${option.sans.length} moves · ${option.description}`),
+        ])),
+      ),
+    ]),
+
+    h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Train as'),
+      h('div.study-tools-col__orp-train-as', [
+        h('button.study-tools-col__orp-train', {
+          class: { 'study-tools-col__orp-train--active': _orpTrainAs === 'white' },
+          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'white') },
+          on: { click: () => { _orpTrainAs = 'white'; redraw(); } },
+        }, 'White'),
+        h('button.study-tools-col__orp-train', {
+          class: { 'study-tools-col__orp-train--active': _orpTrainAs === 'black' },
+          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'black') },
+          on: { click: () => { _orpTrainAs = 'black'; redraw(); } },
+        }, 'Black'),
+      ]),
+    ]),
+
+    selected
+      ? h('div.study-tools-col__orp-summary', [
+          h('span', `Source: ${study.title}`),
+          h('span', `Stop ply: ${selected.stopPly}`),
+        ])
+      : h('div.study-tools-col__hint', 'Select a move before saving the current line.'),
+
+    selected && selected.ucis.length < 3
+      ? h('div.study-tools-col__hint', 'Need at least 3 moves.')
+      : null,
+
+    h('button.study-tools-col__orp-save', {
+      class: { 'study-tools-col__orp-save--busy': _orpSaving },
+      attrs: {
+        type: 'button',
+        disabled: !canSave,
+      },
+      on: { click: () => { if (selected) saveStudyOrpLine(study, selected, redraw); } },
+    }, _orpSaving ? 'Saving...' : 'Save to ORP'),
+
+    feedback
+      ? h(`div.study-tools-col__orp-feedback.study-tools-col__orp-feedback--${feedback.kind}`, feedback.message)
+      : null,
+  ]);
+}
+
+/** Threading entry point (`libraryView.ts` calls this and passes the result as
+ * `GameOpenShellOptions.toolPanelContent`). Returns real panels for the implemented tabs and
+ * `null` for tabs that should still use `renderStudyToolsColumn`'s placeholder fallback. */
 export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () => void): VNode | null {
-  if (activeToolTab !== 'comments') return null;
-  return renderCommentsToolPanel(redraw);
+  if (activeToolTab === 'comments') return renderCommentsToolPanel(redraw);
+  if (activeToolTab === 'questionnaire') return renderQuestionnaireToolPanel(redraw);
+  if (activeToolTab === 'organize') return renderOrganizeToolPanel(redraw);
+  if (activeToolTab === 'orp') return renderOrpToolPanel(redraw);
+  return null;
 }
 
 // Defined at module scope so it survives the shared board's insert hook closure and any hook
@@ -343,16 +834,148 @@ function syncStudyEngine(redraw: () => void): void {
   evalCurrentPosition();
 }
 
-function renderStudyEval(): VNode | null {
-  if (!_studyEngineOn) return null;
+type StudyPlayerColor = 'white' | 'black';
+
+const STUDY_PV_SLOT_COUNT = 20;
+
+function studyPlayerResult(study: StudyItem, color: StudyPlayerColor): string | null {
+  const result = study.result?.trim();
+  if (!result || result === '*') return null;
+  const parts = result.split('-');
+  if (parts.length !== 2) return result.replace('1/2', '½');
+  return (color === 'white' ? parts[0] : parts[1])?.replace('1/2', '½') ?? null;
+}
+
+function renderStudyPlayerBar(study: StudyItem, color: StudyPlayerColor, placement: 'top' | 'bottom'): VNode {
+  const name = (color === 'white' ? study.white : study.black) || (color === 'white' ? 'White' : 'Black');
+  const result = studyPlayerResult(study, color);
+  return h(`div.study-player-bar.study-player-bar--${placement}`, [
+    h(`span.study-player-bar__dot.study-player-bar__dot--${color}`, { attrs: { 'aria-hidden': 'true' } }),
+    h('span.study-player-bar__name', name),
+    result ? h('span.study-player-bar__result', result) : null,
+  ]);
+}
+
+function studyBoardPlayerColors(): { top: StudyPlayerColor; bottom: StudyPlayerColor } {
+  return detailOrientation() === 'white'
+    ? { top: 'black', bottom: 'white' }
+    : { top: 'white', bottom: 'black' };
+}
+
+function hasStudyEvalData(ev: PositionEval | EvalLine | undefined): boolean {
+  return !!ev && (ev.cp !== undefined || ev.mate !== undefined || !!ev.best || !!ev.moves?.length);
+}
+
+function studyVisibleEvalForCurrentFen(): { fen: string; ev: PositionEval } | null {
   const node = detailNode();
-  const ev = node ? visibleEvalForFen(node.fen) : currentEval;
-  const score = formatScore(ev);
-  const depth = ev.depth ?? 0;
-  const ready = engineReady;
-  return h('div.study-engine-bar', [
-    h('span.study-engine-bar__score', score),
-    h('span.study-engine-bar__depth', ready ? `depth ${depth}` : 'loading…'),
+  if (!node) return null;
+  return { fen: node.fen, ev: visibleEvalForFen(node.fen) };
+}
+
+function studyPvLinesForEval(fen: string, ev: PositionEval): Array<PositionEval | EvalLine> {
+  const candidates: Array<PositionEval | EvalLine> = [];
+  if (hasStudyEvalData(ev)) candidates.push(ev);
+  for (const line of ev.lines ?? []) {
+    if (hasStudyEvalData(line)) candidates.push(line);
+  }
+  return candidates.filter(line => evalLineFirstMoveLegalInFen(fen, line));
+}
+
+function studyPvMovesAsSan(fen: string, moves: string[] | undefined): string {
+  if (!moves?.length) return '';
+  try {
+    const setup = parseFen(fen).unwrap();
+    const pos = Chess.fromSetup(setup).unwrap();
+    const sans: string[] = [];
+    for (const uci of moves.slice(0, 10)) {
+      const move = parseUci(uci);
+      if (!move || !pos.isLegal(move)) break;
+      const prefix = pos.turn === 'white'
+        ? `${pos.fullmoves}.`
+        : sans.length === 0 ? `${pos.fullmoves}...` : '';
+      const san = makeSanAndPlay(pos, move);
+      if (san === '--') break;
+      sans.push(prefix ? `${prefix} ${san}` : san);
+    }
+    return sans.join(' ');
+  } catch {
+    return moves.slice(0, 10).join(' ');
+  }
+}
+
+function renderStudyPvRow(fen: string, line: PositionEval | EvalLine | undefined, index: number): VNode {
+  if (!line) {
+    return h('div.study-local-analysis__pv-row.study-local-analysis__pv-row--empty', [
+      h('span.study-local-analysis__pv-index', `${index + 1}`),
+      h('span.study-local-analysis__pv-placeholder', index === 0 && _studyEngineOn ? 'Waiting for current position...' : ''),
+    ]);
+  }
+
+  const moves = line.moves ?? (line.best ? [line.best] : []);
+  const moveText = studyPvMovesAsSan(fen, moves);
+  return h('div.study-local-analysis__pv-row', [
+    h('span.study-local-analysis__pv-index', `${index + 1}`),
+    h('strong.study-local-analysis__pv-score', formatScore(line)),
+    h('span.study-local-analysis__pv-moves', moveText || (line.best ?? '')),
+  ]);
+}
+
+function renderStudyLocalAnalysisPanel(): VNode {
+  const visible = studyVisibleEvalForCurrentFen();
+  const lines = visible ? studyPvLinesForEval(visible.fen, visible.ev) : [];
+  const depth = visible?.ev.depth;
+  const status = !_studyEngineOn
+    ? 'Engine off'
+    : !engineReady
+      ? 'Loading...'
+      : lines.length > 0
+        ? depth !== undefined ? `depth ${depth}` : 'current FEN'
+        : 'No exact-FEN eval yet';
+  const slotLines = Array.from({ length: STUDY_PV_SLOT_COUNT }, (_, i) => lines[i]);
+
+  return h('aside.study-local-analysis', {
+    attrs: {
+      'aria-label': 'Local analysis',
+      'data-current-fen': visible?.fen ?? '',
+    },
+  }, [
+    h('div.study-local-analysis__head', [
+      h('div.study-local-analysis__title', [
+        h('span.study-local-analysis__engine', protocol.engineName ?? 'Stockfish 18'),
+        h('span.study-local-analysis__mode', 'Local analysis'),
+      ]),
+      h('span.study-local-analysis__status', status),
+    ]),
+    !_studyEngineOn
+      ? h('div.study-local-analysis__idle', 'Enable Engine from the Study menu to show current-position lines.')
+      : h('div.study-local-analysis__pv-list',
+          slotLines.map((line, index) => renderStudyPvRow(visible?.fen ?? '', line, index)),
+        ),
+  ]);
+}
+
+function renderStudyEvalGraphPlaceholder(): VNode {
+  return h('div.study-eval-graph-placeholder', [
+    h('span.study-eval-graph-placeholder__line', { attrs: { 'aria-hidden': 'true' } }),
+    h('span.study-eval-graph-placeholder__text', 'Analyze game to see graph'),
+  ]);
+}
+
+function renderStudyBoardRegion(study: StudyItem, redraw: () => void): VNode {
+  const colors = studyBoardPlayerColors();
+  return h('div.study-board-region', [
+    h('div.study-board-stack', [
+      renderStudyPlayerBar(study, colors.top, 'top'),
+      renderStudyBoardArea(),
+      renderStudyPlayerBar(study, colors.bottom, 'bottom'),
+      renderStudyEvalGraphPlaceholder(),
+      h('div.study-board-controls', [
+        renderStudyNavBar(redraw),
+        renderManualReviewToggle(redraw),
+      ]),
+      _glyphQuickSelectOpen ? renderGlyphQuickSelect(redraw) : null,
+    ]),
+    renderStudyLocalAnalysisPanel(),
   ]);
 }
 
@@ -707,30 +1330,31 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
 
 
 
-function renderColorPicker(title: string, root: import('../tree/types').TreeNode, redraw: () => void): VNode {
+function renderColorPicker(study: StudyItem, root: import('../tree/types').TreeNode, redraw: () => void): VNode {
   const currentPath = detailPath();
   const fromPath    = _practiceFromPath; // set by "Practice from here", null for "Practice this line"
 
   const launch = (color: 'white' | 'black') => {
     _showColorPicker  = false;
     _practiceFromPath = null;
-    const seqId  = `${title}_${color}_${Date.now()}`;
+    const title = study.title;
+    const seqId  = `${study.id}_${color}_${Date.now()}`;
     let seq;
     let startFen: string;
 
     if (fromPath) {
       // "Practice from here" — extract from the context-menu path.
-      seq      = extractFromPath(root, fromPath, title, `${title} (from move)`, color, seqId);
+      seq      = extractFromPath(root, fromPath, study.id, `${title} (from move)`, color, seqId);
       startFen = getNodeAtPath(root, fromPath)?.fen ?? root.fen;
     } else if (_practiceScope === 'current' && currentPath) {
-      seq      = extractFromPath(root, currentPath, title, `${title} (from current)`, color, seqId);
+      seq      = extractFromPath(root, currentPath, study.id, `${title} (from current)`, color, seqId);
       startFen = getNodeAtPath(root, currentPath)?.fen ?? root.fen;
     } else if (_practiceScope === 'variation' && currentPath) {
-      seq      = extractFromVariationPath(root, currentPath, title, `${title} (variation)`, color, seqId);
+      seq      = extractFromVariationPath(root, currentPath, study.id, `${title} (variation)`, color, seqId);
       startFen = root.fen;
     } else {
       // Full game — mainline from root.
-      seq      = extractMainline(root, title, title, color, seqId);
+      seq      = extractMainline(root, study.id, title, color, seqId);
       startFen = root.fen;
     }
 
@@ -888,7 +1512,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
       ]),
     ]),
 
-    _showColorPicker ? renderColorPicker(study.title, root!, redraw) : null,
+    _showColorPicker ? renderColorPicker(study, root!, redraw) : null,
 
 
     renderStudyContextMenu(redraw),
@@ -900,11 +1524,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
         attrs: { tabindex: '0' },
         on:    { keydown: (e: KeyboardEvent) => handleStudyKeydown(e, redraw) },
       }, [
-        renderStudyBoardArea(),
-        renderStudyNavBar(redraw),
-        renderManualReviewToggle(redraw),
-        renderStudyEval(),
-        _glyphQuickSelectOpen ? renderGlyphQuickSelect(redraw) : null,
+        renderStudyBoardRegion(study, redraw),
       ]),
 
       // Tools column: move list + annotation panel

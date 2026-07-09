@@ -5,6 +5,19 @@ import type { SaveFlowGameDestination } from '../save/saveFlowCtrl';
 
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
 
+export type OrpFlagScope = 'current-line' | 'mainline' | 'selected-variation';
+
+export interface OrpSourceProvenance {
+  source: 'study';
+  originalStudyItemId: string;
+  originalStudyTitle: string;
+  scope: OrpFlagScope;
+  stopPath?: string;
+  sourcePath?: string;
+  stopPly?: number;
+  sourcePgn?: string;
+}
+
 // Folder entity — persisted to the 'folders' IDB store.
 // Supports a two-level hierarchy: a folder may have one optional parent.
 // Adapted from lichess-org/lila: ui/study/src/studyChapters.ts folder/chapter grouping concept.
@@ -50,6 +63,7 @@ export interface StudyItem {
   bookmarks?: string[];            // TreePath strings for bookmarked positions
   createdAt: number;
   updatedAt: number;
+  orpSourceProvenance?: OrpSourceProvenance;
 
 
 
@@ -93,6 +107,7 @@ export interface TrainableSequence {
   status: 'active' | 'paused';
   createdAt: number;
   updatedAt: number;
+  orpSourceProvenance?: OrpSourceProvenance;
 }
 
 // Per-position mastery (the scheduling unit) — persisted to the 'position-progress' IDB store.

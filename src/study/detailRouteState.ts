@@ -72,6 +72,12 @@ const PATH_MAX_LENGTH = 120;
 const TOOL_TAB_MAX_LENGTH = 40;
 const PARAM_ORDER: readonly StudyDetailRouteField[] = ['path', 'orientation', 'tools', 'toolTab'];
 const KNOWN_PARAMS = new Set<StudyDetailRouteField>(PARAM_ORDER);
+// Must match chessops/compat scalachessCharPair(): each tree segment is a
+// two-char id derived from square indexes, promotions, or drops.
+const SCALACHESS_PAIR_FROM_MIN = 35;
+const SCALACHESS_PAIR_FROM_MAX = 98;
+const SCALACHESS_PAIR_TO_MIN = 35;
+const SCALACHESS_PAIR_TO_MAX = 143;
 
 export function defaultStudyDetailRouteState(): StudyDetailRouteState {
   return { path: '', orientation: 'white', tools: false, toolTab: '' };
@@ -132,12 +138,22 @@ function lastNonEmptyPath(
 function looksPayloadLike(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
-  if (/^[{\[]/.test(trimmed)) return true;
+  if (/^\{/.test(trimmed)) return true;
   if (/[\r\n]/.test(trimmed)) return true;
   if (/\b(FEN|PGN|Event|Site|Date)\b/i.test(trimmed)) return true;
   if (/^(1\.\s|\*)/.test(trimmed)) return true;
   if (/^[A-Za-z0-9+/]{120,}={0,2}$/.test(trimmed)) return true;
   return false;
+}
+
+function isScalachessPath(value: string): boolean {
+  for (let i = 0; i < value.length; i += 2) {
+    const fromCode = value.charCodeAt(i);
+    const toCode = value.charCodeAt(i + 1);
+    if (fromCode < SCALACHESS_PAIR_FROM_MIN || fromCode > SCALACHESS_PAIR_FROM_MAX) return false;
+    if (toCode < SCALACHESS_PAIR_TO_MIN || toCode > SCALACHESS_PAIR_TO_MAX) return false;
+  }
+  return true;
 }
 
 function parsePathValue(value: string, invalidParams: StudyDetailRouteInvalidParam[]): TreePath {
@@ -155,7 +171,7 @@ function parsePathValue(value: string, invalidParams: StudyDetailRouteInvalidPar
     invalidParams.push(invalid('path', value, 'root', 'odd-length'));
     return '';
   }
-  if (!/^[A-Za-z0-9_-]+$/.test(normalized)) {
+  if (!isScalachessPath(normalized)) {
     invalidParams.push(invalid('path', value, 'root', 'invalid-characters'));
     return '';
   }

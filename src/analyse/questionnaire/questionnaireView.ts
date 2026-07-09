@@ -23,7 +23,15 @@
 
 import { h, type VNode } from 'snabbdom';
 import type QuestionnaireCtrl from './questionnaireCtrl';
-import { findQuestionnaireOption, type QuestionnaireOption } from './model';
+import {
+  DECIDER_OPTIONS,
+  OPENING_EVAL_OPTIONS,
+  STORY_OPTIONS,
+  findQuestionnaireOption,
+  questionnaireBranch,
+  type QuestionnaireAnswers,
+  type QuestionnaireOption,
+} from './model';
 
 const ICON_PATHS: Record<string, string> = {
   'book-open': '<path d="M2 4h5a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z"/><path d="M22 4h-5a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h6Z"/>',
@@ -303,6 +311,96 @@ function renderSummaryStage(ctrl: QuestionnaireCtrl): VNode {
       ]),
     ]),
   ]);
+}
+
+export interface QuestionnaireAnswerSummaryRow {
+  id: 'story' | 'decider' | 'opening-eval';
+  label: string;
+  value: VNode | string;
+  optional?: boolean;
+  empty?: boolean;
+}
+
+export interface QuestionnaireAnswerSummaryConfig {
+  onChange?: (row: QuestionnaireAnswerSummaryRow['id']) => void;
+}
+
+function renderDeciderSummaryChip(opt: QuestionnaireOption, rank: number): VNode {
+  return h('span.qnr-answer-chip', {
+    class: {
+      [`qnr-chip--fam-${opt.family}`]: true,
+      'qnr-answer-chip--primary': rank === 1,
+    },
+  }, [
+    h('span.qnr-answer-chip__rank', String(rank)),
+    icon(opt.icon, 'sm'),
+    h('span.qnr-answer-chip__label', opt.label),
+  ]);
+}
+
+export function questionnaireAnswerSummaryRows(answers: QuestionnaireAnswers): QuestionnaireAnswerSummaryRow[] {
+  const branch = questionnaireBranch(answers);
+  const storyOpt = findQuestionnaireOption(STORY_OPTIONS[branch], answers.story);
+  const deciderChips = answers.deciders
+    .map((id, index) => {
+      const opt = findQuestionnaireOption(DECIDER_OPTIONS[branch], id);
+      return opt ? renderDeciderSummaryChip(opt, index + 1) : null;
+    })
+    .filter((node): node is VNode => node !== null);
+
+  const openingEval = answers.openingEval
+    ? findQuestionnaireOption(OPENING_EVAL_OPTIONS[answers.openingEval.verdict], answers.openingEval.option)
+    : undefined;
+
+  return [
+    {
+      id: 'story',
+      label: 'Game Story',
+      value: storyOpt ? renderChip(storyOpt) : h('span.qnr-answer-empty', 'Not recorded'),
+      empty: !storyOpt,
+    },
+    {
+      id: 'decider',
+      label: 'Decider',
+      value: deciderChips.length > 0
+        ? h('div.qnr-answer-deciders', deciderChips)
+        : h('span.qnr-answer-empty', 'Not recorded'),
+      empty: deciderChips.length === 0,
+    },
+    {
+      id: 'opening-eval',
+      label: 'Opening Eval',
+      value: openingEval ? renderChip(openingEval) : h('span.qnr-answer-empty', 'Optional, not recorded'),
+      optional: true,
+      empty: !openingEval,
+    },
+  ];
+}
+
+export function renderQuestionnaireAnswerSummary(
+  answers: QuestionnaireAnswers,
+  cfg: QuestionnaireAnswerSummaryConfig = {},
+): VNode {
+  return h('div.qnr-answer-summary', questionnaireAnswerSummaryRows(answers).map(row => (
+    h('div.qnr-answer-row', {
+      key: row.id,
+      class: {
+        'qnr-answer-row--empty': row.empty === true,
+        'qnr-answer-row--optional': row.optional === true,
+      },
+    }, [
+      h('div.qnr-answer-row__main', [
+        h('span.qnr-answer-row__label', row.label),
+        h('div.qnr-answer-row__value', [row.value]),
+      ]),
+      cfg.onChange
+        ? h('button.qnr-answer-row__change', {
+            attrs: { type: 'button', 'aria-label': `Change ${row.label}` },
+            on: { click: () => cfg.onChange?.(row.id) },
+          }, 'change')
+        : null,
+    ])
+  )));
 }
 
 function renderStageBody(ctrl: QuestionnaireCtrl): VNode {

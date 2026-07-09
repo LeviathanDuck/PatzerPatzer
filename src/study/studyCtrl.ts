@@ -3,7 +3,7 @@
 // Adapted from lichess-org/lila: ui/study/src/studyCtrl.ts state model.
 
 import { parsePgn } from 'chessops/pgn';
-import { listStudies, getStudiesPaginated, collectStudyIdsInScope, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
+import { listStudies, getStudiesPaginated, collectStudyIdsInScope, getStudy, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
@@ -1387,7 +1387,15 @@ export async function removeFolderEntity(id: string): Promise<void> {
 
 export async function updateStudy(partial: Partial<StudyItem> & { id: string }): Promise<void> {
   const idx = _studies.findIndex(s => s.id === partial.id);
-  if (idx === -1) return;
+  if (idx === -1) {
+    const existing = await getStudy(partial.id);
+    if (!existing) return;
+    const updated: StudyItem = { ...existing, ...partial, updatedAt: Date.now() };
+    await saveStudy(updated);
+    _indexDirty = true;
+    _studyNavigationIndex.noteItemsLoaded([updated]);
+    return;
+  }
   const updated: StudyItem = { ..._studies[idx]!, ...partial, updatedAt: Date.now() };
   _studies = [..._studies.slice(0, idx), updated, ..._studies.slice(idx + 1)];
   _indexDirty = true;

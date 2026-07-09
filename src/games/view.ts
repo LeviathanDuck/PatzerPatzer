@@ -29,6 +29,16 @@ import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { writeHashRoute } from '../router';
 import {
+  filterGameProjections,
+  projectImportedGame,
+  type GameFilterAnalysisState,
+  type GameFilterMissedTacticSeverity,
+  type GameFilterProjection,
+  type GameFilterQuery,
+  type GameFilterReviewIssueState,
+  type GameFilterSortKey,
+} from '../gameFilters';
+import {
   parseGamesRouteState,
   resolveGamesRoutePage,
   serializeGamesRouteState,
@@ -99,32 +109,6 @@ function exactPlayedTimestamp(game: ImportedGame): number | null {
 
 function playedTimestamp(game: ImportedGame): number | null {
   return exactPlayedTimestamp(game) ?? parseGameDateOnly(game.date);
-}
-
-function compareByPlayedDate(
-  a: ImportedGame,
-  b: ImportedGame,
-  direction: 'asc' | 'desc',
-): number {
-  const aPlayed = playedTimestamp(a);
-  const bPlayed = playedTimestamp(b);
-  const aHasPlayedDate = aPlayed !== null;
-  const bHasPlayedDate = bPlayed !== null;
-
-  // Undated games stay after dated games in both directions.
-  if (aHasPlayedDate !== bHasPlayedDate) return aHasPlayedDate ? -1 : 1;
-
-  if (aPlayed !== null && bPlayed !== null && aPlayed !== bPlayed) {
-    return direction === 'desc' ? bPlayed - aPlayed : aPlayed - bPlayed;
-  }
-
-  const aImported = a.importedAt ?? 0;
-  const bImported = b.importedAt ?? 0;
-  if (aImported !== bImported) {
-    return direction === 'desc' ? bImported - aImported : aImported - bImported;
-  }
-
-  return a.id.localeCompare(b.id);
 }
 
 /** Determine which side the importing user played in a given game. */
@@ -1062,6 +1046,54 @@ function gameTacticsSeverities(gameId: string, hasMissedTactic: boolean): Set<st
   return result;
 }
 
+function isGameFilterMissedTacticSeverity(value: string): value is GameFilterMissedTacticSeverity {
+  return value === '!' || value === '!!' || value === '!!!' || value === 'M?!';
+}
+
+function reviewIssueStateForGame(deps: GamesViewDeps, gameId: string): GameFilterReviewIssueState {
+  const failedStatus = getFailedReviewStatus(gameId);
+  if (failedStatus !== undefined && (failedStatus.attempts > 0 || failedStatus.skipped)) {
+    return 'failed-skipped';
+  }
+  return reviewIncompleteStatusForGame(deps, gameId) ? 'incomplete' : 'none';
+}
+
+function analysisStateForGame(deps: GamesViewDeps, gameId: string): GameFilterAnalysisState {
+  return isReviewedGame(deps, gameId) ? 'analyzed' : 'not-analyzed';
+}
+
+function projectionForImportedGame(game: ImportedGame, deps: GamesViewDeps): GameFilterProjection {
+  const hasMissedTactic = deps.missedTacticGameIds.has(game.id);
+  const playedAt = playedTimestamp(game);
+  return projectImportedGame(game, {
+    ownerResult: deps.gameResult(game),
+    userColor: deps.getUserColor(game),
+    opponentName: opponentName(game, deps.getUserColor),
+    opponentRating: opponentRating(game, deps.getUserColor),
+    missedTacticSeverities: [...gameTacticsSeverities(game.id, hasMissedTactic)]
+      .filter(isGameFilterMissedTacticSeverity),
+    reviewIssueState: reviewIssueStateForGame(deps, game.id),
+    analysisState: analysisStateForGame(deps, game.id),
+    playedAt,
+    textAnyValues: [opponentName(game, deps.getUserColor), game.opening].filter((value): value is string => Boolean(value)),
+  });
+}
+
+function filterImportedGamesWithQuery(
+  games: readonly ImportedGame[],
+  deps: GamesViewDeps,
+  query: GameFilterQuery,
+): ImportedGame[] {
+  const gameById = new Map(games.map(game => [game.id, game]));
+  const result = filterGameProjections(
+    games.map(game => projectionForImportedGame(game, deps)),
+    query,
+  );
+  return result.ids
+    .map(id => gameById.get(id))
+    .filter((game): game is ImportedGame => game !== undefined);
+}
+
 /** Games visible under the current account lens. */
 function accountLensGames(deps: GamesViewDeps): ImportedGame[] {
   normalizeAccountFilter(deps.accounts);
@@ -1159,101 +1191,76 @@ function renderAccountLensSelect(deps: GamesViewDeps): VNode {
   ]);
 }
 
+function gamesSortKeyForQuery(field: GamesSortField): GameFilterSortKey {
+  if (field === 'date') return 'playedAt';
+  if (field === 'opponent') return 'opponentName';
+  if (field === 'timeClass') return 'timeClass';
+  return 'ownerResult';
+}
+
+function playedDateRangeQuery(fromDate: string, toDate: string): GameFilterQuery['playedDate'] {
+  if (!fromDate && !toDate) return undefined;
+  return {
+    ...(fromDate ? { from: Date.parse(`${fromDate}T00:00:00Z`) } : {}),
+    ...(toDate ? { to: Date.parse(`${toDate}T23:59:59.999Z`) } : {}),
+  };
+}
+
+function filteredGamesQuery(): GameFilterQuery {
+  const playedDate = playedDateRangeQuery(gamesFilterDateFrom, gamesFilterDateTo);
+  return {
+    ...(gamesFilterResults.size > 0 ? { results: [...gamesFilterResults] } : {}),
+    ...(gamesFilterSpeeds.size > 0 ? { timeClasses: [...gamesFilterSpeeds] } : {}),
+    ...(gamesFilterOpponent.trim() ? { opponents: [gamesFilterOpponent.trim()] } : {}),
+    ...(gamesFilterColor ? { colors: [gamesFilterColor] } : {}),
+    ...(gamesFilterTactics.size > 0
+      ? { missedTactics: [...gamesFilterTactics].filter(isGameFilterMissedTacticSeverity) }
+      : {}),
+    ...(gamesFilterOpening.trim() ? { openings: [gamesFilterOpening.trim()] } : {}),
+    ...(gamesFilterRatingMin !== null || gamesFilterRatingMax !== null
+      ? {
+          opponentRating: {
+            ...(gamesFilterRatingMin !== null ? { from: gamesFilterRatingMin } : {}),
+            ...(gamesFilterRatingMax !== null ? { to: gamesFilterRatingMax } : {}),
+          },
+        }
+      : {}),
+    ...(playedDate ? { playedDate } : {}),
+    ...(gamesFilterReviewIssues === 'failed-skipped' ? { reviewIssues: ['failed-skipped'] } : {}),
+    sort: { key: gamesSortKeyForQuery(gamesSortField), direction: gamesSortDir },
+  };
+}
+
 function filteredGames(deps: GamesViewDeps): ImportedGame[] {
-  // Copy: this list is sorted in place below and the lens may return the
-  // shared importedGames array directly.
-  let list = [...accountLensGames(deps)];
+  return filterImportedGamesWithQuery(accountLensGames(deps), deps, filteredGamesQuery());
+}
 
-  if (gamesFilterResults.size > 0) {
-    list = list.filter(g => {
-      const r = deps.gameResult(g);
-      return r !== null && gamesFilterResults.has(r);
-    });
-  }
+function compactGameListQuery(): GameFilterQuery {
+  return {
+    ...(gameListSearch.trim() ? { textAny: gameListSearch.trim() } : {}),
+    ...(gameListFilterResults.size > 0 ? { results: [...gameListFilterResults] } : {}),
+    ...(gameListFilterSpeeds.size > 0 ? { timeClasses: [...gameListFilterSpeeds] } : {}),
+    ...(gameListFilterColor ? { colors: [gameListFilterColor] } : {}),
+    ...(gameListFilterReview === 'reviewed'
+      ? { analysisStates: ['analyzed'] }
+      : gameListFilterReview === 'not-reviewed'
+      ? { analysisStates: ['not-analyzed'] }
+      : {}),
+    sort: { key: 'playedAt', direction: 'desc' },
+  };
+}
 
-  if (gamesFilterSpeeds.size > 0) {
-    list = list.filter(g => g.timeClass && gamesFilterSpeeds.has(g.timeClass));
-  }
+function filteredCompactGameListGames(deps: GamesViewDeps): ImportedGame[] {
+  return filterImportedGamesWithQuery(accountLensGames(deps), deps, compactGameListQuery());
+}
 
-  if (gamesFilterOpponent.trim()) {
-    const q = gamesFilterOpponent.trim().toLowerCase();
-    list = list.filter(g => {
-      const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? '';
-      return opp.includes(q);
-    });
-  }
+export function getFilteredGameIdsForTests(deps: GamesViewDeps): string[] {
+  hydrateGamesRouteState(deps);
+  return filteredGames(deps).map(game => game.id);
+}
 
-  if (gamesFilterColor) {
-    list = list.filter(g => deps.getUserColor(g) === gamesFilterColor);
-  }
-
-  if (gamesFilterTactics.size > 0) {
-    list = list.filter(g => {
-      const hasMissed = deps.missedTacticGameIds.has(g.id);
-      const severities = gameTacticsSeverities(g.id, hasMissed);
-      for (const s of gamesFilterTactics) {
-        if (severities.has(s)) return true;
-      }
-      return false;
-    });
-  }
-
-  if (gamesFilterOpening.trim()) {
-    const q = gamesFilterOpening.trim().toLowerCase();
-    list = list.filter(g => g.opening?.toLowerCase().includes(q));
-  }
-
-  if (gamesFilterRatingMin !== null || gamesFilterRatingMax !== null) {
-    list = list.filter(g => {
-      const rating = opponentRating(g, deps.getUserColor);
-      if (rating === undefined) return false;
-      if (gamesFilterRatingMin !== null && rating < gamesFilterRatingMin) return false;
-      if (gamesFilterRatingMax !== null && rating > gamesFilterRatingMax) return false;
-      return true;
-    });
-  }
-
-  if (gamesFilterDateFrom || gamesFilterDateTo) {
-    // Inclusive played-date range; day-only bounds parsed at UTC midnight (dateTo covers through
-    // end-of-day). Games with no derivable played date never match a date-bounded filter.
-    const fromTs = gamesFilterDateFrom ? Date.parse(`${gamesFilterDateFrom}T00:00:00Z`) : null;
-    const toTs   = gamesFilterDateTo ? Date.parse(`${gamesFilterDateTo}T23:59:59.999Z`) : null;
-    list = list.filter(g => {
-      const played = playedTimestamp(g);
-      if (played === null) return false;
-      if (fromTs !== null && played < fromTs) return false;
-      if (toTs !== null && played > toTs) return false;
-      return true;
-    });
-  }
-
-  if (gamesFilterReviewIssues === 'failed-skipped') {
-    list = list.filter(g => {
-      const status = getFailedReviewStatus(g.id);
-      return status !== undefined && (status.attempts > 0 || status.skipped);
-    });
-  }
-
-  // Sort
-  list.sort((a, b) => {
-    let cmp = 0;
-    if (gamesSortField === 'date') {
-      cmp = compareByPlayedDate(a, b, gamesSortDir);
-    } else if (gamesSortField === 'opponent') {
-      cmp = (opponentName(a, deps.getUserColor) ?? '').localeCompare(opponentName(b, deps.getUserColor) ?? '');
-    } else if (gamesSortField === 'timeClass') {
-      cmp = (a.timeClass ?? '').localeCompare(b.timeClass ?? '');
-    } else if (gamesSortField === 'result') {
-      const ord = (g: ImportedGame) => {
-        const r = deps.gameResult(g);
-        return r === 'win' ? 0 : r === 'draw' ? 1 : r === 'loss' ? 2 : 3;
-      };
-      cmp = ord(a) - ord(b);
-    }
-    return gamesSortField === 'date' ? cmp : (gamesSortDir === 'desc' ? -cmp : cmp);
-  });
-
-  return list;
+export function getCompactGameListIdsForTests(deps: GamesViewDeps): string[] {
+  return filteredCompactGameListGames(deps).map(game => game.id);
 }
 
 function opponentName(
@@ -1373,40 +1380,9 @@ function selectAnalysisGame(game: ImportedGame, deps: GamesViewDeps): void {
 export function renderGameList(deps: GamesViewDeps): VNode {
   if (deps.importedGames.length === 0) return h('div');
 
-  // Apply filters: account lens -> opponent search -> result -> time class -> color -> review state
   const lensGames = accountLensGames(deps);
   const q = gameListSearch.trim().toLowerCase();
-  let visible: ImportedGame[] = q
-    ? lensGames.filter(g => {
-        const opp = opponentName(g, deps.getUserColor)?.toLowerCase() ?? '';
-        const opening = g.opening?.toLowerCase() ?? '';
-        return opp.includes(q) || opening.includes(q);
-      })
-    : [...lensGames];
-
-  if (gameListFilterResults.size > 0) {
-    visible = visible.filter(g => {
-      const r = deps.gameResult(g);
-      return r !== null && gameListFilterResults.has(r);
-    });
-  }
-
-  if (gameListFilterSpeeds.size > 0) {
-    visible = visible.filter(g => g.timeClass !== undefined && gameListFilterSpeeds.has(g.timeClass));
-  }
-
-  if (gameListFilterColor) {
-    visible = visible.filter(g => deps.getUserColor(g) === gameListFilterColor);
-  }
-
-  if (gameListFilterReview) {
-    visible = visible.filter(g => {
-      const reviewed = isReviewedGame(deps, g.id);
-      return gameListFilterReview === 'reviewed' ? reviewed : !reviewed;
-    });
-  }
-
-  visible.sort((a, b) => compareByPlayedDate(a, b, 'desc'));
+  const visible = filteredCompactGameListGames(deps);
 
   const anyFilter = q.length > 0 || gameListFilterResults.size > 0 ||
     gameListFilterSpeeds.size > 0 || gameListFilterColor !== '' || gameListFilterReview !== '';

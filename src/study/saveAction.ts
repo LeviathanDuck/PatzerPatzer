@@ -7,7 +7,7 @@ import { parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { saveStudy, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
-import type { StudyItem, StudySource, TrainableSequence } from './types';
+import type { OrpSourceProvenance, StudyItem, StudySource, TrainableSequence } from './types';
 import { MASTER_GAMES } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
 import { deriveFens } from './practice/extractLine';
@@ -283,6 +283,7 @@ interface OrpSaveOptions {
   title?: string;
   extraTags?: readonly string[];
   mergeExistingTags?: boolean;
+  sourceProvenance?: OrpSourceProvenance;
 }
 
 function mergeUniqueTags(existing: readonly string[], next: readonly string[]): string[] {
@@ -382,6 +383,7 @@ export async function saveOrpLineToLibrary(
   // Build the PGN from the UCI moves for the StudyItem.pgn field.
   const pgn = uciMovesToPgn(ucis, title);
   const tags = buildOrpTags(trainAs, collection, options.extraTags);
+  const sourceProvenance = options.sourceProvenance;
 
   // Build StudyItem (source: 'openings').
   const studyItem: StudyItem = {
@@ -395,6 +397,11 @@ export async function saveOrpLineToLibrary(
     createdAt: studyCreatedAt,
     updatedAt: now,
   };
+  if (sourceProvenance) {
+    studyItem.sourceGameId = sourceProvenance.originalStudyItemId;
+    studyItem.orpSourceProvenance = sourceProvenance;
+    if (sourceProvenance.sourcePath !== undefined) studyItem.sourcePath = sourceProvenance.sourcePath;
+  }
   if (openingEco)  studyItem.eco     = openingEco;
   if (openingName) studyItem.opening = openingName;
 
@@ -412,6 +419,7 @@ export async function saveOrpLineToLibrary(
     createdAt:   seqCreatedAt,
     updatedAt:   now,
   };
+  if (sourceProvenance) sequence.orpSourceProvenance = sourceProvenance;
 
   // Persist both records. saveStudy / savePracticeLine use IDB put() (upsert).
   try {

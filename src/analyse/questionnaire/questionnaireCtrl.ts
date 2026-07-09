@@ -82,6 +82,8 @@ export interface QuestionnaireConfig {
   onEditRequested?: () => void;
 }
 
+export type SeededQuestionnaireConfig = Omit<QuestionnaireConfig, 'result'>;
+
 const REP_PRACTICE_SOURCES: Array<{ label: string; source: QuestionnaireRepPracticeSource }> = [
   { label: 'Line from the game', source: 'game' },
   { label: 'A variation I explored', source: 'exploration' },
@@ -118,6 +120,30 @@ export default class QuestionnaireCtrl {
     readonly redraw: Redraw,
   ) {
     this.stage = cfg.result === 'draw' ? 'draw-pathway' : 'story';
+  }
+
+  static fromAnswers(
+    answers: QuestionnaireAnswers,
+    cfg: SeededQuestionnaireConfig,
+    redraw: Redraw,
+  ): QuestionnaireCtrl {
+    const ctrl = new QuestionnaireCtrl({ ...cfg, result: answers.result }, redraw);
+    ctrl.drawPathway = answers.drawPathway ?? null;
+    ctrl.story = answers.story || null;
+    ctrl.deciders = answers.deciders.slice(0, DECIDER_CAP);
+    ctrl.openingEvalVerdict = answers.openingEval?.verdict ?? null;
+    ctrl.openingEvalOption = answers.openingEval?.option ?? null;
+    ctrl.repFlagged = answers.repetitionPractice.flagged;
+    ctrl.repAskingSource = false;
+    ctrl.repSource = answers.repetitionPractice.flagged ? (answers.repetitionPractice.source ?? 'game') : null;
+    ctrl.needsStudyMaterial = answers.needsStudyMaterial;
+    ctrl.completion = {
+      answers,
+      tags: serializeQuestionnaireTags(answers),
+      summaryComment: buildQuestionnaireSummaryComment(answers),
+    };
+    ctrl.stage = 'summary';
+    return ctrl;
   }
 
   /** Win/loss branch driving Game story / Decider option pools. Null only while a draw's
@@ -175,6 +201,12 @@ export default class QuestionnaireCtrl {
   }
 
   private goTo(stage: QuestionnaireStage): void {
+    this.stage = stage;
+    this.redraw();
+  }
+
+  jumpToStage(stage: QuestionnaireStage): void {
+    if (!this.stageSequence().includes(stage)) return;
     this.stage = stage;
     this.redraw();
   }
