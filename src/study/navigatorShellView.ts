@@ -76,13 +76,37 @@ import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './nav
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
 import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
+  advAddedFrom,
+  advAddedTo,
+  advDestinations,
+  advModifiedFrom,
+  advModifiedTo,
+  advPlayers,
+  advResults,
+  advSources,
+  advTags,
+  advVisibility,
   bumpSelectionSurface,
+  clearAdvancedSearch,
   createFolder,
+  filterFav,
   folders,
   includeDescendants,
+  navigatorFolderId,
   queryStudyItems,
   searchQuery,
   setActiveFolderId,
+  setAdvAddedFrom,
+  setAdvAddedTo,
+  setAdvDestinations,
+  setAdvModifiedFrom,
+  setAdvModifiedTo,
+  setAdvPlayers,
+  setAdvResults,
+  setAdvSources,
+  setAdvTags,
+  setAdvVisibility,
+  setFilterFav,
   setIncludeDescendants,
   setNavigatorFolderId,
   setSearch,
@@ -91,10 +115,17 @@ import {
   sortKey,
   setSortKey,
   studyLibraryRouteSnapshot,
+  studyTags,
   type StudyQueryOptions,
   type StudySortKey,
 } from './studyCtrl';
-import { serializeStudyRouteState } from './routeState';
+import {
+  serializeStudyRouteState,
+  type StudyRouteDestination,
+  type StudyRouteResult,
+  type StudyRouteSource,
+  type StudyRouteVisibility,
+} from './routeState';
 import { current, replaceHashRoute, writeHashRoute } from '../router';
 import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
 import { deriveHomeFolderId } from './studyDb';
@@ -1036,6 +1067,304 @@ function renderItemListToolbar(redraw: () => void, onImportPgnClick: () => void)
 
 
 
+
+
+
+
+
+
+
+
+
+let _advancedSearchOpen = false;
+
+const ADV_SOURCE_OPTIONS: ReadonlyArray<{ value: StudyRouteSource; label: string }> = [
+  { value: 'analysis', label: 'Analysis' },
+  { value: 'openings', label: 'Openings' },
+  { value: 'puzzles', label: 'Puzzles' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'import', label: 'Import' },
+];
+// Raw PGN outcome, NOT owner-color Win/Loss (§3.3 / §8.3 ratified). "Unknown" = the landed
+// absence sentinel (slice 2 maps it to RESULT_ABSENT_FACET_VALUE).
+const ADV_RESULT_OPTIONS: ReadonlyArray<{ value: StudyRouteResult; label: string }> = [
+  { value: 'white', label: 'White won' },
+  { value: 'black', label: 'Black won' },
+  { value: 'draw', label: 'Draw' },
+  { value: 'unknown', label: 'Unknown' },
+];
+// Display labels mirror SAVE_FLOW_GAME_DESTINATIONS (src/save/saveFlowCtrl.ts) plus the synthetic
+// Unsorted bucket for `uncategorized` (slice 2 maps that to DESTINATION_UNSORTED_FACET_VALUE).
+const ADV_DEST_OPTIONS: ReadonlyArray<{ value: StudyRouteDestination; label: string }> = [
+  { value: 'played', label: 'My Played Games' },
+  { value: 'masters', label: 'Masters Game Study' },
+  { value: 'repertoire', label: 'Repertoire Library' },
+  { value: 'prep', label: 'Opponent Prep' },
+  { value: 'uncategorized', label: 'Unsorted' },
+];
+// Tri-state hidden-item visibility (§4). Selecting the active option again clears it back to unset,
+// which returns control to the plain eye toggle (slice 2's plan falls back to showHiddenItems()).
+const ADV_VIS_OPTIONS: ReadonlyArray<{ value: StudyRouteVisibility; label: string }> = [
+  { value: 'exclude', label: 'Visible only' },
+  { value: 'include', label: 'Include hidden' },
+  { value: 'only', label: 'Hidden only' },
+];
+
+function advLabelOf<T extends string>(options: ReadonlyArray<{ value: T; label: string }>, value: T): string {
+  return options.find(option => option.value === value)?.label ?? value;
+}
+
+/** True when any advanced facet (or the panel-hosted favorite toggle) is currently active. */
+function advancedFilterActive(): boolean {
+  return Boolean(
+    advSources()?.length || advTags()?.length || advPlayers()
+    || advResults()?.length || advDestinations()?.length
+    || advAddedFrom() || advAddedTo() || advModifiedFrom() || advModifiedTo()
+    || advVisibility() || filterFav(),
+  );
+}
+
+/** Shared post-mutation commit — mirrors the q/sort controls exactly (the setter already ran). */
+function commitAdvancedEdit(redraw: () => void): void {
+  writeLibraryRouteState();
+  redraw();
+}
+
+/** Toggle a value into/out of a multi-select array, order-stable via a Set. */
+function toggleAdvValue<T>(current: readonly T[] | undefined, value: T): T[] {
+  const next = new Set(current ?? []);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return [...next];
+}
+
+function advDateRangeLabel(from: string | undefined, to: string | undefined): string {
+  if (from && to) return `${from} – ${to}`;
+  if (from) return `since ${from}`;
+  return `until ${to}`;
+}
+
+function renderAdvMultiChips<T extends string>(
+  ariaGroupLabel: string,
+  options: ReadonlyArray<{ value: T; label: string }>,
+  selected: readonly T[] | undefined,
+  onToggle: (value: T) => void,
+): VNode {
+  const active = new Set(selected ?? []);
+  return h('div.item-adv__chip-row', { attrs: { role: 'group', 'aria-label': ariaGroupLabel } },
+    options.map(option => h('button.item-adv__chip', {
+      key: option.value,
+      class: { '--active': active.has(option.value) },
+      attrs: { type: 'button', 'aria-pressed': String(active.has(option.value)) },
+      on: { click: () => onToggle(option.value) },
+    }, option.label)),
+  );
+}
+
+function renderAdvTagChips(redraw: () => void): VNode {
+  const active = new Set(advTags() ?? []);
+  // Union of the library's existing tags with any currently-active advanced tags (so a still-active
+  // tag whose last item was removed stays selectable to clear it).
+  const tagNames = [...new Set([...studyTags(), ...(advTags() ?? [])])];
+  return h('div.item-adv__chip-row', { attrs: { role: 'group', 'aria-label': 'Tags' } },
+    tagNames.map(tag => h('button.item-adv__chip', {
+      key: tag,
+      class: { '--active': active.has(tag) },
+      attrs: { type: 'button', 'aria-pressed': String(active.has(tag)) },
+      on: { click: () => { setAdvTags(toggleAdvValue(advTags(), tag)); commitAdvancedEdit(redraw); } },
+    }, tag)),
+  );
+}
+
+function renderAdvDateField(label: string, value: string | undefined, onInput: (value: string) => void): VNode {
+  return h('label.item-adv__field', [
+    h('span.item-adv__field-label', label),
+    h('input.item-adv__input.--date', {
+      attrs: { type: 'date', value: value ?? '' },
+      on: { input: (e: Event) => onInput((e.target as HTMLInputElement).value) },
+    }),
+  ]);
+}
+
+function renderAdvancedSearchPanel(redraw: () => void): VNode {
+  const folderBrowsed = navigatorFolderId() !== null;
+  return h('div.item-adv__panel', { attrs: { role: 'group', 'aria-label': 'Advanced search filters' } }, [
+    // Date — recentlyAdded / recentlyModified inclusive bounds (P2-LIB-9 names these explicitly).
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Date'),
+      h('div.item-adv__row', [
+        renderAdvDateField('Added from', advAddedFrom(), v => { setAdvAddedFrom(v); commitAdvancedEdit(redraw); }),
+        renderAdvDateField('Added to', advAddedTo(), v => { setAdvAddedTo(v); commitAdvancedEdit(redraw); }),
+        renderAdvDateField('Modified from', advModifiedFrom(), v => { setAdvModifiedFrom(v); commitAdvancedEdit(redraw); }),
+        renderAdvDateField('Modified to', advModifiedTo(), v => { setAdvModifiedTo(v); commitAdvancedEdit(redraw); }),
+      ]),
+    ]),
+    // People — one players substring input (title/white/black; folds in the "opponent" concept —
+    // study-item has no separate owner-color/opponent facet, design §3.1).
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'People'),
+      h('label.item-adv__field', [
+        h('span.item-adv__field-label', 'Players'),
+        h('input.item-adv__input', {
+          attrs: { type: 'search', placeholder: 'Name…', value: advPlayers() ?? '' },
+          on: { input: (e: Event) => { setAdvPlayers((e.target as HTMLInputElement).value); commitAdvancedEdit(redraw); } },
+        }),
+      ]),
+    ]),
+    // Game Metadata — Result chips only (opening/eco deferred: no landed route field, see header).
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Result'),
+      renderAdvMultiChips('Result', ADV_RESULT_OPTIONS, advResults(), value => {
+        setAdvResults(toggleAdvValue(advResults(), value));
+        commitAdvancedEdit(redraw);
+      }),
+    ]),
+    // Study Organization — sources / destinations / tags multi-select + favorite toggle.
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Organization'),
+      h('span.item-adv__field-label', 'Sources'),
+      renderAdvMultiChips('Sources', ADV_SOURCE_OPTIONS, advSources(), value => {
+        setAdvSources(toggleAdvValue(advSources(), value));
+        commitAdvancedEdit(redraw);
+      }),
+      h('span.item-adv__field-label', 'Destinations'),
+      renderAdvMultiChips('Destinations', ADV_DEST_OPTIONS, advDestinations(), value => {
+        setAdvDestinations(toggleAdvValue(advDestinations(), value));
+        commitAdvancedEdit(redraw);
+      }),
+      ...(studyTags().length || advTags()?.length
+        ? [h('span.item-adv__field-label', 'Tags'), renderAdvTagChips(redraw)]
+        : []),
+      h('div.item-adv__chip-row', [
+        h('button.item-adv__chip', {
+          class: { '--active': filterFav() },
+          attrs: { type: 'button', 'aria-pressed': String(filterFav()) },
+          on: { click: () => { setFilterFav(!filterFav()); commitAdvancedEdit(redraw); } },
+        }, '★ Favorites only'),
+      ]),
+    ]),
+    // Visibility — tri-state (§4), re-click clears back to the eye-toggle default.
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Visibility'),
+      h('div.item-adv__chip-row', { attrs: { role: 'group', 'aria-label': 'Visibility' } },
+        ADV_VIS_OPTIONS.map(option => h('button.item-adv__chip', {
+          key: option.value,
+          class: { '--active': advVisibility() === option.value },
+          attrs: { type: 'button', 'aria-pressed': String(advVisibility() === option.value) },
+          on: { click: () => {
+            setAdvVisibility(advVisibility() === option.value ? undefined : option.value);
+            commitAdvancedEdit(redraw);
+          } },
+        }, option.label)),
+      ),
+    ]),
+    // Folders — DISABLED-with-explanation (§3.2(B) ratified option B). No advanced folders route
+    // field landed (slice 1), so there is no enabled multi-select here at all this slice — never a
+    // silent no-op (design §9).
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Folders'),
+      h('p.item-adv__folders-note', { attrs: { role: 'note' } },
+        folderBrowsed
+          ? 'Folder filter is unavailable while browsing a single folder. Clear the folder selection first.'
+          : 'Filtering by specific folders from advanced search is not available yet.'),
+    ]),
+    // Footer — Clear filters (advanced facets + the panel's favorite toggle) and Done (collapse).
+    h('div.item-adv__actions', [
+      advancedFilterActive()
+        ? h('button.item-adv__clear', {
+            attrs: { type: 'button' },
+            on: { click: () => { clearAdvancedSearch(); setFilterFav(false); commitAdvancedEdit(redraw); } },
+          }, 'Clear filters')
+        : null,
+      h('button.item-adv__apply', {
+        attrs: { type: 'button' },
+        on: { click: () => { _advancedSearchOpen = false; redraw(); } },
+      }, 'Done'),
+    ]),
+  ]);
+}
+
+/** Collapsed-panel chips: one removable chip per active advanced facet group + a Clear-all, so no
+ * active filter is hidden while the panel is closed (mirrors Games' `chipsBar`, design §3.1). */
+function renderAdvancedChipsBar(redraw: () => void): VNode {
+  const chips: VNode[] = [];
+  const pushChip = (label: string, onRemove: () => void): void => {
+    chips.push(h('span.item-adv__active-chip', [
+      h('span.item-adv__active-chip-label', label),
+      h('button.item-adv__active-chip-remove', {
+        attrs: { type: 'button', 'aria-label': `Remove ${label}` },
+        on: { click: () => { onRemove(); commitAdvancedEdit(redraw); } },
+      }, '×'),
+    ]));
+  };
+
+  const sources = advSources();
+  if (sources?.length) pushChip(`Sources: ${sources.map(s => advLabelOf(ADV_SOURCE_OPTIONS, s)).join(', ')}`, () => setAdvSources(undefined));
+  const tags = advTags();
+  if (tags?.length) pushChip(`Tags: ${tags.join(', ')}`, () => setAdvTags(undefined));
+  const players = advPlayers();
+  if (players) pushChip(`Players: ${players}`, () => setAdvPlayers(''));
+  const results = advResults();
+  if (results?.length) pushChip(`Result: ${results.map(r => advLabelOf(ADV_RESULT_OPTIONS, r)).join(', ')}`, () => setAdvResults(undefined));
+  const destinations = advDestinations();
+  if (destinations?.length) pushChip(`Destination: ${destinations.map(d => advLabelOf(ADV_DEST_OPTIONS, d)).join(', ')}`, () => setAdvDestinations(undefined));
+  const addedFrom = advAddedFrom(), addedTo = advAddedTo();
+  if (addedFrom || addedTo) pushChip(`Added ${advDateRangeLabel(addedFrom, addedTo)}`, () => { setAdvAddedFrom(undefined); setAdvAddedTo(undefined); });
+  const modifiedFrom = advModifiedFrom(), modifiedTo = advModifiedTo();
+  if (modifiedFrom || modifiedTo) pushChip(`Modified ${advDateRangeLabel(modifiedFrom, modifiedTo)}`, () => { setAdvModifiedFrom(undefined); setAdvModifiedTo(undefined); });
+  const visibility = advVisibility();
+  if (visibility) pushChip(`Visibility: ${advLabelOf(ADV_VIS_OPTIONS, visibility)}`, () => setAdvVisibility(undefined));
+  if (filterFav()) pushChip('Favorites only', () => setFilterFav(false));
+
+  chips.push(h('button.item-adv__clear.--chips', {
+    attrs: { type: 'button' },
+    on: { click: () => { clearAdvancedSearch(); setFilterFav(false); commitAdvancedEdit(redraw); } },
+  }, 'Clear all'));
+
+  return h('div.item-adv__chips', chips);
+}
+
+function renderAdvancedSearchButton(redraw: () => void): VNode {
+  return h('button.item-toolbar__btn.item-adv__toggle', {
+    class: { '--active': _advancedSearchOpen },
+    attrs: {
+      type: 'button', title: 'Advanced search', 'aria-label': 'Advanced search',
+      'aria-expanded': String(_advancedSearchOpen),
+    },
+    on: { click: () => { _advancedSearchOpen = !_advancedSearchOpen; redraw(); } },
+  }, [navIcon('sliders-horizontal', { size: 16 }), h('span.item-adv__toggle-label', 'Advanced search')]);
+}
+
+/** State-1-only advanced-search region: the toggle plus EITHER the expanded panel OR (when
+ * collapsed with active filters) the removable-chips bar. Never mounted in State 2 (IMP-3). */
+function renderAdvancedSearchRegion(redraw: () => void): VNode {
+  return h('div.item-adv', [
+    renderAdvancedSearchButton(redraw),
+    _advancedSearchOpen
+      ? renderAdvancedSearchPanel(redraw)
+      : (advancedFilterActive() ? renderAdvancedChipsBar(redraw) : null),
+  ]);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /** Chevron + single-segment breadcrumb sitting above the item-list toolbar, ONLY in `--game-open`
  * mode. The chevron re-expands the nav pane and returns to State 1 as-is (no forced selection
  * change) — the breadcrumb, when a real folder/section scope was resolved, jumps to State 1
@@ -1459,6 +1788,9 @@ export function renderNavigatorShell(
       renderItemListToolbar(redraw, onImportPgnClick),
       _itemSearchOpen ? renderSearchInputRow(redraw) : null,
       _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
+      // Advanced-search region — State 1 only (IMP-3). State 2's `renderGameOpenShell` deliberately
+      // omits it: the active advanced query still narrows State 2's list read-only via the plan.
+      renderAdvancedSearchRegion(redraw),
       itemListPane,
     ]),
   ]);

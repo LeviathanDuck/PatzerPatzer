@@ -932,6 +932,52 @@ export function setFilterTag(tag: string | null): void { _filterTag = tag; }
 export function setFilterSrc(src: string | null): void { _filterSrc = src; }
 export function setSearch(q: string): void           { _search = q; }
 
+
+
+
+
+
+
+
+
+export function advSources(): StudyRouteState['srcs']              { return _advSources; }
+export function advTags(): StudyRouteState['tags']                 { return _advTags; }
+export function advPlayers(): StudyRouteState['players']           { return _advPlayers; }
+export function advResults(): StudyRouteState['results']           { return _advResults; }
+export function advDestinations(): StudyRouteState['dest']         { return _advDestinations; }
+export function advAddedFrom(): StudyRouteState['addedFrom']       { return _advAddedFrom; }
+export function advAddedTo(): StudyRouteState['addedTo']           { return _advAddedTo; }
+export function advModifiedFrom(): StudyRouteState['modifiedFrom'] { return _advModifiedFrom; }
+export function advModifiedTo(): StudyRouteState['modifiedTo']     { return _advModifiedTo; }
+export function advVisibility(): StudyRouteState['vis']            { return _advVisibility; }
+
+export function setAdvSources(v: StudyRouteState['srcs']): void      { _advSources = v && v.length ? v : undefined; }
+export function setAdvTags(v: StudyRouteState['tags']): void         { _advTags = v && v.length ? v : undefined; }
+export function setAdvPlayers(v: string): void                       { const t = v.trim(); _advPlayers = t ? t : undefined; }
+export function setAdvResults(v: StudyRouteState['results']): void   { _advResults = v && v.length ? v : undefined; }
+export function setAdvDestinations(v: StudyRouteState['dest']): void { _advDestinations = v && v.length ? v : undefined; }
+export function setAdvAddedFrom(v: string | undefined): void         { _advAddedFrom = v || undefined; }
+export function setAdvAddedTo(v: string | undefined): void           { _advAddedTo = v || undefined; }
+export function setAdvModifiedFrom(v: string | undefined): void      { _advModifiedFrom = v || undefined; }
+export function setAdvModifiedTo(v: string | undefined): void        { _advModifiedTo = v || undefined; }
+export function setAdvVisibility(v: StudyRouteState['vis']): void    { _advVisibility = v; }
+
+/** Resets every advanced-search facet to unset (the panel's Clear-all). Only the panel's own
+ * advanced fields are cleared here; the panel-hosted favorite toggle (`_filterFav`) is reset by the
+ * view via the existing `setFilterFav(false)` so this stays a pure advanced-facet reset. */
+export function clearAdvancedSearch(): void {
+  _advSources = undefined;
+  _advTags = undefined;
+  _advPlayers = undefined;
+  _advResults = undefined;
+  _advDestinations = undefined;
+  _advAddedFrom = undefined;
+  _advAddedTo = undefined;
+  _advModifiedFrom = undefined;
+  _advModifiedTo = undefined;
+  _advVisibility = undefined;
+}
+
 export function loadedStudyPageCount(): number {
   return Math.max(1, _page + 1);
 }
