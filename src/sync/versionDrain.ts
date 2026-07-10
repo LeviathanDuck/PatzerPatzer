@@ -377,8 +377,11 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
     const metadataFailedEntries: DurableRetryOutboxEntry[] = [];
     let metadataErrorName = 'version-write-unverified';
     const noteMetadataError = (error: unknown) => {
-      if (error instanceof Error && error.name) metadataErrorName = error.name;
-      else if (metadataErrorName === 'version-write-unverified') metadataErrorName = 'unknown';
+
+
+
+      const rawName = error instanceof Error ? error.name : '';
+      metadataErrorName = /^[A-Za-z0-9_$. -]{1,64}$/.test(rawName) ? rawName : 'StorageError';
     };
 
     const durableCandidateOpIds = new Set<string>();
@@ -456,7 +459,17 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
         }
         try {
           await options.conflictAdapter.applyCurrent(conflict.current, conflict, entry);
-          if (!recordAcceptedVersion(options.versionStorage, options.identity, conflict.current)) {
+
+
+
+          let conflictVersionRecorded = false;
+          try {
+            conflictVersionRecorded = recordAcceptedVersion(options.versionStorage, options.identity, conflict.current);
+          } catch (error) {
+            noteMetadataError(error);
+            conflictVersionRecorded = false;
+          }
+          if (!conflictVersionRecorded) {
             failedOpIds.push(entry.opId);
             mergeCounts(counts, 'metadataWriteFailed');
             metadataFailedEntries.push(entry);
