@@ -1222,7 +1222,17 @@ function renderAccountCard(
           _expandedCardKey = null;
           const pending = _accountSyncPromise.get(account.id);
           if (pending) { try { await pending; } catch { /* sync failure must not block build */ } }
-          void openAccountResearch(account, redraw);
+          // BUG-2026-07-10-007 slice 2: loadGamesByAccountFromIdb now REJECTS on a storage failure
+          // (no longer masks it as an empty account). Surface it through the existing per-account
+          // error affordance (renderPreLoadSyncArea reads _accountSyncErrors) instead of leaving the
+          // Build silently dead with an unhandled rejection. That affordance only renders while the
+          // card is expanded, and this Build handler just collapsed it (_expandedCardKey = null), so
+          // re-expand this card on failure to make the error visible rather than set-but-hidden.
+          void openAccountResearch(account, redraw).catch(err => {
+            _accountSyncErrors.set(account.id, err instanceof Error ? err.message : 'Couldn’t load games.');
+            _expandedCardKey = key;
+            redraw();
+          });
         }, redraw, account)
       : null,
   ]);

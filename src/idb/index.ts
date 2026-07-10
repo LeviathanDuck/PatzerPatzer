@@ -1460,20 +1460,21 @@ export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
 /**
  * Load all games belonging to one registry account, via the `accountId` index
  * (no full-store scan). Used by the Opponents page shared-store read path.
+ *
+ * Storage failures (DB-open failure, aborted/failed read) REJECT — callers MUST distinguish a
+ * genuine failure from an account that legitimately has no games, which still resolves `[]` via
+ * `onsuccess`. Mirrors `loadGamesFromIdb` / `getAccountFromIdb`'s propagate-don't-mask contract
+ * (BUG-2026-07-10-007 slice 2): an earlier outer catch collapsed every failure to `[]`, silently
+ * rendering the account's Opponents surface as if it had no games.
  */
 export async function loadGamesByAccountFromIdb(accountId: string): Promise<StoredGameRecord[]> {
-  try {
-    const db = await openGameDb();
-    return await new Promise((resolve, reject) => {
-      const req = db.transaction('games', 'readonly')
-        .objectStore('games').index('accountId').getAll(accountId);
-      req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
-      req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
-    });
-  } catch (e) {
-    console.warn('[idb] account games load failed', e);
-    return [];
-  }
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('games', 'readonly')
+      .objectStore('games').index('accountId').getAll(accountId);
+    req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
+    req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
+  });
 }
 
 /**
