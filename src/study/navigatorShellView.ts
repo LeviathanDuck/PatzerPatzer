@@ -78,14 +78,18 @@ import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   createFolder,
   folders,
+  includeDescendants,
   queryStudyItems,
   searchQuery,
   setActiveFolderId,
+  setIncludeDescendants,
+  setNavigatorFolderId,
   setSearch,
   sortDir,
   setSortDir,
   sortKey,
   setSortKey,
+  type StudyQueryOptions,
   type StudySortKey,
 } from './studyCtrl';
 import { current, writeHashRoute } from '../router';
@@ -345,17 +349,14 @@ function resolveSelectedItemIds(
 
 
 
-function findFolderGroupContainingItem(
+function folderGroupsContainItem(
   groups: readonly StudyNavigationFolderGroup[],
-  folderId: string,
   itemId: string,
-): StudyNavigationFolderGroup | null {
+): boolean {
   for (const group of groups) {
-    if (group.id === folderId && group.itemIds.includes(itemId)) return group;
-    const found = findFolderGroupContainingItem(group.children, folderId, itemId);
-    if (found) return found;
+    if (group.itemIds.includes(itemId) || folderGroupsContainItem(group.children, itemId)) return true;
   }
-  return null;
+  return false;
 }
 
 interface GameOpenScope {
@@ -379,17 +380,25 @@ function resolveGameOpenScope(
   const openItem = allItems.find(item => item.id === openItemId);
   if (!openItem) return null;
   const homeFolderId = deriveHomeFolderId(openItem);
-  for (const section of tree.sections) {
-    if (homeFolderId === null) {
-      if (section.unfiledItemIds.includes(openItemId)) {
-        return { sectionId: section.id, folderId: null, label: section.label, itemIds: section.unfiledItemIds };
-      }
-      continue;
-    }
-    const group = findFolderGroupContainingItem(section.folders, homeFolderId, openItemId);
-    if (group) return { sectionId: section.id, folderId: group.id, label: group.name, itemIds: group.itemIds };
+  const section = tree.sections.find(candidate =>
+    candidate.unfiledItemIds.includes(openItemId) || folderGroupsContainItem(candidate.folders, openItemId)
+  );
+  if (!section) return null;
+  if (homeFolderId === null) {
+    if (!section.unfiledItemIds.includes(openItemId)) return null;
+    return { sectionId: section.id, folderId: null, label: section.label, itemIds: section.unfiledItemIds };
   }
-  return null;
+  const homeFolder = folders().find(folder => folder.id === homeFolderId);
+  if (!homeFolder) return null;
+
+  // The shared Study query plan is the folder-membership authority. Passing the loaded scope
+  // through it includes both aliases (`folders`) and canonical-home-only records.
+  return {
+    sectionId: section.id,
+    folderId: homeFolder.id,
+    label: homeFolder.name,
+    itemIds: allItems.map(item => item.id),
+  };
 }
 
 function resolveItems(ids: readonly string[], byId: ReadonlyMap<string, StudyItem>): StudyItem[] {
@@ -736,6 +745,7 @@ async function commitNewFolder(selection: NavigatorSelection, redraw: () => void
   if (created && created.name === name) {
     _selection = { kind: 'folder', sectionId, folderId: created.id };
     setActiveFolderId(created.id);
+    setNavigatorFolderId(created.id);
   }
   redraw();
 }
@@ -788,7 +798,6 @@ function renderNavToolbar(redraw: () => void, selection: NavigatorSelection, tre
 let _itemSearchOpen = false;
 let _sortMenuOpen = false;
 let _importMenuOpen = false;
-let _includeDescendants = false;
 
 function renderSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
@@ -825,15 +834,21 @@ function renderSearchInputRow(redraw: () => void): VNode {
 }
 
 function renderDescendantsButton(redraw: () => void): VNode {
+
+
+
+
+
+  const active = includeDescendants();
   return h('button.item-toolbar__btn', {
-    class: { '--active': _includeDescendants },
+    class: { '--active': active },
     attrs: {
       type: 'button',
       title: 'Show games from subfolders',
       'aria-label': 'Show games from subfolders',
-      'aria-pressed': String(_includeDescendants),
+      'aria-pressed': String(active),
     },
-    on: { click: () => { _includeDescendants = !_includeDescendants; redraw(); } },
+    on: { click: () => { setIncludeDescendants(!active); redraw(); } },
   }, [navIcon('layers', { size: 16 })]);
 }
 
@@ -1167,6 +1182,7 @@ function renderGameOpenShell(
         ? { kind: 'folder', sectionId: scope.sectionId, folderId: scope.folderId }
         : { kind: 'section', sectionId: scope.sectionId };
       setActiveFolderId(scope.folderId);
+      setNavigatorFolderId(scope.folderId);
     }
     writeHashRoute('#/study');
   };
@@ -1188,12 +1204,23 @@ function renderGameOpenShell(
         const rawItems = scope
           ? resolveItems(scope.itemIds, byId)
           : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
-        const items = queryStudyItems(rawItems, { folderScope: 'already-resolved' });
+        const queryOptions: StudyQueryOptions = {
+          folderScope: 'already-resolved',
+          resolvedFolderId: scope?.folderId ?? null,
+        };
+        const items = queryStudyItems(rawItems, queryOptions);
 
 
 
 
-        const itemListPane = renderItemListPane(items, 'compact', redraw, undefined, scope?.folderId ?? null);
+        const itemListPane = renderItemListPane(
+          items,
+          'compact',
+          redraw,
+          undefined,
+          scope?.folderId ?? null,
+          queryOptions,
+        );
         return [
           renderGameOpenItemListHeader(scope?.label ?? null, exitPlain, exitToFolder),
           renderItemListToolbar(redraw, onImportPgnClick),
@@ -1253,7 +1280,9 @@ export function renderNavigatorShell(
   const activeKey = selectionKey(_selection);
   const onSelect = (selection: NavigatorSelection): void => {
     _selection = selection;
-    setActiveFolderId(selection.kind === 'folder' ? selection.folderId : null);
+    const folderId = selection.kind === 'folder' ? selection.folderId : null;
+    setActiveFolderId(folderId);
+    setNavigatorFolderId(folderId);
     redraw();
   };
 
@@ -1281,15 +1310,41 @@ export function renderNavigatorShell(
 
 
 
+  const currentFolderId = selection.kind === 'folder' ? selection.folderId : null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const queryOptions: StudyQueryOptions = {
+    folderScope: 'current-filter',
+  };
   const rawItems = selection.kind === 'tag'
     ? allItems.filter(item => item.tags.includes(selection.tagName))
     : selection.kind === 'lens'
       ? resolveLensItems(selection.lensId, allItems)
-      : resolveItems(resolveSelectedItemIds(tree, selection, _includeDescendants), byId);
+      : selection.kind === 'folder'
+        // Folder membership (direct membership, PLUS descendant folders when the toggle is on) is
+        // projected once by the shared query plan's folder facet (`resolveStudyQueryFolderScope`,
+        // studyCtrl.ts) so aliases, canonical-home-only records, and the descendants toggle cannot
+        // disagree with the banner/selection cursor — `queryStudyItems` below narrows this same
+        // `allItems` scope through that one facet.
+        ? allItems
+        : resolveItems(resolveSelectedItemIds(tree, selection, includeDescendants()), byId);
   // The shared Study query narrows and sorts the already-resolved navigator scope.
   // `renderGroupedRows` preserves that order; `renderItemListPane` only partitions pinned rows to
   // the top while retaining relative query order inside each partition.
-  const items = queryStudyItems(rawItems);
+  const items = queryStudyItems(rawItems, queryOptions);
 
 
 
@@ -1297,8 +1352,14 @@ export function renderNavigatorShell(
 
 
 
-  const currentFolderId = _selection.kind === 'folder' ? _selection.folderId : null;
-  const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, currentFolderId);
+  const itemListPane = renderItemListPane(
+    items,
+    ITEM_LIST_DENSITY,
+    redraw,
+    undefined,
+    currentFolderId,
+    queryOptions,
+  );
   // See collectItemRowOrder's own comment: capture the true pinned-first on-screen order rather
   // than assuming it is always a 1:1 copy of the shared query array.
   const itemDisplayOrder = collectItemRowOrder(itemListPane, new Set(items.map(item => item.id)));

@@ -3,7 +3,23 @@
 // Adapted from lichess-org/lila: ui/study/src/studyCtrl.ts state model.
 
 import { parsePgn } from 'chessops/pgn';
-import { listStudies, getStudiesPaginated, collectStudyIdsInScope, getStudy, saveStudy, deleteStudy as deleteStudyFromIdb, listPracticeLines, listAllPositionProgress, listFolders, saveFolder, deleteFolder as deleteFolderFromIdb, migrateStudyFolders, deriveHomeFolderId } from './studyDb';
+import {
+  listStudies,
+  getStudiesPaginated,
+  collectStudyIdsMatchingQuery,
+  getStudy,
+  saveStudy,
+  deleteStudy as deleteStudyFromIdb,
+  listPracticeLines,
+  listAllPositionProgress,
+  listFolders,
+  saveFolder,
+  deleteFolder as deleteFolderFromIdb,
+  migrateStudyFolders,
+  deriveHomeFolderId,
+  type StudyQueryProjectionContext,
+  type StudyQueryRunnerResult,
+} from './studyDb';
 import { seedMasterGamesToLibrary } from './saveAction';
 import { countDuePositions, buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { positionKey } from './practice/scheduler';
@@ -57,9 +73,11 @@ import { record, Severity } from '../diagnostics';
 import {
   filterGameProjections,
   projectStudyItem,
+  type GameFilterProjection,
   type GameFilterQuery,
   type GameFilterSortKey,
 } from '../gameFilters';
+import { compileGameFilterQuery } from '../gameFilters/filterCore';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
 function classifyStudyError(error: unknown): string {
@@ -197,6 +215,30 @@ let _foldersLoaded:     boolean       = false;
 let _activeFolderId:    string | null = null;  // StudyFolder.id (P2-LIB-11); null = "All Studies"
 let _sidebarCollapsed:  boolean       = false;
 
+
+
+
+
+
+
+
+
+let _includeDescendants: boolean = false;
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _navigatorFolderId: string | null = null;
+
 // --- Navigation index (Phase 2 T5-D04) ---
 // Derived adapter/index layer over _studies/_folders (see navigationIndexProvider.ts) — never a
 // second source of truth for study/folder data itself.
@@ -250,6 +292,140 @@ export function studies(): StudyItem[] {
 
 export interface StudyQueryOptions {
   folderScope?: 'current-filter' | 'already-resolved';
+  resolvedFolderId?: string | null;
+}
+
+export interface StudyQueryPlan {
+  query: GameFilterQuery;
+  queryHash: string;
+  projectItem(item: StudyItem, context?: StudyQueryProjectionContext): GameFilterProjection;
+}
+
+/** Every StudyFolder.id nested (at any depth) under `folderId`, via `StudyFolder.parentId` —
+ * plain parent-pointer walk over the loaded `_folders`, no dependency on the navigation-index tree
+ * (which additionally computes per-section itemIds this needs none of).
+ *
+ * `visited` is a defensive cycle guard — same precedent as `wouldCreateFolderCycle` in
+ * `navigatorDragDrop.ts` ("a pre-existing corrupt cycle in stored data"). Normal mutation paths
+ * (`reparentFolder`, gated by `wouldCreateFolderCycle` before every drag/menu reparent) never
+ * produce a `parentId` cycle, but this function has no way to verify the stored data is actually
+ * acyclic, so it must not trust that and recurse unbounded into a self-parent or mutual-cycle
+ * record. Skipping an already-visited id keeps this terminating and returns the ids collected so
+ * far; for acyclic data (the normal case) `visited` never has a repeat hit, so output is
+ * unchanged. */
+function collectDescendantFolderIds(folderId: string): string[] {
+  const ids: string[] = [];
+  const visited = new Set<string>([folderId]);
+  const visit = (parentId: string): void => {
+    for (const folder of _folders) {
+      if (folder.parentId === parentId) {
+        if (visited.has(folder.id)) continue; // defensive: a pre-existing corrupt cycle in stored data
+        visited.add(folder.id);
+        ids.push(folder.id);
+        visit(folder.id);
+      }
+    }
+  };
+  visit(folderId);
+  return ids;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function resolveStudyQueryFolderScope(options: StudyQueryOptions): string[] | null {
+  if (options.folderScope === 'already-resolved') {
+    const id = options.resolvedFolderId ?? null;
+    return id ? [id] : null;
+  }
+  if (options.folderScope === 'current-filter') {
+    if (_navigatorFolderId === null) return null;
+    return _includeDescendants
+      ? [_navigatorFolderId, ...collectDescendantFolderIds(_navigatorFolderId)]
+      : [_navigatorFolderId];
+  }
+  return _activeFolderId ? [_activeFolderId] : null;
+}
+
+/** Build the single query/projector authority shared by memory rows and the IDB cursor runner. */
+export function createStudyQueryPlan(
+  options: StudyQueryOptions = {},
+): StudyQueryPlan {
+  const folderIds = resolveStudyQueryFolderScope(options);
+  const search = _search;
+  const sourceFilter = _filterSrc;
+  const tagFilter = _filterTag;
+  const favoriteOnly = _filterFav;
+  const sort = {
+    key: studySortKeyToGameFilterKey(_sortKey),
+    direction: _sortDir,
+  } as const;
+  const compiled = compileGameFilterQuery({
+    ...(search ? { textAny: search } : {}),
+    ...(sourceFilter ? { sources: [sourceFilter] } : {}),
+    ...(tagFilter ? { tags: [tagFilter] } : {}),
+    ...(folderIds && folderIds.length ? { folders: folderIds } : {}),
+    ...(favoriteOnly ? { favorite: true } : {}),
+    hiddenMode: showHiddenItems() ? 'include' : 'exclude',
+    sort,
+  });
+
+  return {
+    query: compiled.query,
+    queryHash: compiled.queryHash,
+    projectItem: (item, context) => {
+      const projection = projectStudyItem(item, {
+        hidden: context?.hidden ?? isHidden('game', item.id),
+      });
+      const annotationText = [
+        item.notes ?? '',
+        item.tags.join(' '),
+        extractPgnComments(item.pgn),
+      ].join(' ');
+      // `folderIds` is the resolved SET (the selected folder plus its descendants when the toggle
+      // is on) — any-of membership against that set, matching `matchesArrayFacet`'s own any-of
+      // semantics for the `folders` facet above, so this pre-filter and the compiled query agree.
+      const exactFolderMatch = !folderIds || folderIds.length === 0 ||
+        folderIds.some(fid => item.folders.includes(fid) || item.homeFolderId === fid);
+
+      return {
+        ...projection,
+        source: !sourceFilter || item.source === sourceFilter ? projection.source : undefined,
+        tags: !tagFilter || item.tags.includes(tagFilter) ? projection.tags : [],
+        folderIds: exactFolderMatch ? projection.folderIds : [],
+        homeFolderId: exactFolderMatch ? projection.homeFolderId : undefined,
+        textAnyValues: [
+          item.title,
+          item.white ?? '',
+          item.black ?? '',
+          annotationText,
+        ],
+      };
+    },
+  };
 }
 
 /** Apply the current basic Study query to a caller-provided scope. */
@@ -257,46 +433,11 @@ export function queryStudyItems(
   scope: readonly StudyItem[],
   options: StudyQueryOptions = {},
 ): StudyItem[] {
-  const activeFolderFilter = options.folderScope === 'already-resolved' ? null : _activeFolderId;
-  const query: GameFilterQuery = {
-    ...(_search ? { textAny: _search } : {}),
-    ...(_filterSrc ? { sources: [_filterSrc] } : {}),
-    ...(_filterTag ? { tags: [_filterTag] } : {}),
-    ...(activeFolderFilter ? { folders: [activeFolderFilter] } : {}),
-    ...(_filterFav ? { favorite: true } : {}),
-    hiddenMode: showHiddenItems() ? 'include' : 'exclude',
-    sort: {
-      key: studySortKeyToGameFilterKey(_sortKey),
-      direction: _sortDir,
-    },
-  };
+  const plan = createStudyQueryPlan(options);
   const itemsById = new Map(scope.map(item => [item.id, item] as const));
-  const projections = scope.map(item => {
-    const projection = projectStudyItem(item, { hidden: isHidden('game', item.id) });
-    const annotationText = [
-      item.notes ?? '',
-      item.tags.join(' '),
-      extractPgnComments(item.pgn),
-    ].join(' ');
-    const exactFolderMatch = !activeFolderFilter ||
-      item.folders.includes(activeFolderFilter) || item.homeFolderId === activeFolderFilter;
+  const projections = scope.map(item => plan.projectItem(item));
 
-    return {
-      ...projection,
-      source: !_filterSrc || item.source === _filterSrc ? projection.source : undefined,
-      tags: !_filterTag || item.tags.includes(_filterTag) ? projection.tags : [],
-      folderIds: exactFolderMatch ? projection.folderIds : [],
-      homeFolderId: exactFolderMatch ? projection.homeFolderId : undefined,
-      textAnyValues: [
-        item.title,
-        item.white ?? '',
-        item.black ?? '',
-        annotationText,
-      ],
-    };
-  });
-
-  return filterGameProjections(projections, query).ids.flatMap(id => {
+  return filterGameProjections(projections, plan.query).ids.flatMap(id => {
     const item = itemsById.get(id);
     return item ? [item] : [];
   });
@@ -369,6 +510,18 @@ export function activeFolderId(): string | null   { return _activeFolderId; }
 export function sidebarCollapsed(): boolean       { return _sidebarCollapsed; }
 export function setActiveFolderId(id: string | null): void { _activeFolderId = id; }
 export function toggleSidebar(): void             { _sidebarCollapsed = !_sidebarCollapsed; }
+
+
+
+
+export function includeDescendants(): boolean { return _includeDescendants; }
+export function setIncludeDescendants(v: boolean): void { _includeDescendants = v; }
+
+
+
+
+export function navigatorFolderId(): string | null { return _navigatorFolderId; }
+export function setNavigatorFolderId(id: string | null): void { _navigatorFolderId = id; }
 
 /** Derived sections -> nested folders -> items tree (P2-LIB-2 IA) over the currently loaded
  * studies/folders. Synchronous and rebuildable; never blocks on background classification. */
@@ -510,25 +663,41 @@ export function selectAllDisplayed(displayedIds: readonly string[]): void {
   }
 }
 
+function runStudyQueryPlan(plan: StudyQueryPlan): Promise<StudyQueryRunnerResult> {
+  return collectStudyIdsMatchingQuery({
+    query: plan.query,
+    projectItem: (item, context) => plan.projectItem(item, context),
+  });
+}
 
+/** Collect full-scope Study IDs and runner metadata without mutating selection. */
+export function collectStudyQueryScope(
+  options: StudyQueryOptions = {},
+): Promise<StudyQueryRunnerResult> {
+  return runStudyQueryPlan(createStudyQueryPlan(options));
+}
 
+export type StudySelectAllScopeOutcome =
+  | { status: 'applied'; result: StudyQueryRunnerResult }
+  | { status: 'stale'; result: StudyQueryRunnerResult };
 
-
-
-
-
-
-
-
-
+/** Merge a full shared-query ID result only while its canonical query hash is still current. */
 export async function selectAllInScope(
-  scopeMatcher: (item: Pick<StudyItem, 'id' | 'folders'>) => boolean,
-): Promise<void> {
-  const ids = await collectStudyIdsInScope(scopeMatcher);
-  for (const id of ids) _selectedIds.add(id);
-  if (_cursorId === null || !ids.includes(_cursorId)) {
-    _cursorId = ids[0] ?? null;
+  options: StudyQueryOptions = {},
+): Promise<StudySelectAllScopeOutcome> {
+  const dispatchedPlan = createStudyQueryPlan(options);
+  const result = await runStudyQueryPlan(dispatchedPlan);
+  const activePlan = createStudyQueryPlan(options);
+
+  if (result.queryHash !== dispatchedPlan.queryHash || activePlan.queryHash !== dispatchedPlan.queryHash) {
+    return { status: 'stale', result };
   }
+
+  for (const id of result.ids) _selectedIds.add(id);
+  if (_cursorId === null || !result.ids.includes(_cursorId)) {
+    _cursorId = result.ids[0] ?? null;
+  }
+  return { status: 'applied', result };
 }
 
 

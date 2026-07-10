@@ -96,8 +96,6 @@
 
 
 
-
-
 import { h, type VNode } from 'snabbdom';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
@@ -107,6 +105,8 @@ import {
   bulkDeleteStudies,
   bulkSetFavorite,
   clearSelection,
+  collectStudyQueryScope,
+  createStudyQueryPlan,
   cursorId,
   folders,
   isSelected,
@@ -117,8 +117,9 @@ import {
   selectionCount,
   sortKey,
   toggleSelectId,
+  type StudyQueryOptions,
 } from './studyCtrl';
-import { collectStudyIdsInScope, deriveHomeFolderId } from './studyDb';
+import { deriveHomeFolderId } from './studyDb';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import {
   openGameContextMenu,
@@ -667,36 +668,32 @@ function renderSelectAllPageControl(redraw: () => void, displayedIds: readonly s
   ]);
 }
 
-// Cached "true total in this folder" fetch -- keyed to the folder id it was computed for so a
-// redraw never shows a stale count carried over from a different folder. Reset whenever the
-// loaded page stops being fully selected (see `renderSelectAllScopeBanner` below) so re-selecting
-// later always re-fetches a fresh total rather than showing a leftover number.
-let _scopeBannerFolderId: string | null = null;
-let _scopeBannerIds: string[] | null = null;
-let _scopeBannerPending = false;
+type ScopeBannerCache =
+  | { queryHash: string; status: 'pending' }
+  | { queryHash: string; status: 'ready'; ids: string[] }
+  | { queryHash: string; status: 'error' };
 
-function folderScopePredicate(folderId: string): (item: Pick<StudyItem, 'id' | 'folders'>) => boolean {
-  // Mirrors studyCtrl.ts's OWN existing folder-membership test (`applyFilters`'s
-  // `s.folders.includes(_activeFolderId)`) -- the same simple field predicate every other
-  // folder-membership call site in this app already uses (bulkAddToFolder, rehomeGame, the
-  // navigation-index tree's own `item.folders` walk), so this scope query stays consistent with
-  // the rest of the app rather than inventing a second membership rule.
-  return item => item.folders.includes(folderId);
-}
+let _scopeBannerCache: ScopeBannerCache | null = null;
 
-/** Fires the one-time id-only cursor scan (`studyDb.collectStudyIdsInScope`) to learn a folder's
- * TRUE total, caching the result against `folderId` so a subsequent redraw doesn't re-trigger it.
- * A response for a folder the caller has since navigated away from is dropped (`_scopeBannerFolderId`
- * changed while the cursor was in flight). */
-function ensureScopeBannerIds(folderId: string, redraw: () => void): void {
-  if (_scopeBannerFolderId === folderId && (_scopeBannerIds !== null || _scopeBannerPending)) return;
-  _scopeBannerFolderId = folderId;
-  _scopeBannerIds = null;
-  _scopeBannerPending = true;
-  void collectStudyIdsInScope(folderScopePredicate(folderId)).then(ids => {
-    if (_scopeBannerFolderId !== folderId) return; // scope changed mid-flight -- drop this response
-    _scopeBannerIds = ids;
-    _scopeBannerPending = false;
+function ensureScopeBannerIds(
+  queryOptions: StudyQueryOptions,
+  queryHash: string,
+  redraw: () => void,
+): void {
+  if (_scopeBannerCache?.queryHash === queryHash) return;
+  _scopeBannerCache = { queryHash, status: 'pending' };
+  void collectStudyQueryScope(queryOptions).then(result => {
+    const activeHash = createStudyQueryPlan(queryOptions).queryHash;
+    if (
+      _scopeBannerCache?.queryHash !== queryHash ||
+      activeHash !== queryHash ||
+      result.queryHash !== queryHash
+    ) return;
+    _scopeBannerCache = { queryHash, status: 'ready', ids: result.ids };
+    redraw();
+  }).catch(() => {
+    if (_scopeBannerCache?.queryHash !== queryHash) return;
+    _scopeBannerCache = { queryHash, status: 'error' };
     redraw();
   });
 }
@@ -705,26 +702,24 @@ function renderSelectAllScopeBanner(
   redraw: () => void,
   folderContext: string | null,
   displayedIds: readonly string[],
+  queryOptions: StudyQueryOptions,
 ): VNode | null {
   if (folderContext === null) return null; // section/lens scope total: out of scope this slice (see header comment)
   if (displayedIds.length === 0) return null;
 
   const allLoadedSelected = displayedIds.every(id => isSelected(id));
   if (!allLoadedSelected) {
-    if (_scopeBannerFolderId === folderContext) {
-      _scopeBannerFolderId = null;
-      _scopeBannerIds = null;
-      _scopeBannerPending = false;
-    }
+    _scopeBannerCache = null;
     return null;
   }
 
-  ensureScopeBannerIds(folderContext, redraw);
-  if (_scopeBannerIds === null) return null; // still loading (or a fetch was just kicked off)
-  if (_scopeBannerIds.length <= displayedIds.length) return null; // the loaded page already IS the whole scope
+  const queryHash = createStudyQueryPlan(queryOptions).queryHash;
+  ensureScopeBannerIds(queryOptions, queryHash, redraw);
+  if (_scopeBannerCache?.queryHash !== queryHash || _scopeBannerCache.status !== 'ready') return null;
+  if (_scopeBannerCache.ids.length <= displayedIds.length) return null;
 
   const folderName = folders().find(f => f.id === folderContext)?.name ?? 'this folder';
-  const scopeIds = _scopeBannerIds;
+  const scopeIds = _scopeBannerCache.ids;
   const fullScopeSelected = scopeIds.every(id => isSelected(id));
 
   if (fullScopeSelected) {
@@ -739,7 +734,7 @@ function renderSelectAllScopeBanner(
       attrs: { type: 'button' },
       on: {
         click: () => {
-          void selectAllInScope(folderScopePredicate(folderContext)).then(redraw);
+          void selectAllInScope(queryOptions).then(redraw).catch(redraw);
         },
       },
     }, `Select all ${scopeIds.length} in ${folderName}`),
@@ -1019,14 +1014,21 @@ function renderPinnedGroup(
 
 
 
+
+
 export function renderItemListPane(
   items: readonly StudyItem[],
   density: ItemListDensity,
   redraw: () => void,
   onOpenItem?: (item: StudyItem) => void,
   currentFolderId?: string | null,
+  queryOptions?: StudyQueryOptions,
 ): VNode {
   const folderContext = currentFolderId ?? null;
+  const resolvedQueryOptions: StudyQueryOptions = queryOptions ?? {
+    folderScope: 'already-resolved',
+    resolvedFolderId: folderContext,
+  };
 
 
 
@@ -1040,7 +1042,7 @@ export function renderItemListPane(
 
   return h('div.lib-items', [
     renderSelectAllPageControl(redraw, displayedIds),
-    renderSelectAllScopeBanner(redraw, folderContext, displayedIds),
+    renderSelectAllScopeBanner(redraw, folderContext, displayedIds, resolvedQueryOptions),
     renderBulkActionBar(redraw, folderContext),
     h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
       pinnedItems.length > 0
