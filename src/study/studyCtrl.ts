@@ -2107,7 +2107,11 @@ export async function listOrpPracticeLines(): Promise<OrpPracticeLineView[]> {
     recordOrpLoadFail('opening-repetition-practice', e);
     recordStudyLoadFail('opening-practice-lines', e);
     console.warn('[studyCtrl] listOrpPracticeLines failed', e);
-    return [];
+    // BUG-2026-07-10-011: rethrow after recording. The composed studyDb helpers reject on genuine
+    // storage failure (BUG-008 P1/P2), and this catch used to collapse that back to [] — rendering
+    // the ORP section as "no lines saved" and leaving libraryView's _orpError chain (loadOrpLines'
+    // .catch → error card) dead code. A genuinely empty store still resolves [] above.
+    throw e;
   }
 }
 
@@ -2117,8 +2121,15 @@ let _allSequences:   TrainableSequence[]          = [];
 let _progressMap:    Map<string, PositionProgress> = new Map();
 let _dueCount:       number                        = 0;
 let _practiceLoaded: boolean                       = false;
+// Distinct storage-failure signal for the practice dashboard (BUG-2026-07-10-011), mirroring
+// _studyLibraryError (BUG-008 P1). Set when loadPracticeData's read rejects, cleared on a
+// successful load — so the invalidatePracticeData() retry path recovers after a transient
+// failure. libraryView renders an honest error card instead of the dashboard when this is set,
+// rather than a loaded-with-nothing-due state indistinguishable from having no practice data.
+let _practiceError:  boolean                       = false;
 
 export function practiceLoaded(): boolean { return _practiceLoaded; }
+export function practiceError(): boolean  { return _practiceError; }
 export function dueCount(): number        { return _dueCount; }
 export function allSequences(): TrainableSequence[] { return _allSequences; }
 export function progressMap(): Map<string, PositionProgress> { return _progressMap; }
@@ -2152,9 +2163,13 @@ export function loadPracticeData(redraw: () => void): void {
       _progressMap    = new Map(progressList.map(p => [p.key, p]));
       _dueCount       = countDuePositions(seqs, _progressMap);
       _practiceLoaded = true;
+      _practiceError  = false;
     } catch (e) {
       recordStudyLoadFail('study-practice', e);
       console.warn('[studyCtrl] loadPracticeData failed', e);
+      // BUG-2026-07-10-011: latch the error signal; _practiceLoaded still flips true so the
+      // load settles (no loading freeze) — the view branches on practiceError() instead.
+      _practiceError  = true;
       _practiceLoaded = true;
     } finally {
       _practiceLoadPending = false;

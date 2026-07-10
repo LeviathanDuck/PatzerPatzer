@@ -8,7 +8,7 @@ import {
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
   studyTags, updateStudy, deleteStudy, importPgnToLibrary,
-  practiceLoaded, dueCount, dueCountForStudy,
+  practiceLoaded, practiceError, dueCount, dueCountForStudy,
   reviewSequences, learnSequences, loadPracticeData,
   hasMore, isLoadingMore, loadNextPage, loadedStudyPageCount,
   folders, foldersLoaded, activeFolderId, sidebarCollapsed,
@@ -2113,7 +2113,13 @@ export function renderStudyLibrary(redraw: () => void): VNode {
     h('div.study-page__subordinate', [
 
 
-      practiceLoaded() ? renderPracticeDashboard(redraw) : null,
+
+
+      practiceError()
+        ? h('div.study-practice-dashboard', [
+            h('div.study-orp-section__error', 'Could not load practice data.'),
+          ])
+        : practiceLoaded() ? renderPracticeDashboard(redraw) : null,
 
       // Pagination is unchanged (CR-2/CR-3: studies load via IDB cursor pages, never an eager full
       // scan) -- "Load more" still appends additional pages into the same in-memory studies state
