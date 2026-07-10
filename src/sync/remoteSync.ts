@@ -3825,13 +3825,15 @@ async function drainVersionedRemoteSyncOutbox(
         },
         shouldReenqueue: (entry, current) => decideRecreateOverTombstone(entry, current)?.nextWrite ?? null,
         reenqueue: async (op, previous) => {
-          // Atomic REPLACE, not a plain enqueue: the conflicted op is still queued at this point
-          // (versionDrain removes it only after this resolves), so an ordinary enqueue would
-          // coalesce the retry into it — keeping the old opId and stale baseVersion — and the
-          // drain's removal of that opId would then delete the merged entry, losing the write.
-          // replaceDurableVersionedOutboxEntry drops the old op and lands the rebased retry in
-          // one storage write; either crash side converges (see its doc).
-          await replaceDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), previous.opId, {
+
+
+
+
+
+
+
+
+          const replaced = await replaceDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), previous.opId, {
             opId: op.opId,
             store: op.store,
             itemKey: op.itemKey,
@@ -3842,7 +3844,14 @@ async function drainVersionedRemoteSyncOutbox(
             ...(op.conflictIntent !== undefined ? { conflictIntent: op.conflictIntent } : {}),
           });
           durableOutboxCountCache = null;
+          if (replaced === null) {
+            recordRemoteSyncLog('flush', 'info', `Recreation of ${op.store}/${op.itemKey} cancelled: a newer queued delete wins over the re-import.`);
+            return;
+          }
           recordRemoteSyncLog('flush', 'info', `Re-imported ${op.store}/${op.itemKey} recreates a deleted server row: rebased onto the tombstone version and re-queued (explicit import intent).`);
+          // The rebased retry is due now — drain it through the normal debounced flush instead of
+          // waiting out the periodic interval (review Minor).
+          scheduleRemoteSyncFlush();
         },
       },
     }),
@@ -4664,6 +4673,24 @@ async function readCurrentLocalRemoteSyncItem(
 async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): Promise<void> {
   if (record.operation === 'delete') {
     enqueueRemoteSyncDelete(record.store, record.itemKey, Date.now());
+  } else if (record.conflictIntent === 'recreate-over-tombstone') {
+
+
+
+
+    const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
+    const useCurrent = current !== null && !isDeletedItem(current);
+    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
+      store: record.store,
+      itemKey: record.itemKey,
+      operation: 'upsert',
+      baseVersion: getRemoteSyncItemVersion(localStorage, storedServerIdentity(), record.store, record.itemKey),
+      payload: useCurrent ? current.payload : record.payload,
+      clientUpdatedAt: useCurrent ? current.updatedAt : (record.clientUpdatedAt ?? Date.now()),
+      conflictIntent: 'recreate-over-tombstone',
+    });
+    durableOutboxCountCache = null;
+    scheduleRemoteSyncFlush();
   } else {
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     if (current && !isDeletedItem(current)) {

@@ -398,6 +398,10 @@ export function decideRecreateOverTombstone(
   current: { version: number; deleted: boolean },
 ): RecreateOverTombstoneDecision | null {
   if (entry.conflictIntent !== 'recreate-over-tombstone') return null;
+
+
+
+  if (entry.store !== 'games') return null;
   if (entry.operation !== 'upsert') return null;
   if (!current.deleted) return null;
   const nextWrite: VersionedWriteOp = {
@@ -536,10 +540,20 @@ export async function replaceDurableVersionedOutboxEntry(
   previousOpId: string,
   input: VersionedOutboxEnqueueInput,
   options: VersionedOutboxEnqueueOptions = {}
-): Promise<DurableRetryOutboxEntry> {
+): Promise<DurableRetryOutboxEntry | null> {
   const incoming = makeEntry(input, options);
   return withDurableOutboxLock(async () => {
     const entries = (await readDurableVersionedOutbox(storage)).filter(entry => entry.opId !== previousOpId);
+
+
+
+
+    const laterDelete = incoming.operation === 'upsert'
+      && entries.some(entry => sameKey(entry, incoming) && entry.operation === 'delete');
+    if (laterDelete) {
+      await writeDurableVersionedOutbox(storage, entries);
+      return null;
+    }
     const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
     await writeDurableVersionedOutbox(storage, next);
     return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
