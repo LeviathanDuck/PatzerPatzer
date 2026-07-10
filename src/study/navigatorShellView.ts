@@ -90,10 +90,12 @@ import {
   setSortDir,
   sortKey,
   setSortKey,
+  studyLibraryRouteSnapshot,
   type StudyQueryOptions,
   type StudySortKey,
 } from './studyCtrl';
-import { current, writeHashRoute } from '../router';
+import { serializeStudyRouteState } from './routeState';
+import { current, replaceHashRoute, writeHashRoute } from '../router';
 import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
 import { deriveHomeFolderId } from './studyDb';
 
@@ -800,6 +802,23 @@ let _itemSearchOpen = false;
 let _sortMenuOpen = false;
 let _importMenuOpen = false;
 
+
+
+
+
+
+
+
+
+
+
+
+
+function writeLibraryRouteState(): void {
+  if (current().name !== 'study') return;
+  replaceHashRoute(serializeStudyRouteState(studyLibraryRouteSnapshot()));
+}
+
 function renderSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
     class: { '--active': _itemSearchOpen },
@@ -812,7 +831,7 @@ function renderSearchButton(redraw: () => void): VNode {
         // Closing the toggle clears the query rather than leaving an invisible active filter
         // silently narrowing the list with no visible control showing why (there is no other
         // "clear search" affordance in this slice).
-        if (!_itemSearchOpen) setSearch('');
+        if (!_itemSearchOpen) { setSearch(''); writeLibraryRouteState(); }
         redraw();
       },
     },
@@ -825,9 +844,9 @@ function renderSearchInputRow(redraw: () => void): VNode {
       attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery() },
       hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
       on: {
-        input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); redraw(); },
+        input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); writeLibraryRouteState(); redraw(); },
         keydown: (e: KeyboardEvent) => {
-          if (e.key === 'Escape') { _itemSearchOpen = false; setSearch(''); redraw(); }
+          if (e.key === 'Escape') { _itemSearchOpen = false; setSearch(''); writeLibraryRouteState(); redraw(); }
         },
       },
     }),
@@ -899,7 +918,9 @@ function renderSortButton(redraw: () => void): VNode {
  * unicode accents elsewhere (e.g. libraryView.ts's own ✎/× folder-action glyphs). */
 function renderSortMenu(redraw: () => void): VNode | null {
   if (!_sortMenuOpen) return null;
-  const closeAnd = (fn: () => void) => () => { fn(); _sortMenuOpen = false; redraw(); };
+  // Every action in this menu mutates sort (setSortKey/setSortDir), so the route write-back belongs
+  // in the shared wrapper — closing over sort edits live to the address bar (design §2.2).
+  const closeAnd = (fn: () => void) => () => { fn(); writeLibraryRouteState(); _sortMenuOpen = false; redraw(); };
   return h('div.nav-menu.item-toolbar__sort-menu', { attrs: { role: 'menu', 'aria-label': 'Sort and group' } }, [
     h('div.nav-menu__header', { attrs: { role: 'presentation', 'aria-disabled': 'true' } }, [
       navIcon('arrow-up-down', { size: 14 }),
@@ -1180,9 +1201,17 @@ function renderGameOpenShell(
 
 
 
+
+
+
+
+
+
+
+
   const exitPlain = () => {
     bumpSelectionSurface();
-    writeHashRoute('#/study');
+    writeHashRoute(serializeStudyRouteState(studyLibraryRouteSnapshot()));
   };
   const exitToFolder = () => {
     bumpSelectionSurface();
@@ -1193,7 +1222,9 @@ function renderGameOpenShell(
       setActiveFolderId(scope.folderId);
       setNavigatorFolderId(scope.folderId);
     }
-    writeHashRoute('#/study');
+    // Serialize AFTER the folder-scope writes above so the snapshot's `folder` reflects the
+    // returned-to folder -- the lossless "back to that folder" landing (design §2.2 / CRIT-1).
+    writeHashRoute(serializeStudyRouteState(studyLibraryRouteSnapshot()));
   };
   // State 3's first Escape step closes tools (→ State 2); State 2's own second step (this same
   // exitPlain, re-armed once toolsOpen is false on the next render) is unchanged.
