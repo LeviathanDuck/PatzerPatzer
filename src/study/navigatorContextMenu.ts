@@ -78,6 +78,7 @@ import {
   allStudies,
   bulkAddToFolder,
   bulkDeleteStudies,
+  bumpSelectionSurface,
   deleteStudy,
   folders,
   moveGameToFolder,
@@ -210,7 +211,10 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       key: 'open',
       label: 'Open',
       icon: 'file-plus',
-      onClick: () => { writeHashRoute(`study/${targetId}`); },
+
+
+
+      onClick: () => { bumpSelectionSurface(); writeHashRoute(`study/${targetId}`); },
     }));
     entries.push(menuSeparator('sep-open'));
   }

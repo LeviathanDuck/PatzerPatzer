@@ -103,7 +103,7 @@ import {
 
 
 
-import { allStudies } from './studyCtrl';
+import { allStudies, bumpSelectionSurface } from './studyCtrl';
 import type { StudyItem } from './types';
 import { writeHashRoute } from '../router';
 
@@ -854,7 +854,10 @@ function renderShortcutRow(
       {
         key: `shortcut-game-${entry.id}`,
         attrs: { role: 'treeitem', title },
-        on: { click: () => { writeHashRoute(`study/${entry.id}`); } },
+
+
+
+        on: { click: () => { bumpSelectionSurface(); writeHashRoute(`study/${entry.id}`); } },
       },
       [
         h('span.nav-row__icon', '♟'),
@@ -959,7 +962,8 @@ function renderRecentRow(item: StudyItem): VNode {
     {
       key: `recent-${item.id}`,
       attrs: { role: 'treeitem', title: item.title },
-      on: { click: () => { writeHashRoute(`study/${item.id}`); } },
+
+      on: { click: () => { bumpSelectionSurface(); writeHashRoute(`study/${item.id}`); } },
     },
     [
       h('span.nav-row__icon', '♟'),
