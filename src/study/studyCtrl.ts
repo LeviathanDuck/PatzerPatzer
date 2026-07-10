@@ -178,6 +178,13 @@ const PAGE_SIZE = 50;
 
 let _studies:    StudyItem[]     = [];
 let _loaded      = false;
+// Distinct storage-failure signal for the library list (BUG-2026-07-10-008 P1). Set true in the
+// library load catches (initStudyLibrary / loadAllStudiesForRoute) when the un-swallowed studyDb
+// read REJECTS, and cleared on a successful load. libraryView renders an honest error state when
+// this is set so a storage failure is no longer indistinguishable from a legitimately empty
+// library. Folder-load failures deliberately do NOT set this (loadFolders self-heals via retry),
+// so a transient folder blip never nukes the whole library view.
+let _studyLibraryError = false;
 let _sortKey:    StudySortKey    = 'createdAt';
 let _sortDir:    StudySortDir    = 'desc';
 let _filterFav:  boolean         = false;
@@ -573,6 +580,12 @@ export function allStudies(): StudyItem[] {
 
 export function isLoaded(): boolean {
   return _loaded;
+}
+
+// True when the last library load REJECTED with a storage failure (BUG-2026-07-10-008 P1).
+// libraryView renders its load-error state instead of the empty/ready states when this is set.
+export function studyLibraryError(): boolean {
+  return _studyLibraryError;
 }
 
 export function sortKey(): StudySortKey { return _sortKey; }
@@ -1061,6 +1074,7 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
   return getStudiesPaginated(sortIdx, dir, 0, PAGE_SIZE + 1).then(async items => {
     _hasMore  = items.length > PAGE_SIZE;
     _studies  = _hasMore ? items.slice(0, PAGE_SIZE) : items;
+    _studyLibraryError = false;
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded   = true;
@@ -1070,6 +1084,11 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
+    // BUG-2026-07-10-008 P1: getStudiesPaginated now rejects on a genuine storage failure (its
+    // rejection was previously dropped here into a silent empty render). Latch the library error
+    // flag so libraryView shows an honest error state with a retry affordance instead of the
+    // empty state. _loaded still flips true so the render is not frozen on the loading skeleton.
+    _studyLibraryError = true;
     _studies = [];
     _hasMore = false;
     _loaded = true;
@@ -1083,6 +1102,7 @@ function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Pro
     _hasMore = false;
     _loadingMore = false;
     _page = Math.max(0, requestedPages - 1);
+    _studyLibraryError = false;
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded = true;
@@ -1092,6 +1112,10 @@ function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Pro
     redraw();
   }).catch(e => {
     recordStudyLoadFail('study-library', e);
+    // BUG-2026-07-10-008 P1: listStudies now rejects on a genuine storage failure instead of
+    // resolving []. Latch the library error flag so libraryView surfaces the error state rather
+    // than an empty library indistinguishable from a real no-data state.
+    _studyLibraryError = true;
     _studies = [];
     _hasMore = false;
     _loadingMore = false;

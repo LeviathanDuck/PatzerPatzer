@@ -4,7 +4,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
-  allStudies, isLoaded, initStudyLibrary,
+  allStudies, isLoaded, studyLibraryError, initStudyLibrary,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
   studyTags, updateStudy, deleteStudy, importPgnToLibrary,
@@ -1992,9 +1992,39 @@ function renderImportModal(redraw: () => void): VNode {
 let _repertoireSectionOpen = false;
 let _orpSectionOpen = false;
 
+
+
+
+
+
+
+
+
+
+
+function renderStudyLibraryLoadError(): VNode {
+  return h('div.study-page__loading.study-page__loading--error', [
+    h('p', 'Couldn’t load your studies — a storage error occurred.'),
+    h('p', 'Your studies are not lost. Reload to try again.'),
+    h('button.study-btn', {
+      attrs: { type: 'button' },
+      on: { click: () => { window.location.reload(); } },
+    }, 'Reload'),
+  ]);
+}
+
 export function renderStudyLibrary(redraw: () => void): VNode {
   if (!isLoaded()) {
     return h('div.study-page', h('div.study-page__loading', 'Loading…'));
+  }
+
+  // Storage-failure state (BUG-2026-07-10-008 P1): when the library load REJECTED (studyDb reads
+  // no longer mask a storage failure as an empty list), render an honest error state — with a
+  // retry — instead of the empty/ready views. This closes the UI States gap on the primary
+  // library path (loading/empty/ready existed; error did not) and also covers the previously
+  // dropped getStudiesPaginated rejection, whose caller now latches the same flag.
+  if (studyLibraryError()) {
+    return h('div.study-page', renderStudyLibraryLoadError());
   }
 
   // Lazy-load practice data if not yet loaded.

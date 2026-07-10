@@ -203,18 +203,38 @@ export async function getStudy(id: string): Promise<StudyItem | undefined> {
 }
 
 export async function listStudies(): Promise<StudyItem[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P1): a genuine storage failure must REJECT so the library
+  // caller can distinguish it from a legitimately empty store and render an error state, rather
+  // than masking every failure as an empty library. Mirrors getStudiesPaginated's posture:
+  // record + rethrow on DB-open failure, and record + reject on both the synchronous
+  // db.transaction() throw and the request onerror (the latter already propagated because the
+  // promise is returned, not awaited — the fix adds the missing diagnostics on that path). A
+  // legitimately empty store still resolves [] from onsuccess: no-data != failure is preserved.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('studies', 'readonly').objectStore('studies').getAll();
-      req.onsuccess = () => resolve((req.result as StudyItem[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('studies', e);
-    console.warn('[studyDb] listStudies failed', e);
-    return [];
+    console.warn('[studyDb] listStudies failed (db open)', e);
+    throw e;
   }
+  return new Promise<StudyItem[]>((resolve, reject) => {
+    let req: IDBRequest<StudyItem[]>;
+    try {
+      req = db.transaction('studies', 'readonly').objectStore('studies').getAll() as IDBRequest<StudyItem[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('studies', e);
+      console.warn('[studyDb] listStudies failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as StudyItem[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('studies', req.error);
+      console.warn('[studyDb] listStudies failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 
@@ -812,18 +832,36 @@ export async function getFolder(id: string): Promise<StudyFolder | undefined> {
 }
 
 export async function listFolders(): Promise<StudyFolder[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P1): a genuine storage failure must REJECT rather than
+  // masking it as a flat/empty folder tree. Same posture as listStudies above — the folder
+  // caller (studyCtrl.loadFolders) already self-heals a rejection by not latching
+  // `_foldersLoaded` and clearing its in-flight promise, so a later render retries. A
+  // legitimately empty store still resolves [] from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('folders', 'readonly').objectStore('folders').getAll();
-      req.onsuccess = () => resolve((req.result as StudyFolder[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('folders', e);
-    console.warn('[studyDb] listFolders failed', e);
-    return [];
+    console.warn('[studyDb] listFolders failed (db open)', e);
+    throw e;
   }
+  return new Promise<StudyFolder[]>((resolve, reject) => {
+    let req: IDBRequest<StudyFolder[]>;
+    try {
+      req = db.transaction('folders', 'readonly').objectStore('folders').getAll() as IDBRequest<StudyFolder[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('folders', e);
+      console.warn('[studyDb] listFolders failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as StudyFolder[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('folders', req.error);
+      console.warn('[studyDb] listFolders failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function deleteFolder(id: string): Promise<void> {
