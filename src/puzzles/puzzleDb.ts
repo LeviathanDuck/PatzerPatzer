@@ -461,35 +461,130 @@ async function pruneOldAttempts(puzzleId: string, keep: number): Promise<void> {
 }
 
 /**
+ * Settle a full-scan cursor over the attempts store ONLY from the owning transaction's outcome
+ * (oncomplete/onerror/onabort) — never from the cursor's own onsuccess. Parameterizes per-row
+ * accumulation (`init`/`visit`) so both `getAllAttemptsByPuzzle` (Map-build) and
+ * `listRatedAttempts` (filter-to-array) share identical transaction-settlement plumbing, mirroring
+ * `collectPuzzleDefinitionCursor` above and the parameterize-the-visit shape of
+ * `collectStudyQueryCursor` (src/study/studyDb.ts). Cursor exhaustion only records a local
+ * `completedResult` and stops driving the cursor, letting the transaction auto-commit naturally;
+ * only tx.oncomplete resolves the promise. This closes BUG-2026-07-10-004, the sibling of
+ * BUG-2026-07-10-002: resolving directly from the cursor callback let a transaction abort (or an
+ * error swallowed by an outer catch) present as a successful partial or empty result.
+ * Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts readCursor pattern.
+ */
+function collectAttemptsCursor<T>(
+  db: IDBDatabase,
+  init: () => T,
+  visit: (accumulator: T, attempt: PuzzleAttempt) => void,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: T | undefined;
+
+    const settleResolve = (result: T): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction(STORE_ATTEMPTS, 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Puzzle attempts cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      recordPuzzleTxFail(tx, 'onerror', 'read');
+      settleReject(tx.error ?? new Error('Puzzle attempts transaction failed'));
+    };
+    tx.onabort = () => {
+      recordPuzzleTxFail(tx, 'onabort', 'read');
+      settleReject(tx.error ?? new DOMException('Puzzle attempts transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore(STORE_ATTEMPTS).openCursor();
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const accumulator = init();
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = accumulator;
+        return;
+      }
+      visit(accumulator, cursor.value as PuzzleAttempt);
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error('Puzzle attempts cursor failed'));
+    };
+  });
+}
+
+/**
  * Load all attempts grouped by puzzleId in a single cursor scan.
  * Use this instead of calling getAttempts() per-puzzle in loops.
  * Replaces N serial IDB transactions with one pass (anti-pattern AP-3 fix).
+ * Rejects on genuine storage failure (DB-open failure or a failed/aborted read transaction)
+ * instead of resolving an empty Map — see collectAttemptsCursor above and BUG-2026-07-10-004.
+ * Callers already wrap this in try/catch with recordPuzzleLoadFail.
  * Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts cursor pattern.
  */
 export async function getAllAttemptsByPuzzle(): Promise<Map<string, PuzzleAttempt[]>> {
+  let db: IDBDatabase;
   try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const result = new Map<string, PuzzleAttempt[]>();
-      const req = db.transaction(STORE_ATTEMPTS, 'readonly')
-        .objectStore(STORE_ATTEMPTS).openCursor();
-      req.onsuccess = () => {
-        const cursor = req.result as IDBCursorWithValue | null;
-        if (!cursor) { resolve(result); return; }
-        const attempt = cursor.value as PuzzleAttempt;
+    db = await openPuzzleDb();
+  } catch (e) {
+    console.warn('[puzzleDb] getAllAttemptsByPuzzle failed (db open)', e);
+    throw e;
+  }
+  try {
+    return await collectAttemptsCursor<Map<string, PuzzleAttempt[]>>(
+      db,
+      () => new Map<string, PuzzleAttempt[]>(),
+      (result, attempt) => {
         const list = result.get(attempt.puzzleId);
         if (list) {
           list.push(attempt);
         } else {
           result.set(attempt.puzzleId, [attempt]);
         }
-        cursor.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
+      },
+    );
   } catch (e) {
     console.warn('[puzzleDb] getAllAttemptsByPuzzle failed', e);
-    return new Map();
+    throw e;
   }
 }
 
@@ -632,25 +727,33 @@ function ratedAttemptKey(attempt: Pick<PuzzleAttempt, 'puzzleId' | 'completedAt'
   return `${attempt.puzzleId}::${attempt.completedAt}`;
 }
 
-async function listRatedAttempts(): Promise<PuzzleAttempt[]> {
+/**
+ * List rated puzzle attempts using a transaction-safe cursor scan (BUG-2026-07-10-004).
+ * Rejects on genuine storage failure instead of resolving an empty array — see
+ * collectAttemptsCursor above. This export exists ONLY for the fault-injection harness
+ * (scripts/test-puzzle-definitions-cursor.mjs) and direct dev tooling; production access stays
+ * through pullAndMergeRatedAttempts()/pushNewRatedAttempts() under syncRatedLadder(). Do not add
+ * new production callers against this export.
+ */
+export async function listRatedAttempts(): Promise<PuzzleAttempt[]> {
+  let db: IDBDatabase;
   try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const results: PuzzleAttempt[] = [];
-      const req = db.transaction(STORE_ATTEMPTS, 'readonly')
-        .objectStore(STORE_ATTEMPTS).openCursor();
-      req.onsuccess = () => {
-        const cursor = req.result as IDBCursorWithValue | null;
-        if (!cursor) { resolve(results); return; }
-        const attempt = cursor.value as PuzzleAttempt;
-        if (isRatedAttempt(attempt)) results.push(attempt);
-        cursor.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
+    db = await openPuzzleDb();
+  } catch (e) {
+    console.warn('[puzzleDb] listRatedAttempts failed (db open)', e);
+    throw e;
+  }
+  try {
+    return await collectAttemptsCursor<PuzzleAttempt[]>(
+      db,
+      () => [],
+      (result, attempt) => {
+        if (isRatedAttempt(attempt)) result.push(attempt);
+      },
+    );
   } catch (e) {
     console.warn('[puzzleDb] listRatedAttempts failed', e);
-    return [];
+    throw e;
   }
 }
 
