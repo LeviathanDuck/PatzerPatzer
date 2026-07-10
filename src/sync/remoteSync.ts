@@ -26,9 +26,11 @@ import {
   type RemoteSyncItemVersionRecord,
 } from './versionMetadata';
 import {
+  decideRecreateOverTombstone,
   defaultDurableVersionedOutboxStorage,
   enqueueDurableVersionedOutboxEntries,
   enqueueDurableVersionedOutboxEntry,
+  replaceDurableVersionedOutboxEntry,
   readDurableVersionedOutbox,
   readQuarantineRecords,
   removeQuarantineRecords,
@@ -1862,6 +1864,8 @@ export function getSuppressedRemoteSyncEnqueueCounts(): Partial<Record<RemoteSyn
   }
   return counts;
 }
+
+
 
 
 
@@ -3799,15 +3803,46 @@ async function drainVersionedRemoteSyncOutbox(
         },
       },
       conflictAdapter: {
-        applyCurrent: async current => {
+        applyCurrent: async (current, _conflict, entry) => {
+
+
+
+
+
+
+
+          if (decideRecreateOverTombstone(entry, current)) return;
           const counts = await applyRemoteSyncItems([current], { generation: syncGeneration });
           applySettingsPullLiveIfNeeded(counts, current.updatedAt, [current]);
           emitRemoteSyncApplied(counts, current.updatedAt);
-          // P2c (audit G-1): this adapter never implements shouldReenqueue/reenqueue, so every
-          // applyCurrent call versionDrain.ts makes here resolves as serverWins (mergeCounts below
-          // it), never 'reenqueued' — see the drain loop's conflict branch. Visibility only; no
-          // re-enqueue happens as a result of this call.
+
+
+
+
+
+
           recordServerWinsConflictIfVisible(current.store, current.itemKey);
+        },
+        shouldReenqueue: (entry, current) => decideRecreateOverTombstone(entry, current)?.nextWrite ?? null,
+        reenqueue: async (op, previous) => {
+          // Atomic REPLACE, not a plain enqueue: the conflicted op is still queued at this point
+          // (versionDrain removes it only after this resolves), so an ordinary enqueue would
+          // coalesce the retry into it — keeping the old opId and stale baseVersion — and the
+          // drain's removal of that opId would then delete the merged entry, losing the write.
+          // replaceDurableVersionedOutboxEntry drops the old op and lands the rebased retry in
+          // one storage write; either crash side converges (see its doc).
+          await replaceDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), previous.opId, {
+            opId: op.opId,
+            store: op.store,
+            itemKey: op.itemKey,
+            operation: op.operation,
+            baseVersion: op.baseVersion,
+            ...(op.payload !== undefined ? { payload: op.payload } : {}),
+            ...(op.clientUpdatedAt !== undefined ? { clientUpdatedAt: op.clientUpdatedAt } : {}),
+            ...(op.conflictIntent !== undefined ? { conflictIntent: op.conflictIntent } : {}),
+          });
+          durableOutboxCountCache = null;
+          recordRemoteSyncLog('flush', 'info', `Re-imported ${op.store}/${op.itemKey} recreates a deleted server row: rebased onto the tombstone version and re-queued (explicit import intent).`);
         },
       },
     }),

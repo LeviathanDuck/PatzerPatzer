@@ -2,6 +2,16 @@ import type { RemoteSyncStoreName } from './remoteSyncMigrations';
 
 export type VersionedOutboxOperation = 'upsert' | 'delete';
 
+
+
+
+
+
+
+
+
+export type VersionedConflictIntent = 'recreate-over-tombstone';
+
 export interface VersionedWriteOp {
   opId: string;
   store: RemoteSyncStoreName;
@@ -10,6 +20,7 @@ export interface VersionedWriteOp {
   baseVersion: number | null;
   payload?: unknown;
   clientUpdatedAt?: number;
+  conflictIntent?: VersionedConflictIntent;
 }
 
 export interface DurableRetryOutboxEntry extends VersionedWriteOp {
@@ -41,6 +52,7 @@ export interface VersionedOutboxEnqueueInput {
   baseVersion: number | null;
   payload?: unknown;
   clientUpdatedAt?: number;
+  conflictIntent?: VersionedConflictIntent;
 }
 
 export interface VersionedOutboxEnqueueOptions {
@@ -214,6 +226,7 @@ function makeEntry(input: VersionedOutboxEnqueueInput, options: VersionedOutboxE
     nextAttemptAt: now,
   };
   if (input.operation === 'upsert') entry.payload = input.payload;
+  if (input.operation === 'upsert' && input.conflictIntent !== undefined) entry.conflictIntent = input.conflictIntent;
   return entry;
 }
 
@@ -243,6 +256,9 @@ function normalizeEntry(raw: unknown): DurableRetryOutboxEntry | null {
     nextAttemptAt: Math.floor(value.nextAttemptAt),
   };
   if (value.operation === 'upsert') entry.payload = value.payload;
+  if (value.operation === 'upsert' && value.conflictIntent === 'recreate-over-tombstone') {
+    entry.conflictIntent = 'recreate-over-tombstone';
+  }
   if (value.clientUpdatedAt !== undefined) entry.clientUpdatedAt = Math.floor(value.clientUpdatedAt);
   if (value.lastAttemptAt !== undefined) entry.lastAttemptAt = Math.floor(value.lastAttemptAt);
   if (typeof value.lastError === 'string') entry.lastError = value.lastError;
@@ -291,6 +307,7 @@ function resetRetryState(entry: DurableRetryOutboxEntry, now: number): DurableRe
     nextAttemptAt: now,
   };
   if (entry.operation === 'upsert') next.payload = entry.payload;
+  if (entry.operation === 'upsert' && entry.conflictIntent !== undefined) next.conflictIntent = entry.conflictIntent;
   if (entry.clientUpdatedAt !== undefined) next.clientUpdatedAt = entry.clientUpdatedAt;
   if (entry.blockedByOpId !== undefined) next.blockedByOpId = entry.blockedByOpId;
   return next;
@@ -315,6 +332,12 @@ function coalesceUpsert(entries: DurableRetryOutboxEntry[], incoming: DurableRet
       payload: incoming.payload,
     };
     if (incoming.clientUpdatedAt !== undefined) nextIntent.clientUpdatedAt = incoming.clientUpdatedAt;
+    // A later ordinary upsert coalescing over a marked one is still the same unsynced new row —
+    // the recreate intent survives in either direction (union). A delete replacing the upsert
+    // (coalesceDelete) drops the entry and the intent with it: the user deleted the game again.
+    if (nextIntent.conflictIntent === undefined && incoming.conflictIntent !== undefined) {
+      nextIntent.conflictIntent = incoming.conflictIntent;
+    }
     const merged = resetRetryState(nextIntent, incoming.nextAttemptAt);
     const next = entries.slice();
     next[index] = merged;
@@ -353,6 +376,43 @@ export function coalesceDurableVersionedOutboxEntry(
   return incoming.operation === 'upsert'
     ? coalesceUpsert(normalized, incoming)
     : coalesceDelete(normalized, incoming);
+}
+
+export interface RecreateOverTombstoneDecision {
+  /** The conflicting server tombstone must NOT be applied locally — the local payload is the
+   * user's explicit re-import and the whole point is that it survives. */
+  skipLocalApply: true;
+  /** The same upsert rebased onto the tombstone's version as its CAS base. */
+  nextWrite: VersionedWriteOp;
+}
+
+
+
+
+
+
+
+
+export function decideRecreateOverTombstone(
+  entry: DurableRetryOutboxEntry,
+  current: { version: number; deleted: boolean },
+): RecreateOverTombstoneDecision | null {
+  if (entry.conflictIntent !== 'recreate-over-tombstone') return null;
+  if (entry.operation !== 'upsert') return null;
+  if (!current.deleted) return null;
+  const nextWrite: VersionedWriteOp = {
+    opId: createOpId(),
+    store: entry.store,
+    itemKey: entry.itemKey,
+    operation: 'upsert',
+    baseVersion: current.version,
+    payload: entry.payload,
+    // The retry is still the same explicit-import wish, so the intent rides along; it can only
+    // fire again on a FRESH tombstone conflict while this op is still queued.
+    conflictIntent: 'recreate-over-tombstone',
+  };
+  if (entry.clientUpdatedAt !== undefined) nextWrite.clientUpdatedAt = entry.clientUpdatedAt;
+  return { skipLocalApply: true, nextWrite };
 }
 
 export async function readDurableVersionedOutbox(
@@ -456,6 +516,30 @@ export async function enqueueDurableVersionedOutboxEntry(
   const incoming = makeEntry(input, options);
   return withDurableOutboxLock(async () => {
     const entries = await readDurableVersionedOutbox(storage);
+    const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
+    await writeDurableVersionedOutbox(storage, next);
+    return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
+  });
+}
+
+
+
+
+
+
+
+
+
+
+export async function replaceDurableVersionedOutboxEntry(
+  storage: DurableVersionedOutboxStorage,
+  previousOpId: string,
+  input: VersionedOutboxEnqueueInput,
+  options: VersionedOutboxEnqueueOptions = {}
+): Promise<DurableRetryOutboxEntry> {
+  const incoming = makeEntry(input, options);
+  return withDurableOutboxLock(async () => {
+    const entries = (await readDurableVersionedOutbox(storage)).filter(entry => entry.opId !== previousOpId);
     const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
     await writeDurableVersionedOutbox(storage, next);
     return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
