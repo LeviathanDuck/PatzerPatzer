@@ -99,6 +99,7 @@ export interface VersionedOutboxDrainOptions {
 
 
 
+
   onPermanentRejection?(entries: DurableRetryOutboxEntry[], rejections: VersionedRejectedItem[]): void | Promise<void>;
 
 
@@ -205,12 +206,15 @@ const DEFAULT_MAX_DRAIN_ATTEMPTS = 12;
 
 
 
+
+
 async function persistPermanentRejection(
   options: VersionedOutboxDrainOptions,
   entries: DurableRetryOutboxEntry[],
   rejections: VersionedRejectedItem[],
 ): Promise<boolean> {
-  if (!options.onPermanentRejection || entries.length === 0) return true;
+  if (entries.length === 0) return true;
+  if (!options.onPermanentRejection) return false;
   try {
     await options.onPermanentRejection(entries, rejections);
     return true;

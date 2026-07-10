@@ -3802,10 +3802,12 @@ async function drainVersionedRemoteSyncOutbox(
           .map((entry, index) => `${entry.store}/${entry.itemKey} (${rejections[index]?.code ?? 'unknown'})`)
           .join(', ');
         const suffix = entries.length > 10 ? `, and ${entries.length - 10} more` : '';
+
+
         recordRemoteSyncLog(
           'flush',
           'error',
-          `Permanently removed ${entries.length} queued write(s) from the sync outbox: ${detail}${suffix}. Local data is preserved; use the Quarantined writes section on the Sync page to re-queue after the cause is fixed.`,
+          `Quarantined ${entries.length} queued write(s) (permanent rejection): ${detail}${suffix}. They are leaving the live sync outbox; local data is preserved — use the Quarantined writes section on the Sync page to re-queue after the cause is fixed.`,
         );
         durableOutboxCountCache = null;
       },
