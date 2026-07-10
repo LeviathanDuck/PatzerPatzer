@@ -378,6 +378,29 @@ export function coalesceDurableVersionedOutboxEntry(
     : coalesceDelete(normalized, incoming);
 }
 
+
+
+
+
+
+
+export function buildRecreateRequeueInput(
+  record: Pick<DurableRetryOutboxEntry, 'store' | 'itemKey' | 'payload' | 'clientUpdatedAt'>,
+  current: { payload?: unknown; updatedAt: number } | null,
+  baseVersion: number | null,
+): VersionedOutboxEnqueueInput {
+  const useCurrent = current !== null;
+  return {
+    store: record.store,
+    itemKey: record.itemKey,
+    operation: 'upsert',
+    baseVersion,
+    payload: useCurrent ? current.payload : record.payload,
+    clientUpdatedAt: useCurrent ? current.updatedAt : (record.clientUpdatedAt ?? Date.now()),
+    conflictIntent: 'recreate-over-tombstone',
+  };
+}
+
 export interface RecreateOverTombstoneDecision {
   /** The conflicting server tombstone must NOT be applied locally — the local payload is the
    * user's explicit re-import and the whole point is that it survives. */
@@ -543,13 +566,23 @@ export async function replaceDurableVersionedOutboxEntry(
 ): Promise<DurableRetryOutboxEntry | null> {
   const incoming = makeEntry(input, options);
   return withDurableOutboxLock(async () => {
-    const entries = (await readDurableVersionedOutbox(storage)).filter(entry => entry.opId !== previousOpId);
+    const all = await readDurableVersionedOutbox(storage);
+    const previous = all.find(entry => entry.opId === previousOpId);
+    const entries = all.filter(entry => entry.opId !== previousOpId);
 
 
 
 
+
+
+
+
+
+    const blockerOpId = previous?.blockedByOpId;
     const laterDelete = incoming.operation === 'upsert'
-      && entries.some(entry => sameKey(entry, incoming) && entry.operation === 'delete');
+      && entries.some(entry => sameKey(entry, incoming)
+        && entry.operation === 'delete'
+        && (previous === undefined || entry.opId !== blockerOpId));
     if (laterDelete) {
       await writeDurableVersionedOutbox(storage, entries);
       return null;

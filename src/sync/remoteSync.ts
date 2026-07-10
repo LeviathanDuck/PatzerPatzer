@@ -26,6 +26,7 @@ import {
   type RemoteSyncItemVersionRecord,
 } from './versionMetadata';
 import {
+  buildRecreateRequeueInput,
   decideRecreateOverTombstone,
   defaultDurableVersionedOutboxStorage,
   enqueueDurableVersionedOutboxEntries,
@@ -4678,17 +4679,14 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
 
 
+
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
-    const useCurrent = current !== null && !isDeletedItem(current);
-    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
-      store: record.store,
-      itemKey: record.itemKey,
-      operation: 'upsert',
-      baseVersion: getRemoteSyncItemVersion(localStorage, storedServerIdentity(), record.store, record.itemKey),
-      payload: useCurrent ? current.payload : record.payload,
-      clientUpdatedAt: useCurrent ? current.updatedAt : (record.clientUpdatedAt ?? Date.now()),
-      conflictIntent: 'recreate-over-tombstone',
-    });
+    const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
+    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), buildRecreateRequeueInput(
+      record,
+      useCurrent,
+      getRemoteSyncItemVersion(localStorage, storedServerIdentity(), record.store, record.itemKey),
+    ));
     durableOutboxCountCache = null;
     scheduleRemoteSyncFlush();
   } else {
