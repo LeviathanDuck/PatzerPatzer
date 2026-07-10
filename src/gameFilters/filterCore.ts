@@ -11,6 +11,14 @@ import type {
 
 const DEFAULT_SORT: GameFilterSort = { key: 'id', direction: 'asc' };
 
+export interface CompiledGameFilterEvaluator {
+  query: GameFilterQuery;
+  sort: GameFilterSort;
+  queryHash: string;
+  matchesIncludingHidden(projection: GameFilterProjection): boolean;
+  matchesVisible(projection: GameFilterProjection): boolean;
+}
+
 const SUPPORTED_FACETS: Record<GameFilterRecordFamily, ReadonlySet<GameFilterFacet>> = {
   'imported-game': new Set([
     'recordFamily',
@@ -53,18 +61,15 @@ export function filterGameProjections(
   projections: readonly GameFilterProjection[],
   query: GameFilterQuery = {},
 ): GameFilterResult {
-  const resolvedSort = resolveSort(query.sort);
-  const requestedFacets = requestedFacetSet(query);
-  const familiesInScope = resolveFamiliesInScope(projections, query);
+  const evaluator = compileGameFilterQuery(query);
+  const requestedFacets = requestedFacetSet(evaluator.query);
+  const familiesInScope = resolveFamiliesInScope(projections, evaluator.query);
   const unsupportedFacets = resolveUnsupportedFacets(requestedFacets, familiesInScope);
-  const unknownFacetCounts = countUnknownFacets(projections, query, requestedFacets);
+  const unknownFacetCounts = countUnknownFacets(projections, evaluator.query, requestedFacets);
 
-  const hiddenMode = query.hiddenMode ?? 'exclude';
-  const matchedIncludingHidden = projections.filter(projection =>
-    matchesProjection(projection, query, { includeHiddenGate: false }),
-  );
-  const visibleMatches = matchedIncludingHidden.filter(projection => matchesHiddenMode(projection, hiddenMode));
-  const sortedMatches = sortProjections(visibleMatches, resolvedSort);
+  const matchedIncludingHidden = projections.filter(evaluator.matchesIncludingHidden);
+  const visibleMatches = matchedIncludingHidden.filter(evaluator.matchesVisible);
+  const sortedMatches = sortProjections(visibleMatches, evaluator.sort);
 
   return {
     ids: sortedMatches.map(projection => projection.id),
@@ -73,9 +78,52 @@ export function filterGameProjections(
     totalMatchedIncludingHidden: matchedIncludingHidden.length,
     unsupportedFacets,
     unknownFacetCounts,
-    queryHash: stableQueryHash(query, resolvedSort),
-    sort: resolvedSort,
+    queryHash: evaluator.queryHash,
+    sort: evaluator.sort,
     runner: 'memory',
+  };
+}
+
+export function compileGameFilterQuery(
+  query: GameFilterQuery = {},
+): CompiledGameFilterEvaluator {
+  const sort = resolveSort(query.sort);
+  const normalizedQuery = canonicalizeGameFilterQuery(query, sort);
+  return {
+    query: normalizedQuery,
+    sort,
+    queryHash: stableQueryHash(normalizedQuery, sort),
+    matchesIncludingHidden: projection =>
+      matchesProjection(projection, normalizedQuery, { includeHiddenGate: false }),
+    matchesVisible: projection =>
+      matchesProjection(projection, normalizedQuery, { includeHiddenGate: true }),
+  };
+}
+
+function canonicalizeGameFilterQuery(
+  query: GameFilterQuery,
+  sort: GameFilterSort,
+): GameFilterQuery {
+  return stableValue({
+    ...query,
+    playedDate: canonicalizeRange(query.playedDate),
+    opponentRating: canonicalizeRange(query.opponentRating),
+    recentlyAdded: canonicalizeRange(query.recentlyAdded),
+    recentlyModified: canonicalizeRange(query.recentlyModified),
+    sort,
+  }) as GameFilterQuery;
+}
+
+function canonicalizeRange(
+  range: { from?: number; to?: number } | undefined,
+): { from?: number; to?: number } | undefined {
+  if (!range) return undefined;
+  const from = range.from !== undefined && Number.isFinite(range.from) ? range.from : undefined;
+  const to = range.to !== undefined && Number.isFinite(range.to) ? range.to : undefined;
+  if (from === undefined && to === undefined) return undefined;
+  return {
+    ...(from !== undefined ? { from } : {}),
+    ...(to !== undefined ? { to } : {}),
   };
 }
 
@@ -468,7 +516,7 @@ function facetSupported(family: GameFilterRecordFamily, facet: GameFilterFacet):
 }
 
 function stableQueryHash(query: GameFilterQuery, sort: GameFilterSort): string {
-  return `memory:${JSON.stringify(stableValue({ ...query, sort }))}`;
+  return `game-filter:${JSON.stringify(stableValue({ ...query, sort }))}`;
 }
 
 function stableValue(value: unknown): unknown {

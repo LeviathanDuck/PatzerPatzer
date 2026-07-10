@@ -3,6 +3,8 @@
 // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
 
 import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';
+import { compileGameFilterQuery, type CompiledGameFilterEvaluator } from '../gameFilters/filterCore';
+import type { GameFilterDateRange, GameFilterProjection, GameFilterQuery } from '../gameFilters/types';
 import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
@@ -14,6 +16,59 @@ type StudyStoreName =
   | 'position-progress'
   | 'drill-attempts'
   | 'folders';
+
+export type StudyQueryRunnerIndex = 'createdAt' | 'updatedAt' | 'source' | 'object-store';
+
+export interface StudyQueryProjectionContext {
+  hidden: boolean;
+}
+
+export interface StudyQueryRunnerRequest {
+  query: GameFilterQuery;
+  projectItem(
+    item: StudyItem,
+    context: StudyQueryProjectionContext,
+  ): GameFilterProjection;
+}
+
+export interface StudyQueryRunnerResult {
+  ids: string[];
+  totalVisible: number;
+  totalMatchedIncludingHidden: number;
+  queryHash: string;
+  runner: 'study-idb';
+  indexUsed: StudyQueryRunnerIndex;
+  scannedCount: number;
+}
+
+interface StudyQueryCursorPlan {
+  indexUsed: StudyQueryRunnerIndex;
+  range: IDBKeyRange | null;
+  invalid: boolean;
+}
+
+interface StudyQueryCursorResult {
+  ids: string[];
+  totalVisible: number;
+  totalMatchedIncludingHidden: number;
+  scannedCount: number;
+}
+
+class StudyQueryCursorReadError {
+  constructor(readonly error: unknown) {}
+}
+
+class StudyQueryProjectionError {
+  constructor(readonly error: unknown) {}
+}
+
+const INDEXED_STUDY_SOURCES: ReadonlySet<StudyItem['source']> = new Set([
+  'analysis',
+  'openings',
+  'puzzles',
+  'manual',
+  'import',
+]);
 
 function classifyStudyError(error: unknown): string {
   if (error instanceof DOMException) return error.name || 'DOMException';
@@ -256,6 +311,245 @@ export async function collectStudyIdsInScope(
     recordStudyIdbReadFail('studies', e);
     console.warn('[studyDb] collectStudyIdsInScope failed', e);
     return [];
+  }
+}
+
+function hasStudyQueryRange(range: GameFilterDateRange | undefined): range is GameFilterDateRange {
+  return range !== undefined && (range.from !== undefined || range.to !== undefined);
+}
+
+function isExactStudySource(value: string): value is StudyItem['source'] {
+  return INDEXED_STUDY_SOURCES.has(value as StudyItem['source']);
+}
+
+function dateCursorPlan(
+  indexUsed: 'createdAt' | 'updatedAt',
+  range: GameFilterDateRange,
+): StudyQueryCursorPlan {
+  const { from, to } = range;
+  if (from !== undefined && to !== undefined && from > to) {
+    return { indexUsed, range: null, invalid: true };
+  }
+  if (from !== undefined && to !== undefined) {
+    return { indexUsed, range: IDBKeyRange.bound(from, to), invalid: false };
+  }
+  if (from !== undefined) {
+    return { indexUsed, range: IDBKeyRange.lowerBound(from), invalid: false };
+  }
+  if (to !== undefined) {
+    return { indexUsed, range: IDBKeyRange.upperBound(to), invalid: false };
+  }
+  return { indexUsed, range: null, invalid: false };
+}
+
+function planStudyQueryCursor(query: GameFilterQuery): StudyQueryCursorPlan {
+  if (hasStudyQueryRange(query.recentlyAdded)) {
+    return dateCursorPlan('createdAt', query.recentlyAdded);
+  }
+  if (hasStudyQueryRange(query.recentlyModified)) {
+    return dateCursorPlan('updatedAt', query.recentlyModified);
+  }
+  if (query.sources?.length === 1 && isExactStudySource(query.sources[0]!)) {
+    return {
+      indexUsed: 'source',
+      range: IDBKeyRange.only(query.sources[0]!),
+      invalid: false,
+    };
+  }
+  return { indexUsed: 'object-store', range: null, invalid: false };
+}
+
+function emptyStudyQueryResult(
+  evaluator: CompiledGameFilterEvaluator,
+  indexUsed: StudyQueryRunnerIndex,
+): StudyQueryRunnerResult {
+  return {
+    ids: [],
+    totalVisible: 0,
+    totalMatchedIncludingHidden: 0,
+    queryHash: evaluator.queryHash,
+    runner: 'study-idb',
+    indexUsed,
+    scannedCount: 0,
+  };
+}
+
+function collectStudyQueryCursor(
+  db: IDBDatabase,
+  indexUsed: StudyQueryRunnerIndex,
+  range: IDBKeyRange | null,
+  request: StudyQueryRunnerRequest,
+  evaluator: CompiledGameFilterEvaluator,
+): Promise<StudyQueryCursorResult> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: StudyQueryCursorResult | undefined;
+
+    const settleResolve = (result: StudyQueryCursorResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: StudyQueryCursorReadError | StudyQueryProjectionError): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('studies', 'readonly');
+    } catch (error) {
+      settleReject(new StudyQueryCursorReadError(error));
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new StudyQueryCursorReadError(
+          new Error('Study query transaction completed before cursor exhaustion'),
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(new StudyQueryCursorReadError(
+        tx.error ?? new Error('Study query transaction failed'),
+      ));
+    };
+    tx.onabort = () => {
+      settleReject(new StudyQueryCursorReadError(
+        tx.error ?? new DOMException('Study query transaction aborted', 'AbortError'),
+      ));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      const store = tx.objectStore('studies');
+      const source: IDBObjectStore | IDBIndex = indexUsed === 'object-store'
+        ? store
+        : store.index(indexUsed);
+      cursorRequest = source.openCursor(range);
+    } catch (error) {
+      settleReject(new StudyQueryCursorReadError(error));
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const ids: string[] = [];
+    let totalMatchedIncludingHidden = 0;
+    let scannedCount = 0;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        completedResult = {
+          ids,
+          totalVisible: ids.length,
+          totalMatchedIncludingHidden,
+          scannedCount,
+        };
+        return;
+      }
+
+      scannedCount++;
+      const item = cursor.value as StudyItem;
+      try {
+        const hidden = isHidden('game', item.id);
+        const projected = request.projectItem(item, { hidden });
+        const projection = projected.hidden === hidden
+          ? projected
+          : { ...projected, hidden };
+        if (evaluator.matchesIncludingHidden(projection)) {
+          totalMatchedIncludingHidden++;
+          if (evaluator.matchesVisible(projection)) ids.push(item.id);
+        }
+      } catch (error) {
+        settleReject(new StudyQueryProjectionError(error));
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+        return;
+      }
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(new StudyQueryCursorReadError(error));
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(new StudyQueryCursorReadError(
+        cursorRequest.error ?? tx.error ?? new Error('Study query cursor failed'),
+      ));
+    };
+  });
+}
+
+function unwrapStudyQueryReadError(error: unknown): unknown {
+  return error instanceof StudyQueryCursorReadError ? error.error : error;
+}
+
+function throwStudyQueryProjectionError(error: unknown): void {
+  if (error instanceof StudyQueryProjectionError) throw error.error;
+}
+
+async function collectWithStudyQueryPlan(
+  db: IDBDatabase,
+  plan: StudyQueryCursorPlan,
+  request: StudyQueryRunnerRequest,
+  evaluator: CompiledGameFilterEvaluator,
+): Promise<StudyQueryRunnerResult> {
+  const collected = await collectStudyQueryCursor(db, plan.indexUsed, plan.range, request, evaluator);
+  return {
+    ...collected,
+    queryHash: evaluator.queryHash,
+    runner: 'study-idb',
+    indexUsed: plan.indexUsed,
+  };
+}
+
+/**
+ * Run a shared Study filter over real IDB cursors while retaining only matching Study IDs and
+ * scalar diagnostics. The returned ID order is cursor order for selection scope, not display sort.
+ */
+export async function collectStudyIdsMatchingQuery(
+  request: StudyQueryRunnerRequest,
+): Promise<StudyQueryRunnerResult> {
+  const evaluator = compileGameFilterQuery(request.query);
+  const plan = planStudyQueryCursor(evaluator.query);
+  if (plan.invalid) return emptyStudyQueryResult(evaluator, plan.indexUsed);
+
+  let db: IDBDatabase;
+  try {
+    db = await openDb();
+  } catch (error) {
+    recordStudyIdbReadFail('studies', error);
+    throw error;
+  }
+
+  try {
+    return await collectWithStudyQueryPlan(db, plan, request, evaluator);
+  } catch (error) {
+    throwStudyQueryProjectionError(error);
+    if (plan.indexUsed !== 'object-store') {
+      const fallbackPlan: StudyQueryCursorPlan = {
+        indexUsed: 'object-store',
+        range: null,
+        invalid: false,
+      };
+      try {
+        return await collectWithStudyQueryPlan(db, fallbackPlan, request, evaluator);
+      } catch (fallbackError) {
+        throwStudyQueryProjectionError(fallbackError);
+        const readError = unwrapStudyQueryReadError(fallbackError);
+        recordStudyIdbReadFail('studies', readError);
+        throw readError;
+      }
+    }
+    const readError = unwrapStudyQueryReadError(error);
+    recordStudyIdbReadFail('studies', readError);
+    throw readError;
   }
 }
 
