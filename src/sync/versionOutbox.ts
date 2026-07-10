@@ -578,11 +578,13 @@ export async function replaceDurableVersionedOutboxEntry(
 
 
 
-    const blockerOpId = previous?.blockedByOpId;
+
+
     const laterDelete = incoming.operation === 'upsert'
       && entries.some(entry => sameKey(entry, incoming)
         && entry.operation === 'delete'
-        && (previous === undefined || entry.opId !== blockerOpId));
+        && (previous === undefined
+          || (entry.opId !== previous.blockedByOpId && entry.enqueuedAt >= previous.enqueuedAt)));
     if (laterDelete) {
       await writeDurableVersionedOutbox(storage, entries);
       return null;
