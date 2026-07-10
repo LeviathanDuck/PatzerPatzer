@@ -103,9 +103,24 @@ const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
 
 
 
-const OUTBOX_DB_VERSION = 2;
+
+
+
+
+
+
+
+const OUTBOX_DB_VERSION = 3;
 const OUTBOX_STORE_NAME = 'entries';
 const QUARANTINE_STORE_NAME = 'quarantine';
+const OUTBOX_BY_ITEM_KEY_INDEX = 'byItemKey';
+// S7 relocation targets (dormant in v3): compact per-item sync state keyed by an encoded
+// identity/store/itemKey string; migration sentinels/schema state; and a preservation store for
+// malformed or future-schema legacy-mirror values that cannot safely become normal entries
+// (those rows may lack any usable key, hence the out-of-line autoIncrement key).
+const SYNC_ITEM_STATE_STORE_NAME = 'sync-item-state';
+const SYNC_ITEM_STATE_META_STORE_NAME = 'sync-item-state-meta';
+const LEGACY_OUTBOX_RECOVERY_STORE_NAME = 'legacy-outbox-recovery';
 const MAX_BACKOFF_MS = 10 * 60 * 1000;
 
 export const DURABLE_VERSIONED_OUTBOX_BACKOFF_MS = Object.freeze([
@@ -793,6 +808,16 @@ export async function dueDurableVersionedOutboxEntries(
   return (await readDurableVersionedOutbox(storage)).filter(entry => entry.nextAttemptAt <= at);
 }
 
+
+
+
+
+let onOutboxUpgradeBlocked: ((dbName: string) => void) | null = null;
+
+export function setOnOutboxUpgradeBlocked(handler: ((dbName: string) => void) | null): void {
+  onOutboxUpgradeBlocked = handler;
+}
+
 function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') {
     throw new Error('IndexedDB is unavailable for the durable RemoteSync outbox.');
@@ -800,18 +825,52 @@ function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(dbName, OUTBOX_DB_VERSION);
     request.onerror = () => reject(request.error ?? new Error('Could not open durable RemoteSync outbox database.'));
+    request.onblocked = () => {
+      try {
+        onOutboxUpgradeBlocked?.(dbName);
+      } catch {
+        // Reporting must never break the open; the request keeps waiting for the blocker.
+      }
+    };
     request.onupgradeneeded = () => {
       const db = request.result;
-      // Only ever creates missing stores; an existing `entries` store (v1) is left untouched
-      // when upgrading straight to v2, so pre-existing outbox entries survive the upgrade.
+      // Only ever creates missing stores/indexes, so an upgrade from ANY prior version (v0
+      // fresh, v1, v2) converges on the same v3 schema in this one versionchange transaction
+      // and pre-existing rows survive untouched. A failure anywhere in here aborts the whole
+      // versionchange transaction atomically — the database stays at its prior version.
       if (!db.objectStoreNames.contains(OUTBOX_STORE_NAME)) {
         db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'opId' });
       }
       if (!db.objectStoreNames.contains(QUARANTINE_STORE_NAME)) {
         db.createObjectStore(QUARANTINE_STORE_NAME, { keyPath: 'opId' });
       }
+      // v3 (dormant until Wave 3+): the keyed-coalesce index over the pre-existing entries
+      // store must be created through the upgrade transaction's store handle.
+      const upgradeTx = request.transaction;
+      if (upgradeTx) {
+        const entriesStore = upgradeTx.objectStore(OUTBOX_STORE_NAME);
+        if (!entriesStore.indexNames.contains(OUTBOX_BY_ITEM_KEY_INDEX)) {
+          entriesStore.createIndex(OUTBOX_BY_ITEM_KEY_INDEX, ['store', 'itemKey'], { unique: false });
+        }
+      }
+      if (!db.objectStoreNames.contains(SYNC_ITEM_STATE_STORE_NAME)) {
+        db.createObjectStore(SYNC_ITEM_STATE_STORE_NAME, { keyPath: 'stateKey' });
+      }
+      if (!db.objectStoreNames.contains(SYNC_ITEM_STATE_META_STORE_NAME)) {
+        db.createObjectStore(SYNC_ITEM_STATE_META_STORE_NAME, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(LEGACY_OUTBOX_RECOVERY_STORE_NAME)) {
+        db.createObjectStore(LEGACY_OUTBOX_RECOVERY_STORE_NAME, { autoIncrement: true });
+      }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+
+
+
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
   });
 }
 
