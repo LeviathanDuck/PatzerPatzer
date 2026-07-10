@@ -59,6 +59,7 @@ let _practiceScope:   'full' | 'current' | 'variation' = 'full';
 
 let _practiceLines:        TrainableSequence[]  = [];
 let _practiceLinesLoaded   = false;
+let _practiceLinesError    = false;
 let _practiceLinesStudyId: string | null        = null;
 let _renamingLineId:       string | null        = null;
 let _renamingLineValue     = '';
@@ -1238,8 +1239,21 @@ function loadPracticeLinesForStudy(studyId: string, redraw: () => void): void {
   if (_practiceLinesStudyId === studyId && _practiceLinesLoaded) return;
   _practiceLinesStudyId = studyId;
   _practiceLinesLoaded  = false;
+  _practiceLinesError   = false;
   void listPracticeLines(studyId).then(lines => {
-    _practiceLines      = lines;
+    _practiceLines       = lines;
+    _practiceLinesError  = false;
+    _practiceLinesLoaded = true;
+    redraw();
+  }).catch(e => {
+    // BUG-2026-07-10-008 P2 freeze guard: listPracticeLines now REJECTS on a genuine storage
+    // failure (previously it masked the failure as []). Without this catch the panel would spin
+    // on "Loading practice lines…" forever (loaded flag set only inside .then) and the rejection
+    // would go unhandled. Latch loaded + an error flag so the panel renders an honest inline error
+    // instead of a permanent spinner or a false "no practice lines" empty state.
+    console.warn('[studyDetailView] listPracticeLines failed', e);
+    _practiceLines       = [];
+    _practiceLinesError  = true;
     _practiceLinesLoaded = true;
     redraw();
   });
@@ -1247,6 +1261,7 @@ function loadPracticeLinesForStudy(studyId: string, redraw: () => void): void {
 
 function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
   if (!_practiceLinesLoaded) return h('div.study-practice-lines', 'Loading practice lines…');
+  if (_practiceLinesError) return h('div.study-practice-lines.study-practice-lines--empty', 'Could not load practice lines (storage error). Reopen this study to try again.');
   if (_practiceLines.length === 0) return h('div.study-practice-lines.study-practice-lines--empty', 'No practice lines. Click "Practice this line" to create one.');
 
   const pMap = progressMap();

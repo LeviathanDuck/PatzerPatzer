@@ -167,7 +167,9 @@ function syncDrillBoard(): void {
         _session = _session.advance();
         // Detect learn→quiz transition and seed level-1 for all positions in these sequences.
         if (prevMode === 'learn' && _session.mode === 'quiz') {
-          void seedLearnedPositions(_sequences);
+          void seedLearnedPositions(_sequences).catch(e =>
+            console.warn('[drillView] seedLearnedPositions failed', e),
+          );
         }
         _redraw();
         setTimeout(() => syncDrillBoard(), 300);
@@ -230,7 +232,17 @@ async function seedLearnedPositions(sequences: TrainableSequence[]): Promise<voi
   for (const seq of sequences) {
     for (const fen of seq.fens) {
       const key      = positionKey(fen);
-      const existing = await getPositionProgress(key);
+      let existing: PositionProgress | undefined;
+      try {
+        existing = await getPositionProgress(key);
+      } catch (e) {
+        // BUG-2026-07-10-008 P2 data-integrity guard: getPositionProgress now REJECTS on a genuine
+        // storage read failure (was masked as undefined). A failed read must NOT be treated as
+        // "no progress" here — seeding this position could overwrite an existing spaced-repetition
+        // level. Skip it; the learn→quiz seed self-heals on the next transition.
+        console.warn('[drillView] seedLearnedPositions skipped a position — progress read failed', e);
+        continue;
+      }
       if (existing && existing.level > 0) continue; // already has progress
       const seeded: PositionProgress = {
         key,
@@ -265,7 +277,19 @@ async function persistGrading(
 ): Promise<void> {
   const key       = positionKey(fenBefore);
   const now       = Date.now();
-  const existing  = await getPositionProgress(key);
+  let existing: PositionProgress | undefined;
+  try {
+    existing = await getPositionProgress(key);
+  } catch (e) {
+    // BUG-2026-07-10-008 P2 data-integrity guard: getPositionProgress now REJECTS on a genuine
+    // storage read failure (was masked as undefined). If we treated that as "no progress" (prev =
+    // level 0), scheduleNext would run from scratch and savePositionProgress would silently RESET
+    // this position's spaced-repetition level. Skip the whole persist instead so the stored level
+    // is preserved; the drill session continues normally (board still advances). One graded attempt
+    // is not recorded — an acceptable trade to protect existing SRS progress.
+    console.warn('[drillView] persistGrading skipped — position-progress read failed; not writing to avoid resetting the spaced-repetition level', e);
+    return;
+  }
   const prev: PositionProgress = existing ?? {
     key,
     level:           0,
@@ -369,7 +393,9 @@ function onUserMove(orig: Key, dest: Key): void {
     _adapter.flashFeedback('correct');
     _redraw();
     // Persist correct grading (fire-and-forget).
-    void persistGrading(fenBefore, seqId, expectedSan, san, true, _session.attemptsAtPosition);
+    void persistGrading(fenBefore, seqId, expectedSan, san, true, _session.attemptsAtPosition).catch(e =>
+      console.warn('[drillView] persistGrading failed', e),
+    );
     // Advance after brief pause.
     setTimeout(() => {
       if (!_session) return;
@@ -380,7 +406,9 @@ function onUserMove(orig: Key, dest: Key): void {
   } else if (_session.feedback === 'incorrect') {
     _totalPositions++;
     // Persist incorrect attempt (fire-and-forget).
-    void persistGrading(fenBefore, seqId, expectedSan, san, false, _session.attemptsAtPosition);
+    void persistGrading(fenBefore, seqId, expectedSan, san, false, _session.attemptsAtPosition).catch(e =>
+      console.warn('[drillView] persistGrading failed', e),
+    );
     _adapter.flashFeedback('incorrect');
     _redraw();
   } else if (_session.feedback === 'showAnswer') {

@@ -188,18 +188,36 @@ export async function saveStudy(item: StudyItem): Promise<void> {
 }
 
 export async function getStudy(id: string): Promise<StudyItem | undefined> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): a genuine storage failure must REJECT so callers can
+  // distinguish it from a genuinely-missing key, rather than masking every failure as "not found"
+  // (which, for updateStudy, silently DROPS the update). Same posture as listStudies (P1): record +
+  // rethrow on DB-open failure, record + reject on the synchronous db.transaction() throw and on the
+  // request onerror. A genuinely-missing key still resolves undefined from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('studies', 'readonly').objectStore('studies').get(id);
-      req.onsuccess = () => resolve(req.result as StudyItem | undefined);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('studies', e);
-    console.warn('[studyDb] getStudy failed', e);
-    return undefined;
+    console.warn('[studyDb] getStudy failed (db open)', e);
+    throw e;
   }
+  return new Promise<StudyItem | undefined>((resolve, reject) => {
+    let req: IDBRequest<StudyItem | undefined>;
+    try {
+      req = db.transaction('studies', 'readonly').objectStore('studies').get(id) as IDBRequest<StudyItem | undefined>;
+    } catch (e) {
+      recordStudyIdbReadFail('studies', e);
+      console.warn('[studyDb] getStudy failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result as StudyItem | undefined);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('studies', req.error);
+      console.warn('[studyDb] getStudy failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function listStudies(): Promise<StudyItem[]> {
@@ -648,42 +666,70 @@ export async function savePracticeLine(seq: TrainableSequence): Promise<void> {
 }
 
 export async function getPracticeLine(id: string): Promise<TrainableSequence | undefined> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure instead of masking
+  // it as "not found". Same posture as getStudy above; a genuinely-missing key still resolves
+  // undefined from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('practice-lines', 'readonly').objectStore('practice-lines').get(id);
-      req.onsuccess = () => resolve(req.result as TrainableSequence | undefined);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('practice-lines', e);
-    console.warn('[studyDb] getPracticeLine failed', e);
-    return undefined;
+    console.warn('[studyDb] getPracticeLine failed (db open)', e);
+    throw e;
   }
+  return new Promise<TrainableSequence | undefined>((resolve, reject) => {
+    let req: IDBRequest<TrainableSequence | undefined>;
+    try {
+      req = db.transaction('practice-lines', 'readonly').objectStore('practice-lines').get(id) as IDBRequest<TrainableSequence | undefined>;
+    } catch (e) {
+      recordStudyIdbReadFail('practice-lines', e);
+      console.warn('[studyDb] getPracticeLine failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result as TrainableSequence | undefined);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('practice-lines', req.error);
+      console.warn('[studyDb] getPracticeLine failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function listPracticeLines(studyItemId?: string): Promise<TrainableSequence[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure instead of masking it
+  // as an empty practice-lines panel (which leaves the study-detail panel showing "No practice
+  // lines" as if none were saved). Same posture as listStudies (P1). The study-detail caller
+  // (studyDetailView.loadPracticeLinesForStudy) now catches the rejection and leaves the "Loading…"
+  // state for an honest error. A legitimately empty store still resolves [] from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    if (studyItemId) {
-      return new Promise((resolve, reject) => {
-        const index = db.transaction('practice-lines', 'readonly')
-          .objectStore('practice-lines').index('studyItemId');
-        const req = index.getAll(studyItemId);
-        req.onsuccess = () => resolve((req.result as TrainableSequence[] | undefined) ?? []);
-        req.onerror   = () => reject(req.error);
-      });
-    }
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('practice-lines', 'readonly').objectStore('practice-lines').getAll();
-      req.onsuccess = () => resolve((req.result as TrainableSequence[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('practice-lines', e);
-    console.warn('[studyDb] listPracticeLines failed', e);
-    return [];
+    console.warn('[studyDb] listPracticeLines failed (db open)', e);
+    throw e;
   }
+  return new Promise<TrainableSequence[]>((resolve, reject) => {
+    let req: IDBRequest<TrainableSequence[]>;
+    try {
+      const store = db.transaction('practice-lines', 'readonly').objectStore('practice-lines');
+      req = (studyItemId
+        ? store.index('studyItemId').getAll(studyItemId)
+        : store.getAll()) as IDBRequest<TrainableSequence[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('practice-lines', e);
+      console.warn('[studyDb] listPracticeLines failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as TrainableSequence[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('practice-lines', req.error);
+      console.warn('[studyDb] listPracticeLines failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function deletePracticeLine(id: string): Promise<void> {
@@ -713,51 +759,102 @@ export async function savePositionProgress(progress: PositionProgress): Promise<
 }
 
 export async function getPositionProgress(key: string): Promise<PositionProgress | undefined> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): DATA-INTEGRITY fix. Previously a masked read failure
+  // returned undefined, which the drill scheduler (drillView.persistGrading/seedLearnedPositions)
+  // treats as a fresh position (level 0) and runs scheduleNext from scratch — silently RESETTING an
+  // existing position's spaced-repetition level. Rejecting on a genuine storage failure lets the
+  // drill guards skip the persist and preserve the stored level. A genuinely-missing key still
+  // resolves undefined from onsuccess (that legitimately-fresh case is unchanged).
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('position-progress', 'readonly').objectStore('position-progress').get(key);
-      req.onsuccess = () => resolve(req.result as PositionProgress | undefined);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('position-progress', e);
-    console.warn('[studyDb] getPositionProgress failed', e);
-    return undefined;
+    console.warn('[studyDb] getPositionProgress failed (db open)', e);
+    throw e;
   }
+  return new Promise<PositionProgress | undefined>((resolve, reject) => {
+    let req: IDBRequest<PositionProgress | undefined>;
+    try {
+      req = db.transaction('position-progress', 'readonly').objectStore('position-progress').get(key) as IDBRequest<PositionProgress | undefined>;
+    } catch (e) {
+      recordStudyIdbReadFail('position-progress', e);
+      console.warn('[studyDb] getPositionProgress failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result as PositionProgress | undefined);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('position-progress', req.error);
+      console.warn('[studyDb] getPositionProgress failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function listDuePositions(now = Date.now()): Promise<PositionProgress[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure for parity with the
+  // sibling reads (zero live callers today — free parity). A legitimately empty result still
+  // resolves [] from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
+    db = await openDb();
+  } catch (e) {
+    recordStudyIdbReadFail('position-progress', e);
+    console.warn('[studyDb] listDuePositions failed (db open)', e);
+    throw e;
+  }
+  return new Promise<PositionProgress[]>((resolve, reject) => {
+    let req: IDBRequest<PositionProgress[]>;
+    try {
       const index = db.transaction('position-progress', 'readonly')
         .objectStore('position-progress').index('nextDueAt');
       // Get all positions with nextDueAt <= now (due or overdue).
-      const req = index.getAll(IDBKeyRange.upperBound(now));
-      req.onsuccess = () => resolve((req.result as PositionProgress[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
-  } catch (e) {
-    recordStudyIdbReadFail('position-progress', e);
-    console.warn('[studyDb] listDuePositions failed', e);
-    return [];
-  }
+      req = index.getAll(IDBKeyRange.upperBound(now)) as IDBRequest<PositionProgress[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('position-progress', e);
+      console.warn('[studyDb] listDuePositions failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as PositionProgress[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('position-progress', req.error);
+      console.warn('[studyDb] listDuePositions failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function listAllPositionProgress(): Promise<PositionProgress[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure instead of masking it
+  // as an empty progress set (which the practice dashboard/ORP paths treat as "no progress"). Same
+  // posture as listStudies (P1). A legitimately empty store still resolves [] from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('position-progress', 'readonly').objectStore('position-progress').getAll();
-      req.onsuccess = () => resolve((req.result as PositionProgress[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('position-progress', e);
-    console.warn('[studyDb] listAllPositionProgress failed', e);
-    return [];
+    console.warn('[studyDb] listAllPositionProgress failed (db open)', e);
+    throw e;
   }
+  return new Promise<PositionProgress[]>((resolve, reject) => {
+    let req: IDBRequest<PositionProgress[]>;
+    try {
+      req = db.transaction('position-progress', 'readonly').objectStore('position-progress').getAll() as IDBRequest<PositionProgress[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('position-progress', e);
+      console.warn('[studyDb] listAllPositionProgress failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as PositionProgress[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('position-progress', req.error);
+      console.warn('[studyDb] listAllPositionProgress failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 // --- Drill attempts ---
@@ -775,27 +872,37 @@ export async function saveDrillAttempt(attempt: DrillAttempt): Promise<void> {
 }
 
 export async function listDrillAttempts(positionKey?: string): Promise<DrillAttempt[]> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure for parity with the
+  // sibling reads (zero live callers today — free parity). A legitimately empty store still resolves
+  // [] from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    if (positionKey) {
-      return new Promise((resolve, reject) => {
-        const index = db.transaction('drill-attempts', 'readonly')
-          .objectStore('drill-attempts').index('positionKey');
-        const req = index.getAll(positionKey);
-        req.onsuccess = () => resolve((req.result as DrillAttempt[] | undefined) ?? []);
-        req.onerror   = () => reject(req.error);
-      });
-    }
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('drill-attempts', 'readonly').objectStore('drill-attempts').getAll();
-      req.onsuccess = () => resolve((req.result as DrillAttempt[] | undefined) ?? []);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('drill-attempts', e);
-    console.warn('[studyDb] listDrillAttempts failed', e);
-    return [];
+    console.warn('[studyDb] listDrillAttempts failed (db open)', e);
+    throw e;
   }
+  return new Promise<DrillAttempt[]>((resolve, reject) => {
+    let req: IDBRequest<DrillAttempt[]>;
+    try {
+      const store = db.transaction('drill-attempts', 'readonly').objectStore('drill-attempts');
+      req = (positionKey
+        ? store.index('positionKey').getAll(positionKey)
+        : store.getAll()) as IDBRequest<DrillAttempt[]>;
+    } catch (e) {
+      recordStudyIdbReadFail('drill-attempts', e);
+      console.warn('[studyDb] listDrillAttempts failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve((req.result as DrillAttempt[] | undefined) ?? []);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('drill-attempts', req.error);
+      console.warn('[studyDb] listDrillAttempts failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 // --- Folders ---
@@ -817,18 +924,34 @@ export async function saveFolder(folder: StudyFolder): Promise<void> {
 }
 
 export async function getFolder(id: string): Promise<StudyFolder | undefined> {
+  // Un-swallowed (BUG-2026-07-10-008 P2): reject on a genuine storage failure for parity with the
+  // sibling getters (zero live callers today — free parity). A genuinely-missing key still resolves
+  // undefined from onsuccess.
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction('folders', 'readonly').objectStore('folders').get(id);
-      req.onsuccess = () => resolve(req.result as StudyFolder | undefined);
-      req.onerror   = () => reject(req.error);
-    });
+    db = await openDb();
   } catch (e) {
     recordStudyIdbReadFail('folders', e);
-    console.warn('[studyDb] getFolder failed', e);
-    return undefined;
+    console.warn('[studyDb] getFolder failed (db open)', e);
+    throw e;
   }
+  return new Promise<StudyFolder | undefined>((resolve, reject) => {
+    let req: IDBRequest<StudyFolder | undefined>;
+    try {
+      req = db.transaction('folders', 'readonly').objectStore('folders').get(id) as IDBRequest<StudyFolder | undefined>;
+    } catch (e) {
+      recordStudyIdbReadFail('folders', e);
+      console.warn('[studyDb] getFolder failed (transaction)', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result as StudyFolder | undefined);
+    req.onerror   = () => {
+      recordStudyIdbReadFail('folders', req.error);
+      console.warn('[studyDb] getFolder failed (request)', req.error);
+      reject(req.error);
+    };
+  });
 }
 
 export async function listFolders(): Promise<StudyFolder[]> {
