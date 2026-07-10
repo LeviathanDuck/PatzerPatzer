@@ -39,6 +39,21 @@ function recordOrpLoadFail(error: unknown): void {
   });
 }
 
+function recordOpeningsLoadFail(error: unknown): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'openings/db',
+    sourceTag: 'openings-load-fail',
+    message: 'openings-load-fail',
+    metadata: {
+      errorClass: classifyOpeningsError(error),
+      route: openingsRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
 function recordOrpSaveFail(error: unknown): void {
   record({
     kind: 'idb',
@@ -164,17 +179,21 @@ export async function saveCollection(collection: ResearchCollection): Promise<vo
 
 /** Load all saved research collections. */
 export async function loadCollections(): Promise<ResearchCollection[]> {
+
+
+
   try {
     const db = await openDb();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction('collections', 'readonly');
       const req = tx.objectStore('collections').getAll();
       req.onsuccess = () => resolve(req.result ?? []);
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordOpeningsLoadFail(e);
     console.warn('[openings-db] load failed', e);
-    return [];
+    throw e;
   }
 }
 
@@ -184,6 +203,9 @@ export async function loadResearchGame(collectionId: string, gameId: string): Pr
   collectionName: string;
   game: ResearchGame;
 } | null> {
+  // A genuine storage failure must REJECT so the caller (loadResearchGameByRouteId) can route to the
+  // researchAnalysisError render instead of masking it as game-not-found (null). A genuinely-absent
+  // collection/game still resolves null via onsuccess. Record + rethrow. See BUG-2026-07-10-013.
   try {
     const db = await openDb();
     return await new Promise((resolve, reject) => {
@@ -197,8 +219,9 @@ export async function loadResearchGame(collectionId: string, gameId: string): Pr
       req.onerror = () => reject(req.error);
     });
   } catch (e) {
+    recordOpeningsLoadFail(e);
     console.warn('[openings-db] research game load failed', e);
-    return null;
+    throw e;
   }
 }
 
@@ -217,22 +240,43 @@ export async function deleteCollection(id: string): Promise<void> {
 
 /** Clear all openings research data. */
 export async function clearAllOpeningsData(): Promise<void> {
+
+
+
+
+
+
+
+  let collectionIds: string[] = [];
+  let variationIds: string[] = [];
+  let hadSession = false;
   try {
     const collections = await loadCollections();
     const session = await loadSessionState();
     const variations = await loadVariations();
+    collectionIds = collections.map(c => c.id);
+    hadSession = !!session;
+    variationIds = variations.map(v => v.id);
+  } catch (e) {
+    console.warn('[openings-db] tombstone enumeration failed; clearing locally anyway', e);
+  }
+
+  // Unconditional local clear — the caller's real intent.
+  try {
     const db = await openDb();
     const tx = db.transaction(['collections', 'session', 'training-variations'], 'readwrite');
     tx.objectStore('collections').clear();
     tx.objectStore('session').clear();
     tx.objectStore('training-variations').clear();
     await txDone(tx, 'clear');
-    for (const collection of collections) enqueueOpeningsDelete('opening-collections', collection.id);
-    if (session) enqueueOpeningsDelete('opening-session', 'current');
-    for (const variation of variations) enqueueOpeningsDelete('opening-training-variations', variation.id);
   } catch (e) {
     console.warn('[openings-db] clear failed', e);
+    return;
   }
+
+  for (const id of collectionIds) enqueueOpeningsDelete('opening-collections', id);
+  if (hadSession) enqueueOpeningsDelete('opening-session', 'current');
+  for (const id of variationIds) enqueueOpeningsDelete('opening-training-variations', id);
 }
 
 /** Save current session resume state. */
@@ -297,9 +341,11 @@ export async function saveVariation(variation: SavedVariation): Promise<void> {
 
 /** Load all saved training variations. */
 export async function loadVariations(): Promise<SavedVariation[]> {
+
+
   try {
     const db = await openDb();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction('training-variations', 'readonly');
       const req = tx.objectStore('training-variations').getAll();
       req.onsuccess = () => resolve(req.result ?? []);
@@ -308,7 +354,7 @@ export async function loadVariations(): Promise<SavedVariation[]> {
   } catch (e) {
     recordOrpLoadFail(e);
     console.warn('[openings-db] variation load failed', e);
-    return [];
+    throw e;
   }
 }
 
