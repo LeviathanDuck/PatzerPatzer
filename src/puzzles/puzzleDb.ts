@@ -194,38 +194,131 @@ export async function getPuzzleDefinition(id: string): Promise<PuzzleDefinition 
 }
 
 /**
- * List puzzle definitions using a cursor, with optional limit and offset.
- * Replaces getAll() to avoid loading the entire store into memory at once.
+ * Settle a bounded/offset cursor scan of the definitions store ONLY from the owning
+ * transaction's outcome (oncomplete/onerror/onabort) — never from the cursor's own onsuccess.
+ * This mirrors collectStudyQueryCursor (src/study/studyDb.ts): a cursor onsuccess that reaches
+ * `limit` or exhaustion only records a local `completedResult` and stops driving the cursor,
+ * letting the transaction auto-commit naturally; only tx.oncomplete resolves the promise. This
+ * closes BUG-2026-07-10-002, where resolving directly from the cursor callback let a transaction
+ * abort (or an error swallowed by an outer catch) present as a successful partial or empty list.
  * Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts readCursor pattern.
  */
-export async function listPuzzleDefinitions(limit?: number, offset?: number): Promise<PuzzleDefinition[]> {
-  try {
-    const db = await openPuzzleDb();
-    return new Promise((resolve, reject) => {
-      const results: PuzzleDefinition[] = [];
-      let skipped = 0;
-      const req = db.transaction(STORE_DEFINITIONS, 'readonly')
-        .objectStore(STORE_DEFINITIONS).openCursor();
-      req.onsuccess = () => {
-        const cursor = req.result as IDBCursorWithValue | null;
-        if (!cursor) { resolve(results); return; }
-        if (offset !== undefined && skipped < offset) {
-          skipped++;
+function collectPuzzleDefinitionCursor(
+  db: IDBDatabase,
+  limit?: number,
+  offset?: number,
+): Promise<PuzzleDefinition[]> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: PuzzleDefinition[] | undefined;
+
+    const settleResolve = (result: PuzzleDefinition[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction(STORE_DEFINITIONS, 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Puzzle definitions cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      recordPuzzleTxFail(tx, 'onerror', 'read');
+      settleReject(tx.error ?? new Error('Puzzle definitions transaction failed'));
+    };
+    tx.onabort = () => {
+      recordPuzzleTxFail(tx, 'onabort', 'read');
+      settleReject(tx.error ?? new DOMException('Puzzle definitions transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore(STORE_DEFINITIONS).openCursor();
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const results: PuzzleDefinition[] = [];
+    let skipped = 0;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = results;
+        return;
+      }
+      if (offset !== undefined && skipped < offset) {
+        skipped++;
+        try {
           cursor.continue();
-          return;
+        } catch (error) {
+          settleReject(error);
+          try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
         }
-        results.push(cursor.value as PuzzleDefinition);
-        if (limit !== undefined && results.length >= limit) {
-          resolve(results);
-          return;
-        }
+        return;
+      }
+      results.push(cursor.value as PuzzleDefinition);
+      if (limit !== undefined && results.length >= limit) {
+        // Limit reached: record the result and stop driving the cursor (no further continue()),
+        // letting the transaction auto-commit naturally. Settlement still waits on tx.oncomplete.
+        completedResult = results;
+        return;
+      }
+      try {
         cursor.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error('Puzzle definitions cursor failed'));
+    };
+  });
+}
+
+/**
+ * List puzzle definitions using a cursor, with optional limit and offset.
+ * Replaces getAll() to avoid loading the entire store into memory at once.
+ * Rejects on genuine storage failure (DB-open failure or a failed/aborted read transaction)
+ * instead of resolving an empty or partial list — see collectPuzzleDefinitionCursor above and
+ * BUG-2026-07-10-002. Callers already wrap this in try/catch with recordPuzzleLoadFail.
+ */
+export async function listPuzzleDefinitions(limit?: number, offset?: number): Promise<PuzzleDefinition[]> {
+  let db: IDBDatabase;
+  try {
+    db = await openPuzzleDb();
+  } catch (e) {
+    console.warn('[puzzleDb] definition list failed (db open)', e);
+    throw e;
+  }
+  try {
+    return await collectPuzzleDefinitionCursor(db, limit, offset);
   } catch (e) {
     console.warn('[puzzleDb] definition list failed', e);
-    return [];
+    throw e;
   }
 }
 

@@ -1212,12 +1212,23 @@ export class PuzzleRoundCtrl {
           setTimeout(async () => {
             if (!_ratedStreamActive) return; // user may have stopped stream
             redrawFn(); // refresh rating display first
-            const next = await selectNextRatedPuzzle();
-            if (next) {
-              _ratedStreamCount++;
-              _sessionSeenIds.add(next.id);
-              await openGeneratedPuzzleRoundRoute(next.id, redrawFn);
-            } else {
+            try {
+              const next = await selectNextRatedPuzzle();
+              if (next) {
+                _ratedStreamCount++;
+                _sessionSeenIds.add(next.id);
+                await openGeneratedPuzzleRoundRoute(next.id, redrawFn);
+              } else {
+                _emptyRatedStream = true;
+                _ratedStreamActive = false;
+                redrawFn();
+              }
+            } catch (e) {
+              // selectNextRatedPuzzle() now rethrows genuine storage failures (BUG-2026-07-10-002)
+              // instead of resolving an empty list; this setTimeout callback has no caller to
+              // propagate to, so fall back to the existing empty-stream state instead of leaving
+              // an unhandled promise rejection.
+              console.warn('[puzzle-ctrl] rated stream advance failed', e);
               _emptyRatedStream = true;
               _ratedStreamActive = false;
               redrawFn();
@@ -1920,7 +1931,15 @@ export async function startRatedSession(redraw: () => void): Promise<void> {
   _ratedStreamActive = true;
   _emptyRatedStream = false;
 
-  const def = await selectNextRatedPuzzle();
+  let def: PuzzleDefinition | null;
+  try {
+    def = await selectNextRatedPuzzle();
+  } catch (e) {
+    // selectNextRatedPuzzle() now rethrows genuine storage failures (BUG-2026-07-10-002) instead
+    // of resolving an empty list; fall back to the existing empty-stream branch below.
+    console.warn('[puzzle-ctrl] startRatedSession failed', e);
+    def = null;
+  }
   if (def) {
     _ratedStreamCount++;
     _sessionSeenIds.add(def.id);
