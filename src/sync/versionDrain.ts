@@ -97,6 +97,16 @@ export interface VersionedOutboxDrainOptions {
    * (BUG-2026-07-04-005). Errors thrown by the callback are caught and ignored.
    */
   onPermanentRejection?(entries: DurableRetryOutboxEntry[], rejections: VersionedRejectedItem[]): void | Promise<void>;
+
+
+
+
+
+
+
+
+
+  onMetadataPersistenceFailure?(failure: { entries: DurableRetryOutboxEntry[]; errorName: string }): void;
   /** Entries reaching this attemptCount are quarantined instead of retried forever. */
   maxAttempts?: number;
 }
@@ -361,6 +371,16 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       remainingEntries.push(entry);
     }
 
+
+
+
+    const metadataFailedEntries: DurableRetryOutboxEntry[] = [];
+    let metadataErrorName = 'version-write-unverified';
+    const noteMetadataError = (error: unknown) => {
+      if (error instanceof Error && error.name) metadataErrorName = error.name;
+      else if (metadataErrorName === 'version-write-unverified') metadataErrorName = 'unknown';
+    };
+
     const durableCandidateOpIds = new Set<string>();
     if (versionCandidates.length > 0) {
       const records = versionCandidates.map(candidate => ({
@@ -372,7 +392,8 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       try {
         recordRemoteSyncItemVersions(options.versionStorage, options.identity, records);
         batchRecorded = true;
-      } catch {
+      } catch (error) {
+        noteMetadataError(error);
         batchRecorded = false;
       }
 
@@ -393,7 +414,8 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
             if (recordAcceptedVersion(options.versionStorage, options.identity, candidate.item)) {
               durableCandidateOpIds.add(candidate.entry.opId);
             }
-          } catch {
+          } catch (error) {
+            noteMetadataError(error);
             // Leave unresolved; falls through to metadataWriteFailed below.
           }
         }
@@ -404,6 +426,7 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       if (!durableCandidateOpIds.has(candidate.entry.opId)) {
         failedOpIds.push(candidate.entry.opId);
         mergeCounts(counts, 'metadataWriteFailed');
+        metadataFailedEntries.push(candidate.entry);
         continue;
       }
       if (candidate.kind === 'accepted') {
@@ -412,8 +435,11 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
           durableOpIds.push(candidate.entry.opId);
           mergeCounts(counts, 'accepted');
         } catch {
+
+
+
           failedOpIds.push(candidate.entry.opId);
-          mergeCounts(counts, 'metadataWriteFailed');
+          mergeCounts(counts, 'applyAdapterFailed');
         }
       } else {
         durableOpIds.push(candidate.entry.opId);
@@ -433,6 +459,7 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
           if (!recordAcceptedVersion(options.versionStorage, options.identity, conflict.current)) {
             failedOpIds.push(entry.opId);
             mergeCounts(counts, 'metadataWriteFailed');
+            metadataFailedEntries.push(entry);
             continue;
           }
           const nextWrite = await options.conflictAdapter.shouldReenqueue?.(entry, conflict.current, conflict) ?? null;
@@ -483,6 +510,13 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       });
       mergeCounts(counts, 'queued', failedOpIds.length);
       mergeCounts(counts, 'backedOff', failedOpIds.length);
+    }
+    if (metadataFailedEntries.length > 0 && options.onMetadataPersistenceFailure) {
+      try {
+        options.onMetadataPersistenceFailure({ entries: metadataFailedEntries, errorName: metadataErrorName });
+      } catch {
+        // Diagnostics must never change drain behavior.
+      }
     }
     await reportBatchProgress();
     return { sendFailed: false };
@@ -548,7 +582,12 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
 
   const queued = await countDurableVersionedOutboxEntries(options.outboxStorage);
   if (queued > 0) counts.queued = queued;
-  return { success: (counts.failed ?? 0) === 0 && (counts.metadataWriteFailed ?? 0) === 0, counts };
+  return {
+
+
+    success: (counts.failed ?? 0) === 0 && (counts.metadataWriteFailed ?? 0) === 0 && (counts.applyAdapterFailed ?? 0) === 0,
+    counts,
+  };
 }
 
 export async function drainDurableVersionedOutbox(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {

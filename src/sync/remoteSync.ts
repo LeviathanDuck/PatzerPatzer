@@ -3774,6 +3774,15 @@ async function drainVersionedRemoteSyncOutbox(
       clientId: casClientId(),
       sendBatch: sendVersionedWriteBatch,
       ...(progressOptions.onBatchProgress ? { onBatchProgress: progressOptions.onBatchProgress } : {}),
+
+
+      onMetadataPersistenceFailure: ({ entries, errorName }) => {
+        recordRemoteSyncLog(
+          'flush',
+          'error',
+          `SYNC_VERSION_METADATA_LOCALSTORAGE_WRITE_FAILED: ${entries.length} queued write(s) could not persist version metadata (${errorName}). The operations remain queued with backoff. If this repeats, per-item sync bookkeeping has likely hit the localStorage quota (BUG-2026-07-10-016) — the sync item-state relocation wave is the fix.`,
+        );
+      },
       onPermanentRejection: async (entries, rejections) => {
 
 
