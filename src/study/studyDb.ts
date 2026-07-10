@@ -262,7 +262,7 @@ function collectStudyPaginatedCursor(
     const tx = openedTx;
 
     tx.oncomplete = () => {
-      if (completedResult) {
+      if (completedResult !== undefined) {
         settleResolve(completedResult);
       } else {
         settleReject(new Error(
@@ -452,7 +452,7 @@ function collectStudyQueryCursor(
     const tx = openedTx;
 
     tx.oncomplete = () => {
-      if (completedResult) {
+      if (completedResult !== undefined) {
         settleResolve(completedResult);
       } else {
         settleReject(new StudyQueryCursorReadError(

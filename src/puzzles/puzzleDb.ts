@@ -233,7 +233,7 @@ function collectPuzzleDefinitionCursor(
     const tx = openedTx;
 
     tx.oncomplete = () => {
-      if (completedResult) {
+      if (completedResult !== undefined) {
         settleResolve(completedResult);
       } else {
         settleReject(new Error(
@@ -503,7 +503,7 @@ function collectAttemptsCursor<T>(
     const tx = openedTx;
 
     tx.oncomplete = () => {
-      if (completedResult) {
+      if (completedResult !== undefined) {
         settleResolve(completedResult);
       } else {
         settleReject(new Error(
