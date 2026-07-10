@@ -1662,21 +1662,80 @@ export function classifyStoredAnalysisRecord(
 
 
 
-export async function listAnalysisLibraryClassificationFromIdb(
+
+
+
+
+
+
+
+
+
+
+
+
+function collectAnalysisLibraryClassificationCursor(
+  db: IDBDatabase,
   analysisVersion: number,
 ): Promise<AnalysisLibraryClassification> {
-  const db = await openGameDb();
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: AnalysisLibraryClassification | undefined;
+
+    const settleResolve = (result: AnalysisLibraryClassification): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('analysis-library', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Analysis-library classification cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Analysis-library classification transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Analysis-library classification transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('analysis-library').openCursor();
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
     const complete:     CompletedAnalysisMetadata[]    = [];
     const partial:      PartialAnalysisMetadata[]      = [];
     const versionStale: VersionStaleAnalysisMetadata[] = [];
-    const req = db.transaction('analysis-library', 'readonly')
-      .objectStore('analysis-library')
-      .openCursor();
-    req.onsuccess = () => {
-      const cursor = req.result;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve({ complete, partial, versionStale });
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = { complete, partial, versionStale };
         return;
       }
       const stored = cursor.value as StoredAnalysis;
@@ -1699,10 +1758,31 @@ export async function listAnalysisLibraryClassificationFromIdb(
             break;
         }
       }
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-    req.onerror = () => reject(recordReqFailure(req, 'analysis-library', 'cursor'));
+    cursorRequest.onerror = () => {
+      settleReject(recordReqFailure(cursorRequest, 'analysis-library', 'cursor'));
+    };
   });
+}
+
+
+
+
+
+
+
+
+export async function listAnalysisLibraryClassificationFromIdb(
+  analysisVersion: number,
+): Promise<AnalysisLibraryClassification> {
+  const db = await openGameDb();
+  return collectAnalysisLibraryClassificationCursor(db, analysisVersion);
 }
 
 // Back-compat entry point: existing callers (e.g. reviewedStatusDerivation.ts) only need the
