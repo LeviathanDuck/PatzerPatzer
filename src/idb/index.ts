@@ -1378,81 +1378,83 @@ export function storedGameRecordToImportedGame(record: StoredGameRecord): Import
  * Load all games from the per-game `games` store.
  * Returns the games array and nav state, or undefined if the store is empty.
  * Falls back to the legacy `game-library` path if the new store has no records.
+ *
+ * Storage failures (DB-open failure, aborted/failed read) REJECT — callers MUST distinguish a
+ * genuine failure from a legitimately empty store, which still resolves `undefined` via
+ * `onsuccess`. Mirrors `getAccountFromIdb`'s propagate-don't-mask contract (BUG-2026-07-10-007):
+ * an earlier outer catch collapsed every failure to `undefined`, silently rendering the games
+ * list as if the user had no games.
+ *
  * Adapted from lichess-org/lila: ui/lib/src/objectStorage.ts getMany() pattern.
  */
 export async function loadGamesFromIdb(): Promise<StoredGames | undefined> {
-  try {
-    const db = await openGameDb();
+  const db = await openGameDb();
 
 
-    const gamesFromNewStore = await new Promise<StoredGameRecord[]>((resolve, reject) => {
-      const req = db.transaction('games', 'readonly').objectStore('games').getAll();
-      req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
-      req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
+  const gamesFromNewStore = await new Promise<StoredGameRecord[]>((resolve, reject) => {
+    const req = db.transaction('games', 'readonly').objectStore('games').getAll();
+    req.onsuccess = () => resolve((req.result as StoredGameRecord[] | undefined) ?? []);
+    req.onerror   = () => reject(recordReqFailure(req, 'games', 'read'));
+  });
+
+  if (gamesFromNewStore.length > 0) {
+    // Read nav state from game-library (selectedId / path are stored there).
+    const navRecord = await new Promise<StoredGameNavState | undefined>((resolve, reject) => {
+      const req = db.transaction('game-library', 'readonly')
+        .objectStore('game-library').get('imported-nav');
+      req.onsuccess = () => resolve(req.result as StoredGameNavState | undefined);
+      req.onerror   = () => reject(recordReqFailure(req, 'game-library', 'read', 'imported-nav'));
     });
-
-    if (gamesFromNewStore.length > 0) {
-      // Read nav state from game-library (selectedId / path are stored there).
-      const navRecord = await new Promise<StoredGameNavState | undefined>((resolve, reject) => {
-        const req = db.transaction('game-library', 'readonly')
-          .objectStore('game-library').get('imported-nav');
-        req.onsuccess = () => resolve(req.result as StoredGameNavState | undefined);
-        req.onerror   = () => reject(recordReqFailure(req, 'game-library', 'read', 'imported-nav'));
-      });
-      const games = gamesFromNewStore.map(storedGameRecordToImportedGame);
-      return {
-        games,
-        selectedId: navRecord?.selectedId ?? null,
-        ...(navRecord?.path !== undefined ? { path: navRecord.path } : {}),
-      };
-    }
-
-    // Legacy fallback: read from game-library single-record store.
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction('game-library', 'readonly');
-      const store = tx.objectStore('game-library');
-      const gamesReq = store.get('imported-games');
-      const navReq = store.get('imported-nav');
-      let gamesDone = false;
-      let navDone = false;
-      let libraryRecord: StoredGameLibrary | StoredGames | undefined;
-      let navRecord: StoredGameNavState | undefined;
-
-      const maybeResolve = () => {
-        if (!gamesDone || !navDone) return;
-        if (!libraryRecord && !navRecord) {
-          resolve(undefined);
-          return;
-        }
-        const games = libraryRecord?.games ?? [];
-        const selectedId = navRecord?.selectedId
-          ?? (libraryRecord && 'selectedId' in libraryRecord ? libraryRecord.selectedId : null);
-        const path = navRecord?.path
-          ?? (libraryRecord && 'path' in libraryRecord ? libraryRecord.path : undefined);
-        resolve({
-          games,
-          selectedId,
-          ...(path !== undefined ? { path } : {}),
-        });
-      };
-
-      gamesReq.onsuccess = () => {
-        libraryRecord = gamesReq.result as StoredGameLibrary | StoredGames | undefined;
-        gamesDone = true;
-        maybeResolve();
-      };
-      navReq.onsuccess = () => {
-        navRecord = navReq.result as StoredGameNavState | undefined;
-        navDone = true;
-        maybeResolve();
-      };
-      gamesReq.onerror = () => reject(recordReqFailure(gamesReq, 'game-library', 'read', 'imported-games'));
-      navReq.onerror = () => reject(recordReqFailure(navReq, 'game-library', 'read', 'imported-nav'));
-    });
-  } catch (e) {
-    console.warn('[idb] load failed', e);
-    return undefined;
+    const games = gamesFromNewStore.map(storedGameRecordToImportedGame);
+    return {
+      games,
+      selectedId: navRecord?.selectedId ?? null,
+      ...(navRecord?.path !== undefined ? { path: navRecord.path } : {}),
+    };
   }
+
+  // Legacy fallback: read from game-library single-record store.
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('game-library', 'readonly');
+    const store = tx.objectStore('game-library');
+    const gamesReq = store.get('imported-games');
+    const navReq = store.get('imported-nav');
+    let gamesDone = false;
+    let navDone = false;
+    let libraryRecord: StoredGameLibrary | StoredGames | undefined;
+    let navRecord: StoredGameNavState | undefined;
+
+    const maybeResolve = () => {
+      if (!gamesDone || !navDone) return;
+      if (!libraryRecord && !navRecord) {
+        resolve(undefined);
+        return;
+      }
+      const games = libraryRecord?.games ?? [];
+      const selectedId = navRecord?.selectedId
+        ?? (libraryRecord && 'selectedId' in libraryRecord ? libraryRecord.selectedId : null);
+      const path = navRecord?.path
+        ?? (libraryRecord && 'path' in libraryRecord ? libraryRecord.path : undefined);
+      resolve({
+        games,
+        selectedId,
+        ...(path !== undefined ? { path } : {}),
+      });
+    };
+
+    gamesReq.onsuccess = () => {
+      libraryRecord = gamesReq.result as StoredGameLibrary | StoredGames | undefined;
+      gamesDone = true;
+      maybeResolve();
+    };
+    navReq.onsuccess = () => {
+      navRecord = navReq.result as StoredGameNavState | undefined;
+      navDone = true;
+      maybeResolve();
+    };
+    gamesReq.onerror = () => reject(recordReqFailure(gamesReq, 'game-library', 'read', 'imported-games'));
+    navReq.onerror = () => reject(recordReqFailure(navReq, 'game-library', 'read', 'imported-nav'));
+  });
 }
 
 /**
