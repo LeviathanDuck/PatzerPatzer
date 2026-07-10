@@ -102,6 +102,7 @@ import type { StudyItem } from './types';
 import { renderCompactGameRow, type CompactRowExtras } from '../games/view';
 import { renderRichGameRow, type RichGameRowDeps, type ReviewControlState } from '../games/richRow';
 import {
+  advVisibility,
   bulkDeleteStudies,
   bulkSetFavorite,
   clearSelection,
@@ -1040,7 +1041,25 @@ export function renderItemListPane(
 
 
 
-  const visibleItems = showHiddenItems() ? items : items.filter(i => !isHidden('game', i.id));
+
+
+
+
+
+
+
+
+
+
+
+
+  const effectiveHiddenMode = advVisibility() ?? (showHiddenItems() ? 'include' : 'exclude');
+  const visibleItems =
+    effectiveHiddenMode === 'include'
+      ? items
+      : effectiveHiddenMode === 'only'
+        ? items.filter(i => isHidden('game', i.id))
+        : items.filter(i => !isHidden('game', i.id));
   const displayedIds = visibleItems.map(i => i.id);
   const itemsById = new Map(visibleItems.map(i => [i.id, i] as const));
   const pinnedItems = visibleItems.filter(i => isItemPinned(i.id));
