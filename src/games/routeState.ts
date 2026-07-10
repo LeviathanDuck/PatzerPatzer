@@ -330,7 +330,22 @@ function parseDensity(value: string | null, invalidParams: GamesRouteInvalidPara
 
 const RATING_BOUND_MIN = 0;
 const RATING_BOUND_MAX = 4000;
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// Component round-trip calendar validity: Date.UTC normalizes overflowing components (e.g.
+// Feb 31 -> Mar 3, Feb 29 in a non-leap year -> Mar 1) instead of rejecting them, and this rolls
+// forward silently through month-length and leap-year (including the century) rules alike. Build
+// the UTC date from the parsed components, then compare the UTC getters back against those same
+// components: any mismatch means the calendar date does not exist.
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const utc = Date.UTC(year, month - 1, day);
+  const date = new Date(utc);
+  return (
+    date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+  );
+}
 
 function parseRatingBound(
   field: 'ratingMin' | 'ratingMax',
@@ -356,7 +371,15 @@ function parseDateBound(
   invalidParams: GamesRouteInvalidParam[],
 ): string | undefined {
   if (value === null || value === '') return undefined;
-  if (!DATE_PATTERN.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
+  const match = DATE_PATTERN.exec(value);
+  if (!match) {
+    invalidParams.push(invalid(field, value, 'omitted', 'invalid-date'));
+    return undefined;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!isValidCalendarDate(year, month, day)) {
     invalidParams.push(invalid(field, value, 'omitted', 'invalid-date'));
     return undefined;
   }

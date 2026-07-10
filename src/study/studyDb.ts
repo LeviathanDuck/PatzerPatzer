@@ -217,11 +217,125 @@ export async function listStudies(): Promise<StudyItem[]> {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+function collectStudyPaginatedCursor(
+  db: IDBDatabase,
+  sortIndex: 'createdAt' | 'updatedAt',
+  direction: IDBCursorDirection,
+  offset: number,
+  limit: number,
+): Promise<StudyItem[]> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: StudyItem[] | undefined;
+
+    const settleResolve = (result: StudyItem[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('studies', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Study paginated cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', 'read');
+      settleReject(tx.error ?? new Error('Study paginated cursor transaction failed'));
+    };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', 'read');
+      settleReject(tx.error ?? new DOMException('Study paginated cursor transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('studies').index(sortIndex).openCursor(null, direction);
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const results: StudyItem[] = [];
+    let skipped = 0;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = results;
+        return;
+      }
+      if (skipped < offset) {
+        skipped++;
+        try {
+          cursor.continue();
+        } catch (error) {
+          settleReject(error);
+          try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+        }
+        return;
+      }
+      results.push(cursor.value as StudyItem);
+      if (results.length >= limit) {
+        // Limit reached: record the result and stop driving the cursor (no further continue()),
+        // letting the transaction auto-commit naturally. Settlement still waits on tx.oncomplete.
+        completedResult = results;
+        return;
+      }
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error('Study paginated cursor failed'));
+    };
+  });
+}
+
 /**
  * Load a page of studies using an IDB cursor over the given index.
  * Skips the first `offset` records, then collects up to `limit`.
  * Replaces full getAll() for the library view — satisfies CR-2 / CR-3.
  * Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
+ * Rejects on genuine storage failure (DB-open failure or a failed/aborted read transaction)
+ * instead of resolving an empty or partial list — see collectStudyPaginatedCursor above and
+ * BUG-2026-07-10-001. Callers already wrap this in try/catch with recordStudyLoadFail.
  */
 export async function getStudiesPaginated(
   sortIndex: 'createdAt' | 'updatedAt',
@@ -229,33 +343,20 @@ export async function getStudiesPaginated(
   offset: number,
   limit: number,
 ): Promise<StudyItem[]> {
+  let db: IDBDatabase;
   try {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const index = db.transaction('studies', 'readonly')
-        .objectStore('studies').index(sortIndex);
-      const req = index.openCursor(null, direction);
-      const results: StudyItem[] = [];
-      let skipped = 0;
-
-      req.onsuccess = () => {
-        const cursor = req.result;
-        if (!cursor) { resolve(results); return; }
-        if (skipped < offset) {
-          skipped++;
-          cursor.continue();
-          return;
-        }
-        results.push(cursor.value as StudyItem);
-        if (results.length >= limit) { resolve(results); return; }
-        cursor.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
+    db = await openDb();
+  } catch (e) {
+    recordStudyIdbReadFail('studies', e);
+    console.warn('[studyDb] getStudiesPaginated failed (db open)', e);
+    throw e;
+  }
+  try {
+    return await collectStudyPaginatedCursor(db, sortIndex, direction, offset, limit);
   } catch (e) {
     recordStudyIdbReadFail('studies', e);
     console.warn('[studyDb] getStudiesPaginated failed', e);
-    return [];
+    throw e;
   }
 }
 
