@@ -90,12 +90,15 @@ export interface VersionedOutboxDrainOptions {
 
 
   onBatchProgress?(progress: VersionedOutboxDrainBatchProgress): void;
-  /**
-   * Called when entries are permanently removed without server acceptance: explicit
-   * non-retryable server rejects and attempt-cap quarantines. Local IDB data is untouched, so
-   * the reconcile/untracked-scan path can re-queue these items after the cause is fixed
-   * (BUG-2026-07-04-005). Errors thrown by the callback are caught and ignored.
-   */
+
+
+
+
+
+
+
+
+
   onPermanentRejection?(entries: DurableRetryOutboxEntry[], rejections: VersionedRejectedItem[]): void | Promise<void>;
 
 
@@ -194,16 +197,25 @@ const DEFAULT_BATCH_SIZE = 100;
 // re-pushed forever (BUG-2026-07-04-005).
 const DEFAULT_MAX_DRAIN_ATTEMPTS = 12;
 
-async function notifyPermanentRejection(
+
+
+
+
+
+
+
+
+async function persistPermanentRejection(
   options: VersionedOutboxDrainOptions,
   entries: DurableRetryOutboxEntry[],
   rejections: VersionedRejectedItem[],
-): Promise<void> {
-  if (!options.onPermanentRejection || entries.length === 0) return;
+): Promise<boolean> {
+  if (!options.onPermanentRejection || entries.length === 0) return true;
   try {
     await options.onPermanentRejection(entries, rejections);
+    return true;
   } catch {
-    // Permanent-rejection reporting must never interrupt the drain.
+    return false;
   }
 }
 
@@ -289,9 +301,10 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
 
   const quarantineCapped = async (capped: DurableRetryOutboxEntry[]): Promise<void> => {
     if (capped.length === 0) return;
-    await removeDurableVersionedOutboxEntries(options.outboxStorage, capped.map(entry => entry.opId));
-    mergeCounts(counts, 'quarantined', capped.length);
-    await notifyPermanentRejection(options, capped, capped.map(entry => ({
+
+
+
+    const persisted = await persistPermanentRejection(options, capped, capped.map(entry => ({
       opId: entry.opId,
       store: entry.store,
       itemKey: entry.itemKey,
@@ -299,6 +312,18 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       retryable: false,
       message: `Removed from the sync outbox after ${entry.attemptCount} failed attempts.`,
     })));
+    if (!persisted) {
+      await recordDurableVersionedOutboxFailure(options.outboxStorage, capped.map(entry => entry.opId), 'Quarantine record could not be persisted.', {
+        now,
+        jitterMs: options.jitterMs ?? 0,
+      });
+      mergeCounts(counts, 'quarantinePersistFailed', capped.length);
+      mergeCounts(counts, 'queued', capped.length);
+      mergeCounts(counts, 'backedOff', capped.length);
+      return;
+    }
+    await removeDurableVersionedOutboxEntries(options.outboxStorage, capped.map(entry => entry.opId));
+    mergeCounts(counts, 'quarantined', capped.length);
   };
 
   const reportBatchProgress = async (): Promise<void> => {
@@ -512,11 +537,11 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       }
       const rejection = nonRetryableRejected.get(entry.opId);
       if (rejection) {
-        // Explicit permanent server reject: remove so it cannot re-push every flush forever;
-        // local IDB data is preserved and recoverable through the reconcile path.
+
+
+
         droppedEntries.push(entry);
         droppedRejections.push(rejection);
-        mergeCounts(counts, 'rejectedDropped');
         continue;
       }
       // Op absent from the response entirely: never drop silently — back off and retry.
@@ -524,13 +549,26 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       mergeCounts(counts, 'unacknowledged');
     }
 
-    if (durableOpIds.length > 0 || droppedEntries.length > 0) {
+
+
+
+    let removableDropped = droppedEntries;
+    if (droppedEntries.length > 0) {
+      const persisted = await persistPermanentRejection(options, droppedEntries, droppedRejections);
+      if (persisted) {
+        mergeCounts(counts, 'rejectedDropped', droppedEntries.length);
+      } else {
+        removableDropped = [];
+        failedOpIds.push(...droppedEntries.map(entry => entry.opId));
+        mergeCounts(counts, 'quarantinePersistFailed', droppedEntries.length);
+      }
+    }
+    if (durableOpIds.length > 0 || removableDropped.length > 0) {
       await removeDurableVersionedOutboxEntries(options.outboxStorage, [
         ...durableOpIds,
-        ...droppedEntries.map(entry => entry.opId),
+        ...removableDropped.map(entry => entry.opId),
       ]);
     }
-    await notifyPermanentRejection(options, droppedEntries, droppedRejections);
     if (failedOpIds.length > 0) {
       await recordDurableVersionedOutboxFailure(options.outboxStorage, failedOpIds, 'Versioned write result was not durable.', {
         now,
@@ -613,7 +651,12 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
   return {
 
 
-    success: (counts.failed ?? 0) === 0 && (counts.metadataWriteFailed ?? 0) === 0 && (counts.applyAdapterFailed ?? 0) === 0,
+
+    success:
+      (counts.failed ?? 0) === 0 &&
+      (counts.metadataWriteFailed ?? 0) === 0 &&
+      (counts.applyAdapterFailed ?? 0) === 0 &&
+      (counts.quarantinePersistFailed ?? 0) === 0,
     counts,
   };
 }

@@ -3787,11 +3787,15 @@ async function drainVersionedRemoteSyncOutbox(
 
 
 
+
+
+
         try {
           await writeQuarantineRecords(buildQuarantineRecordsFromPermanentRejection(entries, rejections));
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Could not persist quarantine records.';
-          recordRemoteSyncLog('flush', 'error', `Failed to persist ${entries.length} quarantine record(s): ${message}`);
+          recordRemoteSyncLog('flush', 'error', `Failed to persist ${entries.length} quarantine record(s); the writes stay queued and will retry: ${message}`);
+          throw error;
         }
         const detail = entries
           .slice(0, 10)
