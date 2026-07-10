@@ -4025,6 +4025,10 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
 
   const gamesById = new Map(games.map(g => [g.id, g]));
   const rebuilt: ReviewQueueEntry[] = [];
+  // Recovery below can mutate visible reviewed state (_analyzedGameIds) without rebuilding any
+  // queue entry; that mutation must still be published or reviewed badges stay hidden until the
+  // next unrelated queue action redraws (BUG-2026-07-02-003).
+  let recoveryCompletedGames = false;
 
   for (const record of sortByActiveBatchOrder(manifest, record => record.gameId)) {
     const game = gamesById.get(record.gameId);
@@ -4039,6 +4043,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
       // Finished between the last manifest write and the interruption — nothing to resume.
       _analyzedGameIds.add(record.gameId);
       void clearReviewQueueManifestEntry(record.gameId);
+      recoveryCompletedGames = true;
       continue;
     }
 
@@ -4090,7 +4095,14 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
     });
   }
 
-  if (rebuilt.length === 0) return;
+  if (rebuilt.length === 0) {
+    // All manifest rows were already complete: nothing to resume, but the loop above may have
+    // added games to _analyzedGameIds. Publish that state change exactly once — no engine work,
+    // no queue rebuild — so the Games list redraws its reviewed badges now instead of on the
+    // next queue touch (BUG-2026-07-02-003).
+    if (recoveryCompletedGames) notifyReviewQueueStateChanged();
+    return;
+  }
 
   queue = rebuilt;
   activeIndex = -1;
