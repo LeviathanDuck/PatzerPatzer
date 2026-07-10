@@ -902,20 +902,82 @@ export async function putDiagnosticEvent(event: DiagnosticEvent): Promise<void> 
   await txDone(tx);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export async function getDiagnosticEvents(options: { limit?: number; kind?: string } = {}): Promise<DiagnosticEvent[]> {
   const limit = options.limit ?? 100;
   if (limit <= 0) return [];
 
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
-    const events: DiagnosticEvent[] = [];
-    const tx = db.transaction('diagnostic-events', 'readonly');
-    const req = tx.objectStore('diagnostic-events').index('timestamp').openCursor();
+    let settled = false;
+    let completedResult: DiagnosticEvent[] | undefined;
 
-    req.onsuccess = () => {
-      const cursor = req.result;
+    const settleResolve = (result: DiagnosticEvent[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('diagnostic-events', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Diagnostic-events cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Diagnostic-events read transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Diagnostic-events read transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('diagnostic-events').index('timestamp').openCursor();
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const events: DiagnosticEvent[] = [];
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve(events);
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = events;
         return;
       }
 
@@ -923,30 +985,22 @@ export async function getDiagnosticEvents(options: { limit?: number; kind?: stri
       if (options.kind === undefined || event.kind === options.kind) {
         events.push(event);
         if (events.length >= limit) {
-          resolve(events);
+          // Limit reached: stop driving the cursor and let the transaction auto-commit; only
+          // tx.oncomplete resolves. Do NOT continue().
+          completedResult = events;
           return;
         }
       }
 
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-
-    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-events', 'cursor'));
-    tx.onabort = () => {
-      record({
-        kind: 'idb',
-        severity: Severity.Error,
-        sourceTag: 'idb',
-        message: 'IDB transaction onabort',
-        metadata: {
-          storeName: 'diagnostic-events',
-          operation: 'read',
-          mode: tx.mode,
-          errorName: tx.error?.name ?? 'UnknownError',
-        },
-        redactionClass: 'safe',
-      });
-      reject(tx.error);
+    cursorRequest.onerror = () => {
+      settleReject(recordReqFailure(cursorRequest, 'diagnostic-events', 'cursor'));
     };
   });
 }
@@ -969,47 +1023,89 @@ export async function getDiagnosticSession(sessionId: string): Promise<Diagnosti
   });
 }
 
+// Settlement-family sibling of getDiagnosticEvents (BUG-2026-07-10-014). Settle ONLY from the
+// owning transaction's outcome; both the exhaustion and limit-cap stops record the accumulated
+// list and stop driving the cursor. The recency ordering (index('startedAt') 'prev') and the limit
+// cap are byte-preserved. See getDiagnosticEvents for the full family rationale (bespoke onabort
+// record() dropped for AbortError synthesis; cursor-onerror recordReqFailure retained; no reader
+// recursion).
 export async function getRecentDiagnosticSessions(limit: number): Promise<DiagnosticSession[]> {
   if (limit <= 0) return [];
 
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
-    const sessions: DiagnosticSession[] = [];
-    const tx = db.transaction('diagnostic-sessions', 'readonly');
-    const req = tx.objectStore('diagnostic-sessions').index('startedAt').openCursor(null, 'prev');
+    let settled = false;
+    let completedResult: DiagnosticSession[] | undefined;
 
-    req.onsuccess = () => {
-      const cursor = req.result;
+    const settleResolve = (result: DiagnosticSession[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('diagnostic-sessions', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Diagnostic-sessions cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Diagnostic-sessions read transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Diagnostic-sessions read transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('diagnostic-sessions').index('startedAt').openCursor(null, 'prev');
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const sessions: DiagnosticSession[] = [];
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve(sessions);
+        completedResult = sessions;
         return;
       }
 
       sessions.push(cursor.value as DiagnosticSession);
       if (sessions.length >= limit) {
-        resolve(sessions);
+        completedResult = sessions;
         return;
       }
 
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-
-    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-sessions', 'cursor'));
-    tx.onabort = () => {
-      record({
-        kind: 'idb',
-        severity: Severity.Error,
-        sourceTag: 'idb',
-        message: 'IDB transaction onabort',
-        metadata: {
-          storeName: 'diagnostic-sessions',
-          operation: 'read',
-          mode: tx.mode,
-          errorName: tx.error?.name ?? 'UnknownError',
-        },
-        redactionClass: 'safe',
-      });
-      reject(tx.error);
+    cursorRequest.onerror = () => {
+      settleReject(recordReqFailure(cursorRequest, 'diagnostic-sessions', 'cursor'));
     };
   });
 }
@@ -1184,28 +1280,85 @@ export async function replaceDiagnosticAggregates(
   await txDone(tx);
 }
 
+// Settlement-family sibling of getDiagnosticEvents (BUG-2026-07-10-014). Full-scan (no limit): only
+// exhaustion records the accumulated list, then tx.oncomplete resolves. The optional kind filter is
+// byte-preserved (index('kind').openCursor(kind) vs the full store.openCursor()). The previous bare
+// `tx.onabort = () => reject(tx.error)` is replaced by the family's AbortError-synthesis reject so a
+// null tx.error still surfaces a typed rejection; cursor-onerror recordReqFailure retained.
 export async function getDiagnosticAggregates(kind?: DiagnosticAggregateKind): Promise<DiagnosticAggregate[]> {
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
-    const aggregates: DiagnosticAggregate[] = [];
-    const tx = db.transaction('diagnostic-aggregates', 'readonly');
-    const store = tx.objectStore('diagnostic-aggregates');
-    const req = kind
-      ? store.index('kind').openCursor(kind)
-      : store.openCursor();
+    let settled = false;
+    let completedResult: DiagnosticAggregate[] | undefined;
 
-    req.onsuccess = () => {
-      const cursor = req.result;
+    const settleResolve = (result: DiagnosticAggregate[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('diagnostic-aggregates', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Diagnostic-aggregates cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Diagnostic-aggregates read transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Diagnostic-aggregates read transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      const store = tx.objectStore('diagnostic-aggregates');
+      cursorRequest = kind
+        ? store.index('kind').openCursor(kind)
+        : store.openCursor();
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    const aggregates: DiagnosticAggregate[] = [];
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve(aggregates);
+        completedResult = aggregates;
         return;
       }
 
       aggregates.push(cursor.value as DiagnosticAggregate);
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-    req.onerror = () => reject(recordReqFailure(req, 'diagnostic-aggregates', 'cursor'));
-    tx.onabort = () => reject(tx.error);
+    cursorRequest.onerror = () => {
+      settleReject(recordReqFailure(cursorRequest, 'diagnostic-aggregates', 'cursor'));
+    };
   });
 }
 
