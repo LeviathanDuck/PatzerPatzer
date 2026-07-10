@@ -78,13 +78,14 @@ import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   createFolder,
   folders,
+  queryStudyItems,
   searchQuery,
+  setActiveFolderId,
   setSearch,
   sortDir,
   setSortDir,
   sortKey,
   setSortKey,
-  type StudySortDir,
   type StudySortKey,
 } from './studyCtrl';
 import { current, writeHashRoute } from '../router';
@@ -440,7 +441,6 @@ function resolveLensItems(lensId: StudyLensId, allItems: readonly StudyItem[]): 
 
 
 
-
 function collectItemRowOrder(root: VNode, knownIds: ReadonlySet<string>): string[] {
   const order: string[] = [];
   const visit = (node: VNode): void => {
@@ -735,6 +735,7 @@ async function commitNewFolder(selection: NavigatorSelection, redraw: () => void
   const created = all.length > 0 ? all[all.length - 1] : undefined;
   if (created && created.name === name) {
     _selection = { kind: 'folder', sectionId, folderId: created.id };
+    setActiveFolderId(created.id);
   }
   redraw();
 }
@@ -788,28 +789,6 @@ let _itemSearchOpen = false;
 let _sortMenuOpen = false;
 let _importMenuOpen = false;
 let _includeDescendants = false;
-
-function filterItemsBySearch(items: StudyItem[], query: string): StudyItem[] {
-  if (!query.trim()) return items;
-  const q = query.trim().toLowerCase();
-  // Title + player-name matching only — studyCtrl.ts's own private `applyFilters` (the classic
-  // flat library view's search) also matches its annotation index (notes/tags/PGN comments), but
-  // that index and the function reading it are not exported (studyCtrl.ts is a no-touch,
-  // exports-only file here), so this navigator-scoped filter is a disclosed narrower subset of
-  // the classic library search rather than a re-derived guess at the private annotation format.
-  return items.filter(item =>
-    item.title.toLowerCase().includes(q) ||
-    (item.white ?? '').toLowerCase().includes(q) ||
-    (item.black ?? '').toLowerCase().includes(q));
-}
-
-function sortItemsForList(items: StudyItem[], key: StudySortKey, dir: StudySortDir): StudyItem[] {
-  const factor = dir === 'asc' ? 1 : -1;
-  return [...items].sort((a, b) => {
-    if (key === 'title') return factor * a.title.localeCompare(b.title);
-    return factor * (a[key] - b[key]);
-  });
-}
 
 function renderSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
@@ -1187,6 +1166,7 @@ function renderGameOpenShell(
       _selection = scope.folderId
         ? { kind: 'folder', sectionId: scope.sectionId, folderId: scope.folderId }
         : { kind: 'section', sectionId: scope.sectionId };
+      setActiveFolderId(scope.folderId);
     }
     writeHashRoute('#/study');
   };
@@ -1208,7 +1188,7 @@ function renderGameOpenShell(
         const rawItems = scope
           ? resolveItems(scope.itemIds, byId)
           : (byId.has(opts.openItemId) ? [byId.get(opts.openItemId)!] : []);
-        const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
+        const items = queryStudyItems(rawItems, { folderScope: 'already-resolved' });
 
 
 
@@ -1273,6 +1253,7 @@ export function renderNavigatorShell(
   const activeKey = selectionKey(_selection);
   const onSelect = (selection: NavigatorSelection): void => {
     _selection = selection;
+    setActiveFolderId(selection.kind === 'folder' ? selection.folderId : null);
     redraw();
   };
 
@@ -1305,14 +1286,10 @@ export function renderNavigatorShell(
     : selection.kind === 'lens'
       ? resolveLensItems(selection.lensId, allItems)
       : resolveItems(resolveSelectedItemIds(tree, selection, _includeDescendants), byId);
-  // Search narrows the resolved item set; sort reorders it. Both are applied here (the shell) —
-  // itemListView.ts's own `renderGroupedRows` still re-sorts its OWN copy by `updatedAt` descending
-  // for its date-bucket headers (a no-touch file this slice does not edit), so the search filter's
-  // effect is fully visible (items are actually removed) but the sort field/direction's effect on
-  // final ROW ORDER is not currently visible beyond that forced date-bucket grouping — a disclosed,
-  // itemListView.ts-owned limitation, not a wiring gap in this file. See this slice's completion
-  // report.
-  const items = sortItemsForList(filterItemsBySearch(rawItems, searchQuery()), sortKey(), sortDir());
+  // The shared Study query narrows and sorts the already-resolved navigator scope.
+  // `renderGroupedRows` preserves that order; `renderItemListPane` only partitions pinned rows to
+  // the top while retaining relative query order inside each partition.
+  const items = queryStudyItems(rawItems);
 
 
 
@@ -1322,9 +1299,8 @@ export function renderNavigatorShell(
 
   const currentFolderId = _selection.kind === 'folder' ? _selection.folderId : null;
   const itemListPane = renderItemListPane(items, ITEM_LIST_DENSITY, redraw, undefined, currentFolderId);
-  // See collectItemRowOrder's own comment: the TRUE on-screen row order (pinned-partition +
-  // updatedAt-desc regroup, both owned by itemListView.ts) rather than this shell's own `items`
-  // array order, which itemListView.ts does not always render 1:1.
+  // See collectItemRowOrder's own comment: capture the true pinned-first on-screen order rather
+  // than assuming it is always a 1:1 copy of the shared query array.
   const itemDisplayOrder = collectItemRowOrder(itemListPane, new Set(items.map(item => item.id)));
 
 

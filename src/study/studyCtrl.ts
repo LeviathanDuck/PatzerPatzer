@@ -54,6 +54,13 @@ import {
   type RepertoireComplianceReportFilters,
 } from '../repertoire/report';
 import { record, Severity } from '../diagnostics';
+import {
+  filterGameProjections,
+  projectStudyItem,
+  type GameFilterQuery,
+  type GameFilterSortKey,
+} from '../gameFilters';
+import { isHidden, showHiddenItems } from './hiddenItems';
 
 function classifyStudyError(error: unknown): string {
   if (error instanceof DOMException) return error.name || 'DOMException';
@@ -195,13 +202,6 @@ let _sidebarCollapsed:  boolean       = false;
 // second source of truth for study/folder data itself.
 const _studyNavigationIndex = new StudyNavigationIndex();
 
-// --- Annotation search index ---
-// Keyed by study id. Value is a lowercased concatenation of: notes, tags, PGN comments.
-// Rebuilt lazily when studies change; checked during search in applyFilters.
-// Mirrors the in-memory index approach in lichess-org/lila: ui/study/src/studySearch.ts.
-let _annotationIndex: Map<string, string> = new Map();
-let _indexDirty = true;
-
 /** Extract all { comment } blocks from a PGN string. */
 function extractPgnComments(pgn: string): string {
   const comments: string[] = [];
@@ -211,20 +211,6 @@ function extractPgnComments(pgn: string): string {
     comments.push(m[1]!);
   }
   return comments.join(' ');
-}
-
-function rebuildAnnotationIndex(): void {
-  if (!_indexDirty) return;
-  _annotationIndex = new Map();
-  for (const s of _studies) {
-    const text = [
-      s.notes ?? '',
-      s.tags.join(' '),
-      extractPgnComments(s.pgn),
-    ].join(' ').toLowerCase();
-    _annotationIndex.set(s.id, text);
-  }
-  _indexDirty = false;
 }
 
 // --- View mode ---
@@ -259,7 +245,67 @@ let   _cursorId: string | null = null; // id-keyed cursor/anchor; replaces the o
 // --- Accessors ---
 
 export function studies(): StudyItem[] {
-  return applySort(applyFilters(_studies));
+  return queryStudyItems(_studies);
+}
+
+export interface StudyQueryOptions {
+  folderScope?: 'current-filter' | 'already-resolved';
+}
+
+/** Apply the current basic Study query to a caller-provided scope. */
+export function queryStudyItems(
+  scope: readonly StudyItem[],
+  options: StudyQueryOptions = {},
+): StudyItem[] {
+  const activeFolderFilter = options.folderScope === 'already-resolved' ? null : _activeFolderId;
+  const query: GameFilterQuery = {
+    ...(_search ? { textAny: _search } : {}),
+    ...(_filterSrc ? { sources: [_filterSrc] } : {}),
+    ...(_filterTag ? { tags: [_filterTag] } : {}),
+    ...(activeFolderFilter ? { folders: [activeFolderFilter] } : {}),
+    ...(_filterFav ? { favorite: true } : {}),
+    hiddenMode: showHiddenItems() ? 'include' : 'exclude',
+    sort: {
+      key: studySortKeyToGameFilterKey(_sortKey),
+      direction: _sortDir,
+    },
+  };
+  const itemsById = new Map(scope.map(item => [item.id, item] as const));
+  const projections = scope.map(item => {
+    const projection = projectStudyItem(item, { hidden: isHidden('game', item.id) });
+    const annotationText = [
+      item.notes ?? '',
+      item.tags.join(' '),
+      extractPgnComments(item.pgn),
+    ].join(' ');
+    const exactFolderMatch = !activeFolderFilter ||
+      item.folders.includes(activeFolderFilter) || item.homeFolderId === activeFolderFilter;
+
+    return {
+      ...projection,
+      source: !_filterSrc || item.source === _filterSrc ? projection.source : undefined,
+      tags: !_filterTag || item.tags.includes(_filterTag) ? projection.tags : [],
+      folderIds: exactFolderMatch ? projection.folderIds : [],
+      homeFolderId: exactFolderMatch ? projection.homeFolderId : undefined,
+      textAnyValues: [
+        item.title,
+        item.white ?? '',
+        item.black ?? '',
+        annotationText,
+      ],
+    };
+  });
+
+  return filterGameProjections(projections, query).ids.flatMap(id => {
+    const item = itemsById.get(id);
+    return item ? [item] : [];
+  });
+}
+
+function studySortKeyToGameFilterKey(key: StudySortKey): GameFilterSortKey {
+  if (key === 'createdAt') return 'addedAt';
+  if (key === 'updatedAt') return 'modifiedAt';
+  return 'title';
 }
 
 export function allStudies(): StudyItem[] {
@@ -645,7 +691,6 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded   = true;
-    _indexDirty = true;
     // initStudyLibrary loads one paginated page (CR-2/CR-3) — a partial batch, so this can only
     // ever add/update the navigation index, never prune it (see navigationIndexProvider.ts).
     _studyNavigationIndex.noteItemsLoaded(_studies);
@@ -655,7 +700,6 @@ export function initStudyLibrary(redraw: () => void): Promise<void> {
     _studies = [];
     _hasMore = false;
     _loaded = true;
-    _indexDirty = true;
     redraw();
   });
 }
@@ -669,7 +713,6 @@ function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Pro
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
     if (_foldersLoaded) _folders = await migrateStudyFolders(_studies, _folders);
     _loaded = true;
-    _indexDirty = true;
     // listStudies() is exhaustive (full-library-scan route), so this is the one load point safe
     // to also prune stale cached navigation-index records via reconcileAll.
     void _studyNavigationIndex.reconcileAll(_studies);
@@ -681,7 +724,6 @@ function loadAllStudiesForRoute(requestedPages: number, redraw: () => void): Pro
     _loadingMore = false;
     _page = 0;
     _loaded = true;
-    _indexDirty = true;
     redraw();
   });
 }
@@ -704,7 +746,6 @@ export function loadNextPage(redraw: () => void): Promise<boolean> {
     if (_foldersLoaded) _folders = await migrateStudyFolders(nextBatch, _folders);
     _studies     = [..._studies, ...nextBatch];
     if (_studies.length === 0) recordStudyRouteEmpty('study-library');
-    _indexDirty  = true;
     // Only the newly-loaded page needs (re)classification — a partial batch, add/update only.
     _studyNavigationIndex.noteItemsLoaded(nextBatch);
     redraw();
@@ -1392,66 +1433,24 @@ export async function updateStudy(partial: Partial<StudyItem> & { id: string }):
     if (!existing) return;
     const updated: StudyItem = { ...existing, ...partial, updatedAt: Date.now() };
     await saveStudy(updated);
-    _indexDirty = true;
     _studyNavigationIndex.noteItemsLoaded([updated]);
     return;
   }
   const updated: StudyItem = { ..._studies[idx]!, ...partial, updatedAt: Date.now() };
   _studies = [..._studies.slice(0, idx), updated, ..._studies.slice(idx + 1)];
-  _indexDirty = true;
   _studyNavigationIndex.noteItemsLoaded([updated]);
   await saveStudy(updated);
 }
 
 export async function deleteStudy(id: string): Promise<void> {
   _studies = _studies.filter(s => s.id !== id);
-  _indexDirty = true;
   void _studyNavigationIndex.noteItemRemoved(id);
   await deleteStudyFromIdb(id);
 }
 
 export function addStudy(item: StudyItem): void {
   _studies = [item, ..._studies];
-  _indexDirty = true;
   _studyNavigationIndex.noteItemsLoaded([item]);
-}
-
-// --- Filter + sort helpers ---
-
-function applyFilters(items: StudyItem[]): StudyItem[] {
-  // Rebuild annotation index if studies have changed since last search.
-  if (_search) rebuildAnnotationIndex();
-  // StudyItem.folders and _activeFolderId are both StudyFolder.id values (P2-LIB-11), so
-  // membership is a direct id comparison — no name lookup, and no ambiguity between two
-  // folders that happen to share a display name.
-  return items.filter(s => {
-    if (_filterFav && !s.favorite) return false;
-    if (_filterTag  && !s.tags.includes(_filterTag))    return false;
-    if (_filterSrc  && s.source !== _filterSrc)         return false;
-    if (_activeFolderId && !s.folders.includes(_activeFolderId)) return false;
-    if (_search) {
-      const q = _search.toLowerCase();
-      // Search title + players (fast path)
-      const titleMatch = s.title.toLowerCase().includes(q) ||
-        (s.white ?? '').toLowerCase().includes(q) ||
-        (s.black ?? '').toLowerCase().includes(q);
-      if (titleMatch) return true;
-      // Search annotations index (notes, tags, PGN comments)
-      const annotText = _annotationIndex.get(s.id) ?? '';
-      if (!annotText.includes(q)) return false;
-    }
-    return true;
-  });
-}
-
-function applySort(items: StudyItem[]): StudyItem[] {
-  const dir = _sortDir === 'desc' ? -1 : 1;
-  return [...items].sort((a, b) => {
-    if (_sortKey === 'title') {
-      return dir * a.title.localeCompare(b.title);
-    }
-    return dir * ((a[_sortKey] as number) - (b[_sortKey] as number));
-  });
 }
 
 // --- PGN import ---
@@ -1510,7 +1509,6 @@ export async function importPgnToLibrary(pgnText: string): Promise<number> {
   // Save all items to IDB and update in-memory state.
   await Promise.all(items.map(item => saveStudy(item)));
   _studies    = [...items, ..._studies];
-  _indexDirty = true;
   _studyNavigationIndex.noteItemsLoaded(items);
   return items.length;
 }
