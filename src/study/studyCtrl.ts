@@ -284,6 +284,25 @@ export function setViewMode(m: StudyViewMode): void   { _viewMode = m; }
 const _selectedIds = new Set<string>();
 let   _cursorId: string | null = null; // id-keyed cursor/anchor; replaces the old display-index _lastSelectedIdx
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+let _selectionSurfaceGeneration = 0;
+export function selectionSurfaceGeneration(): number { return _selectionSurfaceGeneration; }
+export function bumpSelectionSurface(): void { _selectionSurfaceGeneration++; }
+
 // --- Accessors ---
 
 export function studies(): StudyItem[] {
@@ -686,10 +705,18 @@ export async function selectAllInScope(
   options: StudyQueryOptions = {},
 ): Promise<StudySelectAllScopeOutcome> {
   const dispatchedPlan = createStudyQueryPlan(options);
+  const dispatchedSurface = selectionSurfaceGeneration();
   const result = await runStudyQueryPlan(dispatchedPlan);
   const activePlan = createStudyQueryPlan(options);
 
-  if (result.queryHash !== dispatchedPlan.queryHash || activePlan.queryHash !== dispatchedPlan.queryHash) {
+
+
+
+  if (
+    result.queryHash !== dispatchedPlan.queryHash ||
+    activePlan.queryHash !== dispatchedPlan.queryHash ||
+    selectionSurfaceGeneration() !== dispatchedSurface
+  ) {
     return { status: 'stale', result };
   }
 

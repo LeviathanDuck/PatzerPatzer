@@ -115,6 +115,7 @@ import {
   selectAllInScope,
   selectedIds,
   selectionCount,
+  selectionSurfaceGeneration,
   sortKey,
   toggleSelectId,
   type StudyQueryOptions,
@@ -682,12 +683,18 @@ function ensureScopeBannerIds(
 ): void {
   if (_scopeBannerCache?.queryHash === queryHash) return;
   _scopeBannerCache = { queryHash, status: 'pending' };
+
+
+
+
+  const dispatchedSurface = selectionSurfaceGeneration();
   void collectStudyQueryScope(queryOptions).then(result => {
     const activeHash = createStudyQueryPlan(queryOptions).queryHash;
     if (
       _scopeBannerCache?.queryHash !== queryHash ||
       activeHash !== queryHash ||
-      result.queryHash !== queryHash
+      result.queryHash !== queryHash ||
+      selectionSurfaceGeneration() !== dispatchedSurface
     ) return;
     _scopeBannerCache = { queryHash, status: 'ready', ids: result.ids };
     redraw();

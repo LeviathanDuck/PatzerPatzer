@@ -76,6 +76,7 @@ import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './nav
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
 import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
+  bumpSelectionSurface,
   createFolder,
   folders,
   includeDescendants,
@@ -1175,8 +1176,16 @@ function renderGameOpenShell(
 ): VNode {
   const scope = resolveGameOpenScope(tree, allItems, opts.openItemId);
 
-  const exitPlain = () => { writeHashRoute('#/study'); };
+
+
+
+
+  const exitPlain = () => {
+    bumpSelectionSurface();
+    writeHashRoute('#/study');
+  };
   const exitToFolder = () => {
+    bumpSelectionSurface();
     if (scope) {
       _selection = scope.folderId
         ? { kind: 'folder', sectionId: scope.sectionId, folderId: scope.folderId }
