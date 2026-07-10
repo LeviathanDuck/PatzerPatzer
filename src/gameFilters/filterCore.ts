@@ -11,6 +11,16 @@ import type {
 
 const DEFAULT_SORT: GameFilterSort = { key: 'id', direction: 'asc' };
 
+
+
+
+
+
+
+
+export const RESULT_ABSENT_FACET_VALUE = '__result-absent__';
+export const DESTINATION_UNSORTED_FACET_VALUE = '__destination-unsorted__';
+
 export interface CompiledGameFilterEvaluator {
   query: GameFilterQuery;
   sort: GameFilterSort;
@@ -159,7 +169,7 @@ function matchesProjection(
   if (!matchesRangeFacet(projection.modifiedAt, query.recentlyModified, 'recentlyModified', projection.family)) return false;
   if (!matchesArrayFacet(projection.tags, query.tags, 'tags', projection.family)) return false;
   if (!matchesArrayFacet(projection.folderIds, query.folders, 'folders', projection.family, projection.homeFolderId)) return false;
-  if (!matchesStringFacet(projection.destination, query.destinations, 'destination', projection.family)) return false;
+  if (!matchesStringFacet(projection.destination, query.destinations, 'destination', projection.family, DESTINATION_UNSORTED_FACET_VALUE)) return false;
   if (!matchesBooleanFacet(projection.favorite, query.favorite, 'favorite', projection.family)) return false;
   return true;
 }
@@ -222,8 +232,11 @@ function matchesResultFacet(
   const values = [projection.result, projection.ownerResult]
     .filter((value): value is string => Boolean(value))
     .map(value => value.toLowerCase());
-  if (!values.length) return false;
-  return requested.some(candidate => values.includes(candidate.toLowerCase()));
+  // Absent result (no PGN outcome, no owner result): matches only when the caller explicitly
+  // requested the "Unknown" sentinel (IMP-2a). Otherwise unchanged — an absent result matches nothing.
+  if (!values.length) return requested.includes(RESULT_ABSENT_FACET_VALUE);
+  return requested.some(candidate =>
+    candidate !== RESULT_ABSENT_FACET_VALUE && values.includes(candidate.toLowerCase()));
 }
 
 function matchesPlayersFacet(
@@ -252,12 +265,17 @@ function matchesStringFacet(
   requested: readonly string[] | undefined,
   facet: GameFilterFacet,
   family: GameFilterRecordFamily,
+  absentSentinel?: string,
 ): boolean {
   if (!requested?.length) return true;
   if (!facetSupported(family, facet)) return false;
-  if (!value) return false;
+  // Absent value: matches only when the caller opted into an absent/"Unsorted" sentinel for this
+  // facet AND requested it (IMP-2a). Call sites that pass no sentinel keep the exact prior behavior
+  // (`absentSentinel === undefined` → an absent value matches nothing).
+  if (!value) return absentSentinel !== undefined && requested.includes(absentSentinel);
   const normalizedValue = value.toLowerCase();
-  return requested.some(candidate => candidate.toLowerCase() === normalizedValue);
+  return requested.some(candidate =>
+    candidate !== absentSentinel && candidate.toLowerCase() === normalizedValue);
 }
 
 function matchesContainsFacet(

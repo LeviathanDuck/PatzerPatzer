@@ -120,7 +120,30 @@ export function projectStudyItem(
     favorite: item.favorite,
     hidden: Boolean(options.hidden),
     sourceGameId: emptyToUndefined(item.sourceGameId),
+
+
+
+
+
+
+
+
+    textAnyValues: studyTextAnyValues(item),
   };
+}
+
+function studyTextAnyValues(item: StudyGameFilterItem): string[] {
+  return [
+    item.title,
+    item.white ?? '',
+    item.black ?? '',
+    item.opening ?? '',
+    item.eco ?? '',
+    item.result ?? '',
+    item.source,
+    item.pgn,
+    item.notes ?? '',
+  ];
 }
 
 function resolveImportedPlayedAt(game: {

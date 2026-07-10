@@ -77,7 +77,11 @@ import {
   type GameFilterQuery,
   type GameFilterSortKey,
 } from '../gameFilters';
-import { compileGameFilterQuery } from '../gameFilters/filterCore';
+import {
+  compileGameFilterQuery,
+  DESTINATION_UNSORTED_FACET_VALUE,
+  RESULT_ABSENT_FACET_VALUE,
+} from '../gameFilters/filterCore';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
 function classifyStudyError(error: unknown): string {
@@ -180,6 +184,27 @@ let _filterFav:  boolean         = false;
 let _filterTag:  string | null   = null;
 let _filterSrc:  string | null   = null;
 let _search:     string          = '';
+
+
+
+
+
+
+
+
+
+
+let _advSources:      StudyRouteState['srcs'];
+let _advTags:         StudyRouteState['tags'];
+let _advPlayers:      StudyRouteState['players'];
+let _advResults:      StudyRouteState['results'];
+let _advDestinations: StudyRouteState['dest'];
+let _advAddedFrom:    StudyRouteState['addedFrom'];
+let _advAddedTo:      StudyRouteState['addedTo'];
+let _advModifiedFrom: StudyRouteState['modifiedFrom'];
+let _advModifiedTo:   StudyRouteState['modifiedTo'];
+let _advVisibility:   StudyRouteState['vis'];
+
 let _page:       number          = 0;
 let _hasMore:    boolean         = false;
 let _loadingMore: boolean        = false;
@@ -389,26 +414,94 @@ function resolveStudyQueryFolderScope(options: StudyQueryOptions): string[] | nu
   return _activeFolderId ? [_activeFolderId] : null;
 }
 
+/** Route Result token → raw PGN outcome / absent-sentinel candidates for `query.results` (design
+ * §3.3: raw PGN framing, no owner-color). "unknown" is an ABSENCE match (IMP-2a) — it maps to the
+ * filterCore sentinel, NOT to the literal '*' PGN token, keeping strictly to the ratified
+ * absence-match semantics. */
+function advancedResultCandidates(results: StudyRouteState['results']): string[] {
+  if (!results?.length) return [];
+  const candidates: string[] = [];
+  for (const result of results) {
+    if (result === 'white') candidates.push('1-0');
+    else if (result === 'black') candidates.push('0-1');
+    else if (result === 'draw') candidates.push('1/2-1/2');
+    else if (result === 'unknown') candidates.push(RESULT_ABSENT_FACET_VALUE);
+  }
+  return candidates;
+}
+
+/** Route Destination slug → SAVE_FLOW_GAME_DESTINATIONS display name (the value `projectStudyItem`
+ * stores in `projection.destination`) / absent-sentinel (design §3.1). "uncategorized" is an
+ * ABSENCE match (IMP-2a): it maps to the filterCore Unsorted sentinel so quick-saves / legacy items
+ * with no `destination` are the Unsorted bucket. Display names are held verbatim here (not imported
+ * from src/save/saveFlowCtrl.ts, which this slice does not own) — they mirror
+ * SAVE_FLOW_GAME_DESTINATIONS exactly. */
+function advancedDestinationCandidates(dest: StudyRouteState['dest']): string[] {
+  if (!dest?.length) return [];
+  const candidates: string[] = [];
+  for (const destination of dest) {
+    if (destination === 'played') candidates.push('My Played Games');
+    else if (destination === 'masters') candidates.push('Masters Game Study');
+    else if (destination === 'repertoire') candidates.push('Repertoire Library');
+    else if (destination === 'prep') candidates.push('Opponent Prep');
+    else if (destination === 'uncategorized') candidates.push(DESTINATION_UNSORTED_FACET_VALUE);
+  }
+  return candidates;
+}
+
+/** YYYY-MM-DD advanced date bounds → an inclusive epoch range (from = start of day, to = end of
+ * day), mirroring the Games surface's `playedDateRangeQuery` precedent (src/games/view.ts). */
+function advancedDateRange(from: string | undefined, to: string | undefined): GameFilterQuery['recentlyAdded'] {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { from: Date.parse(`${from}T00:00:00Z`) } : {}),
+    ...(to ? { to: Date.parse(`${to}T23:59:59.999Z`) } : {}),
+  };
+}
+
 /** Build the single query/projector authority shared by memory rows and the IDB cursor runner. */
 export function createStudyQueryPlan(
   options: StudyQueryOptions = {},
 ): StudyQueryPlan {
   const folderIds = resolveStudyQueryFolderScope(options);
   const search = _search;
-  const sourceFilter = _filterSrc;
-  const tagFilter = _filterTag;
   const favoriteOnly = _filterFav;
+
+
+
+
+
+  const effectiveSources = _advSources?.length ? _advSources : (_filterSrc ? [_filterSrc] : []);
+  const effectiveTags = _advTags?.length ? _advTags : (_filterTag ? [_filterTag] : []);
+  const resultCandidates = advancedResultCandidates(_advResults);
+  const destinationCandidates = advancedDestinationCandidates(_advDestinations);
+  const recentlyAdded = advancedDateRange(_advAddedFrom, _advAddedTo);
+  const recentlyModified = advancedDateRange(_advModifiedFrom, _advModifiedTo);
+  const playerFilter = _advPlayers?.trim() ? [_advPlayers.trim()] : [];
+  // §4 hidden tri-state: an explicit advanced `vis` token takes precedence over the plain eye toggle;
+  // unset falls back to today's boolean behavior.
+  const hiddenMode = _advVisibility ?? (showHiddenItems() ? 'include' : 'exclude');
   const sort = {
     key: studySortKeyToGameFilterKey(_sortKey),
     direction: _sortDir,
   } as const;
+  // §8.2(B) folders guard: `query.folders` is written ONLY from `resolveStudyQueryFolderScope`
+  // (`folderIds`) — the advanced query composes AROUND that resolved scope and never contributes a
+  // second `folders` narrowing (there is no advanced folders route field; slice 3's UI folders
+  // control is disabled while a single folder is browsed). This keeps the three-branch folder-scope
+  // resolution untouched and prevents any silent double-narrow / no-op.
   const compiled = compileGameFilterQuery({
     ...(search ? { textAny: search } : {}),
-    ...(sourceFilter ? { sources: [sourceFilter] } : {}),
-    ...(tagFilter ? { tags: [tagFilter] } : {}),
+    ...(effectiveSources.length ? { sources: [...effectiveSources] } : {}),
+    ...(effectiveTags.length ? { tags: [...effectiveTags] } : {}),
     ...(folderIds && folderIds.length ? { folders: folderIds } : {}),
     ...(favoriteOnly ? { favorite: true } : {}),
-    hiddenMode: showHiddenItems() ? 'include' : 'exclude',
+    ...(playerFilter.length ? { players: playerFilter } : {}),
+    ...(resultCandidates.length ? { results: resultCandidates } : {}),
+    ...(destinationCandidates.length ? { destinations: destinationCandidates } : {}),
+    ...(recentlyAdded ? { recentlyAdded } : {}),
+    ...(recentlyModified ? { recentlyModified } : {}),
+    hiddenMode,
     sort,
   });
 
@@ -430,10 +523,16 @@ export function createStudyQueryPlan(
       const exactFolderMatch = !folderIds || folderIds.length === 0 ||
         folderIds.some(fid => item.folders.includes(fid) || item.homeFolderId === fid);
 
+
+
+
+      const sourceMatch = effectiveSources.length === 0 || effectiveSources.some(source => item.source === source);
+      const tagMatch = effectiveTags.length === 0 || effectiveTags.some(tag => item.tags.includes(tag));
+
       return {
         ...projection,
-        source: !sourceFilter || item.source === sourceFilter ? projection.source : undefined,
-        tags: !tagFilter || item.tags.includes(tagFilter) ? projection.tags : [],
+        source: sourceMatch ? projection.source : undefined,
+        tags: tagMatch ? projection.tags : [],
         folderIds: exactFolderMatch ? projection.folderIds : [],
         homeFolderId: exactFolderMatch ? projection.homeFolderId : undefined,
         textAnyValues: [
@@ -838,7 +937,7 @@ export function loadedStudyPageCount(): number {
 }
 
 export function studyLibraryRouteSnapshot(pages: number = loadedStudyPageCount()): StudyRouteState {
-  return {
+  const snapshot: StudyRouteState = {
     q:       _search,
     source:  _filterSrc as StudyRouteState['source'],
     tag:     _filterTag,
@@ -849,9 +948,29 @@ export function studyLibraryRouteSnapshot(pages: number = loadedStudyPageCount()
     view:    _viewMode,
     pages,
   };
+
+
+
+
+
+  if (_advSources?.length)      snapshot.srcs = _advSources;
+  if (_advTags?.length)         snapshot.tags = _advTags;
+  if (_advPlayers)              snapshot.players = _advPlayers;
+  if (_advResults?.length)      snapshot.results = _advResults;
+  if (_advDestinations?.length) snapshot.dest = _advDestinations;
+  if (_advAddedFrom)            snapshot.addedFrom = _advAddedFrom;
+  if (_advAddedTo)              snapshot.addedTo = _advAddedTo;
+  if (_advModifiedFrom)         snapshot.modifiedFrom = _advModifiedFrom;
+  if (_advModifiedTo)           snapshot.modifiedTo = _advModifiedTo;
+  if (_advVisibility)           snapshot.vis = _advVisibility;
+  return snapshot;
 }
 
-function applyStudyLibraryRouteState(state: StudyRouteState): void {
+// Exported so slice-2's focused test (scripts/test-study-query-runner.mjs) can drive the full route
+// state — including the advanced fields — in one call before asserting on the live query plan. This
+// is the same applier `hydrateStudyLibraryRoute` runs internally; widening its visibility introduces
+// no new call path.
+export function applyStudyLibraryRouteState(state: StudyRouteState): void {
   _search = state.q;
   _filterSrc = state.source;
   _filterTag = state.tag;
@@ -860,6 +979,18 @@ function applyStudyLibraryRouteState(state: StudyRouteState): void {
   _sortKey = state.sortKey;
   _sortDir = state.sortDir;
   _viewMode = state.view;
+  // Advanced-search fields — applied verbatim (undefined when the param is absent, matching the
+  // route contract's omittable shape).
+  _advSources      = state.srcs;
+  _advTags         = state.tags;
+  _advPlayers      = state.players;
+  _advResults      = state.results;
+  _advDestinations = state.dest;
+  _advAddedFrom    = state.addedFrom;
+  _advAddedTo      = state.addedTo;
+  _advModifiedFrom = state.modifiedFrom;
+  _advModifiedTo   = state.modifiedTo;
+  _advVisibility   = state.vis;
 }
 
 // Known StudyFolder ids (P2-LIB-11) — the availability set resolveStudyRouteAvailability
