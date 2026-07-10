@@ -224,54 +224,217 @@ export async function countRepertoireScanGames(): Promise<number> {
   });
 }
 
-export async function loadRepertoireScanGamePage(
+
+
+
+
+
+
+
+
+
+
+
+
+
+function collectRepertoireScanGamePageCursor(
+  db: IDBDatabase,
   limit: number,
-  afterGameId: string | null = null,
+  afterGameId: string | null,
 ): Promise<RepertoireScanGamePage> {
-  const db = await openDb();
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: RepertoireScanGamePage | undefined;
+
+    const settleResolve = (result: RepertoireScanGamePage): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('games', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Repertoire scan game page transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Repertoire scan game page transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Repertoire scan game page transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      const range = afterGameId ? IDBKeyRange.lowerBound(afterGameId, true) : undefined;
+      cursorRequest = tx.objectStore('games').openCursor(range);
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
     const games: ImportedGame[] = [];
     let lastGameId: string | null = null;
-    const range = afterGameId ? IDBKeyRange.lowerBound(afterGameId, true) : undefined;
-    const req = db.transaction('games', 'readonly').objectStore('games').openCursor(range);
-    req.onsuccess = () => {
-      const cursor = req.result;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve({ games, nextAfterGameId: lastGameId, hasMore: false });
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = { games, nextAfterGameId: lastGameId, hasMore: false };
         return;
       }
       if (games.length >= limit) {
-        resolve({ games, nextAfterGameId: lastGameId, hasMore: true });
+        // Limit reached and a further row exists (the one-past peek the original loop used to
+        // decide hasMore): record the result and stop driving the cursor, letting the transaction
+        // auto-commit naturally. Settlement still waits on tx.oncomplete.
+        completedResult = { games, nextAfterGameId: lastGameId, hasMore: true };
         return;
       }
       const record = cursor.value as StoredGameRecord;
       games.push(storedGameRecordToImportedGame(record));
       lastGameId = record.id;
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-    req.onerror = () => reject(req.error);
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error('Repertoire scan game page cursor failed'));
+    };
   });
 }
 
-export async function loadRepertoireAccountGames(accountId: string): Promise<ImportedGame[]> {
-  const db = await openDb();
+
+
+
+
+
+
+
+
+
+
+
+function collectRepertoireAccountGamesCursor(
+  db: IDBDatabase,
+  accountId: string,
+): Promise<ImportedGame[]> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: ImportedGame[] | undefined;
+
+    const settleResolve = (result: ImportedGame[]): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('games', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult);
+      } else {
+        settleReject(new Error(
+          'Repertoire account games transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      settleReject(tx.error ?? new Error('Repertoire account games transaction failed'));
+    };
+    tx.onabort = () => {
+      settleReject(tx.error ?? new DOMException('Repertoire account games transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('games').index('accountId').openCursor(accountId);
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
     const games: ImportedGame[] = [];
-    const req = db.transaction('games', 'readonly')
-      .objectStore('games')
-      .index('accountId')
-      .openCursor(accountId);
-    req.onsuccess = () => {
-      const cursor = req.result;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
       if (!cursor) {
-        resolve(games);
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = games;
         return;
       }
       games.push(storedGameRecordToImportedGame(cursor.value as StoredGameRecord));
-      cursor.continue();
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
     };
-    req.onerror = () => reject(req.error);
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error('Repertoire account games cursor failed'));
+    };
   });
+}
+
+/**
+ * Load a page of games for a repertoire compliance scan using an IDB cursor over the primary key.
+ * Rejects on genuine storage failure (DB-open failure or a failed/aborted read transaction)
+ * instead of resolving an empty or partial page — see collectRepertoireScanGamePageCursor above
+ * and BUG-2026-07-10-009. openDb() rejects on DB-open failure with no catch-to-empty wrapper.
+ */
+export async function loadRepertoireScanGamePage(
+  limit: number,
+  afterGameId: string | null = null,
+): Promise<RepertoireScanGamePage> {
+  const db = await openDb();
+  return collectRepertoireScanGamePageCursor(db, limit, afterGameId);
+}
+
+/**
+ * Load every stored game for an account via the accountId index. Rejects on genuine storage
+ * failure (DB-open failure or a failed/aborted read transaction) instead of resolving an empty or
+ * partial list — see collectRepertoireAccountGamesCursor above and BUG-2026-07-10-009.
+ * openDb() rejects on DB-open failure with no catch-to-empty wrapper.
+ */
+export async function loadRepertoireAccountGames(accountId: string): Promise<ImportedGame[]> {
+  const db = await openDb();
+  return collectRepertoireAccountGamesCursor(db, accountId);
 }
 
 export async function listRepertoireMatchRecordsForGameIds(
