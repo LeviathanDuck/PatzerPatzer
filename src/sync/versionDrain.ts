@@ -147,6 +147,20 @@ export interface VersionedOutboxDrainResult {
   error?: string;
 }
 
+
+
+
+const SAFE_STORAGE_ERROR_NAMES = new Set([
+  'QuotaExceededError',
+  'SecurityError',
+  'AbortError',
+  'InvalidStateError',
+  'NotAllowedError',
+  'UnknownError',
+  'TypeError',
+  'Error',
+]);
+
 export type VersionedPreWriteRevalidationTrigger = 'metadata-missing' | 'stale-cloud-state';
 
 export interface VersionedPreWriteRevalidationResult {
@@ -380,8 +394,9 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
 
 
 
+
       const rawName = error instanceof Error ? error.name : '';
-      metadataErrorName = /^[A-Za-z0-9_$. -]{1,64}$/.test(rawName) ? rawName : 'StorageError';
+      metadataErrorName = SAFE_STORAGE_ERROR_NAMES.has(rawName) ? rawName : 'StorageError';
     };
 
     const durableCandidateOpIds = new Set<string>();
