@@ -54,6 +54,7 @@ import {
   writeQuarantineRecords,
   type DurableQuarantineRecord,
   type DurableRetryOutboxEntry,
+  type VersionedConflictIntent,
 } from './versionOutbox';
 import {
   REMOTE_SYNC_STORE_NAMES,
@@ -3277,6 +3278,27 @@ function setDurableOutboxCount(value: number): void {
   publishOutboxCountInvalidation();
 }
 
+
+
+
+type RemoteSyncBatchItem = RemoteSyncItem & { conflictIntent?: VersionedConflictIntent };
+
+
+
+
+
+
+
+
+
+export function resolveGamesConflictIntent(
+  source: Pick<RemoteSyncItem, 'store' | 'deleted' | 'operation'> & { conflictIntent?: VersionedConflictIntent },
+): VersionedConflictIntent | undefined {
+  const intent = source.conflictIntent;
+  if (intent === undefined) return undefined;
+  return source.store === 'games' && !isDeletedItem(source) ? intent : undefined;
+}
+
 async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
@@ -3296,7 +3318,7 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentit
   });
 }
 
-async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[], operationIdentity?: string): Promise<void> {
+async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchItem[], operationIdentity?: string): Promise<void> {
   if (items.length === 0) return;
   const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
@@ -3309,6 +3331,9 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
       baseVersion: resolveVersion(item.store, item.itemKey),
       clientUpdatedAt: item.updatedAt,
       ...(deleted ? {} : { payload: item.payload }),
+
+
+      ...(!deleted && item.conflictIntent !== undefined ? { conflictIntent: item.conflictIntent } : {}),
     };
   }));
 
@@ -3580,13 +3605,28 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
   // Normalization stays synchronous (invalid items must still throw to the caller); the
   // suppression decisions move inside the queued work (Wave 6, design rule 5) where the
   // hydrated marker cache is guaranteed.
-  const candidates: RemoteSyncItem[] = [];
+  const candidates: RemoteSyncBatchItem[] = [];
   for (const item of items) {
     const entry = normalizeSyncItem(item);
     if (!entry) throw new Error('Invalid Remote sync item.');
-    candidates.push(entry);
+
+
+
+
+    const rawIntent = (item as RemoteSyncBatchItem).conflictIntent;
+    if (rawIntent === undefined) {
+      candidates.push(entry);
+      continue;
+    }
+    const intent = resolveGamesConflictIntent({ ...entry, conflictIntent: rawIntent });
+    if (intent !== undefined) {
+      candidates.push({ ...entry, conflictIntent: intent });
+    } else {
+      recordRemoteSyncLog('flush', 'info', `Stripped an unsupported '${rawIntent}' conflict intent from a ${entry.store} ${isDeletedItem(entry) ? 'delete' : 'upsert'} sync item; recreate-over-tombstone is a games-upsert-only authority.`);
+      candidates.push(entry);
+    }
   }
-  const normalized: RemoteSyncItem[] = [];
+  const normalized: RemoteSyncBatchItem[] = [];
   const queueOpId = safeBeginProgress('queueing', { total: candidates.length });
   queuePendingVersionedOutboxWrite((async () => {
     for (let attempt = 0; attempt < 3; attempt += 1) {
