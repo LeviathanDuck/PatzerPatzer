@@ -289,6 +289,25 @@ function readAllFromStore(db: IDBDatabase, storeName: string): Promise<unknown[]
   });
 }
 
+
+
+
+function countFromStore(db: IDBDatabase, storeName: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    if (!db.objectStoreNames.contains(storeName)) return resolve(0);
+    const store = db.transaction(storeName, 'readonly').objectStore(storeName);
+    if (typeof store.count === 'function') {
+      const req = store.count();
+      req.onsuccess = () => resolve(typeof req.result === 'number' ? req.result : 0);
+      req.onerror = () => reject(req.error);
+      return;
+    }
+    const req = store.getAll();
+    req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result.length : 0);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 function readLegacyImportedGameCount(db: IDBDatabase): Promise<number> {
   return new Promise((resolve, reject) => {
     if (!db.objectStoreNames.contains('game-library')) return resolve(0);
@@ -302,8 +321,8 @@ function readLegacyImportedGameCount(db: IDBDatabase): Promise<number> {
 }
 
 async function readGameCountWithLegacyFallback(db: IDBDatabase): Promise<number> {
-  const games = await readAllFromStore(db, 'games');
-  return games.length > 0 ? games.length : readLegacyImportedGameCount(db);
+  const games = await countFromStore(db, 'games');
+  return games > 0 ? games : readLegacyImportedGameCount(db);
 }
 
 /** Read records from a store where updatedAt > since. Falls back to getAll when since is undefined. */
@@ -516,21 +535,21 @@ export async function getLocalDataCounts(): Promise<DataCounts> {
   try {
     const mainDb = await openIdb(MAIN_DB_NAME, MAIN_DB_VERSION);
     const gameCount = await readGameCountWithLegacyFallback(mainDb);
-    const analysis = await readAllFromStore(mainDb, 'analysis-library');
+    const analysis = await countFromStore(mainDb, 'analysis-library');
     mainDb.close();
 
     const puzzleDb = await openIdb(PUZZLE_DB_NAME, PUZZLE_DB_VERSION);
-    const defs = await readAllFromStore(puzzleDb, 'definitions');
-    const attempts = await readAllFromStore(puzzleDb, 'attempts');
-    const meta = await readAllFromStore(puzzleDb, 'user-meta');
+    const defs = await countFromStore(puzzleDb, 'definitions');
+    const attempts = await countFromStore(puzzleDb, 'attempts');
+    const meta = await countFromStore(puzzleDb, 'user-meta');
     puzzleDb.close();
 
     return {
       games: gameCount,
-      analysis: analysis.length,
-      puzzleDefinitions: defs.length,
-      puzzleAttempts: attempts.length,
-      puzzleMeta: meta.length,
+      analysis,
+      puzzleDefinitions: defs,
+      puzzleAttempts: attempts,
+      puzzleMeta: meta,
     };
   } catch {
     return { games: 0, analysis: 0, puzzleDefinitions: 0, puzzleAttempts: 0, puzzleMeta: 0 };
