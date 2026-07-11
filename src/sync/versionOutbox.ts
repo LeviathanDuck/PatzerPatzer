@@ -94,9 +94,26 @@ export interface DurableVersionedOutboxStorage {
 
 
 
+
+
+  getEntriesByItemKey?(store: string, itemKey: string): Promise<unknown[]>;
+  applyItemKeyMutations?(mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>): Promise<void>;
+
+
+
+
+
+
   readQuarantineRecords?(): Promise<unknown[]>;
   writeQuarantineRecords?(records: readonly DurableQuarantineRecord[]): Promise<void>;
   removeQuarantineRecords?(opIds: readonly string[]): Promise<void>;
+}
+
+export interface DurableVersionedOutboxItemKeyMutation {
+  store: string;
+  itemKey: string;
+  deleteOpIds: readonly string[];
+  putEntries: readonly DurableRetryOutboxEntry[];
 }
 
 const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
@@ -550,6 +567,51 @@ export async function writeDurableVersionedOutbox(
   await storage.writeEntries(sortEntries(entries.slice()));
 }
 
+function hasItemKeyFastPath(storage: DurableVersionedOutboxStorage): storage is DurableVersionedOutboxStorage & {
+  getEntriesByItemKey(store: string, itemKey: string): Promise<unknown[]>;
+  applyItemKeyMutations(mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>): Promise<void>;
+} {
+  return Boolean(storage.getEntriesByItemKey && storage.applyItemKeyMutations);
+}
+
+async function readSameKeyEntries(
+  storage: DurableVersionedOutboxStorage & { getEntriesByItemKey(store: string, itemKey: string): Promise<unknown[]> },
+  store: string,
+  itemKey: string
+): Promise<DurableRetryOutboxEntry[]> {
+  const raw = await storage.getEntriesByItemKey(store, itemKey);
+  return sortEntries(raw
+    .map(normalizeEntry)
+    .filter((entry): entry is DurableRetryOutboxEntry => entry !== null));
+}
+
+// Delta between a same-key subset before and after a pure coalesce/replace decision: rows that
+// vanished are deletes, rows that are new or changed (by opId, structural compare) are puts.
+// The pure functions never mutate in place, so an untouched row compares identical and is
+// skipped — the storage only ever writes what actually changed.
+function diffSameKeyEntries(
+  before: readonly DurableRetryOutboxEntry[],
+  after: readonly DurableRetryOutboxEntry[]
+): { deleteOpIds: string[]; putEntries: DurableRetryOutboxEntry[] } {
+  const afterById = new Map(after.map(entry => [entry.opId, entry]));
+  const beforeById = new Map(before.map(entry => [entry.opId, entry]));
+  const deleteOpIds = before.filter(entry => !afterById.has(entry.opId)).map(entry => entry.opId);
+  const putEntries = after.filter(entry => {
+    const previous = beforeById.get(entry.opId);
+    return !previous || JSON.stringify(previous) !== JSON.stringify(entry);
+  });
+  return { deleteOpIds, putEntries };
+}
+
+function pickEnqueueResult(
+  next: readonly DurableRetryOutboxEntry[],
+  incoming: DurableRetryOutboxEntry
+): DurableRetryOutboxEntry {
+  return next.find(entry => entry.opId === incoming.opId)
+    ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation)
+    ?? incoming;
+}
+
 export async function enqueueDurableVersionedOutboxEntry(
   storage: DurableVersionedOutboxStorage,
   input: VersionedOutboxEnqueueInput,
@@ -557,10 +619,21 @@ export async function enqueueDurableVersionedOutboxEntry(
 ): Promise<DurableRetryOutboxEntry> {
   const incoming = makeEntry(input, options);
   return withDurableOutboxLock(async () => {
+
+
+    if (hasItemKeyFastPath(storage)) {
+      const subset = await readSameKeyEntries(storage, incoming.store, incoming.itemKey);
+      const next = coalesceDurableVersionedOutboxEntry(subset, incoming);
+      const delta = diffSameKeyEntries(subset, next);
+      if (delta.deleteOpIds.length > 0 || delta.putEntries.length > 0) {
+        await storage.applyItemKeyMutations([{ store: incoming.store, itemKey: incoming.itemKey, ...delta }]);
+      }
+      return pickEnqueueResult(next, incoming);
+    }
     const entries = await readDurableVersionedOutbox(storage);
     const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
     await writeDurableVersionedOutbox(storage, next);
-    return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
+    return pickEnqueueResult(next, incoming);
   });
 }
 
@@ -581,6 +654,37 @@ export async function replaceDurableVersionedOutboxEntry(
 ): Promise<DurableRetryOutboxEntry | null> {
   const incoming = makeEntry(input, options);
   return withDurableOutboxLock(async () => {
+
+
+
+
+    if (hasItemKeyFastPath(storage)) {
+      const previous = (await getDurableVersionedOutboxEntriesByOpId(storage, [previousOpId]))[0];
+      const subset = await readSameKeyEntries(storage, incoming.store, incoming.itemKey);
+      const entries = subset.filter(entry => entry.opId !== previousOpId);
+      const decision = decideReplaceOutcome(entries, incoming, previous);
+      const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
+      if (decision.cancelled) {
+        if (previous) {
+          mutations.push({ store: previous.store, itemKey: previous.itemKey, deleteOpIds: [previous.opId], putEntries: [] });
+        }
+        if (mutations.length > 0) await storage.applyItemKeyMutations(mutations);
+        return null;
+      }
+      const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
+      const delta = diffSameKeyEntries(entries, next);
+      const deleteOpIds = [...delta.deleteOpIds];
+      if (previous && sameKey(previous, incoming)) {
+        deleteOpIds.push(previous.opId);
+      } else if (previous) {
+        // A cross-key previous (not expected from the conflict path, but the API allows it)
+        // rides in the same atomic transaction as its own key's mutation.
+        mutations.push({ store: previous.store, itemKey: previous.itemKey, deleteOpIds: [previous.opId], putEntries: [] });
+      }
+      mutations.push({ store: incoming.store, itemKey: incoming.itemKey, deleteOpIds, putEntries: delta.putEntries });
+      await storage.applyItemKeyMutations(mutations);
+      return pickEnqueueResult(next, incoming);
+    }
     const all = await readDurableVersionedOutbox(storage);
     const previous = all.find(entry => entry.opId === previousOpId);
     const entries = all.filter(entry => entry.opId !== previousOpId);
@@ -595,32 +699,79 @@ export async function replaceDurableVersionedOutboxEntry(
 
 
 
-    const laterDelete = incoming.operation === 'upsert'
-      && entries.some(entry => sameKey(entry, incoming)
-        && entry.operation === 'delete'
-        && (previous === undefined
-          || (entry.opId !== previous.blockedByOpId && entry.enqueuedAt >= previous.enqueuedAt)));
-    if (laterDelete) {
+    const decision = decideReplaceOutcome(entries, incoming, previous);
+    if (decision.cancelled) {
       await writeDurableVersionedOutbox(storage, entries);
       return null;
     }
     const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
     await writeDurableVersionedOutbox(storage, next);
-    return next.find(entry => entry.opId === incoming.opId) ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation) ?? incoming;
+    return pickEnqueueResult(next, incoming);
   });
 }
 
-// Batch variant: one readEntries + one writeEntries for the whole input set. Fresh keys append
-// through a key index in O(1); only inputs whose store+itemKey already exists in the outbox go
-// through the per-entry coalesce path, so bulk imports avoid the O(n^2) rewrite-per-item cost.
-// opId is always generated per entry here — a shared options.opId would collide across inputs.
+// The F3 causal delete-wins decision, shared VERBATIM by the keyed and legacy replace paths so
+// they can never drift (`entries` is always the same-key set with `previousOpId` already
+// filtered out; on the keyed path that set comes from the byItemKey index).
+function decideReplaceOutcome(
+  entries: readonly DurableRetryOutboxEntry[],
+  incoming: DurableRetryOutboxEntry,
+  previous: DurableRetryOutboxEntry | undefined
+): { cancelled: boolean } {
+  const laterDelete = incoming.operation === 'upsert'
+    && entries.some(entry => sameKey(entry, incoming)
+      && entry.operation === 'delete'
+      && (previous === undefined
+        || (entry.opId !== previous.blockedByOpId && entry.enqueuedAt >= previous.enqueuedAt)));
+  return { cancelled: laterDelete };
+}
+
+
+
+
+
+
+
+
 export async function enqueueDurableVersionedOutboxEntries(
   storage: DurableVersionedOutboxStorage,
   inputs: readonly VersionedOutboxEnqueueInput[],
   options: { now?: number } = {}
 ): Promise<DurableRetryOutboxEntry[]> {
-  if (inputs.length === 0) return readDurableVersionedOutbox(storage);
+  if (inputs.length === 0) {
+    if (hasItemKeyFastPath(storage)) return [];
+    return readDurableVersionedOutbox(storage);
+  }
   return withDurableOutboxLock(async () => {
+    if (hasItemKeyFastPath(storage)) {
+      const groups = new Map<string, { store: RemoteSyncStoreName; itemKey: string; inputs: VersionedOutboxEnqueueInput[] }>();
+      for (const input of inputs) {
+        const key = `${input.store}\u0000${input.itemKey}`;
+        const group = groups.get(key);
+        if (group) {
+          group.inputs.push(input);
+        } else {
+          groups.set(key, { store: input.store, itemKey: input.itemKey, inputs: [input] });
+        }
+      }
+      const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
+      const finalEntries: DurableRetryOutboxEntry[] = [];
+      for (const group of groups.values()) {
+        const before = await readSameKeyEntries(storage, group.store, group.itemKey);
+        let subset = before;
+        for (const input of group.inputs) {
+          const incoming = makeEntry(input, options.now !== undefined ? { now: options.now } : {});
+          subset = coalesceDurableVersionedOutboxEntry(subset, incoming);
+        }
+        const delta = diffSameKeyEntries(before, subset);
+        if (delta.deleteOpIds.length > 0 || delta.putEntries.length > 0) {
+          mutations.push({ store: group.store, itemKey: group.itemKey, ...delta });
+        }
+        finalEntries.push(...subset);
+      }
+      if (mutations.length > 0) await storage.applyItemKeyMutations(mutations);
+      return sortEntries(finalEntries);
+    }
     let entries = await readDurableVersionedOutbox(storage);
     const presentKeys = new Set(entries.map(entry => `${entry.store}\u0000${entry.itemKey}`));
     let appended: DurableRetryOutboxEntry[] = [];
@@ -931,6 +1082,68 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           tx.oncomplete = () => resolve();
           const store = tx.objectStore(OUTBOX_STORE_NAME);
           for (const entry of entries) store.put(entry);
+        });
+      } finally {
+        db.close();
+      }
+    },
+
+
+
+
+
+    async getEntriesByItemKey(store: string, itemKey: string): Promise<unknown[]> {
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const objectStore = db.transaction(OUTBOX_STORE_NAME, 'readonly').objectStore(OUTBOX_STORE_NAME);
+          const indexNames = (objectStore as { indexNames?: { contains?(name: string): boolean } }).indexNames;
+          const hasIndex = typeof objectStore.index === 'function'
+            && (typeof indexNames?.contains !== 'function' || indexNames.contains(OUTBOX_BY_ITEM_KEY_INDEX));
+          if (hasIndex) {
+            let request: IDBRequest | null = null;
+            try {
+              request = objectStore.index(OUTBOX_BY_ITEM_KEY_INDEX).getAll([store, itemKey]);
+            } catch {
+              request = null; // Shim advertised index() but has no byItemKey — use the fallback.
+            }
+            if (request) {
+              const indexed = request;
+              indexed.onerror = () => reject(indexed.error ?? new Error('Could not read durable RemoteSync outbox entries by item key.'));
+              indexed.onsuccess = () => resolve(Array.isArray(indexed.result) ? indexed.result : []);
+              return;
+            }
+          }
+          const request = objectStore.getAll();
+          request.onerror = () => reject(request.error ?? new Error('Could not read durable RemoteSync outbox entries by item key.'));
+          request.onsuccess = () => {
+            const rows = Array.isArray(request.result) ? request.result : [];
+            resolve(rows.filter(row => {
+              const record = row as Record<string, unknown> | null;
+              return !!record && record.store === store && record.itemKey === itemKey;
+            }));
+          };
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async applyItemKeyMutations(mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>): Promise<void> {
+      const deleteOpIds = mutations.flatMap(mutation => mutation.deleteOpIds);
+      const putEntries = mutations.flatMap(mutation => mutation.putEntries);
+      if (deleteOpIds.length === 0 && putEntries.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // ONE readwrite transaction for every key's delta: a multi-key batch (or a replace's
+          // previous-op delete + rebased retry) commits or aborts atomically.
+          const tx = db.transaction(OUTBOX_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not apply durable RemoteSync outbox item-key mutations.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Durable RemoteSync outbox item-key mutation aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(OUTBOX_STORE_NAME);
+          for (const opId of deleteOpIds) store.delete(opId);
+          for (const entry of putEntries) store.put(entry);
         });
       } finally {
         db.close();

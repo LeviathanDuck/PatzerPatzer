@@ -27,6 +27,7 @@ import {
 } from './versionMetadata';
 import {
   buildRecreateRequeueInput,
+  countDurableVersionedOutboxEntries,
   decideRecreateOverTombstone,
   defaultDurableVersionedOutboxStorage,
   enqueueDurableVersionedOutboxEntries,
@@ -3055,7 +3056,7 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
   if (items.length === 0) return;
   const identity = storedServerIdentity();
   const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
-  const next = await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
+  await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
     return {
       store: item.store,
@@ -3066,7 +3067,9 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
       ...(deleted ? {} : { payload: item.payload }),
     };
   }));
-  durableOutboxCountCache = next.length;
+
+
+  durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
 }
 
 async function migrateLegacyOutboxToVersioned(): Promise<number> {
