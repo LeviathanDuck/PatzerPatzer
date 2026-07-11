@@ -25,7 +25,8 @@ import {
   isRemoteSyncItemStateEphemeral,
   migrateRemoteSyncItemMarkersToIdb,
   recordRemoteSyncItemMarkers,
-  type RemoteSyncItemMarkerMutation,
+  restoreRemoteSyncItemMarkersIfUnchanged,
+  type RemoteSyncItemMarkerRestore,
   waitForRemoteSyncItemStateWrites,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemStateVersions,
@@ -3339,24 +3340,28 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         return;
       }
       const priorMarkers = isRemoteSyncItemStateEphemeral() ? null : getRemoteSyncItemMarkers(opIdentity, normalized.store, normalized.itemKey);
+      const markerValue = Math.max(0, Math.floor(normalized.updatedAt));
+      const produced = isDeletedItem(normalized)
+        ? { updatedAt: markerValue, deletedAt: markerValue }
+        : { updatedAt: markerValue, deletedAt: 0 };
       if (isDeletedItem(normalized)) await rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
       else {
         await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
         await clearItemDeletedAt(normalized.store, normalized.itemKey, opIdentity);
       }
       if (storedServerIdentity() !== opIdentity) {
-        // Identity moved during the marker awaits: COMPENSATE before restarting (round 6, Sol
-        // Important-2) — an abandoned per-identity marker (especially a delete tombstone) would
-        // otherwise suppress this account's later writes for an operation it never queued.
+        // Identity moved during the marker awaits: COMPENSATE before restarting (round 6),
+        // CONDITIONALLY (round 8) — restore only while the durable row still holds exactly what
+        // this abandoned attempt produced, so a legitimately-newer concurrent marker survives.
+        // Failure is NOT best-effort (round 7): log and abort so the abandoned tombstone is
+        // visible, never silently load-bearing.
         if (priorMarkers) {
-          // Restoration is NOT best-effort (round 7, Sol Important-2): if the abandoned
-          // identity's markers cannot be restored, aborting is the only honest state — a throw
-          // here surfaces through the queued work's outer catch (sync log + progress issue)
-          // and the abandoned tombstone is at least VISIBLE, never silently load-bearing.
           try {
-            await recordRemoteSyncItemMarkers(opIdentity, [{
+            await restoreRemoteSyncItemMarkersIfUnchanged(opIdentity, [{
               store: normalized.store,
               itemKey: normalized.itemKey,
+              expectedUpdatedAt: produced.updatedAt,
+              expectedDeletedAt: produced.deletedAt,
               updatedAt: priorMarkers.updatedAt > 0 ? priorMarkers.updatedAt : null,
               deletedAt: priorMarkers.deletedAt > 0 ? priorMarkers.deletedAt : null,
             }]);
@@ -3437,6 +3442,7 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
       }
       if (normalized.length === 0) return;
       const priorByKey = new Map<string, { updatedAt: number; deletedAt: number }>();
+      const producedByKey = new Map<string, { updatedAt: number; deletedAt: number }>();
       for (const entry of normalized) {
         // FIRST-SIGHT capture only (round 7, Sol Important-3): a duplicate key's second pass
         // must not overwrite the true pre-attempt prior with the first pass's fresh mutation.
@@ -3444,6 +3450,10 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
         if (!isRemoteSyncItemStateEphemeral() && !priorByKey.has(priorKey)) {
           priorByKey.set(priorKey, getRemoteSyncItemMarkers(opIdentity, entry.store, entry.itemKey));
         }
+        const entryValue = Math.max(0, Math.floor(entry.updatedAt));
+        producedByKey.set(priorKey, isDeletedItem(entry)
+          ? { updatedAt: entryValue, deletedAt: entryValue }
+          : { updatedAt: entryValue, deletedAt: 0 });
         if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
         else {
           await rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
@@ -3453,22 +3463,25 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
       if (storedServerIdentity() !== opIdentity) {
         // Compensate the abandoned identity's marker mutations before restarting (round 6).
         const seenRestore = new Set<string>();
-        const restores: RemoteSyncItemMarkerMutation[] = [];
+        const restores: RemoteSyncItemMarkerRestore[] = [];
         for (const entry of normalized) {
           const priorKey = `${entry.store}\u0000${entry.itemKey}`;
           if (!priorByKey.has(priorKey) || seenRestore.has(priorKey)) continue;
           seenRestore.add(priorKey);
           const prior = priorByKey.get(priorKey)!;
+          const produced = producedByKey.get(priorKey)!;
           restores.push({
             store: entry.store,
             itemKey: entry.itemKey,
+            expectedUpdatedAt: produced.updatedAt,
+            expectedDeletedAt: produced.deletedAt,
             updatedAt: prior.updatedAt > 0 ? prior.updatedAt : null,
             deletedAt: prior.deletedAt > 0 ? prior.deletedAt : null,
           });
         }
         if (restores.length > 0) {
           try {
-            await recordRemoteSyncItemMarkers(opIdentity, restores);
+            await restoreRemoteSyncItemMarkersIfUnchanged(opIdentity, restores);
           } catch (error) {
             recordRemoteSyncLog('flush', 'error', `Could not restore ${restores.length} marker(s) after an identity change; the batch was NOT queued: ${error instanceof Error ? error.message : String(error)}`);
             throw error;

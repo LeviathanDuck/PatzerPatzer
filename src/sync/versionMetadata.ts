@@ -786,6 +786,58 @@ export function resetRemoteSyncItemState(identity: string): Promise<void> {
   return clear;
 }
 
+export interface RemoteSyncItemMarkerRestore {
+  store: string;
+  itemKey: string;
+  /** The marker values the ABANDONED attempt produced — restoration applies only while the
+   * durable row still holds exactly these (0 = absent). */
+  expectedUpdatedAt: number;
+  expectedDeletedAt: number;
+  /** The pre-attempt values to restore (null restores absence). */
+  updatedAt: number | null;
+  deletedAt: number | null;
+}
+
+
+
+
+
+
+
+export function restoreRemoteSyncItemMarkersIfUnchanged(
+  identity: string,
+  restores: ReadonlyArray<RemoteSyncItemMarkerRestore>
+): Promise<number> {
+  if (restores.length === 0) return Promise.resolve(0);
+  const stateKeys = restores.map(restore => encodeRemoteSyncItemStateKey(identity, restore.store, restore.itemKey));
+  return mutateItemStateRows(identity, stateKeys, durableByKey => {
+    const puts: RemoteSyncItemStateRow[] = [];
+    const deleteKeys: string[] = [];
+    let restored = 0;
+    for (const restore of restores) {
+      const stateKey = encodeRemoteSyncItemStateKey(identity, restore.store, restore.itemKey);
+      const current = durableByKey.get(stateKey);
+      const currentUpdatedAt = current?.updatedAt ?? 0;
+      const currentDeletedAt = current?.deletedAt ?? 0;
+      if (currentUpdatedAt !== restore.expectedUpdatedAt || currentDeletedAt !== restore.expectedDeletedAt) continue;
+      const next: RemoteSyncItemStateRow = {
+        ...(current ?? { stateKey, identity, store: restore.store, itemKey: restore.itemKey }),
+      };
+      if (restore.updatedAt === null) delete next.updatedAt;
+      else next.updatedAt = restore.updatedAt;
+      if (restore.deletedAt === null) delete next.deletedAt;
+      else next.deletedAt = restore.deletedAt;
+      restored += 1;
+      if (next.version === undefined && next.updatedAt === undefined && next.deletedAt === undefined) {
+        if (current) deleteKeys.push(stateKey);
+        continue;
+      }
+      puts.push(next);
+    }
+    return { puts, deleteKeys, result: restored };
+  });
+}
+
 function migrationSentinelKey(identity: string): string {
   return `migration/${encodeURIComponent(identity)}`;
 }
