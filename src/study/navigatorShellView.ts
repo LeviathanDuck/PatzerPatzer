@@ -862,17 +862,21 @@ function renderSearchButton(redraw: () => void): VNode {
     on: {
       click: () => {
         _itemSearchOpen = !_itemSearchOpen;
-        // Closing the toggle clears the query rather than leaving an invisible active filter
-        // silently narrowing the list with no visible control showing why (there is no other
-        // "clear search" affordance in this slice).
-        if (!_itemSearchOpen) { setSearch(''); writeLibraryRouteState(); }
+
+
+
+
+        if (!_itemSearchOpen) { setSearch(''); _advancedSearchOpen = false; writeLibraryRouteState(); }
         redraw();
       },
     },
   }, [navIcon('search', { size: 16 })]);
 }
 
-function renderSearchInputRow(redraw: () => void): VNode {
+
+
+
+function renderSearchInputRow(redraw: () => void, withAdvancedToggle: boolean): VNode {
   return h('div.item-toolbar__search-row', [
     h('input.item-toolbar__search-input', {
       attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery() },
@@ -880,10 +884,12 @@ function renderSearchInputRow(redraw: () => void): VNode {
       on: {
         input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); writeLibraryRouteState(); redraw(); },
         keydown: (e: KeyboardEvent) => {
-          if (e.key === 'Escape') { _itemSearchOpen = false; setSearch(''); writeLibraryRouteState(); redraw(); }
+          // Escape closes the search row; also close the advanced panel whose toggle lives here.
+          if (e.key === 'Escape') { _itemSearchOpen = false; _advancedSearchOpen = false; setSearch(''); writeLibraryRouteState(); redraw(); }
         },
       },
     }),
+    withAdvancedToggle ? renderAdvancedSearchButton(redraw) : null,
   ]);
 }
 
@@ -1050,6 +1056,19 @@ function renderItemListToolbar(redraw: () => void, onImportPgnClick: () => void)
     h('div.item-toolbar__group', [renderNewNoteButton(redraw), renderImportMenu(redraw, onImportPgnClick)]),
   ]);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1348,6 +1367,9 @@ function renderAdvancedChipsBar(redraw: () => void): VNode {
   return h('div.item-adv__chips', chips);
 }
 
+
+
+
 function renderAdvancedSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn.item-adv__toggle', {
     class: { '--active': _advancedSearchOpen },
@@ -1356,18 +1378,18 @@ function renderAdvancedSearchButton(redraw: () => void): VNode {
       'aria-expanded': String(_advancedSearchOpen),
     },
     on: { click: () => { _advancedSearchOpen = !_advancedSearchOpen; redraw(); } },
-  }, [navIcon('sliders-horizontal', { size: 16 }), h('span.item-adv__toggle-label', 'Advanced search')]);
+  }, [navIcon('sliders-horizontal', { size: 16 })]);
 }
 
-/** State-1-only advanced-search region: the toggle plus EITHER the expanded panel OR (when
- * collapsed with active filters) the removable-chips bar. Never mounted in State 2 (IMP-3). */
-function renderAdvancedSearchRegion(redraw: () => void): VNode {
-  return h('div.item-adv', [
-    renderAdvancedSearchButton(redraw),
-    _advancedSearchOpen
-      ? renderAdvancedSearchPanel(redraw)
-      : (advancedFilterActive() ? renderAdvancedChipsBar(redraw) : null),
-  ]);
+
+
+
+
+function renderAdvancedSearchRegion(redraw: () => void): VNode | null {
+  const body = _advancedSearchOpen
+    ? renderAdvancedSearchPanel(redraw)
+    : (advancedFilterActive() ? renderAdvancedChipsBar(redraw) : null);
+  return body ? h('div.item-adv', [body]) : null;
 }
 
 
@@ -1617,7 +1639,8 @@ function renderGameOpenShell(
         return [
           renderGameOpenItemListHeader(scope?.label ?? null, exitPlain, exitToFolder),
           renderItemListToolbar(redraw, onImportPgnClick),
-          _itemSearchOpen ? renderSearchInputRow(redraw) : null,
+          // State 2: no advanced-search toggle (IMP-3) — pass `false`.
+          _itemSearchOpen ? renderSearchInputRow(redraw, false) : null,
           _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
           itemListPane,
         ];
@@ -1810,10 +1833,12 @@ export function renderNavigatorShell(
       },
     }, [
       renderItemListToolbar(redraw, onImportPgnClick),
-      _itemSearchOpen ? renderSearchInputRow(redraw) : null,
+
+      _itemSearchOpen ? renderSearchInputRow(redraw, true) : null,
       _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
-      // Advanced-search region — State 1 only (IMP-3). State 2's `renderGameOpenShell` deliberately
-      // omits it: the active advanced query still narrows State 2's list read-only via the plan.
+      // Advanced-search panel/chips region — State 1 only (IMP-3), toggle lives in the search row
+      // above. State 2's `renderGameOpenShell` omits it entirely: the active advanced query still
+      // narrows State 2's list read-only via the plan.
       renderAdvancedSearchRegion(redraw),
       itemListPane,
     ]),
