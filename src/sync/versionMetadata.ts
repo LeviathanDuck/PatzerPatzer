@@ -953,23 +953,34 @@ export async function ensureRemoteSyncItemVersionsActive(
 
   const ephemeral = itemStateStorageOverride ? itemStateOverrideIsEphemeral : itemStateStorageIsEphemeral;
   if (ephemeral) return; // The blob map IS the durable source there; never strip or re-import.
-  const state = readRemoteSyncVersionMetadata(storage, identity);
-  if (state.needsFullPull || Object.keys(state.itemVersions).length === 0) return;
-  const entries = decodeItemVersionEntries(state.itemVersions);
-  const newer = entries.filter(record => {
-    const current = getRemoteSyncItemStateVersion(identity, record.store, record.itemKey);
-    return current === null || record.version > current;
-  });
-  if (newer.length > 0) await recordRemoteSyncItemStateVersions(identity, newer);
-  const current = readRemoteSyncVersionMetadata(storage, identity);
-  if (!current.needsFullPull && Object.keys(current.itemVersions).length > 0) {
-    writeRemoteSyncVersionMetadata(storage, {
-      identity: current.identity,
-      latestVersion: current.latestVersion,
-      itemVersions: {},
-      pullCursor: current.pullCursor,
-      pullCursors: current.pullCursors,
+
+
+
+
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const state = readRemoteSyncVersionMetadata(storage, identity);
+    if (state.needsFullPull) return;
+    const importedMapJson = JSON.stringify(state.itemVersions);
+    if (importedMapJson === '{}') return;
+    const entries = decodeItemVersionEntries(state.itemVersions);
+    const newer = entries.filter(record => {
+      const current = getRemoteSyncItemStateVersion(identity, record.store, record.itemKey);
+      return current === null || record.version > current;
     });
+    if (newer.length > 0) await recordRemoteSyncItemStateVersions(identity, newer);
+    const recheck = readRemoteSyncVersionMetadata(storage, identity);
+    if (recheck.needsFullPull) return;
+    if (JSON.stringify(recheck.itemVersions) !== importedMapJson) continue; // New artifact: import it too.
+    writeRemoteSyncVersionMetadata(storage, {
+      identity: recheck.identity,
+      latestVersion: recheck.latestVersion,
+      itemVersions: {},
+      pullCursor: recheck.pullCursor,
+      pullCursors: recheck.pullCursors,
+    });
+    await ensureRemoteSyncItemStateReady(identity);
+    return;
   }
   await ensureRemoteSyncItemStateReady(identity);
 }
