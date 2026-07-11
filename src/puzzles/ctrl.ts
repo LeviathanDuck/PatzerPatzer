@@ -955,6 +955,36 @@ export class PuzzleRoundCtrl {
     // Record move quality — this is data collection only, separate from correctness.
     this.evaluateMove(uci, expected, matched, fenBefore);
 
+    // --- Terminal checkmate acceptance (before line match) ---
+    // Any legal move whose resulting position is checkmate wins immediately, BEFORE
+    // the UCI comparison against the stored line — multi-mate positions are common and
+    // a delivered mate that differs from the stored line must still solve.
+    // This branch is TERMINAL: it sets status='solved'/mode='view' and records the
+    // attempt before any line-tail logic, appends the ACTUAL mating move (never the
+    // stored remaining solution), and never schedules an opponent reply — the board
+    // move handler's solved-status short-circuit relies on status being 'solved' here.
+    // Adapted from lichess-org/lila: ui/puzzle/src/moveTest.ts
+    const submittedMove = parseUci(uci);
+    if (submittedMove && posBefore && posBefore.isLegal(submittedMove)) {
+      const posAfter = posBefore.clone();
+      posAfter.play(submittedMove);
+      if (posAfter.isCheckmate()) {
+        // Play move sound for the actual mating move.
+        if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
+        this.feedback = 'good';
+        this.progressPly++;
+        // Append the ACTUAL mating move to the tree — not the stored line's move.
+        appendSolutionMoveToTree(this, uci);
+        this.setRoundStatus('solved', 'submit-user-move');
+        this.setPuzzleMode('view', 'submit-user-move');
+        this.recordAttempt();
+        // Sync board to allow both sides to move in analysis mode.
+        syncPuzzleBoard();
+        this.redraw();
+        return { accepted: true };
+      }
+    }
+
     if (matched) {
       // Play move sound
       if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));

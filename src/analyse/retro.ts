@@ -23,6 +23,38 @@ import { LEARNABLE_REASONS, type LearnableReason, type TreeNode } from '../tree/
  */
 export type OpeningProvider = (fen: string) => string[] | undefined;
 
+// Alt-castle normalization for played==best comparison.
+// Castling is emitted either king-to-destination (e1g1) or king-to-rook-square
+// (e1h1) depending on the source (chessops parseSan vs Chessground); both forms
+// denote the same move and must compare equal. This mirrors the alt-castle table
+// semantics of src/puzzles/ctrl.ts `uciMatches` and src/analyse/lichessCompare.ts
+// `normalizeCastlingUci` — each module keeps a miniature copy of the same four
+// aliases to avoid cross-module runtime coupling (see lichessCompare.ts:42-44).
+const ALT_CASTLE_UCI: Readonly<Record<string, string>> = {
+  e1a1: 'e1c1',
+  e1h1: 'e1g1',
+  e8a8: 'e8c8',
+  e8h8: 'e8g8',
+};
+
+/**
+ * True when the played UCI is the engine's best move for the parent position,
+ * accounting for alternate castling notation.
+ *
+ * Lila parity: retrospection derives its solution node from a comp variation
+ * child (retroCtrl.ts: `prev.node.children.find(n => !!n.comp)`), which server
+ * analysis only creates when the played move differed from the best line. A
+ * played==best position therefore has no solution and must not be surfaced as a
+ * candidate — depth asymmetry / horizon effects can still leave a stored loss
+ * above threshold for such a move (BUG-2026-07-10-031).
+ */
+function playedIsBest(played: string, best: string): boolean {
+  if (played === best) return true;
+  if (ALT_CASTLE_UCI[played] === best) return true;
+  if (ALT_CASTLE_UCI[best] === played) return true;
+  return false;
+}
+
 const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const RETRO_OPENING_CANCEL_MAX_PLY = 20;
 
@@ -81,7 +113,10 @@ type EvalLookup = (path: string) => {
  * - solution: Lichess derives this from `prev.node.children.find(n => n.comp)`, a
  *   "comp" child added during server analysis. Patzer Pro stores only the best-move
  *   UCI in evalCache (parentEval.best), so the solution node cannot be reconstructed
- *   without additional multi-PV storage. bestMove is the functional equivalent.
+ *   without additional multi-PV storage. bestMove approximates it, but is NOT fully
+ *   equivalent: a comp child only exists when the played move differed from the best
+ *   line, a structural guarantee bestMove lacks — hence the explicit playedIsBest
+ *   suppression guard (BUG-2026-07-10-031) in every candidate pass below.
  * - bestLine: now persisted as the primary-PV move sequence from parentEval.moves.
  *   Single-PV only (batch runs at MultiPV=1). Multi-PV best lines are deferred.
  *   Absent when the parent position had no PV stored at review time.
@@ -182,6 +217,11 @@ export function buildRetroCandidates(
 
     // Played move UCI is required to form a candidate.
     if (!node.uci) continue;
+
+    // Suppress positions where the played move IS the engine best (BUG-2026-07-10-031).
+    // Lila parity: no comp solution child exists for a played==best move, so it is
+    // never a retrospection candidate regardless of a horizon-effect stored loss.
+    if (playedIsBest(node.uci, parentEval.best)) continue;
 
     // --- Condition 2: missed forced mate ---
     // Mirrors nodeFinder.ts: `prev.eval.mate && !curr.eval.mate && |prev.eval.mate| <= 3`
@@ -306,6 +346,9 @@ export function buildRetroCandidates(
       if (!nodeEv || !parentEv || !parentEv.best) continue;
       if (nodeEv.loss === undefined) continue;
 
+      // Suppress played==best in the defensive pass too (BUG-2026-07-10-031).
+      if (playedIsBest(node.uci, parentEv.best)) continue;
+
       const pWc = evalWinChances(parentEv);
       if (pWc === undefined) continue;
       const moverPWc = isWhiteMove ? pWc : -pWc;
@@ -370,6 +413,11 @@ export function buildRetroCandidates(
       const nodeEval   = getEval(nodePath);
       if (!gpEval || !parentEval || !nodeEval) continue;
       if (!parentEval.best) continue;
+
+      // The punish pass thresholds on the reply to the opponent blunder (node).
+      // If that reply IS the engine best for the parent position, there is no
+      // mistake to learn — suppress it (BUG-2026-07-10-031).
+      if (playedIsBest(node.uci, parentEval.best)) continue;
 
       const gpWc     = evalWinChances(gpEval);
       const parentWc = evalWinChances(parentEval);

@@ -3,10 +3,38 @@
 
 import { h, type VNode } from 'snabbdom';
 import { LEARNABLE_REASONS, type PuzzleCandidate, type TreeNode } from '../tree/types';
+import { LOSS_THRESHOLDS } from '../engine/winchances';
 
 // Minimum win-chance loss to qualify as a puzzle candidate.
-// Matches the blunder threshold — we only want clear mistakes.
-const PUZZLE_CANDIDATE_MIN_LOSS = 0.14;
+// Matches the blunder threshold — we only want clear mistakes. Sourced from the
+// single source of truth (winchances.ts) rather than a hardcoded copy that could
+// drift (BUG-2026-07-10-031 rider: the old literal 0.14 was stale vs 0.15).
+const PUZZLE_CANDIDATE_MIN_LOSS = LOSS_THRESHOLDS.blunder;
+
+// Alt-castle normalization for played==best comparison. Castling may be emitted
+// king-to-destination (e1g1) or king-to-rook-square (e1h1); both forms denote the
+// same move. Miniature copy of the same aliases used by src/puzzles/ctrl.ts
+// `uciMatches` and src/analyse/lichessCompare.ts `normalizeCastlingUci`, kept
+// local to avoid cross-module runtime coupling.
+const ALT_CASTLE_UCI: Readonly<Record<string, string>> = {
+  e1a1: 'e1c1',
+  e1h1: 'e1g1',
+  e8a8: 'e8c8',
+  e8h8: 'e8g8',
+};
+
+/**
+ * True when the played UCI is the engine best for the parent position, accounting
+ * for alternate castling notation. A played==best move has no puzzle to solve —
+ * the stored solution would be the move the player already played
+ * (BUG-2026-07-10-031).
+ */
+function playedIsBest(played: string, best: string): boolean {
+  if (played === best) return true;
+  if (ALT_CASTLE_UCI[played] === best) return true;
+  if (ALT_CASTLE_UCI[best] === played) return true;
+  return false;
+}
 
 // Eval lookup: structural type matching PositionEval without importing it.
 type EvalLookup = (path: string) => { best?: string; loss?: number } | undefined;
@@ -34,11 +62,15 @@ export function extractPuzzleCandidates(
     const nodeEval   = getEval(path);
     const parentEval = getEval(path.slice(0, -2));
 
-    // Require: evaluated loss above threshold + engine best move from parent position
+    // Require: evaluated loss above threshold + engine best move from parent position,
+    // and the played move must NOT be the engine best (BUG-2026-07-10-031): a
+    // played==best position has no puzzle — its stored answer would equal the move
+    // already played.
     if (
       nodeEval?.loss !== undefined &&
       nodeEval.loss >= PUZZLE_CANDIDATE_MIN_LOSS &&
-      parentEval?.best
+      parentEval?.best &&
+      !(node.uci && playedIsBest(node.uci, parentEval.best))
     ) {
       candidates.push({
         gameId,
