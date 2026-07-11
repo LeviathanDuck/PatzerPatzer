@@ -22,6 +22,70 @@ import type {
 } from './types';
 
 // ---------------------------------------------------------------------------
+// Decision 8 (BUG-2026-07-10-034) — bounded LFYM solution lines
+//
+// LFYM-derived puzzles must not demand full-PV reproduction. The save-time
+// policy is LOCKED (no near-best acceptance):
+//   - `solutionLine` is truncated to a fixed odd-ply cap ending on a solver
+//     move (at most 5 plies = 3 solver moves; shorter if the line ends).
+//   - when `bestLine[0] !== bestMove` the definition falls back to
+//     `[bestMove]` with a bounded (one-shot) diagnostic.
+// The solver is the side to move at the puzzle-start position, so solver moves
+// sit at even indices (0, 2, 4). An odd-length line therefore ends on a solver
+// move; an even-length line ends on an opponent reply and is trimmed by one.
+// ---------------------------------------------------------------------------
+
+/** Fixed save-time cap: at most 5 plies = 3 solver moves. */
+const SOLUTION_LINE_MAX_PLIES = 5;
+
+/**
+ * Truncate a candidate PV to the bounded, solver-ending save-time solution line
+ * (Decision 8). Caps at SOLUTION_LINE_MAX_PLIES and drops a trailing opponent
+ * reply so the line ends on a solver move. Never pads: terminal lines shorter
+ * than the cap are returned intact (odd) or trimmed by one (even).
+ */
+function boundSolutionLine(line: string[]): string[] {
+  const capped = line.slice(0, SOLUTION_LINE_MAX_PLIES);
+  // Even length ends on an opponent reply — drop it so the line ends on a solver move.
+  if (capped.length % 2 === 0) return capped.slice(0, capped.length - 1);
+  return capped;
+}
+
+// Bounded diagnostic accounting for the `bestLine[0] !== bestMove` fallback.
+// The fallback itself fires on every affected save (so every corrupted line is
+// still bounded to [bestMove]), but the console diagnostic is emitted at most
+// once per module load so a bulk LFYM save cannot flood the console.
+let bestMoveMismatchFallbacks = 0;
+let bestMoveMismatchDiagnosticsEmitted = 0;
+
+function recordBestMoveMismatch(bestLineHead: string | undefined, bestMove: string): void {
+  bestMoveMismatchFallbacks += 1;
+  if (bestMoveMismatchDiagnosticsEmitted === 0) {
+    bestMoveMismatchDiagnosticsEmitted += 1;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[puzzles/adapters] bestLine[0] (${String(bestLineHead)}) !== bestMove (${bestMove}); `
+        + 'falling back to a single-move solution line (BUG-2026-07-10-034). '
+        + 'Further occurrences this session are suppressed.',
+    );
+  }
+}
+
+/** Test seam: number of times the mismatch fallback has fired since the last reset. */
+export function __getBestMoveMismatchFallbackCountForTests(): number {
+  return bestMoveMismatchFallbacks;
+}
+/** Test seam: number of times the bounded diagnostic has actually been emitted. */
+export function __getBestMoveMismatchDiagnosticCountForTests(): number {
+  return bestMoveMismatchDiagnosticsEmitted;
+}
+/** Test seam: reset the bounded-diagnostic accounting between test cases. */
+export function __resetBestMoveMismatchDiagnosticsForTests(): void {
+  bestMoveMismatchFallbacks = 0;
+  bestMoveMismatchDiagnosticsEmitted = 0;
+}
+
+// ---------------------------------------------------------------------------
 // Lichess shard record shape
 // ---------------------------------------------------------------------------
 
@@ -126,10 +190,22 @@ export function retroCandidateToDefinition(
     ? `${candidate.gameId}_${candidate.path}`
     : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
 
-  // Solution line: use the full PV when available, fall back to single best move.
-  const solutionLine = candidate.bestLine && candidate.bestLine.length > 0
-    ? candidate.bestLine
-    : [candidate.bestMove];
+  // Solution line (Decision 8 / BUG-2026-07-10-034 — save-time truncation policy, LOCKED):
+  //  - If the PV head disagrees with the strict best move, the line cannot be trusted as the
+  //    answer sequence — fall back to [bestMove] with a bounded diagnostic.
+  //  - Otherwise truncate the PV to a bounded, solver-ending line (<=5 plies, odd).
+  //  - Absent/empty PV falls back to the single best move (unchanged).
+  let solutionLine: string[];
+  if (candidate.bestLine && candidate.bestLine.length > 0) {
+    if (candidate.bestLine[0] !== candidate.bestMove) {
+      recordBestMoveMismatch(candidate.bestLine[0], candidate.bestMove);
+      solutionLine = [candidate.bestMove];
+    } else {
+      solutionLine = boundSolutionLine(candidate.bestLine);
+    }
+  } else {
+    solutionLine = [candidate.bestMove];
+  }
 
   const def: UserLibraryPuzzleDefinition = {
     id: idBase,
