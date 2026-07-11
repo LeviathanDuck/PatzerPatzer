@@ -18,6 +18,13 @@ const DEFAULT_SORT: GameFilterSort = { key: 'id', direction: 'asc' };
 
 
 
+
+
+
+
+
+
+
 export const RESULT_ABSENT_FACET_VALUE = '__result-absent__';
 export const DESTINATION_UNSORTED_FACET_VALUE = '__destination-unsorted__';
 
@@ -224,20 +231,46 @@ function matchesTextAny(projection: GameFilterProjection, text: string | undefin
     .some(value => value.toLowerCase().includes(needle));
 }
 
+
+
+
+
+
+
+
+
+
+
+
+function effectiveResultValues(
+  projection: GameFilterProjection,
+): { concrete: string[]; hasStar: boolean } {
+  const concrete: string[] = [];
+  let hasStar = false;
+  for (const value of [projection.result, projection.ownerResult]) {
+    if (!value) continue;
+    if (value.trim() === '*') hasStar = true;
+    else concrete.push(value);
+  }
+  return { concrete, hasStar };
+}
+
 function matchesResultFacet(
   projection: GameFilterProjection,
   requested: readonly string[] | undefined,
 ): boolean {
   if (!requested?.length) return true;
   if (!facetSupported(projection.family, 'result')) return false;
-  const values = [projection.result, projection.ownerResult]
-    .filter((value): value is string => Boolean(value))
-    .map(value => value.toLowerCase());
-  // Absent result (no PGN outcome, no owner result): matches only when the caller explicitly
-  // requested the "Unknown" sentinel (IMP-2a). Otherwise unchanged — an absent result matches nothing.
-  if (!values.length) return requested.includes(RESULT_ABSENT_FACET_VALUE);
-  return requested.some(candidate =>
-    candidate !== RESULT_ABSENT_FACET_VALUE && values.includes(candidate.toLowerCase()));
+  const { concrete, hasStar } = effectiveResultValues(projection);
+  const concreteValues = concrete.map(value => value.toLowerCase());
+  // Unknown when there is no concrete outcome at all (absent result, no owner result) OR when the
+  // PGN outcome is the literal '*'. Matches the "Unknown" sentinel only when the caller requested it
+  // (IMP-2a); a truly absent result keeps its exact prior behavior (matches nothing else).
+  const isUnknownResult = hasStar || concreteValues.length === 0;
+  const matchesUnknown = isUnknownResult && requested.includes(RESULT_ABSENT_FACET_VALUE);
+  const matchesConcrete = requested.some(candidate =>
+    candidate !== RESULT_ABSENT_FACET_VALUE && concreteValues.includes(candidate.toLowerCase()));
+  return matchesUnknown || matchesConcrete;
 }
 
 function matchesPlayersFacet(
@@ -490,7 +523,10 @@ function facetHasData(projection: GameFilterProjection, facet: GameFilterFacet):
     case 'hidden':
       return true;
     case 'result':
-      return Boolean(projection.result || projection.ownerResult);
+
+
+
+      return effectiveResultValues(projection).concrete.length > 0;
     case 'player':
       return Boolean(projection.playerNames?.length || projection.white || projection.black || projection.opponentName);
     case 'opponent':
