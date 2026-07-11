@@ -16,15 +16,18 @@ import type { Key } from '@lichess-org/chessground/types';
 import { makeFen, parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
-import { parseUci } from 'chessops/util';
+import { parseUci, roleToChar } from 'chessops/util';
+import type { Move, Role } from 'chessops';
 import { makeSan } from 'chessops/san';
 import { scalachessCharPair } from 'chessops/compat';
 import { parsePgn } from 'chessops/pgn';
+import type { VNode } from 'snabbdom';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
+import { PromotionCtrl } from '../board/promotion';
 import { playMoveSound } from '../board/sound';
 import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type PuzzleManifest, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
@@ -86,6 +89,23 @@ function uciToSanAtPos(pos: Chess, uci: string): string {
   try { return makeSan(pos, move); } catch { return uci; }
 }
 
+/**
+ * True when `move` advances a pawn to the back rank WITHOUT a promotion role.
+ * Playing such a move via chessops leaves a PAWN on the 8th/1st rank (an illegal
+ * position) instead of promoting — the source of the puzzle tree corruption
+ * (BUG-2026-07-10-025, empirically reproduced). Every raw-play site guards against it so
+ * only suffixed promotion UCIs (produced by the promotion chooser) ever enter a position.
+ * This is a targeted promotion-path guard, NOT a general isLegal() gate (arbitrary
+ * malformed-definition hardening is explicitly out of this lane's scope).
+ */
+function isUnsuffixedBackRankPawnMove(pos: Chess, move: Move): boolean {
+  if (!('from' in move)) return false; // drops never occur in standard puzzle play
+  if (move.promotion) return false;
+  if (pos.board.get(move.from)?.role !== 'pawn') return false;
+  const destRank = move.to >> 3; // 0-based rank; 7 = 8th rank, 0 = 1st rank
+  return destRank === 7 || destRank === 0;
+}
+
 function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined {
   const setup = parseFen(fen);
   if (setup.isErr) return undefined;
@@ -95,6 +115,8 @@ function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined 
   for (const uci of uciMoves) {
     const move = parseUci(uci);
     if (!move) return undefined;
+    // Never raw-play an unsuffixed back-rank pawn move — it corrupts the position.
+    if (isUnsuffixedBackRankPawnMove(chess, move)) return undefined;
     chess.play(move);
   }
   return chess;
@@ -304,6 +326,9 @@ function makeTreeNode(fen: string, uci: string, ply: number): TreeNode | undefin
   if (pos.isErr) return undefined;
   const move = parseUci(uci);
   if (!move) return undefined;
+  // Never build a tree node from an unsuffixed back-rank pawn move — playing it leaves a
+  // pawn on the 8th/1st rank (illegal). Only suffixed promotion UCIs may reach here.
+  if (isUnsuffixedBackRankPawnMove(pos.value, move)) return undefined;
   const san = makeSan(pos.value, move);
   const id = scalachessCharPair(move);
   pos.value.play(move);
@@ -766,7 +791,9 @@ export class PuzzleRoundCtrl {
     // Derive the position after the played move
     const posAfterPlayed = posBefore.value.clone();
     const move = parseUci(playedUci);
-    if (!move) {
+    if (!move || isUnsuffixedBackRankPawnMove(posBefore.value, move)) {
+      // Unparseable, or an unsuffixed back-rank pawn move whose raw play would corrupt
+      // the position — record structure without playing it.
       const quality: PuzzleMoveQuality = {
         playedUci,
         expectedUci,
@@ -1646,6 +1673,9 @@ export function startPuzzleRound(
   definition: PuzzleDefinition,
   redraw: () => void,
 ): PuzzleRoundCtrl {
+  // Round change: drop any promotion pending from the previous round so its chooser can
+  // never submit a move into this new round's board (sprint Decision 2 cancellation).
+  puzzlePromotionCtrl?.reset();
   activeRoundCtrl = new PuzzleRoundCtrl(definition, redraw);
   return activeRoundCtrl;
 }
@@ -1703,6 +1733,7 @@ export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
   const turn: 'white' | 'black' = pos.value.turn;
   puzzleOrientation = rc.pov;
   puzzleCg?.destroy();
+  puzzlePromotionCtrl = null; // preview board has no solve-move promotion flow
   puzzleCgAnimationScope = 'puzzle';
   puzzleCg = makeChessground(el, {
     orientation: puzzleOrientation,
@@ -2377,8 +2408,74 @@ let puzzleCg: CgApi | undefined;
 let puzzleOrientation: 'white' | 'black' = 'white';
 let puzzleCgAnimationScope: 'puzzle' | 'static' = 'static';
 
+/**
+ * Puzzle-owned promotion chooser controller (board-neutral module, src/board/promotion.ts).
+ * Instantiated per mounted solve board so it can read the live `puzzleCg`. Cleared on
+ * round change (startPuzzleRound) and board destroy so a pending chooser never survives
+ * into the next round. Rendered beside the puzzle `.cg-wrap` via renderPuzzlePromotion().
+ */
+let puzzlePromotionCtrl: PromotionCtrl | null = null;
+
 export function getPuzzleCg(): CgApi | undefined { return puzzleCg; }
 export function getPuzzleOrientation(): 'white' | 'black' { return puzzleOrientation; }
+
+/** Test/inspection seam for the active puzzle promotion controller. */
+export function getPuzzlePromotionCtrl(): PromotionCtrl | null { return puzzlePromotionCtrl; }
+
+/** Render the pending promotion chooser (or null), for placement beside the puzzle board. */
+export function renderPuzzlePromotion(): VNode | null {
+  return puzzlePromotionCtrl ? puzzlePromotionCtrl.view() : null;
+}
+
+/** UCI promotion suffix char for a chosen role ('queen'→'q', 'knight'→'n', …). */
+function roleToUciChar(role: Role): string {
+  return roleToChar(role);
+}
+
+/**
+ * Apply a user board move for the current round — the single routing point shared by the
+ * plain move handler and the promotion chooser's submit hook. When `promotionRole` is set
+ * the move is submitted as a suffixed UCI (e.g. e7e8q) so no path can play an unsuffixed
+ * back-rank pawn move into a position.
+ */
+function handlePuzzleMove(
+  rc: PuzzleRoundCtrl,
+  orig: string,
+  dest: string,
+  redraw: () => void,
+  promotionRole?: Role,
+): void {
+  const uci = `${orig}${dest}${promotionRole ? roleToUciChar(promotionRole) : ''}`;
+
+  // Post-solve or analysis mode: add variation to tree
+  if (rc.mode === 'view' || rc.analysisMode) {
+    const newNode = rc.addVariationMove(uci);
+    if (newNode) {
+      playMoveSound(newNode.san);
+      syncPuzzleBoard();
+    }
+    redraw();
+    return;
+  }
+
+  if (rc.status !== 'playing') return;
+
+  const result = rc.submitUserMove(uci);
+
+  if (result.accepted) {
+    // submitUserMove may transition status to 'solved'; cast defeats stale narrowing.
+    if ((rc as PuzzleRoundCtrl).status === 'solved') {
+      redraw();
+      return;
+    }
+    // Correct move — schedule opponent reply
+    setTimeout(() => {
+      rc.playOpponentReply();
+    }, 300);
+  } else {
+    redraw();
+  }
+}
 
 /**
  * Initialize (or reinitialize) the Chessground board for the current puzzle.
@@ -2445,41 +2542,30 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     events: {
       move: (orig, dest, _capturedPiece) => {
         if (!rc) return;
-        const uci = `${orig}${dest}`;
-
-        // Post-solve or analysis mode: add variation to tree
-        if (rc.mode === 'view' || rc.analysisMode) {
-          const newNode = rc.addVariationMove(uci);
-          if (newNode) {
-            playMoveSound(newNode.san);
-            syncPuzzleBoard();
-          }
-          redraw();
-          return;
-        }
-
-        if (rc.status !== 'playing') return;
-
-        const result = rc.submitUserMove(uci);
-
-        if (result.accepted) {
-          if ((rc as PuzzleRoundCtrl).status === 'solved') {
-            redraw();
-            return;
-          }
-          // Correct move — schedule opponent reply
-          setTimeout(() => {
-            rc.playOpponentReply();
-          }, 300);
-        } else {
-          redraw();
-        }
+        // Pawn-to-back-rank → open the promotion chooser; the chooser's submit hook
+        // routes the SUFFIXED UCI back through handlePuzzleMove. No auto-queen shortcut.
+        if (puzzlePromotionCtrl && puzzlePromotionCtrl.start(orig as Key, dest as Key)) return;
+        handlePuzzleMove(rc, orig, dest, redraw);
       },
     },
   });
 
   // Attach resize handle
   bindBoardResizeHandle(el);
+
+  // Instantiate the puzzle-owned promotion chooser bound to the freshly mounted board.
+  // The submit hook resolves the active round at selection time; cancel restores the
+  // board to the live position.
+  puzzlePromotionCtrl = new PromotionCtrl({
+    withGround: <A,>(f: (g: CgApi) => A) => (puzzleCg ? f(puzzleCg) : undefined),
+    orientation: () => puzzleOrientation,
+    redraw,
+    cancel: () => { syncPuzzleBoard(); },
+    submit: (promoOrig, promoDest, role) => {
+      const active = getActiveRoundCtrl();
+      if (active) handlePuzzleMove(active, promoOrig, promoDest, redraw, role);
+    },
+  });
 
   // --- Trigger move: show the opponent's last move before the puzzle ---
   // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playInitialMove
@@ -2530,6 +2616,8 @@ export function destroyPuzzleBoard(): void {
   puzzleCg?.destroy();
   puzzleCg = undefined;
   puzzleCgAnimationScope = 'static';
+  // Clear any pending promotion so a chooser never survives a board teardown.
+  puzzlePromotionCtrl = null;
 }
 
 /**
@@ -2738,6 +2826,7 @@ export function puzzleLast(redraw: () => void): void {
  */
 export function mountIdleBoard(el: HTMLElement): void {
   if (puzzleCg) { puzzleCg.destroy(); puzzleCg = undefined; }
+  puzzlePromotionCtrl = null; // idle board is view-only, no promotion flow
   puzzleCgAnimationScope = 'static';
   puzzleCg = makeChessground(el, {
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',

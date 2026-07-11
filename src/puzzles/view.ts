@@ -33,7 +33,7 @@ import {
   getActiveSession, clearActiveSession,
   retryFailedPuzzles,
   getAutoNext, setAutoNext,
-  getResumePuzzleId, getPuzzleCg,
+  getResumePuzzleId, getPuzzleCg, renderPuzzlePromotion,
   getPreviewPuzzleId, getPreviewRoundCtrl, selectPuzzleForPreview, clearPreview, mountPreviewBoard,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
@@ -2239,6 +2239,9 @@ export function renderPuzzleRound(redraw: () => void): VNode {
                 },
               },
             }),
+            // Promotion chooser overlay — rendered as a sibling of the board .cg-wrap,
+            // mirroring lila ui/puzzle/src/view/main.ts:126 ([chessground, promotion.view()]).
+            renderPuzzlePromotion(),
           ]),
           bottomStrip,
         ]);
