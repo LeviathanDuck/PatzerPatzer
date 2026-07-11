@@ -179,6 +179,21 @@ export interface DurableVersionedOutboxStorage {
     recoveryValues: readonly unknown[],
     sentinelRow: { key: string; [field: string]: unknown },
   ): Promise<void>;
+
+
+
+
+
+
+
+
+
+
+
+  runOutboxRecoveryTransaction?(
+    deleteRawKeys: ReadonlyArray<unknown>,
+    recoveryValues: readonly unknown[],
+  ): Promise<void>;
 }
 
 export interface DurableVersionedOutboxItemKeyMutation {
@@ -1164,6 +1179,69 @@ export async function migrateDurableOutboxBinding(
   });
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function recoverRejectedDurableVersionedOutboxRows(
+  storage: DurableVersionedOutboxStorage,
+  options: { windowSize?: number } = {}
+): Promise<{ recovered: number; rejected: number }> {
+  const run = storage.runOutboxRecoveryTransaction?.bind(storage);
+  const windowSize = Math.max(1, Math.floor(options.windowSize ?? 500));
+  return withDurableOutboxLock(async () => {
+    const raw = await storage.readEntries();
+    const rejectedRows = raw.filter(value => normalizeEntry(value) === null);
+    const rejected = rejectedRows.length;
+    if (rejected === 0 || !run) return { recovered: 0, rejected };
+    let recovered = 0;
+    for (let index = 0; index < rejectedRows.length; index += windowSize) {
+      const window = rejectedRows.slice(index, index + windowSize);
+      const deleteRawKeys: unknown[] = [];
+      for (const value of window) {
+        const rawKey = value && typeof value === 'object' ? (value as Record<string, unknown>).opId : undefined;
+        // keyPath 'opId' guarantees every LIVE row has a valid key; a missing/null key can only
+        // come from a non-IDB fake — copy the value to recovery anyway, just with no deletion.
+        if (rawKey !== undefined && rawKey !== null) deleteRawKeys.push(rawKey);
+      }
+      try {
+        await run(deleteRawKeys, window);
+      } catch {
+        // Aborted/failed commit: stop and report honest partial counts. Prior windows are
+        // durable, this window's rows are intact in the live store; a retry converges.
+        break;
+      }
+      recovered += window.length;
+    }
+    return { recovered, rejected };
+  });
+}
+
 /**
  * Wave 8 (W8.1) pure attempt-cap predicate, DORMANT until the drain consumes it (W8.2). ONLY a
  * `deterministic` last failure with a deterministic count at/over the cap is eligible for
@@ -2099,6 +2177,39 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
             // Same abort-on-sync-throw contract as applyItemKeyMutations: a mid-scheduling
             // throw (e.g. a non-cloneable recovered value) must not let queued requests commit
             // a partial migration.
+            try {
+              tx.abort();
+            } catch {
+              // Already aborting/inactive: the onabort/onerror handlers still settle the promise.
+            }
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async runOutboxRecoveryTransaction(deleteRawKeys: ReadonlyArray<unknown>, recoveryValues: readonly unknown[]): Promise<void> {
+      if (deleteRawKeys.length === 0 && recoveryValues.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          // Sentinel-free two-store commit (W8.2 fix round 1b): raw-key deletes from `entries`
+          // and verbatim adds to `legacy-outbox-recovery` land or abort TOGETHER, so a rejected
+          // row can never be deleted without its recovery copy (or copied without deletion).
+          const tx = db.transaction([OUTBOX_STORE_NAME, LEGACY_OUTBOX_RECOVERY_STORE_NAME], 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not commit the outbox rejected-row recovery.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Outbox rejected-row recovery aborted.'));
+          tx.oncomplete = () => resolve();
+          try {
+            const entriesStore = tx.objectStore(OUTBOX_STORE_NAME);
+            for (const rawKey of deleteRawKeys) entriesStore.delete(rawKey as IDBValidKey);
+            const recoveryStore = tx.objectStore(LEGACY_OUTBOX_RECOVERY_STORE_NAME);
+            for (const value of recoveryValues) recoveryStore.add({ recoveredAt: Date.now(), value });
+          } catch (error) {
+            // Same abort-on-sync-throw contract as the other multi-request transactions: a
+            // mid-scheduling throw (e.g. a non-cloneable recovered value) must not let queued
+            // requests commit a partial recovery.
             try {
               tx.abort();
             } catch {
