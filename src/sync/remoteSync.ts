@@ -1941,7 +1941,10 @@ export async function ensureRemoteSyncItemStateReadiness(): Promise<void> {
   await ensureRemoteSyncItemStateActive(storedServerIdentity());
 }
 
-async function ensureRemoteSyncItemStateActive(identity: string): Promise<void> {
+
+
+
+async function ensureRemoteSyncItemStateActive(identity: string): Promise<string> {
 
 
 
@@ -1951,10 +1954,16 @@ async function ensureRemoteSyncItemStateActive(identity: string): Promise<void> 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     await activateItemStateForIdentity(gateIdentity);
     const current = storedServerIdentity();
-    if (current === gateIdentity) return;
+
+
+
+    if (current === gateIdentity) return gateIdentity;
     gateIdentity = current;
   }
-  await activateItemStateForIdentity(gateIdentity);
+  // Reject explicitly at the cap (Sol Important-2): an unverified "ready" here would recreate
+  // the original cold-identity throw downstream. Identity churn is a login-time event; the
+  // caller's retry after login settles succeeds.
+  throw new Error('RemoteSync identity kept changing during sync activation; retry after login settles.');
 }
 
 async function activateItemStateForIdentity(identity: string): Promise<void> {
@@ -3215,8 +3224,7 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
 
-  const identity = storedServerIdentity();
-  await ensureRemoteSyncItemStateActive(identity);
+  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const baseVersion = getRemoteSyncItemStateVersion(identity, item.store, item.itemKey);
   await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
     store: item.store,
@@ -3230,8 +3238,7 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
 
 async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]): Promise<void> {
   if (items.length === 0) return;
-  const identity = storedServerIdentity();
-  await ensureRemoteSyncItemStateActive(identity);
+  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
@@ -3722,12 +3729,11 @@ async function rememberVersionedPullMetadata(items: readonly unknown[], latestVe
     if (!store || !itemKey || version === null) continue;
     records.push({ store, itemKey, version });
   }
-  const identity = storedServerIdentity();
 
 
 
 
-  await ensureRemoteSyncItemStateActive(identity);
+  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   await recordRemoteSyncItemStateVersions(identity, records);
   const recordMax = records.reduce((max, record) => Math.max(max, record.version), latest);
   const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, [], recordMax);
@@ -3977,12 +3983,12 @@ async function drainVersionedRemoteSyncOutbox(
 
 
 
-  await ensureRemoteSyncItemStateActive(storedServerIdentity());
+  const drainIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const migrated = await migrateLegacyOutboxToVersioned();
   await waitForPendingVersionedOutboxWrites();
   const result = await runVersionedPreWriteGate({
     versionStorage: localStorage,
-    identity: storedServerIdentity(),
+    identity: drainIdentity,
     cloudStateStale: isRemoteSyncCloudStateStale(),
     revalidate: async cursor => revalidateBeforeVersionedDrain(cursor),
     drain: () => drainDurableVersionedOutbox({
@@ -4309,9 +4315,8 @@ export interface RemoteSyncUntrackedScanCounts {
 }
 
 async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrackedScanCounts> {
-  const identity = storedServerIdentity();
   const keysByStore = await readLocalRemoteSyncItemKeysByStore();
-  await ensureRemoteSyncItemStateActive(identity);
+  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   const pendingKeys = new Set(
     (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
@@ -4778,12 +4783,13 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
     try {
 
 
-      await ensureRemoteSyncItemStateActive(identity);
+
+      const activeIdentity = await ensureRemoteSyncItemStateActive(identity);
 
 
 
       const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
-      const resolveVersion = createRemoteSyncItemStateResolver(identity);
+      const resolveVersion = createRemoteSyncItemStateResolver(activeIdentity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
           .map(entry => `${entry.store}\u0000${entry.itemKey}`),
@@ -4916,7 +4922,7 @@ async function readCurrentLocalRemoteSyncItem(
 async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): Promise<void> {
 
 
-  await ensureRemoteSyncItemStateActive(storedServerIdentity());
+  const requeueActiveIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   if (record.operation === 'delete') {
     enqueueRemoteSyncDelete(record.store, record.itemKey, Date.now());
   } else if (record.conflictIntent === 'recreate-over-tombstone') {
@@ -4927,11 +4933,10 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
-    const requeueIdentity = storedServerIdentity();
     await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), buildRecreateRequeueInput(
       record,
       useCurrent,
-      getRemoteSyncItemStateVersion(requeueIdentity, record.store, record.itemKey),
+      getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
     ));
     durableOutboxCountCache = null;
     scheduleRemoteSyncFlush();
