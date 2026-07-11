@@ -28,7 +28,7 @@ import { accountSection, updateAccount, type ChessAccount, type AccountSection, 
 import { deleteImportedAccountAndGames } from '../sync/dataManagement';
 import { computeAccountCardStats, PRIMARY_CARD_SPEEDS, type AccountCardStats, type AccountSpeedStat } from './accountCardStats';
 import {
-  collections, collectionsLoaded, loadSavedCollections,
+  collections, collectionsLoaded, collectionsLoadError, loadSavedCollections,
   registryAccounts, accountsLoaded, loadRegistryAccounts, openAccountResearch,
   refreshRegistryAccounts, invalidateImportedSpeeds, getImportedSpeedsForAccount,
   openingsPage, activeCollection, activeGames, sessionNode, sessionPath, openingTree, sampleGames,
@@ -426,6 +426,26 @@ function renderRouteLoadingPage(): VNode {
 
 // ========== Library page ==========
 
+
+
+
+
+
+
+
+
+
+function renderLibraryLoadError(): VNode {
+  return h('div.openings__loading.openings__loading--error', [
+    h('p', 'Couldn’t load your saved research — a storage error occurred.'),
+    h('p', 'Your research is not lost. Reload to try again.'),
+    h('button.openings__new-btn', {
+      attrs: { type: 'button' },
+      on: { click: () => { window.location.reload(); } },
+    }, 'Reload'),
+  ]);
+}
+
 function renderLibraryPage(redraw: () => void): VNode {
   if (!collectionsLoaded()) {
     void loadSavedCollections(redraw);
@@ -456,13 +476,23 @@ function renderLibraryPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     step !== 'idle'
       ? renderImportWorkflow(redraw)
-      : h('div.openings__body', saved.length === 0 && accounts.length === 0
-          ? [renderEmptyState(redraw)]
-          : [
-              accounts.length > 0 ? renderAccountsSection(accounts, redraw) : null,
-              saved.length > 0 ? renderCollectionList(saved, redraw) : null,
-            ],
-        ),
+      // Storage-failure state (BUG-2026-07-10-013 P2): the saved-collections load rejected AND there
+      // are no collections to show — render an honest error card in place of the silent empty state
+      // (accounts load separately, so keep any accounts section visible). A resume-only failure keeps
+      // the collections (saved.length > 0), so it falls through to the normal branch below and the
+      // collections surface is never nuked.
+      : collectionsLoadError() && saved.length === 0
+        ? h('div.openings__body', [
+            accounts.length > 0 ? renderAccountsSection(accounts, redraw) : null,
+            renderLibraryLoadError(),
+          ])
+        : h('div.openings__body', saved.length === 0 && accounts.length === 0
+            ? [renderEmptyState(redraw)]
+            : [
+                accounts.length > 0 ? renderAccountsSection(accounts, redraw) : null,
+                saved.length > 0 ? renderCollectionList(saved, redraw) : null,
+              ],
+          ),
   ]);
 }
 

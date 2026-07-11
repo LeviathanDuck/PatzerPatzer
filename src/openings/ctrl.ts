@@ -116,6 +116,12 @@ export type OpeningsSessionStateChangeHandler = (snapshot: OpponentsTreeUrlState
 let _currentPage: OpeningsPage = 'library';
 let _collections: ResearchCollection[] = [];
 let _collectionsLoaded = false;
+
+
+
+
+
+let _collectionsLoadError = false;
 let _sampleGamesSortMode: SampleGamesSortMode = 'recent';
 let _sampleGamesResultFilter: SampleGamesResultFilter = 'all';
 let _routeRecoveryMessage: string | null = null;
@@ -372,6 +378,17 @@ function notifySessionStateChanged(): void {
 /** Whether saved collections have been loaded from IndexedDB. */
 export function collectionsLoaded(): boolean {
   return _collectionsLoaded;
+}
+
+
+
+
+
+
+
+
+export function collectionsLoadError(): boolean {
+  return _collectionsLoadError;
 }
 
 /** Current list of saved research collections. */
@@ -1684,33 +1701,60 @@ export function closeSession(): void {
 /** Load saved research collections from the openings DB. */
 export async function loadSavedCollections(redraw: () => void): Promise<void> {
   if (_collectionsLoaded) return;
-  try {
-    const loaded = await loadCollections();
-    loaded.sort((a, b) => b.createdAt - a.createdAt);
-    _collections = loaded;
-    _collectionsLoaded = true;
 
-    // Try to resume a saved session
-    const session = await loadSessionState();
-    const shouldResumeSession = !_skipNextSavedSessionResume;
-    _skipNextSavedSessionResume = false;
-    if (session && _currentPage === 'library' && shouldResumeSession) {
-      const col = _collections.find(c => c.id === session.collectionId);
-      if (col) {
-        const restoredColor = resolveOpeningsSessionColor(session.color, targetColorKeyForCollection(col));
-        openCollection(col, redraw, { color: restoredColor }); // resets _activeTool to 'opening-tree'
-        if (session.path.length > 0) navigateToPath(session.path);
-        if (session.orientation) _boardOrientation = session.orientation;
-        // Restore active tool — fall back to 'opening-tree' if missing or invalid.
-        // Legacy 'repertoire' sessions migrate to 'opponent-repertoire'.
-        const restoredTool = session.activeTool ? normalizeOpeningsTool(session.activeTool) : null;
-        if (restoredTool) _activeTool = restoredTool;
-      }
-    }
+  // Step 1 — load the saved collections. loadCollections() now REJECTS on a genuine storage failure
+  // (BUG-2026-07-10-013 P1) instead of masking it as an empty library. A failure here makes the
+  // whole library unavailable: clear the list, latch the error flag so the view can render an
+  // honest error state (UI States rule) instead of a silent empty library, and stop — there is
+  // nothing to resume onto.
+  let loaded: ResearchCollection[];
+  try {
+    loaded = await loadCollections();
   } catch (e) {
     console.warn('[openings] failed to load collections', e);
     _collections = [];
+    _collectionsLoadError = true;
     _collectionsLoaded = true;
+    redraw();
+    return;
   }
+  loaded.sort((a, b) => b.createdAt - a.createdAt);
+  _collections = loaded;
+  _collectionsLoadError = false;
+  _collectionsLoaded = true;
+
+  // Step 2 — try to resume the saved session. This is a SEPARATE concern from loading the library
+  // (previously they shared one try/catch, so a loadSessionState reject would WIPE the collections
+  // just loaded above). loadSessionState() now REJECTS on a genuine storage failure (P2) instead of
+  // masking it as "no session". On failure the resume is not possible: keep the loaded collections,
+  // do NOT fabricate an empty session, fall back to the fresh-entry path (land on the library with
+  // collections intact) and latch the error signal. The session read is only attempted when a
+  // resume is actually wanted, so an ignored read never raises a spurious error signal.
+  const shouldResumeSession = !_skipNextSavedSessionResume;
+  _skipNextSavedSessionResume = false;
+  if (shouldResumeSession) {
+    try {
+      const session = await loadSessionState();
+      if (session && _currentPage === 'library') {
+        const col = _collections.find(c => c.id === session.collectionId);
+        if (col) {
+          const restoredColor = resolveOpeningsSessionColor(session.color, targetColorKeyForCollection(col));
+          openCollection(col, redraw, { color: restoredColor }); // resets _activeTool to 'opening-tree'
+          if (session.path.length > 0) navigateToPath(session.path);
+          if (session.orientation) _boardOrientation = session.orientation;
+          // Restore active tool — fall back to 'opening-tree' if missing or invalid.
+          // Legacy 'repertoire' sessions migrate to 'opponent-repertoire'.
+          const restoredTool = session.activeTool ? normalizeOpeningsTool(session.activeTool) : null;
+          if (restoredTool) _activeTool = restoredTool;
+        }
+      }
+    } catch (e) {
+      console.warn('[openings] failed to resume saved session', e);
+      // Resume-not-possible: keep the loaded collections (never wipe them), do not fabricate a
+      // session, and surface the storage error. _currentPage stays 'library' (fresh-entry path).
+      _collectionsLoadError = true;
+    }
+  }
+
   redraw();
 }

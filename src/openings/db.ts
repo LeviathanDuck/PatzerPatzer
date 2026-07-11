@@ -294,17 +294,24 @@ export async function saveSessionState(state: StoredOpeningsSession): Promise<vo
 
 /** Load saved session resume state. */
 export async function loadSessionState(): Promise<StoredOpeningsSession | undefined> {
+
+
+
+
+
+
   try {
     const db = await openDb();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction('session', 'readonly');
       const req = tx.objectStore('session').get('current');
       req.onsuccess = () => resolve(req.result ?? undefined);
       req.onerror   = () => reject(req.error);
     });
   } catch (e) {
+    recordOpeningsLoadFail(e);
     console.warn('[openings-db] session load failed', e);
-    return undefined;
+    throw e;
   }
 }
 
