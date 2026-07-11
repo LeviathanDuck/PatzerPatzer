@@ -545,13 +545,14 @@ function mutateItemStateRows<T>(
           for (const row of puts) cache.set(row.stateKey, row);
           for (const stateKey of deleteKeys) cache.delete(stateKey);
         }
-
-
-
-
-        bumpItemStateGeneration(identity);
         publishItemStateInvalidation(identity);
       }
+
+
+
+
+
+      bumpItemStateGeneration(identity);
       return result;
     } catch (error) {
       // The durable state is now unknown relative to this tab's cache: drop the cache so the
@@ -569,15 +570,26 @@ export function recordRemoteSyncItemStateVersions(
   if (records.length === 0) return Promise.resolve(0);
   const stateKeys = records.map(record => encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey));
   return mutateItemStateRows(identity, stateKeys, durableByKey => {
-    const puts: RemoteSyncItemStateRow[] = [];
+
+
+
+
+    const working = new Map<string, RemoteSyncItemStateRow>();
+    const touched = new Set<string>();
     for (const record of records) {
       const stateKey = encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey);
-      const previous = durableByKey.get(stateKey);
-      if (previous?.version === record.version) continue;
-      puts.push({
-        ...(previous ?? { stateKey, identity, store: record.store, itemKey: record.itemKey }),
+      touched.add(stateKey);
+      const current = working.get(stateKey) ?? durableByKey.get(stateKey);
+      working.set(stateKey, {
+        ...(current ?? { stateKey, identity, store: record.store, itemKey: record.itemKey }),
         version: record.version,
       });
+    }
+    const puts: RemoteSyncItemStateRow[] = [];
+    for (const stateKey of touched) {
+      const finalRow = working.get(stateKey)!;
+      const durable = durableByKey.get(stateKey);
+      if (!durable || JSON.stringify(durable) !== JSON.stringify(finalRow)) puts.push(finalRow);
     }
     return { puts, deleteKeys: [], result: puts.length };
   });
