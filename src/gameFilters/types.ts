@@ -7,7 +7,11 @@ export type GameFilterUserColor = 'white' | 'black';
 export type GameFilterOwnerResult = 'win' | 'loss' | 'draw';
 export type GameFilterMissedTacticSeverity = '!' | '!!' | '!!!' | 'M?!';
 export type GameFilterReviewIssueState = 'none' | 'incomplete' | 'failed-skipped';
-export type GameFilterAnalysisState = 'analyzed' | 'not-analyzed';
+
+
+
+
+export type GameFilterAnalysisState = 'analyzed' | 'not-analyzed' | 'no-game';
 
 export type GameFilterFacet =
   | 'recordFamily'

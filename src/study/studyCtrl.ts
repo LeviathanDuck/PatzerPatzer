@@ -243,6 +243,8 @@ let _advVisibility:   StudyRouteState['vis'];
 
 
 
+
+
 export interface StudyGameEnrichmentSource {
   analyzedGameIds: ReadonlySet<string>;
 }
@@ -587,10 +589,17 @@ export function createStudyQueryPlan(
 
 
 
+
+
+
+
+
       const enrichment = _gameEnrichmentSource;
-      const analysisState: GameFilterAnalysisState | undefined = enrichment && item.sourceGameId
-        ? (enrichment.analyzedGameIds.has(item.sourceGameId) ? 'analyzed' : 'not-analyzed')
-        : undefined;
+      const analysisState: GameFilterAnalysisState | undefined = !item.sourceGameId
+        ? 'no-game'
+        : enrichment
+          ? (enrichment.analyzedGameIds.has(item.sourceGameId) ? 'analyzed' : 'not-analyzed')
+          : undefined;
 
       return {
         ...projection,
