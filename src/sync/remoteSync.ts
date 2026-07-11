@@ -25,6 +25,7 @@ import {
   isRemoteSyncItemStateEphemeral,
   migrateRemoteSyncItemMarkersToIdb,
   recordRemoteSyncItemMarkers,
+  recordRemoteSyncItemMarkersMax,
   restoreRemoteSyncItemMarkersIfUnchanged,
   type RemoteSyncItemMarkerRestore,
   waitForRemoteSyncItemStateWrites,
@@ -477,9 +478,14 @@ function resetCurrentIdentityVersionMetadata(): void {
 
 
 
-  resetRemoteSyncItemState(identity).catch(error => {
-    recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
-  });
+  resetRemoteSyncItemState(identity)
+
+
+
+    .then(() => rebuildRemoteSyncItemMarkersFromDurableOutbox(identity))
+    .catch(error => {
+      recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
+    });
   // The gap-observation marker's `pullCursorAtObservation` is only meaningful relative to the
   // metadata blob just reset (pullCursor -> 0 on next read), so stale comparisons must not survive.
   clearServerVersionGapObservation(identity);
@@ -1681,7 +1687,7 @@ async function refreshRemoteSyncBackoffAndEscalation(): Promise<void> {
 export async function refreshRemoteSyncProgressSnapshot(): Promise<RemoteSyncProgressSnapshot> {
   try {
     const durableEntries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
-    durableOutboxCountCache = durableEntries.length;
+    setDurableOutboxCount(durableEntries.length);
     applyRemoteSyncBackoffAndEscalation(durableEntries);
   } catch {
     // Best-effort refresh; keep whatever durable outbox count/backoff/escalation state is already cached.
@@ -2813,9 +2819,13 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
   for (const key of keysToRemove) localStorage.removeItem(key);
 
 
-  resetRemoteSyncItemState(clearingIdentity).catch(error => {
-    recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
-  });
+  resetRemoteSyncItemState(clearingIdentity)
+
+
+    .then(() => rebuildRemoteSyncItemMarkersFromDurableOutbox(clearingIdentity))
+    .catch(error => {
+      recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
+    });
   markerMigrationMemo.delete(clearingIdentity);
 }
 
@@ -3207,6 +3217,20 @@ async function waitForPendingVersionedOutboxWrites(): Promise<void> {
 // localStorage outbox mirror, which cannot hold them). null means unknown — fall back to legacy.
 let durableOutboxCountCache: number | null = null;
 
+
+
+let durableOutboxCountEpoch = 0;
+
+function invalidateDurableOutboxCount(): void {
+  durableOutboxCountEpoch += 1;
+  durableOutboxCountCache = null;
+}
+
+function setDurableOutboxCount(value: number): void {
+  durableOutboxCountEpoch += 1;
+  durableOutboxCountCache = value;
+}
+
 async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
@@ -3247,10 +3271,28 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
 
 
   try {
-    durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+    setDurableOutboxCount(await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage()));
   } catch {
-    durableOutboxCountCache = null;
+    invalidateDurableOutboxCount();
   }
+}
+
+
+
+
+
+
+async function rebuildRemoteSyncItemMarkersFromDurableOutbox(identity: string): Promise<void> {
+  if (isRemoteSyncItemStateEphemeral()) return;
+  const entries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+  if (entries.length === 0) return;
+  await ensureRemoteSyncItemStateReadiness();
+  await recordRemoteSyncItemMarkersMax(identity, entries.map(entry => ({
+    store: entry.store,
+    itemKey: entry.itemKey,
+    updatedAt: entry.clientUpdatedAt ?? 0,
+    ...(entry.operation === 'delete' ? { deletedAt: entry.clientUpdatedAt ?? 0 } : {}),
+  })));
 }
 
 
@@ -3264,8 +3306,35 @@ async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promi
   // Ephemeral posture (no usable IDB): the mirror IS the queue — there is no durable
   // destination, so the pre-wave behavior stands untouched.
   if (isRemoteSyncItemStateEphemeral()) return 0;
-  const snapshot = readOutboxSnapshot({ logInvalid: true });
-  if (snapshot.valid.length === 0 && snapshot.preservedInvalid.length === 0) return 0;
+
+
+
+
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(OUTBOX_KEY);
+  } catch {
+    raw = null;
+  }
+  if (raw === null || raw === '') return 0;
+  const snapshot: OutboxSnapshot = { valid: [], preservedInvalid: [] };
+  let topLevelMalformed: 'unparseable-json' | 'non-array-json' | null = null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    topLevelMalformed = 'unparseable-json';
+  }
+  if (topLevelMalformed === null && !Array.isArray(parsed)) topLevelMalformed = 'non-array-json';
+  if (topLevelMalformed !== null) {
+    snapshot.preservedInvalid.push({ legacyOutboxTopLevel: topLevelMalformed, raw });
+  } else {
+    for (const item of parsed as unknown[]) {
+      const normalized = normalizeSyncItem(item, { logInvalid: true, logAction: 'system' });
+      if (normalized) snapshot.valid.push(normalized);
+      else snapshot.preservedInvalid.push(item);
+    }
+  }
   const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const result = await migrateDurableLegacyOutboxMirror(defaultDurableVersionedOutboxStorage(), {
     validInputs: snapshot.valid.map(item => {
@@ -3287,12 +3356,36 @@ async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promi
       recovered: snapshot.preservedInvalid.length,
     },
   });
-  durableOutboxCountCache = null;
-  // The localStorage key is removed ONLY after the migration transaction committed — on the
-  // non-atomic fallback the malformed values have no recovery store, so the key stays as their
-  // holding pen (exactly the pre-wave posture).
-  if (result.atomic) removeLegacySyncStorageItem(OUTBOX_KEY, 'outbox snapshot');
-  else writeOutboxSnapshot([], snapshot.preservedInvalid);
+  invalidateDurableOutboxCount();
+  if (result.atomic) {
+
+
+
+
+    let currentRaw: string | null;
+    try {
+      currentRaw = localStorage.getItem(OUTBOX_KEY);
+    } catch {
+      currentRaw = null;
+    }
+    if (currentRaw === raw) {
+      removeLegacySyncStorageItem(OUTBOX_KEY, 'outbox snapshot');
+    } else if (currentRaw !== null) {
+      recordRemoteSyncLog('flush', 'info', 'The legacy outbox key changed during migration (another tab wrote it); the residue is retained for the next sweep.');
+    }
+  } else {
+    // Non-atomic fallback: the malformed values have no recovery store, so the key stays as
+    // their holding pen (exactly the pre-wave posture) — unless the top level itself was the
+    // malformed value, which cannot round-trip through writeOutboxSnapshot; leave it in place.
+    // Same compare-before-write guard as the atomic path: a concurrent tab write wins.
+    let fallbackRaw: string | null;
+    try {
+      fallbackRaw = localStorage.getItem(OUTBOX_KEY);
+    } catch {
+      fallbackRaw = null;
+    }
+    if (topLevelMalformed === null && fallbackRaw === raw) writeOutboxSnapshot([], snapshot.preservedInvalid);
+  }
   if (result.recovered > 0) {
     recordRemoteSyncLog('flush', 'info', `Preserved ${result.recovered} unreadable legacy outbox value(s) into the durable recovery store during mirror retirement.`);
   }
@@ -3320,7 +3413,7 @@ async function removeOutboxItemsForCommittedDeletes(items: RemoteSyncItem[]): Pr
     defaultDurableVersionedOutboxStorage(),
     tombstones.map(item => ({ store: item.store, itemKey: item.itemKey, updatedAt: item.updatedAt })),
   );
-  if (removed > 0) durableOutboxCountCache = null;
+  if (removed > 0) invalidateDurableOutboxCount();
 }
 
 function mergeOutboxItem(outbox: RemoteSyncItem[], item: RemoteSyncItem): RemoteSyncItem[] {
@@ -3337,7 +3430,7 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (applyingRemoteSync) return;
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
-  durableOutboxCountCache = null;
+  invalidateDurableOutboxCount();
 
 
 
@@ -3397,6 +3490,10 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
       }
       await enqueueVersionedOutboxItem(normalized, opIdentity);
+
+
+
+      invalidateDurableOutboxCount();
       return;
     }
     throw new Error('RemoteSync identity kept changing during enqueue; retry after login settles.');
@@ -3562,8 +3659,13 @@ let durableOutboxCountPrime: Promise<void> | null = null;
 function primeDurableOutboxCount(): void {
   if (durableOutboxCountPrime) return;
   durableOutboxCountPrime = (async () => {
+
+
+
+    const epoch = durableOutboxCountEpoch;
     try {
-      durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+      const count = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+      if (epoch === durableOutboxCountEpoch) durableOutboxCountCache = count;
     } catch {
       // Cache stays null; the next count call retries.
     } finally {
@@ -4168,7 +4270,7 @@ async function drainVersionedRemoteSyncOutbox(
           'error',
           `Quarantined ${entries.length} queued write(s) (permanent rejection): ${detail}${suffix}. They are leaving the live sync outbox; local data is preserved — use the Quarantined writes section on the Sync page to re-queue after the cause is fixed.`,
         );
-        durableOutboxCountCache = null;
+        invalidateDurableOutboxCount();
       },
       acceptedAdapter: {
         applyAccepted: async accepted => {
@@ -4218,7 +4320,7 @@ async function drainVersionedRemoteSyncOutbox(
             ...(op.clientUpdatedAt !== undefined ? { clientUpdatedAt: op.clientUpdatedAt } : {}),
             ...(op.conflictIntent !== undefined ? { conflictIntent: op.conflictIntent } : {}),
           });
-          durableOutboxCountCache = null;
+          invalidateDurableOutboxCount();
           if (replaced === null) {
             recordRemoteSyncLog('flush', 'info', `Recreation of ${op.store}/${op.itemKey} cancelled: a newer queued delete wins over the re-import.`);
             return;
@@ -4784,7 +4886,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
 
   await migrateLegacyOutboxToVersioned();
   const pendingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
-  durableOutboxCountCache = pendingVersioned.length;
+  setDurableOutboxCount(pendingVersioned.length);
   const queued = pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
   if (queued === 0) return { success: true, counts: {} };
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued } };
@@ -4814,7 +4916,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
           },
         }),
       });
-      durableOutboxCountCache = counts.queued ?? 0;
+      setDurableOutboxCount(counts.queued ?? 0);
       setRemoteSyncLastSyncedAt(Date.now());
       recordRemoteSyncLog('flush', 'success', 'Queued CAS changes flushed.', counts);
       safeCompleteProgress(opId);
@@ -4827,7 +4929,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
       const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
-      durableOutboxCountCache = remainingVersioned.length;
+      setDurableOutboxCount(remainingVersioned.length);
       applyRemoteSyncBackoffAndEscalation(remainingVersioned);
       const counts = { queued: remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
@@ -5065,12 +5167,19 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
-    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), buildRecreateRequeueInput(
+    const requeueInput = buildRecreateRequeueInput(
       record,
       useCurrent,
       getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
-    ));
-    durableOutboxCountCache = null;
+    );
+
+
+
+
+    await rememberItemUpdatedAt(record.store, record.itemKey, requeueInput.clientUpdatedAt ?? Date.now(), requeueActiveIdentity);
+    await clearItemDeletedAt(record.store, record.itemKey, requeueActiveIdentity);
+    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), requeueInput);
+    invalidateDurableOutboxCount();
     scheduleRemoteSyncFlush();
   } else {
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);

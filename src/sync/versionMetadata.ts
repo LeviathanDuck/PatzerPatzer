@@ -786,6 +786,53 @@ export function resetRemoteSyncItemState(identity: string): Promise<void> {
   return clear;
 }
 
+export interface RemoteSyncItemMarkerMaxMutation {
+  store: string;
+  itemKey: string;
+  updatedAt?: number;
+  deletedAt?: number;
+}
+
+
+
+
+
+
+
+export function recordRemoteSyncItemMarkersMax(
+  identity: string,
+  mutations: ReadonlyArray<RemoteSyncItemMarkerMaxMutation>
+): Promise<void> {
+  if (mutations.length === 0) return Promise.resolve();
+  const folded = new Map<string, { store: string; itemKey: string; updatedAt: number; deletedAt: number }>();
+  for (const mutation of mutations) {
+    const stateKey = encodeRemoteSyncItemStateKey(identity, mutation.store, mutation.itemKey);
+    const existing = folded.get(stateKey) ?? { store: mutation.store, itemKey: mutation.itemKey, updatedAt: 0, deletedAt: 0 };
+    existing.updatedAt = Math.max(existing.updatedAt, Math.max(0, Math.floor(mutation.updatedAt ?? 0)));
+    existing.deletedAt = Math.max(existing.deletedAt, Math.max(0, Math.floor(mutation.deletedAt ?? 0)));
+    folded.set(stateKey, existing);
+  }
+  const stateKeys = Array.from(folded.keys());
+  return mutateItemStateRows(identity, stateKeys, durableByKey => {
+    const puts: RemoteSyncItemStateRow[] = [];
+    for (const [stateKey, target] of folded) {
+      const current = durableByKey.get(stateKey);
+      const currentUpdatedAt = current?.updatedAt ?? 0;
+      const currentDeletedAt = current?.deletedAt ?? 0;
+      const nextUpdatedAt = Math.max(currentUpdatedAt, target.updatedAt);
+      const nextDeletedAt = Math.max(currentDeletedAt, target.deletedAt);
+      if (nextUpdatedAt === currentUpdatedAt && nextDeletedAt === currentDeletedAt) continue;
+      const next: RemoteSyncItemStateRow = {
+        ...(current ?? { stateKey, identity, store: target.store, itemKey: target.itemKey }),
+      };
+      if (nextUpdatedAt > 0) next.updatedAt = nextUpdatedAt;
+      if (nextDeletedAt > 0) next.deletedAt = nextDeletedAt;
+      puts.push(next);
+    }
+    return { puts, deleteKeys: [], result: undefined };
+  });
+}
+
 export interface RemoteSyncItemMarkerRestore {
   store: string;
   itemKey: string;
