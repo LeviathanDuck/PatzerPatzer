@@ -78,6 +78,7 @@ import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   advAddedFrom,
   advAddedTo,
+  advAnalysisStates,
   advDestinations,
   advModifiedFrom,
   advModifiedTo,
@@ -98,6 +99,7 @@ import {
   setActiveFolderId,
   setAdvAddedFrom,
   setAdvAddedTo,
+  setAdvAnalysisStates,
   setAdvDestinations,
   setAdvModifiedFrom,
   setAdvModifiedTo,
@@ -121,6 +123,7 @@ import {
 } from './studyCtrl';
 import {
   serializeStudyRouteState,
+  type StudyRouteAnalysisState,
   type StudyRouteDestination,
   type StudyRouteResult,
   type StudyRouteSource,
@@ -1093,6 +1096,15 @@ const ADV_RESULT_OPTIONS: ReadonlyArray<{ value: StudyRouteResult; label: string
   { value: 'draw', label: 'Draw' },
   { value: 'unknown', label: 'Unknown' },
 ];
+
+
+
+
+
+const ADV_ANALYSIS_OPTIONS: ReadonlyArray<{ value: StudyRouteAnalysisState; label: string }> = [
+  { value: 'analyzed', label: 'Analyzed' },
+  { value: 'not-analyzed', label: 'Not analyzed' },
+];
 // Display labels mirror SAVE_FLOW_GAME_DESTINATIONS (src/save/saveFlowCtrl.ts) plus the synthetic
 // Unsorted bucket for `uncategorized` (slice 2 maps that to DESTINATION_UNSORTED_FACET_VALUE).
 const ADV_DEST_OPTIONS: ReadonlyArray<{ value: StudyRouteDestination; label: string }> = [
@@ -1118,7 +1130,7 @@ function advLabelOf<T extends string>(options: ReadonlyArray<{ value: T; label: 
 function advancedFilterActive(): boolean {
   return Boolean(
     advSources()?.length || advTags()?.length || advPlayers()
-    || advResults()?.length || advDestinations()?.length
+    || advResults()?.length || advDestinations()?.length || advAnalysisStates()?.length
     || advAddedFrom() || advAddedTo() || advModifiedFrom() || advModifiedTo()
     || advVisibility() || filterFav(),
   );
@@ -1219,6 +1231,16 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
         commitAdvancedEdit(redraw);
       }),
     ]),
+
+
+
+    h('div.item-adv__section', [
+      h('h4.item-adv__section-title', 'Analysis'),
+      renderAdvMultiChips('Analysis', ADV_ANALYSIS_OPTIONS, advAnalysisStates(), value => {
+        setAdvAnalysisStates(toggleAdvValue(advAnalysisStates(), value));
+        commitAdvancedEdit(redraw);
+      }),
+    ]),
     // Study Organization — sources / destinations / tags multi-select + favorite toggle.
     h('div.item-adv__section', [
       h('h4.item-adv__section-title', 'Organization'),
@@ -1306,6 +1328,8 @@ function renderAdvancedChipsBar(redraw: () => void): VNode {
   if (players) pushChip(`Players: ${players}`, () => setAdvPlayers(''));
   const results = advResults();
   if (results?.length) pushChip(`Result: ${results.map(r => advLabelOf(ADV_RESULT_OPTIONS, r)).join(', ')}`, () => setAdvResults(undefined));
+  const analysisStates = advAnalysisStates();
+  if (analysisStates?.length) pushChip(`Analysis: ${analysisStates.map(a => advLabelOf(ADV_ANALYSIS_OPTIONS, a)).join(', ')}`, () => setAdvAnalysisStates(undefined));
   const destinations = advDestinations();
   if (destinations?.length) pushChip(`Destination: ${destinations.map(d => advLabelOf(ADV_DEST_OPTIONS, d)).join(', ')}`, () => setAdvDestinations(undefined));
   const addedFrom = advAddedFrom(), addedTo = advAddedTo();
