@@ -34,7 +34,14 @@ export type RemoteSyncVersionWriteReadiness =
   | { ok: true; latestVersion: number }
   | { ok: false; reason: 'needs-full-pull' };
 
-const METADATA_SCHEMA_VERSION = 2;
+
+
+
+
+
+
+const METADATA_SCHEMA_VERSION = 3;
+const METADATA_ACCEPTED_SCHEMA_VERSIONS = new Set([2, 3]);
 const METADATA_KEY_PREFIX = 'chesspatzer.remoteSync.versionMetadata.v1';
 
 function assertNonEmpty(value: string, label: string): string {
@@ -100,7 +107,7 @@ export function readRemoteSyncVersionMetadata(
     };
     // A v1 blob (schemaVersion 1, no pullCursor split) fails this check and falls through to
     // missingMetadata, which forces exactly one clean full pull to migrate the browser onto v2.
-    if (parsed.schemaVersion !== METADATA_SCHEMA_VERSION) return missingMetadata(normalizedIdentity);
+    if (typeof parsed.schemaVersion !== 'number' || !METADATA_ACCEPTED_SCHEMA_VERSIONS.has(parsed.schemaVersion)) return missingMetadata(normalizedIdentity);
     if (parsed.identity !== normalizedIdentity) return missingMetadata(normalizedIdentity);
     if (!validVersion(parsed.latestVersion)) return missingMetadata(normalizedIdentity);
     if (!validVersion(parsed.pullCursor)) return missingMetadata(normalizedIdentity);
@@ -359,9 +366,12 @@ let itemStateDefaultStorage: SyncItemStateStorage | null = null;
 let itemStateChannel: { postMessage(message: unknown): void; close(): void } | null = null;
 let itemStateChannelWired = false;
 
-/** Test seam: inject a fake storage; pass null to restore the IndexedDB-backed default. */
-export function setRemoteSyncItemStateStorageForTests(storage: SyncItemStateStorage | null): void {
+/** Test seam: inject a fake storage; pass null to restore the IndexedDB-backed default.
+ * `ephemeral: true` marks the override session-lifetime, exercising the no-IDB posture
+ * (migration keeps the localStorage blob authoritative). */
+export function setRemoteSyncItemStateStorageForTests(storage: SyncItemStateStorage | null, options: { ephemeral?: boolean } = {}): void {
   itemStateStorageOverride = storage;
+  itemStateOverrideIsEphemeral = storage !== null && options.ephemeral === true;
   itemStateCache.clear();
   itemStateReady.clear();
 }
@@ -415,12 +425,19 @@ class MemorySyncItemStateStorage implements SyncItemStateStorage {
   }
 }
 
+let itemStateStorageIsEphemeral = false;
+let itemStateOverrideIsEphemeral = false;
+
 function itemStateStorage(): SyncItemStateStorage {
   if (itemStateStorageOverride) return itemStateStorageOverride;
   if (!itemStateDefaultStorage) {
-    itemStateDefaultStorage = typeof indexedDB === 'undefined'
-      ? new MemorySyncItemStateStorage()
-      : createIndexedDbSyncItemStateStorage();
+    if (typeof indexedDB === 'undefined') {
+      itemStateDefaultStorage = new MemorySyncItemStateStorage();
+      itemStateStorageIsEphemeral = true;
+    } else {
+      itemStateDefaultStorage = createIndexedDbSyncItemStateStorage();
+      itemStateStorageIsEphemeral = false;
+    }
   }
   return itemStateDefaultStorage;
 }
@@ -486,6 +503,12 @@ function normalizeItemStateRow(raw: unknown): RemoteSyncItemStateRow | null {
  * (unknown identities are not an error).
  */
 export function ensureRemoteSyncItemStateReady(identity: string): Promise<void> {
+
+
+  const pendingReset = itemStateResetBarrier.get(identity);
+  if (pendingReset) {
+    return pendingReset.then(() => ensureRemoteSyncItemStateReady(identity));
+  }
   const existing = itemStateReady.get(identity);
   if (existing) return existing;
 
@@ -697,14 +720,30 @@ export function recordRemoteSyncItemMarkers(
   });
 }
 
+const itemStateResetBarrier = new Map<string, Promise<void>>();
+
 export function resetRemoteSyncItemState(identity: string): Promise<void> {
-  // Same serialization as every other mutation (chain + cross-tab lock), so a reset can never
-  // interleave with a writer's read-merge-commit window.
-  return queueItemStateWrite(() => withItemStateLock(async () => {
-    await itemStateStorage().clearIdentity(identity);
+
+
+
+
+
+  invalidateRemoteSyncItemState(identity);
+  const clear = queueItemStateWrite(() => withItemStateLock(async () => {
+    try {
+      await itemStateStorage().clearIdentity(identity);
+    } catch (error) {
+      invalidateRemoteSyncItemState(identity);
+      throw error;
+    }
     invalidateRemoteSyncItemState(identity);
     publishItemStateInvalidation(identity);
   }));
+  const barrier = clear.catch(() => undefined).then(() => {
+    if (itemStateResetBarrier.get(identity) === barrier) itemStateResetBarrier.delete(identity);
+  });
+  itemStateResetBarrier.set(identity, barrier);
+  return clear;
 }
 
 function migrationSentinelKey(identity: string): string {
@@ -832,8 +871,12 @@ export function migrateRemoteSyncVersionsFromLocalStorage(
 ): Promise<RemoteSyncItemStateMigrationResult> {
   const state = readRemoteSyncVersionMetadata(storage, identity);
   const versionRecords = state.needsFullPull ? [] : decodeItemVersionEntries(state.itemVersions);
-  return migrateRemoteSyncItemStateToIdb(identity, { versionRecords, markerRecords: [] }, {
-    cleanupLocalStorage: () => {
+  itemStateStorage(); // Resolve the backend first so the ephemeral check below is accurate.
+
+
+
+  const ephemeral = itemStateStorageOverride ? itemStateOverrideIsEphemeral : itemStateStorageIsEphemeral;
+  const cleanupLocalStorage = ephemeral ? undefined : () => {
       const current = readRemoteSyncVersionMetadata(storage, identity);
       if (current.needsFullPull) return; // No blob (or an unreadable one): nothing to strip.
       if (Object.keys(current.itemVersions).length === 0) return; // Already stripped.
@@ -844,7 +887,9 @@ export function migrateRemoteSyncVersionsFromLocalStorage(
         pullCursor: current.pullCursor,
         pullCursors: current.pullCursors,
       });
-    },
+    };
+  return migrateRemoteSyncItemStateToIdb(identity, { versionRecords, markerRecords: [] }, {
+    ...(cleanupLocalStorage ? { cleanupLocalStorage } : {}),
   });
 }
 

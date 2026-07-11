@@ -467,7 +467,9 @@ function resetCurrentIdentityVersionMetadata(): void {
 
 
 
-  void resetRemoteSyncItemState(identity);
+  resetRemoteSyncItemState(identity).catch(error => {
+    recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
+  });
   // The gap-observation marker's `pullCursorAtObservation` is only meaningful relative to the
   // metadata blob just reset (pullCursor -> 0 on next read), so stale comparisons must not survive.
   clearServerVersionGapObservation(identity);
@@ -3789,6 +3791,11 @@ async function drainVersionedRemoteSyncOutbox(
   progressOptions: { onBatchProgress?: (progress: VersionedOutboxDrainBatchProgress) => void } = {},
 ): Promise<Record<string, number>> {
   await ensureServerGenerationLoaded();
+
+
+
+
+  await ensureRemoteSyncItemVersionsActive(localStorage, storedServerIdentity());
   const migrated = await migrateLegacyOutboxToVersioned();
   await waitForPendingVersionedOutboxWrites();
   const result = await runVersionedPreWriteGate({
@@ -3809,7 +3816,7 @@ async function drainVersionedRemoteSyncOutbox(
         recordRemoteSyncLog(
           'flush',
           'error',
-          `SYNC_VERSION_METADATA_LOCALSTORAGE_WRITE_FAILED: ${entries.length} queued write(s) could not persist version metadata (${errorName}). The operations remain queued with backoff. If this repeats, per-item sync bookkeeping has likely hit the localStorage quota (BUG-2026-07-10-016) — the sync item-state relocation wave is the fix.`,
+          `SYNC_ITEM_VERSION_PERSISTENCE_FAILED: ${entries.length} queued write(s) could not persist per-item version state (${errorName}). The operations remain queued with backoff and retry automatically; if this repeats, browser storage for this site is failing (quota, private-mode eviction, or a corrupted database).`,
         );
       },
       onPermanentRejection: async (entries, rejections) => {
