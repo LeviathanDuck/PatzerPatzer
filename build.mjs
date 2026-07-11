@@ -31,6 +31,7 @@ fs.rmSync(sourcemapRoot, { recursive: true, force: true });
 fs.mkdirSync(`${sourcemapRoot}/js`, { recursive: true });
 fs.rmSync('public/js/main.js.map', { force: true });
 fs.rmSync('public/js/stockfish-worker.js.map', { force: true });
+fs.rmSync('public/js/opening-tree-worker.js.map', { force: true });
 
 function moveSourcemap(publicMapPath) {
   const mapName = publicMapPath.split('/').pop();
@@ -79,6 +80,26 @@ await esbuild.build({
   logLevel: 'info',
 });
 moveSourcemap('public/js/stockfish-worker.js.map');
+
+// Compile TypeScript — opening-tree aggregation worker entry (Lane D R7, DORMANT).
+// Runs the existing OpeningTreeBuilder parse/replay aggregation off the main
+// thread via a classic (non-module) dedicated worker, so it uses iife format like
+// the Stockfish worker above. Built + tested but not yet consumed by any caller;
+// R8 wires ctrl.ts to it. The cache-busting query (`?v=<buildId>`) is applied by
+// the consuming `new Worker(...)` call in R8, mirroring the main.js/main.css
+// convention — the artifact filename here stays stable and unhashed like
+// stockfish-worker.js.
+await esbuild.build({
+  entryPoints: ['src/openings/treeWorker.ts'],
+  bundle: true,
+  outfile: 'public/js/opening-tree-worker.js',
+  format: 'iife',
+  target: 'es2021',
+  minify: true,
+  sourcemap: 'external',
+  logLevel: 'info',
+});
+moveSourcemap('public/js/opening-tree-worker.js.map');
 
 // Copy @lichess-org/stockfish-web engine files to public/stockfish-web/.
 // sf_18_smallnet is Stockfish 18 with a 15 MB NNUE — the same build Lichess
