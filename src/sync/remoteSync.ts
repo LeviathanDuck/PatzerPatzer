@@ -3337,12 +3337,26 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
         return;
       }
+      const priorMarkers = isRemoteSyncItemStateEphemeral() ? null : getRemoteSyncItemMarkers(opIdentity, normalized.store, normalized.itemKey);
       if (isDeletedItem(normalized)) await rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
       else {
         await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
         await clearItemDeletedAt(normalized.store, normalized.itemKey, opIdentity);
       }
-      if (storedServerIdentity() !== opIdentity) continue; // Identity moved: redo under it.
+      if (storedServerIdentity() !== opIdentity) {
+        // Identity moved during the marker awaits: COMPENSATE before restarting (round 6, Sol
+        // Important-2) — an abandoned per-identity marker (especially a delete tombstone) would
+        // otherwise suppress this account's later writes for an operation it never queued.
+        if (priorMarkers) {
+          await recordRemoteSyncItemMarkers(opIdentity, [{
+            store: normalized.store,
+            itemKey: normalized.itemKey,
+            updatedAt: priorMarkers.updatedAt > 0 ? priorMarkers.updatedAt : null,
+            deletedAt: priorMarkers.deletedAt > 0 ? priorMarkers.deletedAt : null,
+          }]).catch(() => { /* logged by the layer; the loud not-ready posture covers readers */ });
+        }
+        continue;
+      }
       // Legacy mirror BEFORE the durable enqueue — parity with the pre-Wave-6 order, where the
       // mirror was written unconditionally while the durable write settled asynchronously.
       const snapshot = readOutboxSnapshot({ logInvalid: true });
@@ -3412,14 +3426,35 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
         normalized.push(entry);
       }
       if (normalized.length === 0) return;
+      const priorByKey = new Map<string, { updatedAt: number; deletedAt: number }>();
       for (const entry of normalized) {
+        if (!isRemoteSyncItemStateEphemeral()) {
+          priorByKey.set(`${entry.store}\u0000${entry.itemKey}`, getRemoteSyncItemMarkers(opIdentity, entry.store, entry.itemKey));
+        }
         if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
         else {
           await rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
           await clearItemDeletedAt(entry.store, entry.itemKey, opIdentity);
         }
       }
-      if (storedServerIdentity() !== opIdentity) continue; // Identity moved: redo under it.
+      if (storedServerIdentity() !== opIdentity) {
+        // Compensate the abandoned identity's marker mutations before restarting (round 6).
+        const restores = normalized
+          .filter(entry => priorByKey.has(`${entry.store}\u0000${entry.itemKey}`))
+          .map(entry => {
+            const prior = priorByKey.get(`${entry.store}\u0000${entry.itemKey}`)!;
+            return {
+              store: entry.store,
+              itemKey: entry.itemKey,
+              updatedAt: prior.updatedAt > 0 ? prior.updatedAt : null,
+              deletedAt: prior.deletedAt > 0 ? prior.deletedAt : null,
+            };
+          });
+        if (restores.length > 0) {
+          await recordRemoteSyncItemMarkers(opIdentity, restores).catch(() => { /* logged by the layer */ });
+        }
+        continue;
+      }
       await enqueueVersionedOutboxItemsBatch(normalized, opIdentity);
       return;
     }
