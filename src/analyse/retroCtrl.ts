@@ -133,9 +133,9 @@ export interface RetroCtrl {
 
   /**
    * Reset the current puzzle back to its start state for a retry attempt.
-   * Sets feedback to 'find', clears solving-move snapshot and win/fail classification.
+   * Sets feedback to 'find', clears solving-move snapshot, win/fail classification,
+   * and the revealed-guidance flag (the reveal is per-attempt; a retry is a new attempt).
    * Does NOT advance to the next candidate — the user stays on the same puzzle.
-   * Does NOT reset guidance reveal or engine state.
    */
   resetForRetry(): void;
 
@@ -437,6 +437,12 @@ export function makeRetroCtrl(
     hideGuidance(): void { _guidanceRevealed = false; },
     resetForRetry(): void {
       _feedback = 'find';
+      // Reveal is per-attempt: a retry is a new attempt, so any guidance the user
+      // revealed on the previous attempt must be hidden again (mirrors jumpToNext).
+      // BUG-2026-07-10-020: without this, the best-move arrow/PV leaked into the retry.
+      // Engine/eval state (_liveBest*) is deliberately preserved across retry, unlike
+      // jumpToNext, which reseeds it for the next candidate.
+      _guidanceRevealed = false;
       _winKind  = null;
       _failKind = null;
       _solvingMoveSnapshot = undefined;
