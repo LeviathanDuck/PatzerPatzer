@@ -1819,10 +1819,13 @@ function rememberedItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): n
   return getRemoteSyncItemMarkers(storedServerIdentity(), store, itemKey).deletedAt;
 }
 
-// Marker writers return the queued durable write. Await where the surrounding path is async;
-// void-callers stay safe because the pull's version record and the drain both ride the SAME
-// FIFO chain, so awaiting any later chain entry transitively awaits these (queue order is the
-// durability order). Failures surface through the layer's cache-invalidation path.
+
+
+
+
+
+
+
 function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): Promise<void> {
   const value = Math.max(0, Math.floor(updatedAt));
   if (isRemoteSyncItemStateEphemeral()) {
@@ -1831,6 +1834,7 @@ function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, upda
   }
   return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, updatedAt: value }]).catch(error => {
     recordRemoteSyncLog('flush', 'error', `Could not persist an updated-at marker: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   });
 }
 
@@ -1843,16 +1847,23 @@ function rememberItemDeletedAt(store: RemoteSyncStoreName, itemKey: string, upda
   }
   return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, updatedAt: value, deletedAt: value }]).catch(error => {
     recordRemoteSyncLog('flush', 'error', `Could not persist a deleted-at marker: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   });
 }
 
 function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): Promise<void> {
+
+
+
+
+
+  removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
   if (isRemoteSyncItemStateEphemeral()) {
-    removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
     return Promise.resolve();
   }
   return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, deletedAt: null }]).catch(error => {
     recordRemoteSyncLog('flush', 'error', `Could not clear a deleted-at marker: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   });
 }
 
@@ -1863,7 +1874,10 @@ function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): Promis
 
 
 export function clearRemoteSyncDeletedAtMarker(store: RemoteSyncStoreName, itemKey: string): void {
-  void clearItemDeletedAt(store, itemKey);
+  clearItemDeletedAt(store, itemKey).catch(() => {
+    // Already logged by the helper; the void hook cannot propagate. The subsequent enqueue's
+    // own marker/suppression handling is the enforcement point.
+  });
 }
 
 
@@ -1919,8 +1933,14 @@ export function resetMarkerMigrationMemoForTests(): void {
   markerMigrationMemo.clear();
 }
 
-/** The Wave 5+6 combined activation gate every sync entry path awaits: version migration +
- * hydration (Wave 5), then the marker migration behind its own sentinel (Wave 6). */
+
+
+
+
+export async function ensureRemoteSyncItemStateReadiness(): Promise<void> {
+  await ensureRemoteSyncItemStateActive(storedServerIdentity());
+}
+
 async function ensureRemoteSyncItemStateActive(identity: string): Promise<void> {
   await ensureRemoteSyncItemVersionsActive(localStorage, identity);
   if (!isRemoteSyncItemStateEphemeral() && !markerMigrationMemo.has(identity)) {
@@ -2583,7 +2603,7 @@ function countSkippedApplyResult(counts: Record<string, number>, reason: RemoteS
   if (detailKey) counts[detailKey] = (counts[detailKey] ?? 0) + 1;
 }
 
-function applySettingItem(item: RemoteSyncItem): 'applied' | RemoteSyncSkippedApplyResult {
+async function applySettingItem(item: RemoteSyncItem): Promise<'applied' | RemoteSyncSkippedApplyResult> {
   if (!isAllowedSettingKey(item.itemKey)) return { skipped: 'disallowed-setting' };
   if (item.updatedAt < settingUpdatedAt(item.itemKey)) return { skipped: 'stale-remote' };
   if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert('settings', item.itemKey, item.updatedAt)) return { skipped: 'suppressed-upsert' };
@@ -2591,8 +2611,10 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | RemoteSyncSkippedAp
     withSettingsRemoteApplySuppressed(() => {
       localStorage.removeItem(item.itemKey);
       setSettingUpdatedAt(item.itemKey, item.updatedAt);
-      rememberItemDeletedAt('settings', item.itemKey, item.updatedAt);
     });
+
+
+    await rememberItemDeletedAt('settings', item.itemKey, item.updatedAt);
     return 'applied';
   }
   const value = payloadSettingValue(item.payload, item.itemKey);
@@ -2600,8 +2622,8 @@ function applySettingItem(item: RemoteSyncItem): 'applied' | RemoteSyncSkippedAp
   withSettingsRemoteApplySuppressed(() => {
     localStorage.setItem(item.itemKey, value);
     setSettingUpdatedAt(item.itemKey, item.updatedAt);
-    clearItemDeletedAt('settings', item.itemKey);
   });
+  await clearItemDeletedAt('settings', item.itemKey);
   return 'applied';
 }
 
@@ -2749,6 +2771,10 @@ export function logoutRemoteSync(): void {
 }
 
 function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneration?: boolean; clearFullPull?: boolean } = {}): void {
+
+
+
+  const clearingIdentity = storedServerIdentity();
   localStorage.removeItem(LAST_SYNC_KEY);
   localStorage.removeItem(LAST_CHECK_KEY);
   if (options.clearOutbox) localStorage.removeItem(OUTBOX_KEY);
@@ -2767,10 +2793,10 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
   for (const key of keysToRemove) localStorage.removeItem(key);
 
 
-  resetRemoteSyncItemState(storedServerIdentity()).catch(error => {
+  resetRemoteSyncItemState(clearingIdentity).catch(error => {
     recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
   });
-  markerMigrationMemo.delete(storedServerIdentity());
+  markerMigrationMemo.delete(clearingIdentity);
 }
 
 export function clearRemoteSyncLocalSyncState(): void {
@@ -4093,7 +4119,7 @@ async function commitDataManagementDeleteKeys(
       // between our last pull and this delete; the next routine pull re-pulls our own tombstones
       // idempotently and advances the cursor itself).
       const latestVersion = await rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
-      for (const tombstone of tombstones) rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
+      for (const tombstone of tombstones) await rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
       removeOutboxItemsForCommittedDeletes(tombstones);
 
       const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(tombstones);
@@ -4416,8 +4442,10 @@ async function applyIdbItem(
     const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
     if (!merged) return { skipped: 'merge-failed' };
     await writeRecordByItemKey(db, spec, item.itemKey, merged);
-    rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
-    clearItemDeletedAt(spec.store, item.itemKey);
+
+
+    await rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)));
+    await clearItemDeletedAt(spec.store, item.itemKey);
     return 'applied';
   }
 
@@ -4427,13 +4455,13 @@ async function applyIdbItem(
   if (isDeletedItem(item)) {
     await deleteRecordByItemKey(db, spec, item.itemKey);
     if (spec.store === 'games') await deleteLegacyImportedGameById(db, item.itemKey);
-    rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
+    await rememberItemDeletedAt(spec.store, item.itemKey, item.updatedAt);
     return 'deleted';
   }
   if (item.payload === undefined) return { skipped: 'missing-payload' };
   await writeRecordByItemKey(db, spec, item.itemKey, item.payload);
-  rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
-  clearItemDeletedAt(spec.store, item.itemKey);
+  await rememberItemUpdatedAt(spec.store, item.itemKey, item.updatedAt);
+  await clearItemDeletedAt(spec.store, item.itemKey);
   return 'applied';
 }
 
@@ -4509,7 +4537,7 @@ export async function applyRemoteSyncItems(
       try {
         let result: 'applied' | 'deleted' | RemoteSyncSkippedApplyResult;
         if (item.store === 'settings') {
-          result = applySettingItem(item);
+          result = await applySettingItem(item);
         } else {
           const spec = IDB_SPECS_BY_STORE.get(item.store);
           if (!spec) {

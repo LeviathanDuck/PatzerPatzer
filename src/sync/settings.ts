@@ -8,7 +8,7 @@ import {
   type AccountSettingSyncItem,
   type AuthStatus,
 } from './client';
-import { shouldSuppressRemoteSyncUpsert } from './remoteSync';
+import { ensureRemoteSyncItemStateReadiness, shouldSuppressRemoteSyncUpsert } from './remoteSync';
 import { isSettingsRemoteApplySuppressed, withSettingsRemoteApplySuppressed } from './settingsSuppression';
 import { applySettingsLive } from './settingsLiveApply';
 
@@ -263,6 +263,11 @@ export async function startAccountSettingsSync(auth: AuthStatus): Promise<void> 
 
   try {
     const remoteSettings = await pullAccountSettings();
+    if (activeIdentityKey !== identity) return;
+
+
+
+    await ensureRemoteSyncItemStateReadiness();
     if (activeIdentityKey !== identity) return;
     const { changed, changedKeys } = applyRemoteSettings(remoteSettings);
     if (activeIdentityKey !== identity) return;
