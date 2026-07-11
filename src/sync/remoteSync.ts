@@ -25,6 +25,7 @@ import {
   isRemoteSyncItemStateEphemeral,
   migrateRemoteSyncItemMarkersToIdb,
   recordRemoteSyncItemMarkers,
+  type RemoteSyncItemMarkerMutation,
   waitForRemoteSyncItemStateWrites,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemStateVersions,
@@ -3348,12 +3349,21 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         // Important-2) — an abandoned per-identity marker (especially a delete tombstone) would
         // otherwise suppress this account's later writes for an operation it never queued.
         if (priorMarkers) {
-          await recordRemoteSyncItemMarkers(opIdentity, [{
-            store: normalized.store,
-            itemKey: normalized.itemKey,
-            updatedAt: priorMarkers.updatedAt > 0 ? priorMarkers.updatedAt : null,
-            deletedAt: priorMarkers.deletedAt > 0 ? priorMarkers.deletedAt : null,
-          }]).catch(() => { /* logged by the layer; the loud not-ready posture covers readers */ });
+          // Restoration is NOT best-effort (round 7, Sol Important-2): if the abandoned
+          // identity's markers cannot be restored, aborting is the only honest state — a throw
+          // here surfaces through the queued work's outer catch (sync log + progress issue)
+          // and the abandoned tombstone is at least VISIBLE, never silently load-bearing.
+          try {
+            await recordRemoteSyncItemMarkers(opIdentity, [{
+              store: normalized.store,
+              itemKey: normalized.itemKey,
+              updatedAt: priorMarkers.updatedAt > 0 ? priorMarkers.updatedAt : null,
+              deletedAt: priorMarkers.deletedAt > 0 ? priorMarkers.deletedAt : null,
+            }]);
+          } catch (error) {
+            recordRemoteSyncLog('flush', 'error', `Could not restore markers for ${normalized.store}/${normalized.itemKey} after an identity change; the write was NOT queued: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+          }
         }
         continue;
       }
@@ -3428,8 +3438,11 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
       if (normalized.length === 0) return;
       const priorByKey = new Map<string, { updatedAt: number; deletedAt: number }>();
       for (const entry of normalized) {
-        if (!isRemoteSyncItemStateEphemeral()) {
-          priorByKey.set(`${entry.store}\u0000${entry.itemKey}`, getRemoteSyncItemMarkers(opIdentity, entry.store, entry.itemKey));
+        // FIRST-SIGHT capture only (round 7, Sol Important-3): a duplicate key's second pass
+        // must not overwrite the true pre-attempt prior with the first pass's fresh mutation.
+        const priorKey = `${entry.store}\u0000${entry.itemKey}`;
+        if (!isRemoteSyncItemStateEphemeral() && !priorByKey.has(priorKey)) {
+          priorByKey.set(priorKey, getRemoteSyncItemMarkers(opIdentity, entry.store, entry.itemKey));
         }
         if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
         else {
@@ -3439,19 +3452,27 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
       }
       if (storedServerIdentity() !== opIdentity) {
         // Compensate the abandoned identity's marker mutations before restarting (round 6).
-        const restores = normalized
-          .filter(entry => priorByKey.has(`${entry.store}\u0000${entry.itemKey}`))
-          .map(entry => {
-            const prior = priorByKey.get(`${entry.store}\u0000${entry.itemKey}`)!;
-            return {
-              store: entry.store,
-              itemKey: entry.itemKey,
-              updatedAt: prior.updatedAt > 0 ? prior.updatedAt : null,
-              deletedAt: prior.deletedAt > 0 ? prior.deletedAt : null,
-            };
+        const seenRestore = new Set<string>();
+        const restores: RemoteSyncItemMarkerMutation[] = [];
+        for (const entry of normalized) {
+          const priorKey = `${entry.store}\u0000${entry.itemKey}`;
+          if (!priorByKey.has(priorKey) || seenRestore.has(priorKey)) continue;
+          seenRestore.add(priorKey);
+          const prior = priorByKey.get(priorKey)!;
+          restores.push({
+            store: entry.store,
+            itemKey: entry.itemKey,
+            updatedAt: prior.updatedAt > 0 ? prior.updatedAt : null,
+            deletedAt: prior.deletedAt > 0 ? prior.deletedAt : null,
           });
+        }
         if (restores.length > 0) {
-          await recordRemoteSyncItemMarkers(opIdentity, restores).catch(() => { /* logged by the layer */ });
+          try {
+            await recordRemoteSyncItemMarkers(opIdentity, restores);
+          } catch (error) {
+            recordRemoteSyncLog('flush', 'error', `Could not restore ${restores.length} marker(s) after an identity change; the batch was NOT queued: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+          }
         }
         continue;
       }
