@@ -4725,6 +4725,54 @@ export async function readLocalRemoteSyncItems(
 
 
 
+
+export async function readLocalRemoteSyncItemsForKeys(
+  neededByStore: Partial<Record<RemoteSyncStoreName, readonly string[]>>,
+  options: { includeSuppressed?: boolean } = {},
+): Promise<RemoteSyncItem[]> {
+  const items: RemoteSyncItem[] = [];
+  const dbConnections = new Map<string, IDBDatabase>();
+  try {
+    for (const spec of IDB_STORE_SPECS) {
+      const keys = neededByStore[spec.store];
+      if (!keys || keys.length === 0) continue;
+      const connectionKey = `${spec.dbName}::${spec.dbVersion}`;
+      let db = dbConnections.get(connectionKey);
+      if (!db) {
+        db = await openIdb(spec.dbName, spec.dbVersion);
+        dbConnections.set(connectionKey, db);
+      }
+      for (const itemKey of keys) {
+        if (isActiveDataManagementDeleteKey(spec.store, itemKey)) continue;
+        const value = await readRecordByItemKey(db, spec, itemKey);
+        if (value === undefined) continue;
+        const payloadUpdatedAt = spec.updatedAt(value);
+        if (!options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem(spec.store, itemKey, payloadUpdatedAt)) continue;
+        items.push({
+          store: spec.store,
+          itemKey,
+          updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(spec.store, itemKey)),
+          payload: value,
+          operation: 'upsert' as const,
+        });
+      }
+    }
+  } finally {
+    for (const db of dbConnections.values()) db.close();
+  }
+  const settingsKeys = neededByStore.settings;
+  if (settingsKeys && settingsKeys.length > 0) {
+    const wanted = new Set(settingsKeys);
+    items.push(...readLocalSettingsItems(options).filter(item => wanted.has(item.itemKey)));
+  }
+  return items;
+}
+
+
+
+
+
+
 async function applyIdbItem(
   item: RemoteSyncItem,
   spec: IdbStoreSpec,
@@ -5060,50 +5108,86 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 
 
 
-      const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
+
+
+      const keysByStore = await readLocalRemoteSyncItemKeysByStore();
+      // The legacy pre-migration game-library fallback (games store completely empty) has no
+      // key-only path — replay it through the full reader, exactly like the pre-F-14 scan.
+      let legacyGameItems: RemoteSyncItem[] = [];
+      if ((keysByStore.games ?? []).length === 0) {
+        const gamesSpec = IDB_SPECS_BY_STORE.get('games');
+        if (gamesSpec) {
+          legacyGameItems = await readLocalStoreItems(gamesSpec, { includeSuppressed: true });
+          if (legacyGameItems.length > 0) keysByStore.games = legacyGameItems.map(item => item.itemKey);
+        }
+      }
+      const legacyGameByKey = new Map(legacyGameItems.map(item => [item.itemKey, item]));
       const resolveVersion = createRemoteSyncItemStateResolver(activeIdentity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
           .map(entry => `${entry.store}\u0000${entry.itemKey}`),
       );
-      const untracked: RemoteSyncItem[] = [];
-      const shadowedSurvivors: RemoteSyncItem[] = [];
+      let scannedLocal = 0;
       let alreadyTracked = 0;
       let alreadyQueued = 0;
-      let requeuedTombstoneShadowed = 0;
-      for (const item of localItems) {
-        if (isDeletedItem(item)) continue;
-        const recordedVersion = resolveVersion(item.store, item.itemKey);
-        if (recordedVersion !== null) {
+      const untrackedKeys: Partial<Record<RemoteSyncStoreName, string[]>> = {};
+      const survivorKeys: Partial<Record<RemoteSyncStoreName, string[]>> = {};
+      for (const [store, keys] of Object.entries(keysByStore) as [RemoteSyncStoreName, string[]][]) {
+        for (const itemKey of keys) {
+          scannedLocal += 1;
+          const recordedVersion = resolveVersion(store, itemKey);
+          if (recordedVersion !== null) {
 
 
 
 
 
 
-
-
-
-
-
-          if (rememberedItemDeletedAt(item.store, item.itemKey, activeIdentity) > 0 && item.updatedAt > 0) {
-            requeuedTombstoneShadowed += 1;
-            void clearItemDeletedAt(item.store, item.itemKey, activeIdentity).catch(() => { /* logged by the helper */ });
-            shadowedSurvivors.push(item);
+            if (rememberedItemDeletedAt(store, itemKey, activeIdentity) > 0) {
+              (survivorKeys[store] ??= []).push(itemKey);
+              continue;
+            }
+            alreadyTracked += 1;
             continue;
           }
-          alreadyTracked += 1;
-          continue;
+          if (pendingKeys.has(`${store}\u0000${itemKey}`)) {
+            alreadyQueued += 1;
+            continue;
+          }
+          (untrackedKeys[store] ??= []).push(itemKey);
         }
-        if (pendingKeys.has(`${item.store}\u0000${item.itemKey}`)) {
-          alreadyQueued += 1;
-          continue;
-        }
-        untracked.push(item);
       }
+
+
+      const loadForKeys = async (needed: Partial<Record<RemoteSyncStoreName, string[]>>): Promise<RemoteSyncItem[]> => {
+        if (legacyGameByKey.size > 0 && needed.games) {
+          const fromLegacy = needed.games.map(key => legacyGameByKey.get(key)).filter((item): item is RemoteSyncItem => item !== undefined);
+          const rest = { ...needed, games: needed.games.filter(key => !legacyGameByKey.has(key)) };
+          return [...fromLegacy, ...await readLocalRemoteSyncItemsForKeys(rest, { includeSuppressed: true })];
+        }
+        return readLocalRemoteSyncItemsForKeys(needed, { includeSuppressed: true });
+      };
+      const untracked = await loadForKeys(untrackedKeys);
+      const loadedSurvivors = await loadForKeys(survivorKeys);
+      const shadowedSurvivors: RemoteSyncItem[] = [];
+      let requeuedTombstoneShadowed = 0;
+      for (const item of loadedSurvivors) {
+        // Requeue with the recorded version as the CAS base (resolved automatically by the
+        // batch enqueue below): a genuinely newer server tombstone still wins through the
+        // normal conflict path, otherwise this resurrects the row. The marker is cleared now
+        // (not after the batch resolves) so the enqueue below does not immediately re-suppress
+        // the very item this branch is recovering.
+        if (item.updatedAt <= 0) continue;
+        requeuedTombstoneShadowed += 1;
+        void clearItemDeletedAt(item.store, item.itemKey, activeIdentity).catch(() => { /* logged by the helper */ });
+        shadowedSurvivors.push(item);
+      }
+      // Survivor keys that were NOT requeued (payload gone, or no positive updatedAt) keep
+      // their pre-F-14 classification: the recorded version means the server has them.
+      alreadyTracked += Object.values(survivorKeys).reduce((total, keys) => total + keys.length, 0) - requeuedTombstoneShadowed;
       const toEnqueue = [...untracked, ...shadowedSurvivors];
       const counts: Record<string, number> = {
-        scannedLocal: localItems.length,
+        scannedLocal,
         alreadyTracked,
         alreadyQueued,
         queuedForSync: toEnqueue.length,
@@ -5113,10 +5197,10 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
         counts[`queued:${item.store}`] = (counts[`queued:${item.store}`] ?? 0) + 1;
       }
       safeUpdateProgress(opId, {
-        total: localItems.length,
-        done: localItems.length,
+        total: scannedLocal,
+        done: scannedLocal,
         phase: 'Classifying local items…',
-        counts: { scannedLocal: localItems.length, alreadyTracked, alreadyQueued, queuedForSync: toEnqueue.length, requeuedTombstoneShadowed },
+        counts: { scannedLocal, alreadyTracked, alreadyQueued, queuedForSync: toEnqueue.length, requeuedTombstoneShadowed },
       });
       if (toEnqueue.length > 0) {
 
