@@ -39,21 +39,31 @@ import {
 } from './versionMetadata';
 import {
   buildRecreateRequeueInput,
+  clearDurableBindingPen,
   collectOutboxMarkerCoverFromRaw,
+  countDurableBindingPenRows,
   countDurableVersionedOutboxEntries,
   decideRecreateOverTombstone,
   defaultDurableVersionedOutboxStorage,
   enqueueDurableVersionedOutboxEntries,
   enqueueDurableVersionedOutboxEntry,
   migrateDurableLegacyOutboxMirror,
+  migrateDurableOutboxBinding,
+  OUTBOX_BINDING_MIGRATION_SENTINEL_KEY,
+  penDurableBindingWrites,
+  recoverRejectedDurableVersionedOutboxRows,
   removeDurableVersionedOutboxEntriesForCommittedDeletes,
   replaceDurableVersionedOutboxEntry,
+  replayDurableBindingPen,
   readDurableVersionedOutbox,
   readQuarantineRecords,
   removeQuarantineRecords,
   writeQuarantineRecords,
+  type DurableOutboxBinding,
   type DurableQuarantineRecord,
   type DurableRetryOutboxEntry,
+  type DurableVersionedOutboxStorage,
+  type OutboxFailureClass,
   type VersionedConflictIntent,
 } from './versionOutbox';
 import {
@@ -484,7 +494,7 @@ function resetCurrentIdentityVersionMetadata(): void {
 
 
 
-  resetRemoteSyncItemState(identity, { rebuildMarkers: buildMarkerRebuildCover })
+  resetRemoteSyncItemState(identity, { rebuildMarkers: raw => buildMarkerRebuildCover(raw, identity) })
     .catch(error => {
       recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -535,13 +545,38 @@ function rememberServerGeneration(generation: unknown, reason?: unknown): void {
   }
 }
 
-function rememberServerIdentity(identity: unknown, userKey: unknown): void {
+// Wave 8 W8.3 fix round 1 (Sol r1 Critical-1): the server-confirmed identity is TOKEN-SESSION-
+// SPECIFIC. The tag key records a fingerprint of the token whose server response confirmed the
+// stored identity; `activeServerConfirmedBinding()` refuses the binding unless the tag matches
+// the CURRENT stored token. Replacing the token therefore invalidates the confirmation
+// SYNCHRONOUSLY (the tag no longer matches) without destroying the stored values — the next
+// status/pull response under the new token re-confirms and re-tags. The tag is a cheap equality
+// fingerprint (FNV-1a), deliberately NOT a second copy of the secret.
+const SERVER_IDENTITY_TOKEN_TAG_KEY = 'chesspatzer.remoteSync.syncIdentity.tokenTag';
+
+function remoteSyncTokenTag(token: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+function rememberServerIdentity(identity: unknown, userKey: unknown, confirmingToken?: string): void {
   const value = typeof identity === 'string' && identity.trim()
     ? identity.trim()
     : typeof userKey === 'string' && userKey.trim()
       ? userKey.trim()
       : '';
-  if (value) localStorage.setItem(SERVER_IDENTITY_KEY, value);
+  if (!value) return;
+  localStorage.setItem(SERVER_IDENTITY_KEY, value);
+  // The tag is the token that MADE the confirming request (tokenOverride during login validation,
+  // the stored token otherwise) — never blindly the stored token, which may have changed while
+  // the request was in flight.
+  if (confirmingToken !== undefined && confirmingToken.trim()) {
+    localStorage.setItem(SERVER_IDENTITY_TOKEN_TAG_KEY, remoteSyncTokenTag(confirmingToken.trim()));
+  }
 }
 
 function storedServerIdentity(): string {
@@ -550,6 +585,176 @@ function storedServerIdentity(): string {
 
 function storedServerIdentityLabel(): string | null {
   return localStorage.getItem(SERVER_IDENTITY_KEY)?.trim() || null;
+}
+
+
+
+
+
+
+
+let durableOutboxStorageOverride: DurableVersionedOutboxStorage | null = null;
+
+function durableOutboxStorage(): DurableVersionedOutboxStorage {
+  return durableOutboxStorageOverride ?? defaultDurableVersionedOutboxStorage();
+}
+
+/** Test seam (Wave 8 W8.3): inject a fake durable outbox storage; pass null to restore the
+ * IndexedDB-backed default. Also resets the session activation memo so fixtures start clean. */
+export function setDurableOutboxStorageForTests(storage: DurableVersionedOutboxStorage | null): void {
+  durableOutboxStorageOverride = storage;
+  resetOutboxBindingActivationForTests();
+}
+
+
+
+export { setRemoteSyncItemStateStorageForTests } from './versionMetadata';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function activeServerConfirmedBinding(): DurableOutboxBinding | null {
+  const identity = storedServerIdentityLabel();
+  if (!identity) return null;
+  const token = storedToken().trim();
+  if (!token) return null;
+  const tag = localStorage.getItem(SERVER_IDENTITY_TOKEN_TAG_KEY);
+  if (tag !== null && tag !== remoteSyncTokenTag(token)) return null;
+  const generation = storedServerGeneration();
+  if (generation === undefined || !Number.isInteger(generation) || generation <= 0) return null;
+  return { identity, syncGeneration: generation };
+}
+
+// True only while the CURRENT stored confirmed binding still equals the one captured earlier in an
+// enqueue attempt — used by the Wave 6 stabilization loop to detect an identity OR generation
+// change that happened across the marker-persistence awaits (design rule 5).
+function bindingMatchesStored(binding: DurableOutboxBinding): boolean {
+  const current = activeServerConfirmedBinding();
+  return current !== null
+    && current.identity === binding.identity
+    && current.syncGeneration === binding.syncGeneration;
+}
+
+function bindingKey(binding: DurableOutboxBinding): string {
+  return `${binding.identity}\u0000${binding.syncGeneration}`;
+}
+
+// Once-per-session activation memo. The durable `outbox-binding-v1` sentinel is the cross-session
+// authority (crash-safe); this in-memory memo just avoids re-scanning the whole outbox on every
+// drain within a session. Keyed by identity\0generation so a restore (generation bump) or account
+// switch re-runs the migration for the new binding.
+let outboxBindingActivatedKey: string | null = null;
+
+
+
+let outboxRecoveryPending = false;
+// Migration-pending is logged at most once per pending window so a cold browser's local writes do
+// not spam the sync log; re-armed whenever a binding activates.
+let bindingMigrationPendingLogged = false;
+
+/** Test seam (Wave 8 W8.3): reset the session activation memo between fixture cases. */
+export function resetOutboxBindingActivationForTests(): void {
+  outboxBindingActivatedKey = null;
+  outboxRecoveryPending = false;
+  bindingMigrationPendingLogged = false;
+}
+
+// SYNC_OUTBOX_BINDING_MIGRATION_PENDING (design "Named observability"): counts only — never an
+// identity, item key, or payload in the diagnostic metadata.
+function logOutboxBindingMigrationPending(message: string, counts?: Record<string, number>): void {
+  if (bindingMigrationPendingLogged) return;
+  bindingMigrationPendingLogged = true;
+  recordRemoteSyncLog('flush', 'info', `SYNC_OUTBOX_BINDING_MIGRATION_PENDING: ${message}`, counts);
+}
+
+// Run the initial binding migration through the ATOMIC path (invariant 4). Returns true only when
+// the three-store transaction committed the sentinel; `atomic:false`, a thrown migration, or an
+// absent atomic path all BLOCK activation and leave the drain in unbound legacy mode. Idempotent
+// within a session via the activation memo.
+async function ensureDurableOutboxBindingActivated(binding: DurableOutboxBinding): Promise<boolean> {
+  const key = bindingKey(binding);
+  if (outboxBindingActivatedKey === key) return true;
+  let result;
+  try {
+    result = await migrateDurableOutboxBinding(durableOutboxStorage(), {
+      binding,
+      sentinelKey: OUTBOX_BINDING_MIGRATION_SENTINEL_KEY,
+    });
+  } catch (error) {
+    logOutboxBindingMigrationPending(
+      `the durable outbox binding migration could not run (${error instanceof Error ? error.name : 'unknown'}); draining unbound legacy entries and retrying.`,
+    );
+    return false;
+  }
+  if (!result.atomic) {
+    // No atomic three-store transaction ran → the sentinel is not authoritative → activation is
+    // blocked (invariant 4). Older/degraded storages take this path and keep byte-identical
+    // pre-Wave-8 legacy drain behavior.
+    logOutboxBindingMigrationPending(
+      'the durable outbox binding migration did not complete atomically; binding not yet active.',
+      { backfilled: result.backfilled },
+    );
+    return false;
+  }
+  outboxBindingActivatedKey = key;
+  outboxRecoveryPending = true; // recover immediately after binding migration (amendment)
+  bindingMigrationPendingLogged = false;
+  if (result.recovered > 0) {
+    recordRemoteSyncLog('flush', 'info', 'Durable outbox binding migration preserved unreadable rows into recovery.', {
+      recovered: result.recovered,
+      backfilled: result.backfilled,
+    });
+  }
+  return true;
+}
+
+// Runs `recoverRejectedDurableVersionedOutboxRows` when a boundary armed it, BEFORE the next bound
+// drain (amendment). Returns TRUE only when recovery is CLEAN (nothing pending, or every rejected
+// row durably recovered) — the caller must FAIL CLOSED on false and not run that drain pass
+// (Sol r1 High-5): an unclean recovery leaves undisposed corruption that W8.2's session-clean
+// fast path may no longer re-scan. Honest counts: `rejected - recovered > 0` means corruption
+// remains undisposed, so it is surfaced and the flag stays armed to retry.
+async function runPendingOutboxRecovery(): Promise<boolean> {
+  if (!outboxRecoveryPending) return true;
+  try {
+    const { recovered, rejected } = await recoverRejectedDurableVersionedOutboxRows(durableOutboxStorage());
+    if (rejected - recovered > 0) {
+      outboxRecoveryPending = true;
+      recordRemoteSyncLog('flush', 'error', 'SYNC_OUTBOX_BINDING_MIGRATION_PENDING: rejected outbox rows remain undisposed after recovery; the drain is blocked until recovery succeeds.', {
+        recovered,
+        rejected,
+      });
+      return false;
+    }
+    outboxRecoveryPending = false;
+    if (recovered > 0) {
+      recordRemoteSyncLog('flush', 'info', 'Recovered rejected durable outbox rows into the recovery store before drain.', { recovered, rejected });
+    }
+    return true;
+  } catch {
+    // Recovery failed outright (unknown store state): keep armed and fail closed — the next
+    // drain retries recovery before sending.
+    outboxRecoveryPending = true;
+    return false;
+  }
+}
+
+
+
+
+
+function classifyRemoteSyncSendBatchError(error: unknown): OutboxFailureClass | undefined {
+  return error instanceof RemoteSyncFetchError ? error.failureClass : undefined;
 }
 
 function observedServerVersionKey(identity: string): string {
@@ -1672,7 +1877,7 @@ function applyRemoteSyncBackoffAndEscalation(
  */
 async function refreshRemoteSyncBackoffAndEscalation(): Promise<void> {
   try {
-    const entries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+    const entries = await readDurableVersionedOutbox(durableOutboxStorage());
     applyRemoteSyncBackoffAndEscalation(entries);
     scheduleRemoteSyncProgressEmit();
   } catch {
@@ -1688,7 +1893,7 @@ async function refreshRemoteSyncBackoffAndEscalation(): Promise<void> {
 
 export async function refreshRemoteSyncProgressSnapshot(): Promise<RemoteSyncProgressSnapshot> {
   try {
-    const durableEntries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+    const durableEntries = await readDurableVersionedOutbox(durableOutboxStorage());
     setDurableOutboxCount(durableEntries.length);
     applyRemoteSyncBackoffAndEscalation(durableEntries);
   } catch {
@@ -1699,7 +1904,7 @@ export async function refreshRemoteSyncProgressSnapshot(): Promise<RemoteSyncPro
 
 
   try {
-    const quarantineCount = (await readQuarantineRecords()).length;
+    const quarantineCount = (await readQuarantineRecords(durableOutboxStorage())).length;
     remoteSyncProgressStore = quarantineCount > 0
       ? addRemoteSyncIssue(remoteSyncProgressStore, {
           reason: 'quarantined-writes',
@@ -2699,6 +2904,13 @@ export function hasRemoteSyncToken(): boolean {
 
 export function setRemoteSyncToken(token: string): void {
   const value = token.trim();
+  // Wave 8 W8.3 fix round 1 (Sol r1 Critical-1): a LEGACY (untagged) identity confirmation cannot
+  // be attributed to either token across a token change — poison it SYNCHRONOUSLY so
+  // `activeServerConfirmedBinding()` reads binding-ABSENT the instant the token value changes.
+  // Tagged confirmations need no poison: their tag simply stops matching the new token.
+  if (value !== storedToken().trim() && localStorage.getItem(SERVER_IDENTITY_TOKEN_TAG_KEY) === null) {
+    localStorage.setItem(SERVER_IDENTITY_TOKEN_TAG_KEY, 'legacy-invalidated');
+  }
   if (value) localStorage.setItem(TOKEN_KEY, value);
   else localStorage.removeItem(TOKEN_KEY);
 }
@@ -2810,7 +3022,17 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
   const clearingIdentity = storedServerIdentity();
   localStorage.removeItem(LAST_SYNC_KEY);
   localStorage.removeItem(LAST_CHECK_KEY);
-  if (options.clearOutbox) localStorage.removeItem(OUTBOX_KEY);
+  if (options.clearOutbox) {
+    localStorage.removeItem(OUTBOX_KEY);
+
+
+
+
+    clearDurableBindingPen(durableOutboxStorage())
+      .catch(error => {
+        recordRemoteSyncLog('logout', 'error', `Could not drop pending pre-login writes: ${error instanceof Error ? error.message : String(error)}`);
+      });
+  }
   if (options.clearGeneration) clearServerGeneration();
   if (options.clearFullPull) clearRemoteSyncFullPullRequirement();
   const keysToRemove: string[] = [];
@@ -2830,7 +3052,7 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
 
 
 
-  resetRemoteSyncItemState(clearingIdentity, { rebuildMarkers: buildMarkerRebuildCover })
+  resetRemoteSyncItemState(clearingIdentity, { rebuildMarkers: raw => buildMarkerRebuildCover(raw, clearingIdentity) })
     .catch(error => {
       recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -2931,6 +3153,33 @@ function logSyncFailure(diagnostic: SyncFailureDiagnostic): void {
   console.warn('[remote-sync] fetch failure', diagnostic);
 }
 
+
+
+
+
+
+
+
+
+class RemoteSyncFetchError extends Error {
+  readonly failureClass: OutboxFailureClass;
+  readonly httpStatus?: number;
+  constructor(message: string, failureClass: OutboxFailureClass, httpStatus?: number) {
+    super(message);
+    this.name = 'RemoteSyncFetchError';
+    this.failureClass = failureClass;
+    if (httpStatus !== undefined) this.httpStatus = httpStatus;
+  }
+}
+
+function httpStatusFailureClass(status: number): OutboxFailureClass {
+  // Retryable server statuses: 408 request timeout, 425 too early, 429 rate limit, 5xx.
+  if (status === 408 || status === 425 || status === 429 || status >= 500) return 'retryable-server';
+  // Any other 4xx is a deterministic protocol/validation rejection — the same batch will re-reject
+  // it, so it advances the deterministic cap counter.
+  return 'deterministic';
+}
+
 async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOverride?: string, retryCount = 0): Promise<T> {
   const token = (tokenOverride ?? storedToken()).trim();
   if (!token) throw new Error('Enter the admin sync token first.');
@@ -2941,17 +3190,45 @@ async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOve
   if (generation !== undefined) headers.set('X-Patzer-Sync-Generation', String(generation));
 
   const fetchStart = Date.now();
-  const res = await fetch(`${API_BASE}/${path}`, {
-    ...init,
-    headers,
-    credentials: 'same-origin',
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/${path}`, {
+      ...init,
+      headers,
+      credentials: 'same-origin',
+      cache: 'no-store',
+    });
+  } catch (error) {
+    // Connectivity loss (offline, DNS, connection reset): the write never reached the server, so
+    // it is a `transport` failure that must retry forever and never consume the deterministic cap.
+    const message = error instanceof Error ? error.message : 'Remote sync request could not reach the server.';
+    throw new RemoteSyncFetchError(message, 'transport');
+  }
   const latencyMs = Date.now() - fetchStart;
 
-  const body = await readJsonResponse<ApiErrorBody & T>(res);
+  // Wave 8 W8.3 fix round 1 (Sol r1 Medium-7): a malformed/non-JSON body (HTML error page from a
+  // proxy or PHP fatal) must not erase the HTTP status — an HTML 400 is still a deterministic
+  // protocol rejection and an HTML 5xx is still retryable-server, never default-transport.
+  let body: ApiErrorBody & T;
+  try {
+    body = await readJsonResponse<ApiErrorBody & T>(res);
+  } catch (error) {
+    if (!res.ok) {
+      throw new RemoteSyncFetchError(`Remote sync API failed: ${res.status}`, httpStatusFailureClass(res.status), res.status);
+    }
+    // Sol r7 Important: an HTTP-successful response with a MALFORMED/non-JSON body is a
+    // protocol-invalid response — the request reached the server and the server answered, so
+    // this is DETERMINISTIC (the same request will get the same broken answer), never
+    // transport. Only a genuine fetch rejection above keeps the ratified offline-safety
+    // transport class.
+    throw new RemoteSyncFetchError(error instanceof Error ? error.message : 'Remote sync API returned a malformed response.', 'deterministic', res.status);
+  }
+  // Identity BEFORE generation (Sol r1 Critical-1 ordering): during a token/account switch, the
+  // generation-number-change reset targets storedServerIdentity() — recording the response's
+  // identity first makes that reset hit the account the new numbering actually describes, never
+  // the previous token's identity. The identity is tagged with the token that MADE this request.
+  rememberServerIdentity(body.authIdentity, body.userKey, token);
   rememberServerGeneration(body.syncGeneration, body.generationReason);
-  rememberServerIdentity(body.authIdentity, body.userKey);
   rememberObservedServerLatestVersion((body as { latestVersion?: unknown }).latestVersion);
   if (!res.ok) {
     const ep = endpointClass(path);
@@ -2964,7 +3241,7 @@ async function remoteSyncFetch<T>(path: string, init: RequestInit = {}, tokenOve
       errorMessage: body.error || `Remote sync API failed: ${res.status}`,
     });
     if (body.code === 'stale-session') handleStaleSession(body);
-    throw new Error(body.error || `Remote sync API failed: ${res.status}`);
+    throw new RemoteSyncFetchError(body.error || `Remote sync API failed: ${res.status}`, httpStatusFailureClass(res.status), res.status);
   }
   return body as T;
 }
@@ -3190,6 +3467,96 @@ function writeOutboxSnapshot(items: RemoteSyncItem[], preservedInvalid: unknown[
   setLegacySyncStorageItem(OUTBOX_KEY, JSON.stringify(next), 'outbox snapshot');
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// The same-key LOCAL authority timestamp READ AT REPLAY TIME: item markers under the given
+// identity plus the per-setting updatedAt key that settings applies/saves record. The replay
+// compares this against each pen row's OWN clientUpdatedAt (the floor captured synchronously at
+// write creation — Sol r5 RACE-1: no storage-sampled floor exists, so a newer remote apply
+// landing during marker persistence can never become part of the floor; it is simply strictly
+// newer authority at replay time and supersedes).
+function localAuthorityAt(identity: string, store: string, itemKey: string): number {
+  const settingsAt = store === 'settings' ? settingUpdatedAt(itemKey) : 0;
+  if (isRemoteSyncItemStateEphemeral()) return settingsAt;
+  const markers = getRemoteSyncItemMarkers(identity, store, itemKey);
+  return Math.max(markers.updatedAt, markers.deletedAt, settingsAt);
+}
+
+// Retain unconfirmed writes (upserts AND deletes) in the pen store. Failure THROWS after raising
+// the user-visible durable-enqueue-failed issue (Sol r2: a penned DELETE failure must be
+// recoverable, not just sync-logged) — the callers' catch paths keep their own reporting.
+async function penUnconfirmedWrites(items: readonly RemoteSyncItem[]): Promise<void> {
+  if (items.length === 0) return;
+  try {
+    await penDurableBindingWrites(durableOutboxStorage(), items.map(item => {
+      const deleted = isDeletedItem(item);
+      return {
+        store: item.store,
+        itemKey: item.itemKey,
+        operation: deleted ? 'delete' as const : 'upsert' as const,
+        // The write's own stamp IS the supersession floor (Sol r5 RACE-1) — captured from the
+        // item synchronously, never sampled from storage.
+        clientUpdatedAt: item.updatedAt,
+        ...(deleted ? {} : { payload: item.payload }),
+      };
+    }));
+  } catch (error) {
+    const message = `Could not retain ${items.length} unconfirmed write(s) in the pending sync holding pen: ${error instanceof Error ? error.message : String(error)}`;
+    safeAddProgressIssue({ reason: 'durable-enqueue-failed', message, counts: { failedItems: items.length } });
+    throw new Error(message);
+  }
+}
+
+/** Pending writes awaiting a login/account confirmation — surfaced DISTINCTLY from the queued
+ * outbox count (pen rows are structurally excluded from every queued-count consumer). */
+export async function getRemoteSyncBindingPenCount(): Promise<number> {
+  try {
+    return await countDurableBindingPenRows(durableOutboxStorage());
+  } catch {
+    return 0;
+  }
+}
+
+// Ordering-safe pen replay under the VERIFIED active binding (Sol r3 Critical-2 + High-4), run in
+// the activation sequence after binding confirmation and BEFORE the bound drain sends. The
+// versionOutbox primitive commits the supersession decision, the bound coalesced enqueue (fresh
+// CAS bases under the verified identity), and the pen deletion in ONE lock-held transaction. The
+// marker authority callback supersedes penned ops that are not newer than an already-applied
+// remote row or bound local write for the same key (a full pull that landed before the replay
+// must not be overwritten by an older penned intent).
+async function replayBindingPen(binding: DurableOutboxBinding, opIdentity: string): Promise<void> {
+  const resolveVersion = createRemoteSyncItemStateResolver(opIdentity);
+  const result = await replayDurableBindingPen(durableOutboxStorage(), {
+    binding,
+    resolveBaseVersion: (store, itemKey) => resolveVersion(store as RemoteSyncStoreName, itemKey),
+    supersededAt: (store, itemKey) => localAuthorityAt(opIdentity, store, itemKey),
+  });
+  if (result.replayed > 0 || result.superseded > 0) {
+    invalidateDurableOutboxCount();
+    recordRemoteSyncLog('flush', 'info', 'Pending pre-login writes were released to the sync outbox.', {
+      replayed: result.replayed,
+      superseded: result.superseded,
+    });
+  }
+}
+
 function casClientId(): string {
   const existing = localStorage.getItem(CAS_CLIENT_ID_KEY)?.trim();
   if (existing) return existing;
@@ -3299,7 +3666,7 @@ export function resolveGamesConflictIntent(
   return source.store === 'games' && !isDeletedItem(source) ? intent : undefined;
 }
 
-async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string): Promise<void> {
+async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string, binding?: DurableOutboxBinding): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
 
@@ -3308,21 +3675,24 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentit
 
   const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const baseVersion = getRemoteSyncItemStateVersion(identity, item.store, item.itemKey);
-  await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
+  await enqueueDurableVersionedOutboxEntry(durableOutboxStorage(), {
     store: item.store,
     itemKey: item.itemKey,
     operation: deleted ? 'delete' : 'upsert',
     baseVersion,
     clientUpdatedAt: item.updatedAt,
     ...(deleted ? {} : { payload }),
+    // Wave 8 W8.3: the complete server-confirmed binding rides onto the durable entry so it can
+    // only ever coalesce/drain within its own account+generation (invariant 3/7).
+    ...(binding ? { identity: binding.identity, syncGeneration: binding.syncGeneration } : {}),
   });
 }
 
-async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchItem[], operationIdentity?: string): Promise<void> {
+async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchItem[], operationIdentity?: string, binding?: DurableOutboxBinding): Promise<void> {
   if (items.length === 0) return;
   const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
-  await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
+  await enqueueDurableVersionedOutboxEntries(durableOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
     return {
       store: item.store,
@@ -3334,6 +3704,8 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchI
 
 
       ...(!deleted && item.conflictIntent !== undefined ? { conflictIntent: item.conflictIntent } : {}),
+      // Wave 8 W8.3: the complete server-confirmed binding on every batch entry.
+      ...(binding ? { identity: binding.identity, syncGeneration: binding.syncGeneration } : {}),
     };
   }));
 
@@ -3342,7 +3714,7 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchI
 
 
   try {
-    setDurableOutboxCount(await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage()));
+    setDurableOutboxCount(await countDurableVersionedOutboxEntries(durableOutboxStorage()));
   } catch {
     invalidateDurableOutboxCount();
   }
@@ -3358,9 +3730,19 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncBatchI
 
 
 
-function buildMarkerRebuildCover(rawEntries: readonly unknown[]): RemoteSyncItemMarkerMaxMutation[] {
+function buildMarkerRebuildCover(rawEntries: readonly unknown[], resetIdentity?: string): RemoteSyncItemMarkerMaxMutation[] {
   if (isRemoteSyncItemStateEphemeral()) return [];
-  return collectOutboxMarkerCoverFromRaw(rawEntries);
+  // Wave 8 W8.3 ("Interaction with Waves 6 and 7"): once binding is active, a reset must rebuild
+  // cover ONLY from the reset identity's retained entries (any generation) — a bound entry from a
+  // DIFFERENT account must never seed this identity's markers. Unbound legacy rows (pre-migration)
+  // are attributable to the current rollout identity and stay covered.
+  const scoped = resetIdentity === undefined
+    ? rawEntries
+    : rawEntries.filter(value => {
+        const identity = value && typeof value === 'object' ? (value as Record<string, unknown>).identity : undefined;
+        return identity === undefined || identity === resetIdentity;
+      });
+  return collectOutboxMarkerCoverFromRaw(scoped);
 }
 
 
@@ -3404,18 +3786,41 @@ async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promi
     }
   }
   const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
-  const result = await migrateDurableLegacyOutboxMirror(defaultDurableVersionedOutboxStorage(), {
-    validInputs: snapshot.valid.map(item => {
-      const deleted = isDeletedItem(item);
-      return {
-        store: item.store,
-        itemKey: item.itemKey,
-        operation: deleted ? 'delete' as const : 'upsert' as const,
-        baseVersion: getRemoteSyncItemStateVersion(identity, item.store, item.itemKey),
-        clientUpdatedAt: item.updatedAt,
-        ...(deleted ? {} : { payload: item.payload }),
-      };
-    }),
+  // Wave 8 W8.3: every migrated row must carry a complete binding (invariant 7 — no unbound row
+  // after the sentinel commits). Capture the binding AFTER the identity is stabilized and verify
+  // the two agree (Sol r2 High-3, the Wave 6 stabilization idiom): CAS bases below are resolved
+  // under `identity`, so a binding whose identity differs would combine another account's bases
+  // with this binding — defer instead; the next flush restabilizes.
+  const binding = activeServerConfirmedBinding();
+  if (binding && binding.identity !== identity) {
+    logOutboxBindingMigrationPending('the account moved during a legacy outbox mirror sweep; the snapshot is deferred to the next flush.');
+    return 0;
+  }
+  // With NO confirmed binding, the mirror residue's VALID items move into the dedicated pen
+  // store (fix round 3) — CAS bases are resolved fresh at replay under the verified binding.
+  // This retires the localStorage payload surface even pre-handshake; the malformed values ride
+  // the atomic mirror commit into `legacy-outbox-recovery` as before (pen first, then the
+  // malformed/sentinel commit, then the compare-and-remove — a crash between the two re-triages
+  // the key on the next sweep, and the pen's same-key merge makes the re-pen idempotent).
+  if (!binding && snapshot.valid.length > 0) {
+    await penUnconfirmedWrites(snapshot.valid);
+  }
+  const result = await migrateDurableLegacyOutboxMirror(durableOutboxStorage(), {
+    validInputs: binding
+      ? snapshot.valid.map(item => {
+          const deleted = isDeletedItem(item);
+          return {
+            store: item.store,
+            itemKey: item.itemKey,
+            operation: deleted ? 'delete' as const : 'upsert' as const,
+            baseVersion: getRemoteSyncItemStateVersion(identity, item.store, item.itemKey),
+            clientUpdatedAt: item.updatedAt,
+            ...(deleted ? {} : { payload: item.payload }),
+            identity: binding.identity,
+            syncGeneration: binding.syncGeneration,
+          };
+        })
+      : [],
     malformedValues: snapshot.preservedInvalid,
     sentinelRow: {
       key: LEGACY_OUTBOX_MIRROR_SENTINEL_KEY,
@@ -3424,6 +3829,12 @@ async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promi
       recovered: snapshot.preservedInvalid.length,
     },
   });
+  // Re-verify the binding after the atomic commit awaits (Sol r2 High-3): if the account moved
+  // while the commit was in flight, the just-committed rows are bound to the PREVIOUS binding —
+  // safe (a later bound drain mismatch-quarantines them), but report the movement honestly.
+  if (binding && !bindingMatchesStored(binding)) {
+    recordRemoteSyncLog('flush', 'info', 'The account binding moved during a legacy outbox mirror sweep; migrated rows stay bound to the previous binding and will be adjudicated by the next bound drain.');
+  }
   invalidateDurableOutboxCount();
   if (result.atomic) {
 
@@ -3478,7 +3889,7 @@ async function removeOutboxItemsForCommittedDeletes(items: RemoteSyncItem[]): Pr
     return;
   }
   const removed = await removeDurableVersionedOutboxEntriesForCommittedDeletes(
-    defaultDurableVersionedOutboxStorage(),
+    durableOutboxStorage(),
     tombstones.map(item => ({ store: item.store, itemKey: item.itemKey, updatedAt: item.updatedAt })),
   );
   if (removed > 0) invalidateDurableOutboxCount();
@@ -3512,6 +3923,11 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
       // identity and the synchronous suppression read below.
       await waitForRemoteSyncItemStateWrites();
       const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+      // Wave 8 W8.3 (design rule 3): capture the complete server-confirmed binding for this
+      // attempt. With a durable outbox but NO confirmed binding (cold/offline, never synced), the
+      // write is RETAINED in the binding-neutral holding pen below (Sol r1 Critical-3) — never
+      // queued under a guessed identity, never discarded.
+      const binding = activeServerConfirmedBinding();
       if (!isDeletedItem(normalized) && shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity)) {
         recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
         return;
@@ -3526,12 +3942,13 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
         await clearItemDeletedAt(normalized.store, normalized.itemKey, opIdentity);
       }
-      if (storedServerIdentity() !== opIdentity) {
-        // Identity moved during the marker awaits: COMPENSATE before restarting (round 6),
-        // CONDITIONALLY (round 8) — restore only while the durable row still holds exactly what
-        // this abandoned attempt produced, so a legitimately-newer concurrent marker survives.
-        // Failure is NOT best-effort (round 7): log and abort so the abandoned tombstone is
-        // visible, never silently load-bearing.
+      if (storedServerIdentity() !== opIdentity || (binding && !bindingMatchesStored(binding))) {
+        // Identity OR generation moved during the marker awaits (Wave 8 W8.3 regression 1): the
+        // captured binding no longer matches stored state, so this attempt must not commit a row
+        // under the wrong binding. COMPENSATE before restarting (round 6), CONDITIONALLY (round 8)
+        // — restore only while the durable row still holds exactly what this abandoned attempt
+        // produced, so a legitimately-newer concurrent marker survives. Failure is NOT best-effort
+        // (round 7): log and abort so the abandoned tombstone is visible, never silently load-bearing.
         if (priorMarkers) {
           try {
             await restoreRemoteSyncItemMarkersIfUnchanged(opIdentity, [{
@@ -3556,8 +3973,17 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
       if (isRemoteSyncItemStateEphemeral()) {
         const snapshot = readOutboxSnapshot({ logInvalid: true });
         writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+      } else if (!binding) {
+        // Wave 8 W8.3 fix rounds 1+2 (Sol r1 Critical-3, r2 pen relocation): no confirmed
+        // binding — RETAIN the write (upserts AND deletes) as a parked pen row in the DURABLE
+        // outbox; the pen replay re-binds it on the first bound drain after the handshake
+        // confirms the account. A pen failure raises a user-visible issue and throws to the
+        // outer catch (never silently lost).
+        await penUnconfirmedWrites([normalized]);
+        logOutboxBindingMigrationPending('a local write is retained in the pending sync holding pen until an account binding is confirmed.', { pendingRetained: 1 });
+        return;
       }
-      await enqueueVersionedOutboxItem(normalized, opIdentity);
+      await enqueueVersionedOutboxItem(normalized, opIdentity, binding ?? undefined);
 
 
 
@@ -3632,6 +4058,11 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await waitForRemoteSyncItemStateWrites();
       const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+      // Wave 8 W8.3 (design rule 3): capture the complete server-confirmed binding once per
+      // attempt. With a durable outbox but no confirmed binding, the whole batch is RETAINED in
+      // the binding-neutral holding pen below (Sol r1 Critical-3) — never queued under a guessed
+      // identity, never discarded.
+      const binding = activeServerConfirmedBinding();
       normalized.length = 0;
       for (const entry of candidates) {
         if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt, opIdentity)) {
@@ -3660,8 +4091,9 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
           await clearItemDeletedAt(entry.store, entry.itemKey, opIdentity);
         }
       }
-      if (storedServerIdentity() !== opIdentity) {
-        // Compensate the abandoned identity's marker mutations before restarting (round 6).
+      if (storedServerIdentity() !== opIdentity || (binding && !bindingMatchesStored(binding))) {
+        // Identity OR generation moved during the marker awaits (Wave 8 W8.3 regression 1):
+        // compensate the abandoned binding's marker mutations before restarting (round 6).
         const seenRestore = new Set<string>();
         const restores: RemoteSyncItemMarkerRestore[] = [];
         for (const entry of normalized) {
@@ -3689,7 +4121,17 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
         }
         continue;
       }
-      await enqueueVersionedOutboxItemsBatch(normalized, opIdentity);
+      if (!binding && !isRemoteSyncItemStateEphemeral()) {
+        // Wave 8 W8.3 fix rounds 1+2 (Sol r1 Critical-3, r2 pen relocation): retain the batch
+        // (upserts AND deletes) as parked pen rows in the DURABLE outbox — bulk payloads live in
+        // IndexedDB, never the localStorage quota surface Wave 7 retired. A pen failure raises a
+        // user-visible issue and throws to the .catch below (durable-enqueue-failed) — an honest
+        // failure, never a silent strand.
+        await penUnconfirmedWrites(normalized);
+        logOutboxBindingMigrationPending('a batch of local writes is retained in the pending sync holding pen until an account binding is confirmed.', { pendingRetained: normalized.length });
+        return;
+      }
+      await enqueueVersionedOutboxItemsBatch(normalized, opIdentity, binding ?? undefined);
       return;
     }
     throw new Error('RemoteSync identity kept changing during batch enqueue; retry after login settles.');
@@ -3747,7 +4189,7 @@ function primeDurableOutboxCount(): void {
 
     const epoch = durableOutboxCountEpoch;
     try {
-      const count = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+      const count = await countDurableVersionedOutboxEntries(durableOutboxStorage());
       if (epoch === durableOutboxCountEpoch) durableOutboxCountCache = count;
     } catch {
       // Cache stays null; the next count call retries.
@@ -4006,7 +4448,10 @@ async function pushItems(items: RemoteSyncItem[]): Promise<Record<string, number
 
 async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Promise<VersionedWriteBatchResponse> {
   const result = await postJson<Partial<VersionedWriteBatchResponse> & { ok?: boolean; error?: string }>('push.php', request);
-  if (!result.ok) throw new Error(result.error || 'RemoteSync CAS push failed.');
+  // Sol r7 Important: an HTTP-successful `{ok:false}` protocol result is DETERMINISTIC — the
+  // server received and rejected the batch, and the same batch gets the same answer. It must
+  // consume the deterministic cap, never retry forever as default-transport.
+  if (!result.ok) throw new RemoteSyncFetchError(result.error || 'RemoteSync CAS push failed.', 'deterministic', 200);
   return {
     ok: true,
     accepted: Array.isArray(result.accepted) ? result.accepted : [],
@@ -4303,20 +4748,104 @@ async function drainVersionedRemoteSyncOutbox(
 
   const drainIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const migrated = await migrateLegacyOutboxToVersioned(drainIdentity);
+  if (migrated > 0) outboxRecoveryPending = true; // a legacy-mirror migration may introduce rows
   await waitForPendingVersionedOutboxWrites();
+  // Wave 8 W8.3 fix round 1 (Sol r1 Critical-2 + High-4): the binding lives in this mutable slot
+  // so the conflict-recreate reenqueue below can read the binding that was ACTIVE for the send
+  // pass that produced the conflict. It is captured/activated INSIDE the drain closure — after
+  // the pre-write revalidation pull, which can itself discover a restore and change the confirmed
+  // identity/generation. Capturing before the gate (the round-0 shape) let a restore discovered
+  // during revalidation send old-generation rows as binding matches.
+  let activeBinding: DurableOutboxBinding | undefined;
+  // Sol r6 Critical: the token whose session the final binding recheck confirmed. Captured with
+  // the binding, verified synchronously inside sendBatch before the request layer can capture a
+  // DIFFERENT current token.
+  let drainSessionToken: string | null = null;
   const result = await runVersionedPreWriteGate({
     versionStorage: localStorage,
     identity: drainIdentity,
     cloudStateStale: isRemoteSyncCloudStateStale(),
     revalidate: async cursor => revalidateBeforeVersionedDrain(cursor),
-    drain: () => drainDurableVersionedOutbox({
-      outboxStorage: defaultDurableVersionedOutboxStorage(),
+    drain: async () => {
+
+
+
+
+
+      const confirmedBinding = activeServerConfirmedBinding();
+      if (confirmedBinding) {
+        if (confirmedBinding.identity !== drainIdentity) {
+          // The confirmed account moved under this drain (token/identity switch during the
+          // revalidation awaits). The whole pass was stabilized on drainIdentity — abort rather
+          // than mix identities; the next flush restabilizes under the new account.
+          throw new Error('RemoteSync account changed during pre-write revalidation; the drain was aborted and retries under the new account.');
+        }
+        if (await ensureDurableOutboxBindingActivated(confirmedBinding)) {
+          // Recover any rejected rows a boundary armed BEFORE this bound drain (invariant 5).
+          // FAIL CLOSED on unclean recovery (Sol r1 High-5): undisposed corruption must block
+          // the pass — W8.2's session-clean fast path may not re-scan it.
+          if (!(await runPendingOutboxRecovery())) {
+            throw new Error('Rejected sync outbox rows could not be recovered; the drain is blocked until recovery succeeds.');
+          }
+          // Drain the binding-neutral holding pen under the verified binding (Sol r2 pen
+          // relocation): ordering-safe replay re-binds retained cold/offline writes with fresh
+          // CAS bases so this same pass sends them.
+          await replayBindingPen(confirmedBinding, drainIdentity);
+          // FINAL binding recheck (Sol r2 Critical-1): the activation, recovery, and pen-replay
+          // awaits are all windows in which a token/account switch can land. The binding must
+          // still be the stored confirmed binding IMMEDIATELY before the send pass — otherwise a
+          // token A -> B switch during those awaits would drain A-bound entries using token B.
+          if (!bindingMatchesStored(confirmedBinding)) {
+            throw new Error('RemoteSync account binding changed during drain preparation; the pass was aborted and retries under the new binding.');
+          }
+
+
+
+
+
+
+          drainSessionToken = storedToken().trim();
+          activeBinding = confirmedBinding;
+        }
+      } else {
+        // Sol r2 Critical-1, unbound-path completion: with NO confirmed binding, the legacy
+        // unbound drain may only ever send UNBOUND pre-activation rows (the ratified rollout
+        // boundary makes those attributable to the current account). If any BOUND non-pen row is
+        // queued, this outbox has been in bound mode — draining those rows unbound (e.g. in the
+        // token-switch window before the new account's handshake) would send account A's writes
+        // under token B. Fail closed until the handshake confirms a binding.
+        const rows = await readDurableVersionedOutbox(durableOutboxStorage());
+        if (rows.some(entry => entry.identity !== undefined)) {
+          throw new Error('Account-bound sync writes are queued but no account binding is confirmed; the drain is blocked until the login handshake confirms the account.');
+        }
+        logOutboxBindingMigrationPending('no server-confirmed account binding yet; draining unbound legacy entries and deferring binding activation.');
+      }
+      return drainDurableVersionedOutbox({
+      outboxStorage: durableOutboxStorage(),
       versionStorage: localStorage,
 
 
       identity: drainIdentity,
       clientId: casClientId(),
-      sendBatch: sendVersionedWriteBatch,
+
+
+
+
+
+
+
+
+
+      sendBatch: request => {
+        if (activeBinding && (storedToken().trim() !== drainSessionToken || !bindingMatchesStored(activeBinding))) {
+          throw new Error('RemoteSync session changed during the drain; the send was aborted and the queued writes retry under the restabilized session.');
+        }
+        return sendVersionedWriteBatch(request);
+      },
+      // Wave 8 W8.3: the active binding + typed transport/HTTP classifier gate the ENTIRE W8.2
+      // policy (mismatch partition, deterministic-only cap, class-specific recording). Both are
+      // supplied together and only when activation succeeded.
+      ...(activeBinding ? { activeBinding, classifySendBatchError: classifyRemoteSyncSendBatchError } : {}),
       ...(progressOptions.onBatchProgress ? { onBatchProgress: progressOptions.onBatchProgress } : {}),
 
 
@@ -4335,7 +4864,7 @@ async function drainVersionedRemoteSyncOutbox(
 
 
         try {
-          await writeQuarantineRecords(buildQuarantineRecordsFromPermanentRejection(entries, rejections));
+          await writeQuarantineRecords(buildQuarantineRecordsFromPermanentRejection(entries, rejections), durableOutboxStorage());
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Could not persist quarantine records.';
           recordRemoteSyncLog('flush', 'error', `Failed to persist ${entries.length} quarantine record(s); the writes stay queued and will retry: ${message}`);
@@ -4393,7 +4922,7 @@ async function drainVersionedRemoteSyncOutbox(
 
 
 
-          const replaced = await replaceDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), previous.opId, {
+          const replaced = await replaceDurableVersionedOutboxEntry(durableOutboxStorage(), previous.opId, {
             opId: op.opId,
             store: op.store,
             itemKey: op.itemKey,
@@ -4402,6 +4931,12 @@ async function drainVersionedRemoteSyncOutbox(
             ...(op.payload !== undefined ? { payload: op.payload } : {}),
             ...(op.clientUpdatedAt !== undefined ? { clientUpdatedAt: op.clientUpdatedAt } : {}),
             ...(op.conflictIntent !== undefined ? { conflictIntent: op.conflictIntent } : {}),
+            // Wave 8 W8.3 fix round 1 (Sol r1 High-4): the rebased recreation carries the SAME
+            // active binding as the send pass that produced the conflict — an unbound replacement
+            // after the sentinel commits violates invariant 7, and binding-aware replace would
+            // treat it as a foreign binding (preserve the bound previous row + add an unbound row
+            // destined for mismatch quarantine).
+            ...(activeBinding ? { identity: activeBinding.identity, syncGeneration: activeBinding.syncGeneration } : {}),
           });
           invalidateDurableOutboxCount();
           if (replaced === null) {
@@ -4414,7 +4949,8 @@ async function drainVersionedRemoteSyncOutbox(
           scheduleRemoteSyncFlush();
         },
       },
-    }),
+      });
+    },
   });
   const counts = { ...result.counts };
   if (migrated > 0) counts.migratedLegacyOutbox = migrated;
@@ -4646,7 +5182,7 @@ async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrack
   const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   const pendingKeys = new Set(
-    (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
+    (await readDurableVersionedOutbox(durableOutboxStorage()))
       .map(entry => `${entry.store}::${entry.itemKey}`),
   );
   const byStore: Partial<Record<RemoteSyncStoreName, number>> = {};
@@ -5050,9 +5586,14 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
 
 
   await migrateLegacyOutboxToVersioned();
-  const pendingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+  const pendingVersioned = await readDurableVersionedOutbox(durableOutboxStorage());
   setDurableOutboxCount(pendingVersioned.length);
-  const queued = pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
+  // Fix round 3: pen rows live OUTSIDE `entries` (structurally invisible to the queued count), so
+  // a flush must still reach the drain — where the replay releases them — whenever a confirmed
+  // binding exists and the pen is non-empty. The pen store only ever holds pen rows, so the count
+  // is one cheap getAll (usually zero rows).
+  const releasablePen = activeServerConfirmedBinding() ? await getRemoteSyncBindingPenCount() : 0;
+  const queued = pendingVersioned.length + pendingVersionedOutboxEnqueues.length + releasablePen;
   if (queued === 0) return { success: true, counts: {} };
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued } };
   if (isRemoteSyncFullPullRequired()) {
@@ -5093,7 +5634,7 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
-      const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
+      const remainingVersioned = await readDurableVersionedOutbox(durableOutboxStorage());
       setDurableOutboxCount(remainingVersioned.length);
       applyRemoteSyncBackoffAndEscalation(remainingVersioned);
       const counts = { queued: remainingVersioned.length };
@@ -5203,7 +5744,7 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
       const legacyGameByKey = new Map(legacyGameItems.map(item => [item.itemKey, item]));
       const resolveVersion = createRemoteSyncItemStateResolver(activeIdentity);
       const pendingKeys = new Set(
-        (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
+        (await readDurableVersionedOutbox(durableOutboxStorage()))
           .map(entry => `${entry.store}\u0000${entry.itemKey}`),
       );
       let scannedLocal = 0;
@@ -5366,7 +5907,7 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 
 
 export async function getQuarantinedRemoteSyncWrites(): Promise<DurableQuarantineRecord[]> {
-  return readQuarantineRecords();
+  return readQuarantineRecords(durableOutboxStorage());
 }
 
 
@@ -5393,8 +5934,37 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
 
   const requeueActiveIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+  // Wave 8 W8.3 ("Mismatch behavior" requeue rules): a requeue must supply the complete active
+  // binding, and it may NEVER move a quarantined write into a DIFFERENT account identity. Without
+  // a confirmed binding (non-ephemeral) the requeue is refused so the record stays quarantined
+  // instead of being dropped uncovered. The generation is rebound to the ACTIVE generation (the
+  // fresh CAS base + current payload the recreate builder resolves handle a generation rebase).
+  const requeueBinding = activeServerConfirmedBinding();
+  if (!isRemoteSyncItemStateEphemeral() && !requeueBinding) {
+    throw new Error('Cannot re-queue a quarantined write without a confirmed account binding; sync to establish the account first.');
+  }
+  if (record.identity !== undefined && (!requeueBinding || record.identity !== requeueBinding.identity)) {
+    throw new Error('Refusing to re-queue a quarantined write into a different account identity.');
+  }
+
+
+
+
+
+
   if (record.operation === 'delete') {
-    enqueueRemoteSyncDelete(record.store, record.itemKey, Date.now());
+    const deleteAt = Date.now();
+    await rememberItemDeletedAt(record.store, record.itemKey, deleteAt, requeueActiveIdentity);
+    await enqueueDurableVersionedOutboxEntry(durableOutboxStorage(), {
+      store: record.store,
+      itemKey: record.itemKey,
+      operation: 'delete',
+      baseVersion: getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
+      clientUpdatedAt: deleteAt,
+      ...(requeueBinding ? { identity: requeueBinding.identity, syncGeneration: requeueBinding.syncGeneration } : {}),
+    });
+    invalidateDurableOutboxCount();
+    scheduleRemoteSyncFlush();
   } else if (record.conflictIntent === 'recreate-over-tombstone') {
 
 
@@ -5403,31 +5973,52 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
-    const requeueInput = buildRecreateRequeueInput(
-      record,
-      useCurrent,
-      getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
-    );
+    const requeueInput = {
+      ...buildRecreateRequeueInput(
+        record,
+        useCurrent,
+        getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
+      ),
+      // Wave 8 W8.3: bind the requeued op to the ACTIVE binding (invariant 3/7).
+      ...(requeueBinding ? { identity: requeueBinding.identity, syncGeneration: requeueBinding.syncGeneration } : {}),
+    };
 
 
 
 
     await rememberItemUpdatedAt(record.store, record.itemKey, requeueInput.clientUpdatedAt ?? Date.now(), requeueActiveIdentity);
     await clearItemDeletedAt(record.store, record.itemKey, requeueActiveIdentity);
-    await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), requeueInput);
+    await enqueueDurableVersionedOutboxEntry(durableOutboxStorage(), requeueInput);
+
+
+    outboxRecoveryPending = true;
     invalidateDurableOutboxCount();
     scheduleRemoteSyncFlush();
   } else {
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
-    if (current && !isDeletedItem(current)) {
-      enqueueRemoteSyncUpsert(record.store, record.itemKey, current.payload, current.updatedAt);
-    } else {
-      // Local row is gone: fall back to the quarantined payload so the re-queue can still restore
-      // the historical write instead of silently dropping it a second time.
-      enqueueRemoteSyncUpsert(record.store, record.itemKey, record.payload, record.clientUpdatedAt ?? Date.now());
-    }
+    // Local row live: requeue its current payload; local row gone: fall back to the quarantined
+    // payload so the re-queue can still restore the historical write instead of silently
+    // dropping it a second time.
+    const useCurrent = current !== null && !isDeletedItem(current);
+    const payload = useCurrent ? current.payload : record.payload;
+    const updatedAt = useCurrent ? current.updatedAt : (record.clientUpdatedAt ?? Date.now());
+    await rememberItemUpdatedAt(record.store, record.itemKey, updatedAt, requeueActiveIdentity);
+    await clearItemDeletedAt(record.store, record.itemKey, requeueActiveIdentity);
+    await enqueueDurableVersionedOutboxEntry(durableOutboxStorage(), {
+      store: record.store,
+      itemKey: record.itemKey,
+      operation: 'upsert',
+      baseVersion: getRemoteSyncItemStateVersion(requeueActiveIdentity, record.store, record.itemKey),
+      payload,
+      clientUpdatedAt: updatedAt,
+      ...(requeueBinding ? { identity: requeueBinding.identity, syncGeneration: requeueBinding.syncGeneration } : {}),
+    });
+    invalidateDurableOutboxCount();
+    scheduleRemoteSyncFlush();
   }
-  await removeQuarantineRecords([record.opId]);
+  // Any requeue is an entry-introducing boundary (amendment): arm recovery before the next drain.
+  outboxRecoveryPending = true;
+  await removeQuarantineRecords([record.opId], durableOutboxStorage());
 }
 
 export interface QuarantineActionResult {
@@ -5436,7 +6027,7 @@ export interface QuarantineActionResult {
 }
 
 export async function requeueQuarantinedRemoteSyncWrite(opId: string): Promise<QuarantineActionResult> {
-  const records = await readQuarantineRecords();
+  const records = await readQuarantineRecords(durableOutboxStorage());
   const record = records.find(entry => entry.opId === opId);
   if (!record) return { success: false, error: 'Quarantine record was already removed.' };
   try {
@@ -5456,7 +6047,7 @@ export async function requeueQuarantinedRemoteSyncWrite(opId: string): Promise<Q
 }
 
 export async function requeueAllQuarantinedRemoteSyncWrites(): Promise<QuarantineActionResult & { counts: Record<string, number> }> {
-  const records = await readQuarantineRecords();
+  const records = await readQuarantineRecords(durableOutboxStorage());
   let requeued = 0;
   const failures: string[] = [];
   for (const record of records) {
@@ -5484,10 +6075,10 @@ export async function requeueAllQuarantinedRemoteSyncWrites(): Promise<Quarantin
 }
 
 export async function discardQuarantinedRemoteSyncWrite(opId: string): Promise<QuarantineActionResult> {
-  const records = await readQuarantineRecords();
+  const records = await readQuarantineRecords(durableOutboxStorage());
   const record = records.find(entry => entry.opId === opId);
   if (!record) return { success: false, error: 'Quarantine record was already removed.' };
-  await removeQuarantineRecords([opId]);
+  await removeQuarantineRecords([opId], durableOutboxStorage());
   recordRemoteSyncLog(
     'flush',
     'info',

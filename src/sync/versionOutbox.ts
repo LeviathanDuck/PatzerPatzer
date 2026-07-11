@@ -82,6 +82,38 @@ export interface DurableRetryOutboxEntry extends VersionedWriteOp {
 
 
 
+
+
+
+export interface DurableBindingPenRow {
+  opId: string;
+  store: RemoteSyncStoreName;
+  itemKey: string;
+  operation: VersionedOutboxOperation;
+  payload?: unknown;
+  /**
+   * Sol r5 High (RACE-1): this stamp — captured SYNCHRONOUSLY at write creation — IS the
+   * supersession floor. No storage-sampled floor exists: sampling after the asynchronous marker
+   * persistence let a newer remote apply that landed inside the sampling window become part of
+   * the floor, and the older penned intent then replayed OVER that newer state. The write's own
+   * markers equal this stamp (self-authorship never supersedes); ANY authority observed at
+   * replay time strictly above it is genuinely third-party/newer and supersedes.
+   */
+  clientUpdatedAt: number;
+  pennedAt: number;
+}
+
+/** The pen-replay decision applied in ONE transaction spanning `entries` and `binding-pen`. */
+export interface BindingPenReplayDecision {
+  entryDeleteOpIds: string[];
+  entryPuts: DurableRetryOutboxEntry[];
+  deletePenOpIds: string[];
+}
+
+
+
+
+
 export interface DurableQuarantineRecord extends DurableRetryOutboxEntry {
   /** Rejection classification: 'attempt-cap' for a retry-count quarantine, or the server's
    * non-retryable rejection code (e.g. 'invalid-payload', 'unsupported-store'). */
@@ -194,6 +226,25 @@ export interface DurableVersionedOutboxStorage {
     deleteRawKeys: ReadonlyArray<unknown>,
     recoveryValues: readonly unknown[],
   ): Promise<void>;
+
+
+
+
+
+  readBindingPenRows?(): Promise<unknown[]>;
+  putBindingPenRows?(rows: readonly DurableBindingPenRow[]): Promise<void>;
+  deleteBindingPenRows?(opIds: readonly string[]): Promise<void>;
+  /**
+   * The ONE lock-held transactional replay commit (Sol r3 Critical-2): reads every pen row AND
+   * each pen row's same-key `entries` subset in ONE readwrite transaction spanning both stores,
+   * calls the SYNCHRONOUS `decide` callback with them, and applies the returned entry
+   * deletes/puts and pen deletes in that same transaction — a newer same-key write can never land
+   * between the supersession decision and the bound enqueue, and an abort loses the whole replay
+   * together (retryable, idempotent through the supersession rule).
+   */
+  runBindingPenReplayTransaction?(
+    decide: (penRows: readonly unknown[], sameKeyEntries: ReadonlyArray<readonly unknown[]>) => BindingPenReplayDecision,
+  ): Promise<void>;
 }
 
 export interface DurableVersionedOutboxItemKeyMutation {
@@ -223,10 +274,23 @@ const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
 
 
 
-const OUTBOX_DB_VERSION = 3;
+
+
+
+
+
+
+
+
+
+const OUTBOX_DB_VERSION = 4;
 const OUTBOX_STORE_NAME = 'entries';
 const QUARANTINE_STORE_NAME = 'quarantine';
+const BINDING_PEN_STORE_NAME = 'binding-pen';
 const OUTBOX_BY_ITEM_KEY_INDEX = 'byItemKey';
+// The retired round-2 reserved pen identity: v4 relocates such rows into the pen store and
+// `makeEntry` rejects the label so no production enqueue can ever mint it again.
+const RETIRED_RESERVED_PEN_IDENTITY = 'patzer::binding-pen';
 // S7 relocation targets (dormant in v3): compact per-item sync state keyed by an encoded
 // identity/store/itemKey string; migration sentinels/schema state; and a preservation store for
 // malformed or future-schema legacy-mirror values that cannot safely become normal entries
@@ -381,6 +445,10 @@ function makeEntry(input: VersionedOutboxEnqueueInput, options: VersionedOutboxE
   if (input.identity !== undefined || input.syncGeneration !== undefined) {
     const boundIdentity = typeof input.identity === 'string' ? input.identity.trim() : '';
     if (!boundIdentity) throw new Error('Outbox binding requires a non-empty identity.');
+    // Sol r4 Critical-2: NO identity blacklist. The dedicated pen STORE needs no in-band identity
+    // marker, and `patzer::binding-pen` is a server-valid user_key — rejecting it here would deny
+    // a legitimate account service. The v4 relocation instead matches the FULL retired round-2
+    // row signature, so ordinary rows under that identity are never misclassified.
     if (!validVersion(input.syncGeneration) || input.syncGeneration === 0) {
       throw new Error('Outbox binding requires a positive integer syncGeneration.');
     }
@@ -1128,7 +1196,7 @@ export async function migrateDurableOutboxBinding(
       };
       bound += 1;
       backfilled += 1;
-      const key = `${migrated.store} ${migrated.itemKey}`;
+      const key = `${migrated.store}\u0000${migrated.itemKey}`;
       const group = backfilledByKey.get(key);
       if (group) group.entries.push(migrated);
       else backfilledByKey.set(key, { store: migrated.store, itemKey: migrated.itemKey, entries: [migrated] });
@@ -1239,6 +1307,316 @@ export async function recoverRejectedDurableVersionedOutboxRows(
       recovered += window.length;
     }
     return { recovered, rejected };
+  });
+}
+
+
+
+
+
+
+
+
+function validBindingPenOperation(value: unknown): value is VersionedOutboxOperation {
+  return value === 'upsert' || value === 'delete';
+}
+
+export function normalizeBindingPenRow(raw: unknown): DurableBindingPenRow | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.opId !== 'string' || !value.opId.trim()) return null;
+  if (typeof value.store !== 'string' || !value.store.trim()) return null;
+  if (typeof value.itemKey !== 'string' || !value.itemKey.trim()) return null;
+  if (!validBindingPenOperation(value.operation)) return null;
+  if (!validTime(value.clientUpdatedAt) || !validTime(value.pennedAt)) return null;
+  if (value.operation === 'upsert' && !Object.prototype.hasOwnProperty.call(value, 'payload')) return null;
+  const row: DurableBindingPenRow = {
+    opId: value.opId.trim(),
+    store: value.store.trim() as RemoteSyncStoreName,
+    itemKey: value.itemKey.trim(),
+    operation: value.operation,
+    clientUpdatedAt: Math.floor(value.clientUpdatedAt),
+    pennedAt: Math.floor(value.pennedAt),
+  };
+  if (value.operation === 'upsert') row.payload = value.payload;
+  return row;
+}
+
+export interface BindingPenWriteInput {
+  store: RemoteSyncStoreName;
+  itemKey: string;
+  operation: VersionedOutboxOperation;
+  payload?: unknown;
+  clientUpdatedAt: number;
+}
+
+/**
+ * Retain unconfirmed writes in the pen. Same-key pen rows keep ONE winner (latest
+ * `clientUpdatedAt`; ties prefer the incoming write — matching the legacy mirror's merge
+ * semantics), so an offline editing session cannot grow the pen unboundedly per key. Runs under
+ * the outbox Web Lock; storages without pen support throw (the caller owns its fallback posture).
+ */
+export async function penDurableBindingWrites(
+  storage: DurableVersionedOutboxStorage,
+  items: readonly BindingPenWriteInput[],
+  options: { now?: number } = {}
+): Promise<void> {
+  if (items.length === 0) return;
+  if (!storage.readBindingPenRows || !storage.putBindingPenRows) {
+    throw new Error('The binding-pen store is unavailable for this outbox storage backend.');
+  }
+  const now = normalizeNow(options.now);
+  return withDurableOutboxLock(async () => {
+    const existing = (await storage.readBindingPenRows!())
+      .map(normalizeBindingPenRow)
+      .filter((row): row is DurableBindingPenRow => row !== null);
+    const byKey = new Map<string, DurableBindingPenRow>();
+    for (const row of existing) byKey.set(`${row.store}\u0000${row.itemKey}`, row);
+    const puts: DurableBindingPenRow[] = [];
+    const staleOpIds: string[] = [];
+    for (const item of items) {
+      assertNonEmpty(item.store, 'store');
+      assertNonEmpty(item.itemKey, 'itemKey');
+      if (!validBindingPenOperation(item.operation)) throw new Error('operation must be upsert or delete.');
+      if (item.operation === 'upsert' && !Object.prototype.hasOwnProperty.call(item, 'payload')) {
+        throw new Error('upsert operations require payload.');
+      }
+      const key = `${item.store}\u0000${item.itemKey.trim()}`;
+      const current = byKey.get(key);
+      const clientUpdatedAt = Math.floor(normalizeOptionalTime(item.clientUpdatedAt) ?? now);
+      if (current && current.clientUpdatedAt > clientUpdatedAt) continue; // existing newer wins
+      const row: DurableBindingPenRow = {
+        opId: createOpId(),
+        store: item.store,
+        itemKey: item.itemKey.trim(),
+        operation: item.operation,
+        clientUpdatedAt,
+        pennedAt: now,
+      };
+      if (item.operation === 'upsert') row.payload = item.payload;
+      if (current) staleOpIds.push(current.opId);
+      byKey.set(key, row);
+      puts.push(row);
+    }
+    if (puts.length === 0) return;
+    await storage.putBindingPenRows!(puts);
+    if (staleOpIds.length > 0 && storage.deleteBindingPenRows) await storage.deleteBindingPenRows(staleOpIds);
+  });
+}
+
+export async function readDurableBindingPen(storage: DurableVersionedOutboxStorage): Promise<DurableBindingPenRow[]> {
+  if (!storage.readBindingPenRows) return [];
+  return (await storage.readBindingPenRows())
+    .map(normalizeBindingPenRow)
+    .filter((row): row is DurableBindingPenRow => row !== null)
+    .sort((left, right) => left.pennedAt - right.pennedAt || left.opId.localeCompare(right.opId));
+}
+
+export async function countDurableBindingPenRows(storage: DurableVersionedOutboxStorage): Promise<number> {
+  if (!storage.readBindingPenRows) return 0;
+  // Count NORMALIZED pen rows only: storages that share backing state across store names (test
+  // fakes) can surface foreign rows through this accessor, and those must never count as pending.
+  return (await readDurableBindingPen(storage)).length;
+}
+
+
+
+export async function clearDurableBindingPen(storage: DurableVersionedOutboxStorage): Promise<number> {
+  if (!storage.readBindingPenRows || !storage.deleteBindingPenRows) return 0;
+  return withDurableOutboxLock(async () => {
+    // NORMALIZED pen rows only (same shared-backing-state caution as the count above): the clear
+    // must never delete foreign rows a fake storage surfaces through the pen accessor.
+    const opIds = (await storage.readBindingPenRows!())
+      .map(normalizeBindingPenRow)
+      .filter((row): row is DurableBindingPenRow => row !== null)
+      .map(row => row.opId);
+    if (opIds.length > 0) await storage.deleteBindingPenRows!(opIds);
+    return opIds.length;
+  });
+}
+
+export interface BindingPenReplayOptions {
+  /** The VERIFIED server-confirmed binding the replayed rows bind to. */
+  binding: DurableOutboxBinding;
+  /** Fresh CAS base under the verified binding's identity (synchronous cache read). */
+  resolveBaseVersion(store: string, itemKey: string): number | null;
+  /**
+   * Latest locally-known same-key authority timestamp OUTSIDE the queue (marker updatedAt /
+   * deletedAt under the verified identity — i.e. applied remote rows and bound local writes).
+   * A pen op not newer than this is superseded: a full pull that already applied a newer remote
+   * row must not have its state overwritten by an older penned intent (Sol r3 High-4).
+   */
+  supersededAt?(store: string, itemKey: string): number;
+  now?: number;
+}
+
+export interface BindingPenReplayResult {
+  replayed: number;
+  superseded: number;
+}
+
+// Pure replay decision, shared verbatim by the atomic and fallback paths. Per (store,itemKey) the
+// pen keeps one WINNER (latest clientUpdatedAt; ties prefer a delete, then opId order — losers are
+// crash-replay duplicates and are simply disposed). The winner is SUPERSEDED (dropped) when a
+// same-key entry of the ACTIVE binding or the caller's marker authority is at/after its
+// clientUpdatedAt — ties keep the durable/authority side, which makes the replay idempotent.
+function decideBindingPenReplay(
+  penRaw: readonly unknown[],
+  sameKeyRaw: ReadonlyArray<readonly unknown[]>,
+  options: BindingPenReplayOptions,
+  now: number,
+): BindingPenReplayDecision & BindingPenReplayResult {
+  const decision: BindingPenReplayDecision & BindingPenReplayResult = {
+    entryDeleteOpIds: [],
+    entryPuts: [],
+    deletePenOpIds: [],
+    replayed: 0,
+    superseded: 0,
+  };
+  const winners = new Map<string, { row: DurableBindingPenRow; index: number }>();
+  for (let index = 0; index < penRaw.length; index += 1) {
+    const raw = penRaw[index];
+    const row = normalizeBindingPenRow(raw);
+    if (!row) {
+      // Non-normalizing value: IGNORE it (leave it in place). The real pen store only ever holds
+      // rows penDurableBindingWrites wrote (always normalizable), so this is corruption/foreign
+      // data — deleting blind would be destructive against storages that share backing state
+      // across store names (several test fakes do), and an inert leftover row is harmless.
+      continue;
+    }
+    const key = `${row.store}\u0000${row.itemKey}`;
+    const current = winners.get(key);
+    if (!current) {
+      winners.set(key, { row, index });
+      continue;
+    }
+    const beats = row.clientUpdatedAt > current.row.clientUpdatedAt
+      || (row.clientUpdatedAt === current.row.clientUpdatedAt && row.operation === 'delete' && current.row.operation !== 'delete')
+      || (row.clientUpdatedAt === current.row.clientUpdatedAt && row.operation === current.row.operation && row.opId < current.row.opId);
+    if (beats) {
+      decision.deletePenOpIds.push(current.row.opId);
+      winners.set(key, { row, index });
+    } else {
+      decision.deletePenOpIds.push(row.opId);
+    }
+  }
+  for (const { row, index } of winners.values()) {
+    const subset = (sameKeyRaw[index] ?? [])
+      .map(normalizeEntry)
+      .filter((entry): entry is DurableRetryOutboxEntry => entry !== null);
+
+
+
+
+
+
+
+    const supersededByEntry = subset.some(entry => entry.identity === options.binding.identity
+      && entry.syncGeneration === options.binding.syncGeneration
+      && (
+        entry.opId === row.opId
+        || (entry.clientUpdatedAt ?? 0) > row.clientUpdatedAt
+      ));
+    // Sol r4 Critical-1 + r5 High (RACE-1): the floor is the write's OWN clientUpdatedAt,
+    // captured synchronously at write creation — never sampled from storage (a sample taken
+    // after the asynchronous marker persistence could absorb a newer remote apply into the floor
+    // and let the older penned intent replay over that newer state). The write's own markers
+    // equal the stamp (self-authorship never supersedes); anything strictly above it is
+    // genuinely third-party/newer authority.
+    const supersededByAuthority = (options.supersededAt?.(row.store, row.itemKey) ?? 0) > row.clientUpdatedAt;
+    decision.deletePenOpIds.push(row.opId);
+    if (supersededByEntry || supersededByAuthority) {
+      decision.superseded += 1;
+      continue;
+    }
+    const incoming = makeEntry({
+      // The bound replica KEEPS the pen row's opId (RACE-2): a crash between the fallback path's
+      // enqueue-first and pen-delete-second leaves a duplicate identifiable by opId; the atomic
+      // path commits both together and is unaffected.
+      opId: row.opId,
+      store: row.store,
+      itemKey: row.itemKey,
+      operation: row.operation,
+      baseVersion: options.resolveBaseVersion(row.store, row.itemKey),
+      clientUpdatedAt: row.clientUpdatedAt,
+      ...(row.operation === 'upsert' ? { payload: row.payload } : {}),
+      identity: options.binding.identity,
+      syncGeneration: options.binding.syncGeneration,
+    }, { now });
+    const next = coalesceDurableVersionedOutboxEntry(subset, incoming);
+    const delta = diffSameKeyEntries(subset, next);
+    decision.entryDeleteOpIds.push(...delta.deleteOpIds);
+    decision.entryPuts.push(...delta.putEntries);
+    decision.replayed += 1;
+  }
+  return decision;
+}
+
+/**
+ * Replay the binding pen under the VERIFIED active binding (Sol r3 Critical-2/-3, High-4/-5).
+ * Runs under the outbox Web Lock. On the atomic path
+ * (`runBindingPenReplayTransaction`), the pen read, the same-key supersession check against
+ * `entries`, the bound coalesced enqueue, and the pen deletion commit in ONE transaction spanning
+ * both stores. The fallback path (storages exposing only the plain accessors) applies the same
+ * pure decision non-atomically, enqueue-first — a crash leaves the pen row in place and the
+ * supersession rule disposes of the duplicate on the next replay.
+ */
+export async function replayDurableBindingPen(
+  storage: DurableVersionedOutboxStorage,
+  options: BindingPenReplayOptions,
+): Promise<BindingPenReplayResult> {
+  if (!storage.readBindingPenRows) return { replayed: 0, superseded: 0 };
+  const now = normalizeNow(options.now);
+  return withDurableOutboxLock(async () => {
+    if (storage.runBindingPenReplayTransaction) {
+      let result: BindingPenReplayResult = { replayed: 0, superseded: 0 };
+      await storage.runBindingPenReplayTransaction((penRows, sameKeyEntries) => {
+        const decision = decideBindingPenReplay(penRows, sameKeyEntries, options, now);
+        result = { replayed: decision.replayed, superseded: decision.superseded };
+        return decision;
+      });
+      return result;
+    }
+    // Fallback (plain accessors only): same pure decision, non-atomic commit.
+    const penRows = await storage.readBindingPenRows!();
+    const sameKeyEntries: unknown[][] = [];
+    if (storage.getEntriesByItemKey) {
+      for (const raw of penRows) {
+        const row = normalizeBindingPenRow(raw);
+        sameKeyEntries.push(row ? await storage.getEntriesByItemKey(row.store, row.itemKey) : []);
+      }
+    } else {
+      const all = await storage.readEntries();
+      for (const raw of penRows) {
+        const row = normalizeBindingPenRow(raw);
+        sameKeyEntries.push(row
+          ? all.filter(value => {
+              const entry = normalizeEntry(value);
+              return entry !== null && entry.store === row.store && entry.itemKey === row.itemKey;
+            })
+          : []);
+      }
+    }
+    const decision = decideBindingPenReplay(penRows, sameKeyEntries, options, now);
+    if (decision.entryDeleteOpIds.length > 0 || decision.entryPuts.length > 0) {
+      if (storage.applyItemKeyMutations) {
+        await storage.applyItemKeyMutations([{ store: '', itemKey: '', deleteOpIds: decision.entryDeleteOpIds, putEntries: decision.entryPuts }]);
+      } else {
+        const all = (await storage.readEntries())
+          .map(normalizeEntry)
+          .filter((entry): entry is DurableRetryOutboxEntry => entry !== null);
+        const deletes = new Set(decision.entryDeleteOpIds);
+        const putIds = new Set(decision.entryPuts.map(entry => entry.opId));
+        await writeDurableVersionedOutbox(storage, sortEntries([
+          ...all.filter(entry => !deletes.has(entry.opId) && !putIds.has(entry.opId)),
+          ...decision.entryPuts,
+        ]));
+      }
+    }
+    if (decision.deletePenOpIds.length > 0 && storage.deleteBindingPenRows) {
+      await storage.deleteBindingPenRows(decision.deletePenOpIds);
+    }
+    return { replayed: decision.replayed, superseded: decision.superseded };
   });
 }
 
@@ -1907,12 +2285,76 @@ export function setOnOutboxUpgradeBlocked(handler: ((dbName: string) => void) | 
   onOutboxUpgradeBlocked = handler;
 }
 
+
+
+
+
+
+
+function relocateRetiredReservedPenRows(db: IDBDatabase): Promise<void> {
+  return new Promise<void>(resolve => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction([OUTBOX_STORE_NAME, BINDING_PEN_STORE_NAME], 'readwrite');
+    } catch {
+      resolve();
+      return;
+    }
+    // Best-effort by design: a failed relocation must never block the open (see above).
+    tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
+    tx.oncomplete = () => resolve();
+    const entriesStore = tx.objectStore(OUTBOX_STORE_NAME);
+    const penStore = tx.objectStore(BINDING_PEN_STORE_NAME);
+    const readAll = entriesStore.getAll();
+    readAll.onsuccess = () => {
+      try {
+        const rows = Array.isArray(readAll.result) ? readAll.result : [];
+        const now = Date.now();
+        for (const value of rows) {
+          if (!value || typeof value !== 'object') continue;
+          const record = value as Record<string, unknown>;
+          // Sol r4 Critical-2: relocate ONLY rows matching the FULL retired round-2 pen signature
+          // — the reserved identity AND generation 1 AND the max-Date park the round-2 scheme
+          // stamped on both scheduling fields AND a null CAS base. `patzer::binding-pen` is a
+          // server-valid user_key, so an ordinary row that merely shares the identity (real
+          // account, different generation/scheduling) is left untouched as a normal bound row.
+          if (record.identity !== RETIRED_RESERVED_PEN_IDENTITY) continue;
+          if (record.syncGeneration !== 1) continue;
+          if (record.nextAttemptAt !== 8_640_000_000_000_000 || record.enqueuedAt !== 8_640_000_000_000_000) continue;
+          if (record.baseVersion !== null) continue;
+          if (typeof record.opId !== 'string' || typeof record.store !== 'string' || typeof record.itemKey !== 'string') continue;
+          const penRow: DurableBindingPenRow = {
+            opId: record.opId,
+            store: record.store as RemoteSyncStoreName,
+            itemKey: record.itemKey,
+            operation: record.operation === 'delete' ? 'delete' : 'upsert',
+            clientUpdatedAt: validTime(record.clientUpdatedAt) ? Math.floor(record.clientUpdatedAt as number) : now,
+            pennedAt: now,
+          };
+          if (penRow.operation === 'upsert') penRow.payload = record.payload;
+          penStore.put(penRow);
+          entriesStore.delete(record.opId);
+        }
+      } catch {
+        // A synchronous store failure mid-relocation aborts the transaction; the rows stay in
+        // `entries` where a bound drain mismatch-quarantines them (visible, never dropped).
+        try {
+          tx.abort();
+        } catch { /* already aborting */ }
+      }
+    };
+  });
+}
+
 function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
   if (typeof indexedDB === 'undefined') {
     throw new Error('IndexedDB is unavailable for the durable RemoteSync outbox.');
   }
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(dbName, OUTBOX_DB_VERSION);
+    let penStoreJustCreated = false;
+    let entriesExistedBefore = false;
     request.onerror = () => reject(request.error ?? new Error('Could not open durable RemoteSync outbox database.'));
     request.onblocked = () => {
       try {
@@ -1924,10 +2366,11 @@ function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       const db = request.result;
       // Only ever creates missing stores/indexes, so an upgrade from ANY prior version (v0
-      // fresh, v1, v2) converges on the same v3 schema in this one versionchange transaction
+      // fresh, v1, v2, v3) converges on the same v4 schema in this one versionchange transaction
       // and pre-existing rows survive untouched. A failure anywhere in here aborts the whole
       // versionchange transaction atomically — the database stays at its prior version.
-      if (!db.objectStoreNames.contains(OUTBOX_STORE_NAME)) {
+      entriesExistedBefore = db.objectStoreNames.contains(OUTBOX_STORE_NAME);
+      if (!entriesExistedBefore) {
         db.createObjectStore(OUTBOX_STORE_NAME, { keyPath: 'opId' });
       }
       if (!db.objectStoreNames.contains(QUARANTINE_STORE_NAME)) {
@@ -1951,6 +2394,11 @@ function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(LEGACY_OUTBOX_RECOVERY_STORE_NAME)) {
         db.createObjectStore(LEGACY_OUTBOX_RECOVERY_STORE_NAME, { autoIncrement: true });
       }
+
+      if (!db.objectStoreNames.contains(BINDING_PEN_STORE_NAME)) {
+        db.createObjectStore(BINDING_PEN_STORE_NAME, { keyPath: 'opId' });
+        penStoreJustCreated = true;
+      }
     };
     request.onsuccess = () => {
       const db = request.result;
@@ -1958,6 +2406,12 @@ function openOutboxDb(dbName = OUTBOX_DB_NAME): Promise<IDBDatabase> {
 
 
       db.onversionchange = () => db.close();
+      if (penStoreJustCreated && entriesExistedBefore) {
+        // v3 -> v4 with pre-existing entries: relocate any retired reserved-identity pen rows,
+        // then resolve. The relocation is best-effort and never rejects the open.
+        void relocateRetiredReservedPenRows(db).then(() => resolve(db));
+        return;
+      }
       resolve(db);
     };
   });
@@ -2349,6 +2803,128 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           tx.oncomplete = () => resolve();
           const store = tx.objectStore(QUARANTINE_STORE_NAME);
           for (const opId of opIds) store.delete(opId);
+        });
+      } finally {
+        db.close();
+      }
+    },
+
+    async readBindingPenRows(): Promise<unknown[]> {
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+          const request = db.transaction(BINDING_PEN_STORE_NAME, 'readonly').objectStore(BINDING_PEN_STORE_NAME).getAll();
+          request.onerror = () => reject(request.error ?? new Error('Could not read the RemoteSync binding pen.'));
+          request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async putBindingPenRows(rows: readonly DurableBindingPenRow[]): Promise<void> {
+      if (rows.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(BINDING_PEN_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not write the RemoteSync binding pen.'));
+          tx.onabort = () => reject(tx.error ?? new Error('RemoteSync binding pen write aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(BINDING_PEN_STORE_NAME);
+          for (const row of rows) store.put(row);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async deleteBindingPenRows(opIds: readonly string[]): Promise<void> {
+      if (opIds.length === 0) return;
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(BINDING_PEN_STORE_NAME, 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not delete RemoteSync binding pen rows.'));
+          tx.onabort = () => reject(tx.error ?? new Error('RemoteSync binding pen deletion aborted.'));
+          tx.oncomplete = () => resolve();
+          const store = tx.objectStore(BINDING_PEN_STORE_NAME);
+          for (const opId of opIds) store.delete(opId);
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async runBindingPenReplayTransaction(decide): Promise<void> {
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction([OUTBOX_STORE_NAME, BINDING_PEN_STORE_NAME], 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not replay the RemoteSync binding pen.'));
+          tx.onabort = () => reject(tx.error ?? new Error('RemoteSync binding pen replay aborted.'));
+          tx.oncomplete = () => resolve();
+          const penStore = tx.objectStore(BINDING_PEN_STORE_NAME);
+          const entriesStore = tx.objectStore(OUTBOX_STORE_NAME);
+          const penRead = penStore.getAll();
+          penRead.onsuccess = () => {
+            const penRows: unknown[] = Array.isArray(penRead.result) ? penRead.result : [];
+            if (penRows.length === 0) return; // empty replay: let the transaction complete
+            const applyDecision = (sameKeyEntries: ReadonlyArray<readonly unknown[]>): void => {
+              // All same-key reads landed IN THIS TRANSACTION: the synchronous decision and its
+              // deletes/puts commit atomically with them — nothing can interleave (Sol r3
+              // Critical-2).
+              try {
+                const decision = decide(penRows, sameKeyEntries);
+                for (const opId of decision.entryDeleteOpIds) entriesStore.delete(opId);
+                for (const entry of decision.entryPuts) entriesStore.put(entry);
+                for (const opId of decision.deletePenOpIds) penStore.delete(opId);
+              } catch (error) {
+                reject(error instanceof Error ? error : new Error(String(error)));
+                try {
+                  tx.abort();
+                } catch { /* already aborting */ }
+              }
+            };
+            const keyOf = (raw: unknown): { store: string; itemKey: string } | null => {
+              const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+              if (!record || typeof record.store !== 'string' || typeof record.itemKey !== 'string') return null;
+              return { store: record.store, itemKey: record.itemKey };
+            };
+            // Feature-detected keyed subset reads: real IndexedDB uses the byItemKey index; test
+            // fakes without index support take one full getAll over `entries` in the SAME
+            // transaction and filter — identical atomicity, different read shape.
+            if (typeof (entriesStore as Partial<IDBObjectStore>).index === 'function') {
+              const index = entriesStore.index(OUTBOX_BY_ITEM_KEY_INDEX);
+              const sameKeyEntries: unknown[][] = new Array(penRows.length);
+              let outstanding = 0;
+              for (let i = 0; i < penRows.length; i += 1) {
+                const key = keyOf(penRows[i]);
+                if (!key) {
+                  sameKeyEntries[i] = [];
+                  continue;
+                }
+                outstanding += 1;
+                const subsetRead = index.getAll([key.store, key.itemKey]);
+                subsetRead.onsuccess = () => {
+                  sameKeyEntries[i] = Array.isArray(subsetRead.result) ? subsetRead.result : [];
+                  outstanding -= 1;
+                  if (outstanding === 0) applyDecision(sameKeyEntries);
+                };
+              }
+              if (outstanding === 0) applyDecision(sameKeyEntries);
+              return;
+            }
+            const allRead = entriesStore.getAll();
+            allRead.onsuccess = () => {
+              const all: unknown[] = Array.isArray(allRead.result) ? allRead.result : [];
+              applyDecision(penRows.map(raw => {
+                const key = keyOf(raw);
+                if (!key) return [];
+                return all.filter(value => {
+                  const record = value && typeof value === 'object' ? value as Record<string, unknown> : null;
+                  return record !== null && record.store === key.store && record.itemKey === key.itemKey;
+                });
+              }));
+            };
+          };
         });
       } finally {
         db.close();
