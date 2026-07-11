@@ -25,8 +25,8 @@ import {
   isRemoteSyncItemStateEphemeral,
   migrateRemoteSyncItemMarkersToIdb,
   recordRemoteSyncItemMarkers,
-  recordRemoteSyncItemMarkersMax,
   restoreRemoteSyncItemMarkersIfUnchanged,
+  type RemoteSyncItemMarkerMaxMutation,
   type RemoteSyncItemMarkerRestore,
   waitForRemoteSyncItemStateWrites,
   readRemoteSyncVersionMetadata,
@@ -478,11 +478,11 @@ function resetCurrentIdentityVersionMetadata(): void {
 
 
 
-  resetRemoteSyncItemState(identity)
 
 
 
-    .then(() => rebuildRemoteSyncItemMarkersFromDurableOutbox(identity))
+
+  resetRemoteSyncItemState(identity, { rebuildMarkers: collectMarkerRebuildMutations })
     .catch(error => {
       recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -2819,10 +2819,11 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
   for (const key of keysToRemove) localStorage.removeItem(key);
 
 
-  resetRemoteSyncItemState(clearingIdentity)
 
 
-    .then(() => rebuildRemoteSyncItemMarkersFromDurableOutbox(clearingIdentity))
+
+
+  resetRemoteSyncItemState(clearingIdentity, { rebuildMarkers: collectMarkerRebuildMutations })
     .catch(error => {
       recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -3221,14 +3222,53 @@ let durableOutboxCountCache: number | null = null;
 
 let durableOutboxCountEpoch = 0;
 
+
+
+
+
+let outboxCountChannel: BroadcastChannel | null = null;
+let outboxCountChannelFailed = false;
+
+function outboxCountPeerChannel(): BroadcastChannel | null {
+  if (outboxCountChannel || outboxCountChannelFailed) return outboxCountChannel;
+  if (typeof BroadcastChannel === 'undefined') {
+    outboxCountChannelFailed = true;
+    return null;
+  }
+  try {
+    outboxCountChannel = new BroadcastChannel('patzer-remoteSync-outbox-count');
+    outboxCountChannel.onmessage = () => {
+      durableOutboxCountEpoch += 1;
+      durableOutboxCountCache = null;
+    };
+    // Node test harnesses: the global BroadcastChannel would otherwise hold the event loop.
+    (outboxCountChannel as { unref?: () => void }).unref?.();
+  } catch {
+    outboxCountChannelFailed = true;
+    outboxCountChannel = null;
+  }
+  return outboxCountChannel;
+}
+
+function publishOutboxCountInvalidation(): void {
+  try {
+    outboxCountPeerChannel()?.postMessage({ type: 'outbox-count-invalidated' });
+  } catch {
+    // Best-effort: a failed broadcast only delays the peer tab's next re-prime.
+  }
+}
+
 function invalidateDurableOutboxCount(): void {
   durableOutboxCountEpoch += 1;
   durableOutboxCountCache = null;
+  publishOutboxCountInvalidation();
 }
 
 function setDurableOutboxCount(value: number): void {
   durableOutboxCountEpoch += 1;
   durableOutboxCountCache = value;
+  // Peers cannot trust this tab's value (their epoch differs) — they invalidate and re-prime.
+  publishOutboxCountInvalidation();
 }
 
 async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string): Promise<void> {
@@ -3282,17 +3322,23 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
 
 
 
-async function rebuildRemoteSyncItemMarkersFromDurableOutbox(identity: string): Promise<void> {
-  if (isRemoteSyncItemStateEphemeral()) return;
+
+
+
+
+async function collectMarkerRebuildMutations(): Promise<RemoteSyncItemMarkerMaxMutation[]> {
+  if (isRemoteSyncItemStateEphemeral()) return [];
   const entries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
-  if (entries.length === 0) return;
-  await ensureRemoteSyncItemStateReadiness();
-  await recordRemoteSyncItemMarkersMax(identity, entries.map(entry => ({
-    store: entry.store,
-    itemKey: entry.itemKey,
-    updatedAt: entry.clientUpdatedAt ?? 0,
-    ...(entry.operation === 'delete' ? { deletedAt: entry.clientUpdatedAt ?? 0 } : {}),
-  })));
+  return entries.map(entry => {
+    const enqueuedAt = Number.isFinite(entry.enqueuedAt) && entry.enqueuedAt > 0 ? entry.enqueuedAt : undefined;
+    const cover = entry.clientUpdatedAt ?? enqueuedAt ?? Date.now();
+    return {
+      store: entry.store,
+      itemKey: entry.itemKey,
+      updatedAt: cover,
+      ...(entry.operation === 'delete' ? { deletedAt: cover } : {}),
+    };
+  });
 }
 
 

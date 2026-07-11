@@ -752,6 +752,12 @@ const itemStateResetBarrier = new Map<string, Promise<void>>();
 
 
 const itemStateResetPending = new Set<string>();
+
+
+
+
+
+const itemStateResetRebuild = new Map<string, () => Promise<ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>>();
 // Where each identity's localStorage blob lives (registered by the readiness gate) so the
 // ephemeral posture can dual-write version commits into it.
 const itemStateBlobMirror = new Map<string, RemoteSyncVersionStorage>();
@@ -764,13 +770,56 @@ function queueIdentityClear(identity: string): Promise<void> {
       invalidateRemoteSyncItemState(identity);
       throw error;
     }
+
+
+
+
+
+
+    const rebuild = itemStateResetRebuild.get(identity);
+    if (rebuild) {
+      try {
+        const mutations = await rebuild();
+        const rows = foldMarkerMaxMutationsToRows(identity, mutations);
+        if (rows.length > 0) await itemStateStorage().putRows(rows);
+      } catch (error) {
+        invalidateRemoteSyncItemState(identity);
+        throw error;
+      }
+    }
+    itemStateResetRebuild.delete(identity);
     itemStateResetPending.delete(identity);
     invalidateRemoteSyncItemState(identity);
     publishItemStateInvalidation(identity);
   }));
 }
 
-export function resetRemoteSyncItemState(identity: string): Promise<void> {
+function foldMarkerMaxMutationsToRows(
+  identity: string,
+  mutations: ReadonlyArray<RemoteSyncItemMarkerMaxMutation>
+): RemoteSyncItemStateRow[] {
+  const folded = new Map<string, RemoteSyncItemStateRow>();
+  for (const mutation of mutations) {
+    const stateKey = encodeRemoteSyncItemStateKey(identity, mutation.store, mutation.itemKey);
+    const updatedAt = Math.max(0, Math.floor(mutation.updatedAt ?? 0));
+    const deletedAt = Math.max(0, Math.floor(mutation.deletedAt ?? 0));
+    if (updatedAt === 0 && deletedAt === 0) continue;
+    const existing = folded.get(stateKey) ?? { stateKey, identity, store: mutation.store, itemKey: mutation.itemKey };
+    if (updatedAt > (existing.updatedAt ?? 0)) existing.updatedAt = updatedAt;
+    if (deletedAt > (existing.deletedAt ?? 0)) existing.deletedAt = deletedAt;
+    folded.set(stateKey, existing);
+  }
+  return Array.from(folded.values());
+}
+
+export interface RemoteSyncItemStateResetOptions {
+
+
+
+  rebuildMarkers?: () => Promise<ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>;
+}
+
+export function resetRemoteSyncItemState(identity: string, options: RemoteSyncItemStateResetOptions = {}): Promise<void> {
 
 
 
@@ -778,6 +827,7 @@ export function resetRemoteSyncItemState(identity: string): Promise<void> {
 
   invalidateRemoteSyncItemState(identity);
   itemStateResetPending.add(identity);
+  if (options.rebuildMarkers) itemStateResetRebuild.set(identity, options.rebuildMarkers);
   const clear = queueIdentityClear(identity);
   const barrier = clear.catch(() => undefined).then(() => {
     if (itemStateResetBarrier.get(identity) === barrier) itemStateResetBarrier.delete(identity);
