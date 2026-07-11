@@ -43,6 +43,8 @@ import {
   defaultDurableVersionedOutboxStorage,
   enqueueDurableVersionedOutboxEntries,
   enqueueDurableVersionedOutboxEntry,
+  migrateDurableLegacyOutboxMirror,
+  removeDurableVersionedOutboxEntriesForCommittedDeletes,
   replaceDurableVersionedOutboxEntry,
   readDurableVersionedOutbox,
   readQuarantineRecords,
@@ -2159,32 +2161,20 @@ if (typeof localStorage !== 'undefined') {
 
 
 
-function pendingOutboxItem(
-  store: RemoteSyncStoreName,
-  itemKey: string,
-  outboxSnapshot?: readonly RemoteSyncItem[],
-): RemoteSyncItem | undefined {
-  const outbox = outboxSnapshot ?? readOutbox();
-  return outbox.find(item => item.store === store && item.itemKey === itemKey);
-}
+
+
+
 
 function localVersionForItem(
   spec: IdbStoreSpec,
   itemKey: string,
   existing: unknown | undefined,
-  outboxSnapshot?: readonly RemoteSyncItem[],
 ): number {
   return Math.max(
     existing === undefined ? 0 : spec.updatedAt(existing),
     rememberedItemUpdatedAt(spec.store, itemKey),
     rememberedItemDeletedAt(spec.store, itemKey),
-    pendingOutboxItem(spec.store, itemKey, outboxSnapshot)?.updatedAt ?? 0,
   );
-}
-
-function pendingDeleteUpdatedAt(store: RemoteSyncStoreName, itemKey: string): number {
-  const pending = pendingOutboxItem(store, itemKey);
-  return pending && isDeletedItem(pending) ? pending.updatedAt : 0;
 }
 
 
@@ -2196,10 +2186,10 @@ function isTombstoneShadowedLocalSnapshotItem(
   itemKey: string,
   payloadUpdatedAt: number,
 ): boolean {
-  const deletedAt = Math.max(
-    rememberedItemDeletedAt(store, itemKey),
-    pendingDeleteUpdatedAt(store, itemKey),
-  );
+
+
+
+  const deletedAt = rememberedItemDeletedAt(store, itemKey);
   return deletedAt > 0 && payloadUpdatedAt <= deletedAt;
 }
 
@@ -3173,10 +3163,6 @@ function readOutboxSnapshot(options: { logInvalid?: boolean } = {}): OutboxSnaps
   }
 }
 
-function readOutbox(): RemoteSyncItem[] {
-  return readOutboxSnapshot().valid;
-}
-
 function writeOutboxSnapshot(items: RemoteSyncItem[], preservedInvalid: unknown[] = []): void {
   const next = [...preservedInvalid, ...items];
   if (next.length === 0) {
@@ -3184,10 +3170,6 @@ function writeOutboxSnapshot(items: RemoteSyncItem[], preservedInvalid: unknown[
     return;
   }
   setLegacySyncStorageItem(OUTBOX_KEY, JSON.stringify(next), 'outbox snapshot');
-}
-
-function writeOutbox(items: RemoteSyncItem[]): void {
-  writeOutboxSnapshot(items);
 }
 
 function casClientId(): string {
@@ -3271,40 +3253,74 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
   }
 }
 
+
+
+
+
+
+const LEGACY_OUTBOX_MIRROR_SENTINEL_KEY = 'legacy-outbox-mirror';
+
 async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promise<number> {
+  // Ephemeral posture (no usable IDB): the mirror IS the queue — there is no durable
+  // destination, so the pre-wave behavior stands untouched.
+  if (isRemoteSyncItemStateEphemeral()) return 0;
   const snapshot = readOutboxSnapshot({ logInvalid: true });
-  if (snapshot.valid.length === 0) return 0;
-  await Promise.all(snapshot.valid.map(item => enqueueVersionedOutboxItem(item, operationIdentity)));
-  writeOutboxSnapshot([], snapshot.preservedInvalid);
+  if (snapshot.valid.length === 0 && snapshot.preservedInvalid.length === 0) return 0;
+  const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
+  const result = await migrateDurableLegacyOutboxMirror(defaultDurableVersionedOutboxStorage(), {
+    validInputs: snapshot.valid.map(item => {
+      const deleted = isDeletedItem(item);
+      return {
+        store: item.store,
+        itemKey: item.itemKey,
+        operation: deleted ? 'delete' as const : 'upsert' as const,
+        baseVersion: getRemoteSyncItemStateVersion(identity, item.store, item.itemKey),
+        clientUpdatedAt: item.updatedAt,
+        ...(deleted ? {} : { payload: item.payload }),
+      };
+    }),
+    malformedValues: snapshot.preservedInvalid,
+    sentinelRow: {
+      key: LEGACY_OUTBOX_MIRROR_SENTINEL_KEY,
+      migratedAt: Date.now(),
+      migrated: snapshot.valid.length,
+      recovered: snapshot.preservedInvalid.length,
+    },
+  });
+  durableOutboxCountCache = null;
+  // The localStorage key is removed ONLY after the migration transaction committed — on the
+  // non-atomic fallback the malformed values have no recovery store, so the key stays as their
+  // holding pen (exactly the pre-wave posture).
+  if (result.atomic) removeLegacySyncStorageItem(OUTBOX_KEY, 'outbox snapshot');
+  else writeOutboxSnapshot([], snapshot.preservedInvalid);
+  if (result.recovered > 0) {
+    recordRemoteSyncLog('flush', 'info', `Preserved ${result.recovered} unreadable legacy outbox value(s) into the durable recovery store during mirror retirement.`);
+  }
   return snapshot.valid.length;
 }
 
-function sameOutboxItem(left: RemoteSyncItem, right: RemoteSyncItem): boolean {
-  return left.store === right.store
-    && left.itemKey === right.itemKey
-    && left.updatedAt === right.updatedAt
-    && isDeletedItem(left) === isDeletedItem(right)
-    && (isDeletedItem(left) || JSON.stringify(left.payload) === JSON.stringify(right.payload));
-}
 
-function removeOutboxSnapshotItems(items: RemoteSyncItem[]): void {
-  if (items.length === 0) return;
-  const current = readOutboxSnapshot({ logInvalid: true });
-  const valid = current.valid.filter(item => !items.some(pushed => sameOutboxItem(item, pushed)));
-  writeOutboxSnapshot(valid, current.preservedInvalid);
-}
 
-function removeOutboxItemsForCommittedDeletes(items: RemoteSyncItem[]): void {
-  const tombstones = items
-    .filter(isDeletedItem)
-    .map(item => ({ ...item, id: deleteKeyId(item.store, item.itemKey) }));
+
+
+async function removeOutboxItemsForCommittedDeletes(items: RemoteSyncItem[]): Promise<void> {
+  const tombstones = items.filter(isDeletedItem);
   if (tombstones.length === 0) return;
-  const current = readOutboxSnapshot({ logInvalid: true });
-  const valid = current.valid.filter(item => {
-    const tombstone = tombstones.find(entry => entry.id === deleteKeyId(item.store, item.itemKey));
-    return !tombstone || item.updatedAt > tombstone.updatedAt;
-  });
-  writeOutboxSnapshot(valid, current.preservedInvalid);
+  if (isRemoteSyncItemStateEphemeral()) {
+    const ids = tombstones.map(item => ({ ...item, id: deleteKeyId(item.store, item.itemKey) }));
+    const current = readOutboxSnapshot({ logInvalid: true });
+    const valid = current.valid.filter(item => {
+      const tombstone = ids.find(entry => entry.id === deleteKeyId(item.store, item.itemKey));
+      return !tombstone || item.updatedAt > tombstone.updatedAt;
+    });
+    writeOutboxSnapshot(valid, current.preservedInvalid);
+    return;
+  }
+  const removed = await removeDurableVersionedOutboxEntriesForCommittedDeletes(
+    defaultDurableVersionedOutboxStorage(),
+    tombstones.map(item => ({ store: item.store, itemKey: item.itemKey, updatedAt: item.updatedAt })),
+  );
+  if (removed > 0) durableOutboxCountCache = null;
 }
 
 function mergeOutboxItem(outbox: RemoteSyncItem[], item: RemoteSyncItem): RemoteSyncItem[] {
@@ -3372,10 +3388,14 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
         }
         continue;
       }
-      // Legacy mirror BEFORE the durable enqueue — parity with the pre-Wave-6 order, where the
-      // mirror was written unconditionally while the durable write settled asynchronously.
-      const snapshot = readOutboxSnapshot({ logInvalid: true });
-      writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+
+
+
+
+      if (isRemoteSyncItemStateEphemeral()) {
+        const snapshot = readOutboxSnapshot({ logInvalid: true });
+        writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+      }
       await enqueueVersionedOutboxItem(normalized, opIdentity);
       return;
     }
@@ -3533,12 +3553,34 @@ export function enqueueRemoteSyncDelete(
   enqueueRemoteSyncItem({ store, itemKey, updatedAt, deleted: true, operation: 'delete' });
 }
 
+
+
+
+
+let durableOutboxCountPrime: Promise<void> | null = null;
+
+function primeDurableOutboxCount(): void {
+  if (durableOutboxCountPrime) return;
+  durableOutboxCountPrime = (async () => {
+    try {
+      durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+    } catch {
+      // Cache stays null; the next count call retries.
+    } finally {
+      durableOutboxCountPrime = null;
+    }
+  })();
+}
+
 export function getRemoteSyncOutboxCount(): number {
-  const snapshot = readOutboxSnapshot();
-  const legacyCount = snapshot.valid.length + snapshot.preservedInvalid.length;
-  // Single-item enqueues mirror into both queues, so max() avoids double counting while still
-  // surfacing durable-only bulk entries that never touch the legacy outbox.
-  return Math.max(legacyCount, durableOutboxCountCache ?? 0);
+  // Ephemeral posture (no usable IDB): the legacy mirror is still the queue there — Wave 7
+  // retired it only where a durable outbox exists.
+  if (isRemoteSyncItemStateEphemeral()) {
+    const snapshot = readOutboxSnapshot();
+    return snapshot.valid.length + snapshot.preservedInvalid.length;
+  }
+  if (durableOutboxCountCache === null) primeDurableOutboxCount();
+  return durableOutboxCountCache ?? 0;
 }
 
 export async function queueAndFlushRemoteSyncUpsert(
@@ -4235,7 +4277,7 @@ async function commitDataManagementDeleteKeys(
       // idempotently and advances the cursor itself).
       const latestVersion = await rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
       for (const tombstone of tombstones) await rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
-      removeOutboxItemsForCommittedDeletes(tombstones);
+      await removeOutboxItemsForCommittedDeletes(tombstones);
 
       const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(tombstones);
       if (latestUpdatedAt > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
@@ -4548,7 +4590,6 @@ async function applyIdbItem(
   spec: IdbStoreSpec,
   db: IDBDatabase,
   applyIdentity: string,
-  outboxSnapshot?: readonly RemoteSyncItem[],
 ): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
   const existing = await readRecordByItemKey(db, spec, item.itemKey);
   if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt, applyIdentity)) return { skipped: 'suppressed-upsert' };
@@ -4564,7 +4605,7 @@ async function applyIdbItem(
     return 'applied';
   }
 
-  const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing, outboxSnapshot);
+  const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
   if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
 
   if (isDeletedItem(item)) {
@@ -4625,14 +4666,6 @@ export async function applyRemoteSyncItems(
     dbConnections.set(key, db);
     return db;
   };
-
-
-  let outboxSnapshot: RemoteSyncItem[] | undefined;
-  const outboxSnapshotForRun = (): RemoteSyncItem[] => {
-    if (!outboxSnapshot) outboxSnapshot = readOutbox();
-    return outboxSnapshot;
-  };
-
   applyingRemoteSync = true;
   try {
     let index = 0;
@@ -4661,7 +4694,7 @@ export async function applyRemoteSyncItems(
             result = { skipped: 'unknown-store' };
           } else {
             const db = await connectionForSpec(spec);
-            result = await applyIdbItem(item, spec, db, applyIdentity, outboxSnapshotForRun());
+            result = await applyIdbItem(item, spec, db, applyIdentity);
           }
         }
         if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
@@ -4745,10 +4778,14 @@ export async function testRemoteSyncConnection(): Promise<SyncResult> {
 }
 
 export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
-  const snapshot = readOutboxSnapshot({ logInvalid: true });
+
+
+
+
+  await migrateLegacyOutboxToVersioned();
   const pendingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
   durableOutboxCountCache = pendingVersioned.length;
-  const queued = snapshot.valid.length + pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
+  const queued = pendingVersioned.length + pendingVersionedOutboxEnqueues.length;
   if (queued === 0) return { success: true, counts: {} };
   if (activeDataManagementDelete) return { success: true, counts: { paused: 1, queued } };
   if (isRemoteSyncFullPullRequired()) {
@@ -4789,11 +4826,10 @@ export async function flushRemoteSyncOutbox(): Promise<SyncResult> {
       return { success: true, counts };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Remote sync flush failed.';
-      const remainingLegacy = readOutboxSnapshot({ logInvalid: true }).valid.length;
       const remainingVersioned = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
       durableOutboxCountCache = remainingVersioned.length;
       applyRemoteSyncBackoffAndEscalation(remainingVersioned);
-      const counts = { queued: remainingLegacy + remainingVersioned.length };
+      const counts = { queued: remainingVersioned.length };
       recordRemoteSyncLog('flush', 'error', message, counts);
       safeFailProgress(opId, { reason: 'push-failed', message, counts: { queuedRemaining: counts.queued } });
       return { success: false, error: message, counts };

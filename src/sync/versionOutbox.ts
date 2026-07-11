@@ -114,6 +114,20 @@ export interface DurableVersionedOutboxStorage {
   readQuarantineRecords?(): Promise<unknown[]>;
   writeQuarantineRecords?(records: readonly DurableQuarantineRecord[]): Promise<void>;
   removeQuarantineRecords?(opIds: readonly string[]): Promise<void>;
+
+
+
+
+
+
+
+
+
+  runLegacyMirrorMigrationTransaction?(
+    mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>,
+    recoveryValues: readonly unknown[],
+    sentinelRow: { key: string; [field: string]: unknown },
+  ): Promise<void>;
 }
 
 export interface DurableVersionedOutboxItemKeyMutation {
@@ -714,6 +728,155 @@ export async function replaceDurableVersionedOutboxEntry(
     const next = coalesceDurableVersionedOutboxEntry(entries, incoming);
     await writeDurableVersionedOutbox(storage, next);
     return pickEnqueueResult(next, incoming);
+  });
+}
+
+export interface LegacyOutboxMirrorMigrationResult {
+  /** Valid legacy items whose enqueue-equivalent mutations were committed. */
+  migrated: number;
+  /** Malformed/future values preserved into `legacy-outbox-recovery` (atomic path only). */
+  recovered: number;
+  /** True when the three-store single-transaction path ran; false on the non-atomic fallback,
+   * where the caller must keep the localStorage key holding the malformed values. */
+  atomic: boolean;
+}
+
+
+
+
+
+
+
+
+export async function migrateDurableLegacyOutboxMirror(
+  storage: DurableVersionedOutboxStorage,
+  migration: {
+    validInputs: readonly VersionedOutboxEnqueueInput[];
+    malformedValues: readonly unknown[];
+    sentinelRow: { key: string; [field: string]: unknown };
+    now?: number;
+  }
+): Promise<LegacyOutboxMirrorMigrationResult> {
+  const { validInputs, malformedValues, sentinelRow } = migration;
+  if (validInputs.length === 0 && malformedValues.length === 0) {
+    return { migrated: 0, recovered: 0, atomic: true };
+  }
+  return withDurableOutboxLock(async () => {
+    const incomingEntries = validInputs.map(input => makeEntry(input, migration.now !== undefined ? { now: migration.now } : {}));
+    const groups = new Map<string, { store: RemoteSyncStoreName; itemKey: string; entries: DurableRetryOutboxEntry[] }>();
+    for (const incoming of incomingEntries) {
+      const key = `${incoming.store}\u0000${incoming.itemKey}`;
+      const group = groups.get(key);
+      if (group) group.entries.push(incoming);
+      else groups.set(key, { store: incoming.store as RemoteSyncStoreName, itemKey: incoming.itemKey, entries: [incoming] });
+    }
+    const groupList = Array.from(groups.values());
+    let beforeSubsets: DurableRetryOutboxEntry[][];
+    if (storage.getEntriesByItemKeys) {
+      const raw = await storage.getEntriesByItemKeys(groupList.map(group => ({ store: group.store, itemKey: group.itemKey })));
+      beforeSubsets = groupList.map((_, index) => sortEntries((raw[index] ?? [])
+        .map(normalizeEntry)
+        .filter((entry): entry is DurableRetryOutboxEntry => entry !== null)));
+    } else if (hasItemKeyFastPath(storage)) {
+      beforeSubsets = [];
+      for (const group of groupList) {
+        beforeSubsets.push(await readSameKeyEntries(storage, group.store, group.itemKey));
+      }
+    } else {
+      const all = await readDurableVersionedOutbox(storage);
+      beforeSubsets = groupList.map(group => all.filter(entry => entry.store === group.store && entry.itemKey === group.itemKey));
+    }
+    const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
+    for (let index = 0; index < groupList.length; index += 1) {
+      const group = groupList[index]!;
+      const before = beforeSubsets[index]!;
+      let subset = before;
+      for (const incoming of group.entries) {
+        subset = coalesceDurableVersionedOutboxEntry(subset, incoming);
+      }
+      const delta = diffSameKeyEntries(before, subset);
+      if (delta.deleteOpIds.length > 0 || delta.putEntries.length > 0) {
+        mutations.push({ store: group.store, itemKey: group.itemKey, ...delta });
+      }
+    }
+    if (storage.runLegacyMirrorMigrationTransaction) {
+      await storage.runLegacyMirrorMigrationTransaction(mutations, malformedValues, sentinelRow);
+      return { migrated: validInputs.length, recovered: malformedValues.length, atomic: true };
+    }
+    // Non-atomic fallback (storages without the migration transaction): commit the entry
+    // mutations through the existing paths; recovery and sentinel are unsupported, so the
+    // caller keeps the malformed values in the localStorage key instead of removing it.
+    if (hasItemKeyFastPath(storage)) {
+      if (mutations.length > 0) await storage.applyItemKeyMutations(mutations);
+    } else if (mutations.length > 0) {
+      const all = await readDurableVersionedOutbox(storage);
+      const deleteIds = new Set(mutations.flatMap(mutation => mutation.deleteOpIds));
+      const puts = mutations.flatMap(mutation => mutation.putEntries);
+      const putIds = new Set(puts.map(entry => entry.opId));
+      await writeDurableVersionedOutbox(storage, sortEntries([
+        ...all.filter(entry => !deleteIds.has(entry.opId) && !putIds.has(entry.opId)),
+        ...puts,
+      ]));
+    }
+    return { migrated: validInputs.length, recovered: 0, atomic: false };
+  });
+}
+
+
+
+
+
+
+
+export async function removeDurableVersionedOutboxEntriesForCommittedDeletes(
+  storage: DurableVersionedOutboxStorage,
+  tombstones: ReadonlyArray<{ store: string; itemKey: string; updatedAt: number }>,
+): Promise<number> {
+  if (tombstones.length === 0) return 0;
+  // One threshold per key: several tombstones for the same key collapse to the newest.
+  const thresholds = new Map<string, { store: string; itemKey: string; updatedAt: number }>();
+  for (const tombstone of tombstones) {
+    const key = `${tombstone.store}\u0000${tombstone.itemKey}`;
+    const existing = thresholds.get(key);
+    if (!existing || tombstone.updatedAt > existing.updatedAt) thresholds.set(key, tombstone);
+  }
+  const targets = Array.from(thresholds.values());
+  return withDurableOutboxLock(async () => {
+    if (hasItemKeyFastPath(storage)) {
+      let subsets: DurableRetryOutboxEntry[][];
+      if (storage.getEntriesByItemKeys) {
+        const raw = await storage.getEntriesByItemKeys(targets.map(target => ({ store: target.store, itemKey: target.itemKey })));
+        subsets = targets.map((_, index) => (raw[index] ?? [])
+          .map(normalizeEntry)
+          .filter((entry): entry is DurableRetryOutboxEntry => entry !== null));
+      } else {
+        subsets = [];
+        for (const target of targets) {
+          subsets.push(await readSameKeyEntries(storage, target.store, target.itemKey));
+        }
+      }
+      const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
+      let removed = 0;
+      for (let index = 0; index < targets.length; index += 1) {
+        const target = targets[index]!;
+        // An entry without clientUpdatedAt (older schema rows) has unknowable age: KEEP it and
+        // let the drain's CAS/conflict machinery adjudicate — dropping a queued user write on an
+        // ambiguous comparison is the unrecoverable direction.
+        const stale = subsets[index]!.filter(entry => (entry.clientUpdatedAt ?? Number.POSITIVE_INFINITY) <= target.updatedAt);
+        if (stale.length === 0) continue;
+        removed += stale.length;
+        mutations.push({ store: target.store, itemKey: target.itemKey, deleteOpIds: stale.map(entry => entry.opId), putEntries: [] });
+      }
+      if (mutations.length > 0) await storage.applyItemKeyMutations(mutations);
+      return removed;
+    }
+    const all = await readDurableVersionedOutbox(storage);
+    const next = all.filter(entry => {
+      const threshold = thresholds.get(`${entry.store}\u0000${entry.itemKey}`);
+      return !threshold || (entry.clientUpdatedAt ?? Number.POSITIVE_INFINITY) > threshold.updatedAt;
+    });
+    if (next.length !== all.length) await writeDurableVersionedOutbox(storage, next);
+    return all.length - next.length;
   });
 }
 
@@ -1398,6 +1561,43 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
             for (const opId of deleteOpIds) store.delete(opId);
             for (const entry of putEntries) store.put(entry);
           } catch (error) {
+            try {
+              tx.abort();
+            } catch {
+              // Already aborting/inactive: the onabort/onerror handlers still settle the promise.
+            }
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+      } finally {
+        db.close();
+      }
+    },
+    async runLegacyMirrorMigrationTransaction(mutations, recoveryValues, sentinelRow): Promise<void> {
+      const db = await openOutboxDb(dbName);
+      try {
+        await new Promise<void>((resolve, reject) => {
+
+
+
+
+          const tx = db.transaction([OUTBOX_STORE_NAME, LEGACY_OUTBOX_RECOVERY_STORE_NAME, SYNC_ITEM_STATE_META_STORE_NAME], 'readwrite');
+          tx.onerror = () => reject(tx.error ?? new Error('Could not commit the legacy outbox mirror migration.'));
+          tx.onabort = () => reject(tx.error ?? new Error('Legacy outbox mirror migration aborted.'));
+          tx.oncomplete = () => resolve();
+          try {
+            const entriesStore = tx.objectStore(OUTBOX_STORE_NAME);
+            for (const mutation of mutations) {
+              for (const opId of mutation.deleteOpIds) entriesStore.delete(opId);
+              for (const entry of mutation.putEntries) entriesStore.put(entry);
+            }
+            const recoveryStore = tx.objectStore(LEGACY_OUTBOX_RECOVERY_STORE_NAME);
+            for (const value of recoveryValues) recoveryStore.add({ recoveredAt: Date.now(), value });
+            tx.objectStore(SYNC_ITEM_STATE_META_STORE_NAME).put(sentinelRow);
+          } catch (error) {
+            // Same abort-on-sync-throw contract as applyItemKeyMutations: a mid-scheduling
+            // throw (e.g. a non-cloneable recovered value) must not let queued requests commit
+            // a partial migration.
             try {
               tx.abort();
             } catch {
