@@ -647,11 +647,16 @@ function mutateItemStateRows<T>(
 
 export function recordRemoteSyncItemStateVersions(
   identity: string,
-  records: ReadonlyArray<{ store: string; itemKey: string; version: number }>
+  records: ReadonlyArray<{ store: string; itemKey: string; version: number }>,
+  options: { mode?: 'exact' | 'max' } = {}
 ): Promise<number> {
   if (records.length === 0) return Promise.resolve(0);
+  const mode = options.mode ?? 'exact';
   const stateKeys = records.map(record => encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey));
   return mutateItemStateRows(identity, stateKeys, durableByKey => {
+
+
+
 
 
 
@@ -662,9 +667,12 @@ export function recordRemoteSyncItemStateVersions(
       const stateKey = encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey);
       touched.add(stateKey);
       const current = working.get(stateKey) ?? durableByKey.get(stateKey);
+      const nextVersion = mode === 'max' && current?.version !== undefined
+        ? Math.max(current.version, record.version)
+        : record.version;
       working.set(stateKey, {
         ...(current ?? { stateKey, identity, store: record.store, itemKey: record.itemKey }),
-        version: record.version,
+        version: nextVersion,
       });
     }
     const puts: RemoteSyncItemStateRow[] = [];
@@ -964,11 +972,9 @@ export async function ensureRemoteSyncItemVersionsActive(
     const importedMapJson = JSON.stringify(state.itemVersions);
     if (importedMapJson === '{}') return;
     const entries = decodeItemVersionEntries(state.itemVersions);
-    const newer = entries.filter(record => {
-      const current = getRemoteSyncItemStateVersion(identity, record.store, record.itemKey);
-      return current === null || record.version > current;
-    });
-    if (newer.length > 0) await recordRemoteSyncItemStateVersions(identity, newer);
+
+
+    if (entries.length > 0) await recordRemoteSyncItemStateVersions(identity, entries, { mode: 'max' });
     const recheck = readRemoteSyncVersionMetadata(storage, identity);
     if (recheck.needsFullPull) return;
     if (JSON.stringify(recheck.itemVersions) !== importedMapJson) continue; // New artifact: import it too.
