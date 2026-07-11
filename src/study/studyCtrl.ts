@@ -73,6 +73,7 @@ import { record, Severity } from '../diagnostics';
 import {
   filterGameProjections,
   projectStudyItem,
+  type GameFilterAnalysisState,
   type GameFilterProjection,
   type GameFilterQuery,
   type GameFilterSortKey,
@@ -211,6 +212,24 @@ let _advAddedTo:      StudyRouteState['addedTo'];
 let _advModifiedFrom: StudyRouteState['modifiedFrom'];
 let _advModifiedTo:   StudyRouteState['modifiedTo'];
 let _advVisibility:   StudyRouteState['vis'];
+
+
+
+
+
+
+
+
+
+
+
+export interface StudyGameEnrichmentSource {
+  analyzedGameIds: ReadonlySet<string>;
+}
+let _gameEnrichmentSource: StudyGameEnrichmentSource | null = null;
+export function setStudyGameEnrichmentSource(source: StudyGameEnrichmentSource | null): void {
+  _gameEnrichmentSource = source;
+}
 
 let _page:       number          = 0;
 let _hasMore:    boolean         = false;
@@ -536,12 +555,23 @@ export function createStudyQueryPlan(
       const sourceMatch = effectiveSources.length === 0 || effectiveSources.some(source => item.source === source);
       const tagMatch = effectiveTags.length === 0 || effectiveTags.some(tag => item.tags.includes(tag));
 
+
+
+
+
+
+      const enrichment = _gameEnrichmentSource;
+      const analysisState: GameFilterAnalysisState | undefined = enrichment && item.sourceGameId
+        ? (enrichment.analyzedGameIds.has(item.sourceGameId) ? 'analyzed' : 'not-analyzed')
+        : undefined;
+
       return {
         ...projection,
         source: sourceMatch ? projection.source : undefined,
         tags: tagMatch ? projection.tags : [],
         folderIds: exactFolderMatch ? projection.folderIds : [],
         homeFolderId: exactFolderMatch ? projection.homeFolderId : undefined,
+        ...(analysisState ? { analysisState } : {}),
         textAnyValues: [
           item.title,
           item.white ?? '',

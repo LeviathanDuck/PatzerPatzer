@@ -57,6 +57,7 @@ const SUPPORTED_FACETS: Record<GameFilterRecordFamily, ReadonlySet<GameFilterFac
     'source',
     'opening',
     'eco',
+    'analysisState',
     'recentlyAdded',
     'recentlyModified',
     'tags',
