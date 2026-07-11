@@ -18,8 +18,14 @@ import {
 import {
   advanceRemoteSyncPullCursor,
   createRemoteSyncItemStateResolver,
+  ensureRemoteSyncItemStateReady,
   ensureRemoteSyncItemVersionsActive,
+  getRemoteSyncItemMarkers,
   getRemoteSyncItemStateVersion,
+  isRemoteSyncItemStateEphemeral,
+  migrateRemoteSyncItemMarkersToIdb,
+  recordRemoteSyncItemMarkers,
+  waitForRemoteSyncItemStateWrites,
   readRemoteSyncVersionMetadata,
   recordRemoteSyncItemStateVersions,
   recordRemoteSyncItemVersions,
@@ -1789,41 +1795,143 @@ function removeLegacySyncStorageItem(key: string, label: string): void {
   }
 }
 
+
+
+
+
+
+
 function rememberedItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string): number {
-  const raw = localStorage.getItem(itemUpdatedAtKey(store, itemKey));
-  const value = raw ? Number.parseInt(raw, 10) : 0;
-  return Number.isFinite(value) ? value : 0;
+  if (isRemoteSyncItemStateEphemeral()) {
+    const raw = localStorage.getItem(itemUpdatedAtKey(store, itemKey));
+    const value = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(value) ? value : 0;
+  }
+  return getRemoteSyncItemMarkers(storedServerIdentity(), store, itemKey).updatedAt;
 }
 
 function rememberedItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): number {
-  const raw = localStorage.getItem(itemDeletedAtKey(store, itemKey));
-  const value = raw ? Number.parseInt(raw, 10) : 0;
-  return Number.isFinite(value) ? value : 0;
+  if (isRemoteSyncItemStateEphemeral()) {
+    const raw = localStorage.getItem(itemDeletedAtKey(store, itemKey));
+    const value = raw ? Number.parseInt(raw, 10) : 0;
+    return Number.isFinite(value) ? value : 0;
+  }
+  return getRemoteSyncItemMarkers(storedServerIdentity(), store, itemKey).deletedAt;
 }
 
-function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
-  setLegacySyncStorageItem(
-    itemUpdatedAtKey(store, itemKey),
-    String(Math.max(0, Math.floor(updatedAt))),
-    'item updated-at marker',
-  );
+// Marker writers return the queued durable write. Await where the surrounding path is async;
+// void-callers stay safe because the pull's version record and the drain both ride the SAME
+// FIFO chain, so awaiting any later chain entry transitively awaits these (queue order is the
+// durability order). Failures surface through the layer's cache-invalidation path.
+function rememberItemUpdatedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): Promise<void> {
+  const value = Math.max(0, Math.floor(updatedAt));
+  if (isRemoteSyncItemStateEphemeral()) {
+    setLegacySyncStorageItem(itemUpdatedAtKey(store, itemKey), String(value), 'item updated-at marker');
+    return Promise.resolve();
+  }
+  return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, updatedAt: value }]).catch(error => {
+    recordRemoteSyncLog('flush', 'error', `Could not persist an updated-at marker: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
 
-function rememberItemDeletedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): void {
-  const value = String(Math.max(0, Math.floor(updatedAt)));
-  setLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), value, 'item deleted-at marker');
-  setLegacySyncStorageItem(itemUpdatedAtKey(store, itemKey), value, 'item updated-at marker');
+function rememberItemDeletedAt(store: RemoteSyncStoreName, itemKey: string, updatedAt: number): Promise<void> {
+  const value = Math.max(0, Math.floor(updatedAt));
+  if (isRemoteSyncItemStateEphemeral()) {
+    setLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), String(value), 'item deleted-at marker');
+    setLegacySyncStorageItem(itemUpdatedAtKey(store, itemKey), String(value), 'item updated-at marker');
+    return Promise.resolve();
+  }
+  return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, updatedAt: value, deletedAt: value }]).catch(error => {
+    recordRemoteSyncLog('flush', 'error', `Could not persist a deleted-at marker: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
 
-function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): void {
-  removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
+function clearItemDeletedAt(store: RemoteSyncStoreName, itemKey: string): Promise<void> {
+  if (isRemoteSyncItemStateEphemeral()) {
+    removeLegacySyncStorageItem(itemDeletedAtKey(store, itemKey), 'item deleted-at marker');
+    return Promise.resolve();
+  }
+  return recordRemoteSyncItemMarkers(storedServerIdentity(), [{ store, itemKey, deletedAt: null }]).catch(error => {
+    recordRemoteSyncLog('flush', 'error', `Could not clear a deleted-at marker: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
+
+
+
 
 
 
 
 export function clearRemoteSyncDeletedAtMarker(store: RemoteSyncStoreName, itemKey: string): void {
-  clearItemDeletedAt(store, itemKey);
+  void clearItemDeletedAt(store, itemKey);
+}
+
+
+
+
+
+
+
+
+const markerMigrationMemo = new Set<string>();
+const MARKER_STORE_NAMES_LONGEST_FIRST = [...REMOTE_SYNC_STORE_NAMES].sort((a, b) => b.length - a.length);
+
+function collectLegacyMarkerRecords(): Array<{ store: string; itemKey: string; updatedAt?: number; deletedAt?: number }> {
+  const byKey = new Map<string, { store: string; itemKey: string; updatedAt?: number; deletedAt?: number }>();
+  const prefixes: Array<[string, 'updatedAt' | 'deletedAt']> = [
+    [ITEM_UPDATED_AT_PREFIX, 'updatedAt'],
+    [ITEM_DELETED_AT_PREFIX, 'deletedAt'],
+  ];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key) continue;
+    for (const [prefix, field] of prefixes) {
+      if (!key.startsWith(prefix)) continue;
+      const rest = key.slice(prefix.length);
+      const store = MARKER_STORE_NAMES_LONGEST_FIRST.find(name => rest.startsWith(`${name}.`));
+      if (!store) continue;
+      const itemKey = rest.slice(store.length + 1);
+      if (!itemKey) continue;
+      const raw = localStorage.getItem(key);
+      const value = raw ? Number.parseInt(raw, 10) : 0;
+      if (!Number.isFinite(value) || value <= 0) continue;
+      const mapKey = `${store}\u0000${itemKey}`;
+      const record = byKey.get(mapKey) ?? { store, itemKey };
+      record[field] = value;
+      byKey.set(mapKey, record);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function removeLegacyMarkerKeys(): void {
+  const doomed: string[] = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key && (key.startsWith(ITEM_UPDATED_AT_PREFIX) || key.startsWith(ITEM_DELETED_AT_PREFIX))) doomed.push(key);
+  }
+  for (const key of doomed) removeLegacySyncStorageItem(key, 'legacy item marker');
+}
+
+
+
+export function resetMarkerMigrationMemoForTests(): void {
+  markerMigrationMemo.clear();
+}
+
+/** The Wave 5+6 combined activation gate every sync entry path awaits: version migration +
+ * hydration (Wave 5), then the marker migration behind its own sentinel (Wave 6). */
+async function ensureRemoteSyncItemStateActive(identity: string): Promise<void> {
+  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  if (!isRemoteSyncItemStateEphemeral() && !markerMigrationMemo.has(identity)) {
+    await migrateRemoteSyncItemMarkersToIdb(identity, collectLegacyMarkerRecords(), {
+      cleanupLocalStorage: () => removeLegacyMarkerKeys(),
+    });
+    markerMigrationMemo.add(identity);
+    // The migration invalidates the cache after committing its rows — re-hydrate so the
+    // synchronous marker reads on this entry path are valid again.
+    await ensureRemoteSyncItemStateReady(identity);
+  }
 }
 
 
@@ -2657,6 +2765,12 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
     ) keysToRemove.push(key);
   }
   for (const key of keysToRemove) localStorage.removeItem(key);
+
+
+  resetRemoteSyncItemState(storedServerIdentity()).catch(error => {
+    recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  markerMigrationMemo.delete(storedServerIdentity());
 }
 
 export function clearRemoteSyncLocalSyncState(): void {
@@ -3035,6 +3149,13 @@ function queuePendingVersionedOutboxWrite(promise: Promise<void>): void {
   });
 }
 
+
+
+export async function waitForPendingRemoteSyncEnqueues(): Promise<void> {
+  await waitForPendingVersionedOutboxWrites();
+  await waitForRemoteSyncItemStateWrites();
+}
+
 async function waitForPendingVersionedOutboxWrites(): Promise<void> {
   while (pendingVersionedOutboxEnqueues.length > 0) {
     const pending = pendingVersionedOutboxEnqueues;
@@ -3053,7 +3174,7 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
   const payload = deleted ? undefined : item.payload;
 
   const identity = storedServerIdentity();
-  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  await ensureRemoteSyncItemStateActive(identity);
   const baseVersion = getRemoteSyncItemStateVersion(identity, item.store, item.itemKey);
   await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
     store: item.store,
@@ -3068,7 +3189,7 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
 async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]): Promise<void> {
   if (items.length === 0) return;
   const identity = storedServerIdentity();
-  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  await ensureRemoteSyncItemStateActive(identity);
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
@@ -3143,24 +3264,32 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
   if (applyingRemoteSync) return;
   const normalized = normalizeSyncItem(item);
   if (!normalized) throw new Error('Invalid Remote sync item.');
-  if (!isDeletedItem(normalized)) {
-    if (shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) {
+  durableOutboxCountCache = null;
+
+
+
+
+  queuePendingVersionedOutboxWrite((async () => {
+    await ensureRemoteSyncItemStateActive(storedServerIdentity());
+    await waitForRemoteSyncItemStateWrites();
+    if (!isDeletedItem(normalized) && shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt)) {
       recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
       return;
     }
-  }
-  durableOutboxCountCache = null;
-  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItem(normalized).catch(error => {
+    if (isDeletedItem(normalized)) await rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
+    else {
+      await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
+      await clearItemDeletedAt(normalized.store, normalized.itemKey);
+    }
+    // Legacy mirror BEFORE the durable enqueue — parity with the pre-Wave-6 order, where the
+    // mirror was written unconditionally while the durable write settled asynchronously.
+    const snapshot = readOutboxSnapshot({ logInvalid: true });
+    writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+    await enqueueVersionedOutboxItem(normalized);
+  })().catch(error => {
     const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
     recordRemoteSyncLog('flush', 'error', message);
   }));
-  if (isDeletedItem(normalized)) rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
-  else {
-    rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt);
-    clearItemDeletedAt(normalized.store, normalized.itemKey);
-  }
-  const snapshot = readOutboxSnapshot({ logInvalid: true });
-  writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
   scheduleRemoteSyncFlush();
 }
 
@@ -3194,19 +3323,37 @@ export function enqueueRemoteSyncOperation(operation: RemoteSyncPersistenceOpera
 
 export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): void {
   if (applyingRemoteSync || items.length === 0) return;
-  const normalized: RemoteSyncItem[] = [];
+  // Normalization stays synchronous (invalid items must still throw to the caller); the
+  // suppression decisions move inside the queued work (Wave 6, design rule 5) where the
+  // hydrated marker cache is guaranteed.
+  const candidates: RemoteSyncItem[] = [];
   for (const item of items) {
     const entry = normalizeSyncItem(item);
     if (!entry) throw new Error('Invalid Remote sync item.');
-    if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt)) {
-      recordSuppressedRemoteSyncEnqueue(entry.store, entry.itemKey);
-      continue;
-    }
-    normalized.push(entry);
+    candidates.push(entry);
   }
-  if (normalized.length === 0) return;
-  const queueOpId = safeBeginProgress('queueing', { total: normalized.length });
-  queuePendingVersionedOutboxWrite(enqueueVersionedOutboxItemsBatch(normalized).then(() => {
+  const normalized: RemoteSyncItem[] = [];
+  const queueOpId = safeBeginProgress('queueing', { total: candidates.length });
+  queuePendingVersionedOutboxWrite((async () => {
+    await ensureRemoteSyncItemStateActive(storedServerIdentity());
+    await waitForRemoteSyncItemStateWrites();
+    for (const entry of candidates) {
+      if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt)) {
+        recordSuppressedRemoteSyncEnqueue(entry.store, entry.itemKey);
+        continue;
+      }
+      normalized.push(entry);
+    }
+    if (normalized.length === 0) return;
+    for (const entry of normalized) {
+      if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt);
+      else {
+        await rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt);
+        await clearItemDeletedAt(entry.store, entry.itemKey);
+      }
+    }
+    await enqueueVersionedOutboxItemsBatch(normalized);
+  })().then(() => {
     safeCompleteProgress(queueOpId);
     safeClearProgressIssue('durable-enqueue-failed');
 
@@ -3223,16 +3370,9 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
     safeFailProgress(queueOpId, {
       reason: 'durable-enqueue-failed',
       message,
-      counts: { failedItems: normalized.length },
+      counts: { failedItems: normalized.length > 0 ? normalized.length : candidates.length },
     });
   }));
-  for (const entry of normalized) {
-    if (isDeletedItem(entry)) rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt);
-    else {
-      rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt);
-      clearItemDeletedAt(entry.store, entry.itemKey);
-    }
-  }
   scheduleRemoteSyncFlush();
 }
 
@@ -3545,7 +3685,7 @@ async function rememberVersionedPullMetadata(items: readonly unknown[], latestVe
 
 
 
-  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  await ensureRemoteSyncItemStateActive(identity);
   await recordRemoteSyncItemStateVersions(identity, records);
   const recordMax = records.reduce((max, record) => Math.max(max, record.version), latest);
   const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, [], recordMax);
@@ -3795,7 +3935,7 @@ async function drainVersionedRemoteSyncOutbox(
 
 
 
-  await ensureRemoteSyncItemVersionsActive(localStorage, storedServerIdentity());
+  await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const migrated = await migrateLegacyOutboxToVersioned();
   await waitForPendingVersionedOutboxWrites();
   const result = await runVersionedPreWriteGate({
@@ -4129,7 +4269,7 @@ export interface RemoteSyncUntrackedScanCounts {
 async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrackedScanCounts> {
   const identity = storedServerIdentity();
   const keysByStore = await readLocalRemoteSyncItemKeysByStore();
-  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  await ensureRemoteSyncItemStateActive(identity);
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   const pendingKeys = new Set(
     (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
@@ -4311,6 +4451,9 @@ export async function applyRemoteSyncItems(
   items: unknown[],
   options: { generation?: number; onProgress?: (progress: RemoteSyncApplyProgress) => void } = {},
 ): Promise<Record<string, number>> {
+
+
+  await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const counts: Record<string, number> = {};
   let analysisChanged = false;
   const total = items.length;
@@ -4593,7 +4736,7 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 
 
       const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
-      await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+      await ensureRemoteSyncItemStateActive(identity);
       const resolveVersion = createRemoteSyncItemStateResolver(identity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
@@ -4725,6 +4868,9 @@ async function readCurrentLocalRemoteSyncItem(
 
 
 async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): Promise<void> {
+
+
+  await ensureRemoteSyncItemStateActive(storedServerIdentity());
   if (record.operation === 'delete') {
     enqueueRemoteSyncDelete(record.store, record.itemKey, Date.now());
   } else if (record.conflictIntent === 'recreate-over-tombstone') {
@@ -4736,7 +4882,6 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
     const requeueIdentity = storedServerIdentity();
-    await ensureRemoteSyncItemVersionsActive(localStorage, requeueIdentity);
     await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), buildRecreateRequeueInput(
       record,
       useCurrent,

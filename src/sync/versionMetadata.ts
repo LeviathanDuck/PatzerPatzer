@@ -809,13 +809,17 @@ export interface RemoteSyncItemStateMigrationResult {
 export function migrateRemoteSyncItemStateToIdb(
   identity: string,
   snapshot: RemoteSyncItemStateMigrationSnapshot,
-  options: { cleanupLocalStorage?: () => void; now?: number } = {}
+  options: { cleanupLocalStorage?: () => void; now?: number; sentinelKey?: string } = {}
 ): Promise<RemoteSyncItemStateMigrationResult> {
 
 
   return queueItemStateWrite(() => withItemStateLock(async () => {
     const storage = itemStateStorage();
-    const sentinelKey = migrationSentinelKey(identity);
+
+
+
+
+    const sentinelKey = options.sentinelKey ?? migrationSentinelKey(identity);
     const existing = await storage.readMeta(sentinelKey);
     if (existing && typeof existing === 'object' && typeof (existing as Record<string, unknown>).completedAt === 'number') {
       options.cleanupLocalStorage?.();
@@ -989,6 +993,32 @@ export async function ensureRemoteSyncItemVersionsActive(
     return;
   }
   await ensureRemoteSyncItemStateReady(identity);
+}
+
+
+
+
+
+
+
+
+
+export function migrateRemoteSyncItemMarkersToIdb(
+  identity: string,
+  markerRecords: RemoteSyncItemStateMigrationSnapshot['markerRecords'],
+  options: { cleanupLocalStorage?: () => void; now?: number } = {}
+): Promise<RemoteSyncItemStateMigrationResult> {
+  return migrateRemoteSyncItemStateToIdb(identity, { versionRecords: [], markerRecords }, {
+    ...options,
+    sentinelKey: `markers-migration/${encodeURIComponent(identity)}`,
+  });
+}
+
+/** Whether the current item-state backend is session-lifetime memory (no IndexedDB). Callers
+ * use this to keep localStorage authoritative (skip cleanup, dual-write) on that posture. */
+export function isRemoteSyncItemStateEphemeral(): boolean {
+  itemStateStorage();
+  return itemStateStorageOverride ? itemStateOverrideIsEphemeral : itemStateStorageIsEphemeral;
 }
 
 /** Test seam: forget the process-local migrate-once memo (the sentinel still governs truth). */
