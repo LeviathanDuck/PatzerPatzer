@@ -118,6 +118,25 @@ function recordStudyRouteEmpty(route: string): void {
   });
 }
 
+// BUG-2026-07-10-019 step-2a: updateStudy's not-cached branch previously returned silently when
+// getStudy(id) missed (study absent from BOTH the in-memory cache and the store) — no write, no
+// error, no diagnostic. That silent skip is the suspected 39/40 favorite-race mechanism (a
+// full-scope bulk apply can target an id whose fixture write has not yet settled). Turn the silent
+// skip into a recorded one so the investigation can see which id missed. Warn (not Error): this is
+// a skip, not a thrown failure; the caller still resolves. Route label 'study-update-miss' is the
+// findable marker.
+function recordStudyUpdateMiss(id: string): void {
+  record({
+    kind: 'render',
+    severity: Severity.Warn,
+    source: 'study/studyCtrl',
+    sourceTag: 'study-update-miss',
+    message: 'study-update-miss',
+    metadata: { route: 'study-update-miss', missingId: id },
+    redactionClass: 'safe',
+  });
+}
+
 function recordOrpLoadFail(route: string, error: unknown): void {
   record({
     kind: 'render',
@@ -1870,7 +1889,13 @@ export async function updateStudy(partial: Partial<StudyItem> & { id: string }):
   const idx = _studies.findIndex(s => s.id === partial.id);
   if (idx === -1) {
     const existing = await getStudy(partial.id);
-    if (!existing) return;
+    if (!existing) {
+      // BUG-2026-07-10-019 step-2a: record the skip instead of returning silently. Do NOT throw
+      // (awaiting callers like bulkSetFavorite keep their resolve-through semantics) and do NOT
+      // retry (a separate BUG-019 decision) — record, then return as before.
+      recordStudyUpdateMiss(partial.id);
+      return;
+    }
     const updated: StudyItem = { ...existing, ...partial, updatedAt: Date.now() };
     await saveStudy(updated);
     _studyNavigationIndex.noteItemsLoaded([updated]);

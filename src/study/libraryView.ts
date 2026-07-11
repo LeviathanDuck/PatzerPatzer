@@ -2348,7 +2348,14 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
                   _editingOrpLabelId    = null;
                   _editingOrpLabelValue = '';
                   if (newLabel) {
-                    // Load, update label + updatedAt, save, then refresh ORP section.
+
+
+
+
+
+
+
+
                     void getPracticeLine(sequence.id).then(line => {
                       if (!line) return;
                       return savePracticeLine({ ...line, label: newLabel, updatedAt: Date.now() });
@@ -2356,7 +2363,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
                       _orpLoaded      = false;
                       _orpLoadPending = false;
                       loadOrpLines(redraw);
-                    });
+                    }).catch(e => console.warn('[libraryView] ORP label rename failed', e));
                   }
                   redraw();
                 },
@@ -2413,6 +2420,9 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
       on: { click: (e: Event) => {
         e.stopPropagation();
         const newStatus = sequence.status === 'active' ? 'paused' : 'active';
+
+
+
         void getPracticeLine(sequence.id).then(line => {
           if (!line) return;
           return savePracticeLine({ ...line, status: newStatus, updatedAt: Date.now() });
@@ -2420,7 +2430,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
           _orpLoaded      = false;
           _orpLoadPending = false;
           loadOrpLines(redraw);
-        });
+        }).catch(e => console.warn('[libraryView] ORP pause/resume failed', e));
       }},
     }, sequence.status === 'active' ? 'Pause' : 'Resume'),
 
@@ -2527,7 +2537,12 @@ function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNo
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (totalDue === 0 || _orpDueLaunching) return;
-            void launchOrpDueSession(redraw);
+
+
+
+
+
+            void launchOrpDueSession(redraw).catch(e => console.warn('[libraryView] ORP review-due launch failed', e));
           }},
         }, _orpDueLaunching ? 'Starting…' : `Review due (${totalDue})`)
       : null;
@@ -2540,7 +2555,10 @@ function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNo
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (_orpLearnLaunching) return;
-            void launchOrpLearnSession(redraw);
+
+
+
+            void launchOrpLearnSession(redraw).catch(e => console.warn('[libraryView] ORP learn-new launch failed', e));
           }},
         }, _orpLearnLaunching ? 'Starting…' : `Learn new (${group.length})`)
       : null;
