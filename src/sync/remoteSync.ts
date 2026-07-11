@@ -2451,11 +2451,16 @@ function deleteLegacyImportedGameById(db: IDBDatabase, gameId: string): Promise<
 }
 
 async function writeRecordByItemKey(db: IDBDatabase, spec: IdbStoreSpec, itemKey: string, payload: unknown): Promise<void> {
-  if (spec.keyMode !== 'explicit') {
-    const payloadKey = spec.keyForRecord(payload);
-    if (!payloadKey || payloadKey !== itemKey) {
-      throw new Error(`Remote sync payload key mismatch for ${spec.store}.`);
-    }
+
+
+
+
+
+
+
+  const payloadKey = spec.keyForRecord(payload, itemKey);
+  if (!payloadKey || payloadKey !== itemKey) {
+    throw new Error(`Remote sync payload key mismatch for ${spec.store}.`);
   }
 
   await new Promise<void>((resolve, reject) => {
@@ -4565,8 +4570,7 @@ async function readLocalStoreItemKeys(spec: IdbStoreSpec): Promise<string[]> {
 
 
 
-
-    if (spec.keyMode !== 'keyPath') {
+    if (spec.keyMode === 'scan') {
       const records = await readAllFromStore(db, spec.objectStore);
       return records.flatMap(record => {
         const key = spec.keyForRecord(record.value, record.primaryKey);
@@ -4609,7 +4613,13 @@ async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrack
   let totalUntracked = 0;
   for (const [store, keys] of Object.entries(keysByStore) as [RemoteSyncStoreName, string[]][]) {
     let untrackedForStore = 0;
+
+
+
+    const seenKeys = new Set<string>();
     for (const itemKey of keys) {
+      if (seenKeys.has(itemKey)) continue;
+      seenKeys.add(itemKey);
       if (resolveVersion(store, itemKey) !== null) continue;
       if (pendingKeys.has(`${store}::${itemKey}`)) continue;
       untrackedForStore += 1;
@@ -4750,9 +4760,7 @@ export async function readLocalRemoteSyncItemsForKeys(
         db = await openIdb(spec.dbName, spec.dbVersion);
         dbConnections.set(connectionKey, db);
       }
-      if (spec.keyMode !== 'keyPath') {
-
-
+      if (spec.keyMode === 'scan') {
 
 
 
@@ -5212,7 +5220,19 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 
 
 
-      const untracked = await loadForKeys(untrackedKeys);
+
+
+
+      const coalesceByIdentity = (loaded: RemoteSyncItem[]): RemoteSyncItem[] => {
+        const byComposite = new Map<string, RemoteSyncItem>();
+        for (const item of loaded) {
+          const composite = `${item.store}\u0000${item.itemKey}`;
+          const existing = byComposite.get(composite);
+          if (!existing || item.updatedAt > existing.updatedAt) byComposite.set(composite, item);
+        }
+        return Array.from(byComposite.values());
+      };
+      const untracked = coalesceByIdentity(await loadForKeys(untrackedKeys));
       const requestedSurvivorTotal = Object.values(survivorKeys).reduce((total, keys) => total + keys.length, 0); // keys are identity-deduped above
       // Fulfilled composites are a SET (Sol round-2 Important-3): duplicate scan/explicit rows
       // deriving to one survivor composite must not drive the missing-key fallback negative.
@@ -5220,7 +5240,7 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
       const shadowedSurvivors: RemoteSyncItem[] = [];
       let requeuedTombstoneShadowed = 0;
       let survivorsNotNewer = 0;
-      for (const item of await loadForKeys(survivorKeys)) {
+      for (const item of coalesceByIdentity(await loadForKeys(survivorKeys))) {
         fulfilledSurvivors.add(`${item.store}\u0000${item.itemKey}`);
         // Requeue with the recorded version as the CAS base (resolved automatically by the
         // batch enqueue below): a genuinely newer server tombstone still wins through the
