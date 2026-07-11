@@ -4742,16 +4742,35 @@ export async function readLocalRemoteSyncItemsForKeys(
         db = await openIdb(spec.dbName, spec.dbVersion);
         dbConnections.set(connectionKey, db);
       }
+      if (spec.keyMode === 'scan') {
+        // Scan-mode stores (composite itemKeys, no direct key addressing) load ONCE and filter
+        // — per-key readRecordByItemKey would cursor-walk the whole store for every requested
+        // key, O(n x k) on a fresh 10k-attempt store (Sol F-14 round-1 Important-1). This is
+        // the design's documented full-read fallback.
+        const wanted = new Set(keys);
+        const records = await readAllFromStore(db, spec.objectStore);
+        items.push(...recordsToSyncItems(spec, records, options).filter(item => wanted.has(item.itemKey)));
+        continue;
+      }
       for (const itemKey of keys) {
         if (isActiveDataManagementDeleteKey(spec.store, itemKey)) continue;
         const value = await readRecordByItemKey(db, spec, itemKey);
         if (value === undefined) continue;
+        // Key validation parity with recordsToSyncItems (Sol F-14 round-1 Important-2): the
+        // sync identity is ALWAYS keyForRecord's derivation, never the requested primary key —
+        // a row stored under g1 whose payload says gameId g2 syncs as g2 (the old full scan's
+        // behavior), and a row whose derivation fails is excluded, never queued under a key
+        // its payload does not claim. Callers re-classify items whose key differs from the
+        // requested one.
+        const derivedKey = spec.keyForRecord(value, itemKey);
+        if (!derivedKey) continue;
+        if (isActiveDataManagementDeleteKey(spec.store, derivedKey)) continue;
         const payloadUpdatedAt = spec.updatedAt(value);
-        if (!options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem(spec.store, itemKey, payloadUpdatedAt)) continue;
+        if (!options.includeSuppressed && isTombstoneShadowedLocalSnapshotItem(spec.store, derivedKey, payloadUpdatedAt)) continue;
         items.push({
           store: spec.store,
-          itemKey,
-          updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(spec.store, itemKey)),
+          itemKey: derivedKey,
+          updatedAt: Math.max(payloadUpdatedAt, rememberedItemUpdatedAt(spec.store, derivedKey)),
           payload: value,
           operation: 'upsert' as const,
         });
@@ -5134,6 +5153,9 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
       const survivorKeys: Partial<Record<RemoteSyncStoreName, string[]>> = {};
       for (const [store, keys] of Object.entries(keysByStore) as [RemoteSyncStoreName, string[]][]) {
         for (const itemKey of keys) {
+          // Old-loop parity (Sol F-14 round-1 Minor-4): recordsToSyncItems excluded rows an
+          // active Data Management delete is removing BEFORE they were ever counted.
+          if (isActiveDataManagementDeleteKey(store, itemKey)) continue;
           scannedLocal += 1;
           const recordedVersion = resolveVersion(store, itemKey);
           if (recordedVersion !== null) {
@@ -5167,24 +5189,65 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
         }
         return readLocalRemoteSyncItemsForKeys(needed, { includeSuppressed: true });
       };
-      const untracked = await loadForKeys(untrackedKeys);
-      const loadedSurvivors = await loadForKeys(survivorKeys);
+      // The loader keys every item by keyForRecord's derivation (Important-2): an item whose
+      // derived key differs from the key it was REQUESTED under was classified under the wrong
+      // identity — re-run the same key classification on the derived key and route it to the
+      // right bucket (exactly what the old full scan did, since it only ever saw derived keys).
+      const keySetOf = (needed: Partial<Record<RemoteSyncStoreName, string[]>>): Set<string> => {
+        const set = new Set<string>();
+        for (const [store, keys] of Object.entries(needed) as [RemoteSyncStoreName, string[]][]) {
+          for (const itemKey of keys) set.add(`${store}\u0000${itemKey}`);
+        }
+        return set;
+      };
+      const requestedUntracked = keySetOf(untrackedKeys);
+      const requestedSurvivor = keySetOf(survivorKeys);
+      const classifyLoaded = (item: RemoteSyncItem): 'tracked' | 'queued' | 'survivor' | 'untracked' => {
+        const composite = `${item.store}\u0000${item.itemKey}`;
+        if (requestedSurvivor.has(composite)) return 'survivor';
+        if (requestedUntracked.has(composite)) return 'untracked';
+        const recordedVersion = resolveVersion(item.store, item.itemKey);
+        if (recordedVersion !== null) {
+          return rememberedItemDeletedAt(item.store, item.itemKey, activeIdentity) > 0 ? 'survivor' : 'tracked';
+        }
+        return pendingKeys.has(composite) ? 'queued' : 'untracked';
+      };
+      const untracked: RemoteSyncItem[] = [];
+      const survivorCandidates: RemoteSyncItem[] = [];
+      let survivorItemsFromRequest = 0;
+      for (const item of [...await loadForKeys(untrackedKeys), ...await loadForKeys(survivorKeys)]) {
+        const bucket = classifyLoaded(item);
+        if (bucket === 'survivor') {
+          if (requestedSurvivor.has(`${item.store}\u0000${item.itemKey}`)) survivorItemsFromRequest += 1;
+          survivorCandidates.push(item);
+        } else if (bucket === 'untracked') {
+          untracked.push(item);
+        } else if (bucket === 'tracked') {
+          alreadyTracked += 1;
+        } else {
+          alreadyQueued += 1;
+        }
+      }
       const shadowedSurvivors: RemoteSyncItem[] = [];
       let requeuedTombstoneShadowed = 0;
-      for (const item of loadedSurvivors) {
+      for (const item of survivorCandidates) {
         // Requeue with the recorded version as the CAS base (resolved automatically by the
         // batch enqueue below): a genuinely newer server tombstone still wins through the
         // normal conflict path, otherwise this resurrects the row. The marker is cleared now
         // (not after the batch resolves) so the enqueue below does not immediately re-suppress
         // the very item this branch is recovering.
-        if (item.updatedAt <= 0) continue;
+        if (item.updatedAt <= 0) {
+          alreadyTracked += 1;
+          continue;
+        }
         requeuedTombstoneShadowed += 1;
         void clearItemDeletedAt(item.store, item.itemKey, activeIdentity).catch(() => { /* logged by the helper */ });
         shadowedSurvivors.push(item);
       }
-      // Survivor keys that were NOT requeued (payload gone, or no positive updatedAt) keep
-      // their pre-F-14 classification: the recorded version means the server has them.
-      alreadyTracked += Object.values(survivorKeys).reduce((total, keys) => total + keys.length, 0) - requeuedTombstoneShadowed;
+      // Survivor-requested keys whose payload never came back (row gone, excluded, or derived
+      // to another key that classified elsewhere) keep their pre-F-14 classification: the
+      // recorded version means the server has them.
+      alreadyTracked += requestedSurvivor.size - survivorItemsFromRequest;
       const toEnqueue = [...untracked, ...shadowedSurvivors];
       const counts: Record<string, number> = {
         scannedLocal,
