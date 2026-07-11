@@ -280,6 +280,26 @@ export type SolveResult =
   | 'skipped';          // explicitly skipped
 
 /**
+ * P2-PZ-4 severity classification of a solve attempt's failure/assistance.
+ * Register (P2-PZ-4 [LOCKED]): "True fail — RED: wrong move, engine assistance,
+ * solution reveal." / "Soft fail — YELLOW: hint used, revealing your own saved notes."
+ */
+export type PuzzleFailSeverity = 'red' | 'yellow';
+
+/**
+ * The specific P2-PZ-4 assistance/failure type that applied to an attempt.
+ * Register: "Attempt records MUST store severity + the specific assistance type."
+ * RED types: wrong-move, engine-assistance, solution-reveal.
+ * YELLOW types: hint, notes.
+ */
+export type PuzzleAssistanceType =
+  | 'wrong-move'
+  | 'engine-assistance'
+  | 'solution-reveal'
+  | 'hint'
+  | 'notes';
+
+/**
  * Reason a solve attempt was not clean.
  * Multiple reasons may apply to a single attempt.
  */
@@ -344,6 +364,16 @@ export interface PuzzleAttempt {
   ratingAfter?: PuzzleRatingSnapshot;
   /** Rating delta attributed to this solve. Populated on rated-success and rated-failure. */
   ratingDelta?: PuzzleRatingDelta;
+
+  // --- P2-PZ-4 severity + assistance type (attempt outcome record) ---
+  // Register (P2-PZ-4 [LOCKED]): "Attempt records MUST store severity + the
+  // specific assistance type." Undefined on a clean solve (no fail/assistance)
+  // and on legacy attempts written before these fields existed.
+
+  /** P2-PZ-4 severity of this attempt's failure/assistance ('red' true fail, 'yellow' soft fail). */
+  p2Severity?: PuzzleFailSeverity;
+  /** The specific P2-PZ-4 assistance/failure types that applied to this attempt. */
+  assistanceTypes?: PuzzleAssistanceType[];
 }
 
 // --- Move quality evaluation (engine assist layer) ---

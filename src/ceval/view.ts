@@ -119,7 +119,17 @@ function currentReviewQueueDisplay(): { active: boolean; done: number; total: nu
  * Layout: div.ceval flex row: .cmn-toggle | pearl | div.engine | button.settings-gear
  * CSS reference: ui/lib/css/ceval/_ctrl.scss
  */
-export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolving?: boolean }): VNode {
+export function renderCeval(opts?: {
+  retroHiddenByDefault?: boolean;
+  retroSolving?: boolean;
+
+
+
+
+
+
+  onBeforeEngineToggle?: () => boolean;
+}): VNode {
   const retroHiddenByDefault = opts?.retroHiddenByDefault === true;
   // retroSolving: user is in the LFYM attempt phase (feedback === 'find' | 'fail').
   // Pearl is blanked regardless of engine toggle state — showing the eval value
@@ -170,6 +180,9 @@ export function renderCeval(opts?: { retroHiddenByDefault?: boolean; retroSolvin
       attrs: { title: 'Toggle analysis engine (L)' },
       on: {
         click: () => {
+          // Additive pre-toggle hook: a false return swallows the toggle before
+          // any engine side effect. Absent hook = exact pre-existing behavior.
+          if (opts?.onBeforeEngineToggle && !opts.onBeforeEngineToggle()) return;
           if (retroHiddenByDefault) {
             retroVisibleEngineEnabled = !retroVisibleEngineEnabled;
             if (retroVisibleEngineEnabled) {

@@ -1242,11 +1242,11 @@ function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
 function renderViewSolutionButtons(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
   return h('div.puzzle__feedback__actions', [
     h('button.button.button-empty.puzzle__hint', {
-      on: { click: () => { rc.useHint(redraw); } },
+      on: { click: () => { rc.useHint(redraw); redraw(); } },
     }, rc.usedHint ? 'Hint used' : 'Get a hint'),
     rc.canViewSolution
       ? h('button.button.button-empty.puzzle__reveal', {
-          on: { click: () => { rc.viewSolution(redraw); } },
+          on: { click: () => { rc.viewSolution(redraw); redraw(); } },
         }, 'View the solution')
       : null,
     renderAnalysisToggle(rc, redraw),
@@ -1448,7 +1448,7 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
     h('div.puzzle__feedback__actions', [
       !rc.revealedSolution
         ? h('button.button.button-empty.puzzle__reveal', {
-            on: { click: () => { rc.revealSolution(redraw); } },
+            on: { click: () => { rc.revealSolution(redraw); redraw(); } },
           }, 'Show Solution')
         : null,
       h('button.button.button-empty.puzzle__engine-lines', {
@@ -1949,8 +1949,11 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
  * Render the analysis board's ceval components for the puzzle page.
  * Sets the FEN override so renderPvBox uses the puzzle position, then
  * uses the shared engine toggle and PV box from src/ceval/view.ts.
+ *
+ * Exported for the node harness (scripts/test-rated-latch.mjs view-layer cases);
+ * production callers remain within this module.
  */
-function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
+export function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
   // Use the current tree position — this tracks navigation and variations.
   const puzzlePosition = rc.currentEnginePositionContext('puzzle-engine-view');
   const puzzleFen = puzzlePosition.currentFen;
@@ -1958,13 +1961,26 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
   // Set position override so the shared ceval view renders for the puzzle position.
   setCevalPositionOverride('puzzle-post-solve', puzzlePosition);
 
-  // If the shared engine is on during an active solve, mark this round as assisted.
-  if (engineEnabled && rc.mode !== 'view') rc.notifyEngineUsedDuringSolve();
+
+
+
+
+
+
+
+  const warnBeforeGate = rc.showAssistanceWarning;
+  const engineLinesAllowed = rc.engineRevealGate(engineEnabled);
+  // The assistance modal is rendered earlier in the round tree (renderAssistanceWarning),
+  // so when the gate just raised it, schedule a single redraw so it surfaces next
+  // frame. Guarded by the transition so it fires once (no redraw loop).
+  if (!warnBeforeGate && rc.showAssistanceWarning) {
+    requestAnimationFrame(() => redraw());
+  }
 
   // If engine is on, ensure it's evaluating the puzzle position (not the analysis board's).
   // Re-send on every render when engine is active — evalCurrentPosition() from the analysis
   // board may overwrite the position, so we need to keep reasserting the puzzle FEN.
-  if (rc.puzzleEngineEnabled && sharedEngineReady) {
+  if (engineLinesAllowed && rc.puzzleEngineEnabled && sharedEngineReady) {
     // Use requestAnimationFrame to send AFTER any evalCurrentPosition() from toggle
     if (puzzleFen !== _lastPuzzleEngineFen) {
       _lastPuzzleEngineFen = puzzleFen;
@@ -1979,11 +1995,26 @@ function renderPuzzleEnginePanel(rc: PuzzleRoundCtrl, redraw: () => void): VNode
 
   const children: (VNode | null)[] = [];
 
-  // Ceval header bar (toggle, eval pearl, engine name, settings gear)
-  children.push(renderCeval());
+  // Ceval header bar (toggle, eval pearl, engine name, settings gear).
+  // - onBeforeEngineToggle: PRE-ACTIVATION interception — in an active rated
+  //   solve the toggle is swallowed (engine never enables) and the modal raised;
+  //   the verdict then performs the toggle exactly once. All other surfaces/
+  //   states proceed unchanged. A swallowed toggle redraws so the modal shows.
+  // - retroSolving: while gated, blanks the eval pearl so no cached eval value
+  //   leaks before the verdict (same pearl-blanking contract LFYM solving uses).
+  children.push(renderCeval({
+    onBeforeEngineToggle: () => {
+      const allow = rc.interceptEngineToggle();
+      if (!allow) redraw();
+      return allow;
+    },
+    retroSolving: !engineLinesAllowed,
+  }));
 
-  // PV lines box (only renders when engine is enabled)
-  children.push(renderPvBox());
+  // PV lines box (only renders when engine is enabled). In an active rated solve
+  // this is SUPPRESSED until the assistance verdict resolves (engineRevealGate),
+  // so no engine line content reaches the DOM before the user's choice.
+  children.push(engineLinesAllowed ? renderPvBox() : null);
 
   // Engine settings panel (only renders when settings gear is toggled)
   children.push(renderEngineSettings());
@@ -2235,7 +2266,11 @@ export function renderPuzzleRound(redraw: () => void): VNode {
                   mountPuzzleBoard(vnode.elm as HTMLElement, redraw);
                 },
                 destroy: () => {
-                  destroyPuzzleBoard();
+
+
+
+
+                  destroyPuzzleBoard(rc ?? undefined);
                 },
               },
             }),

@@ -31,7 +31,7 @@ import { PromotionCtrl } from '../board/promotion';
 import { playMoveSound } from '../board/sound';
 import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type PuzzleManifest, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
-import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode, UserPuzzlePerf, RatedEligibility, NonRatedReason, PuzzleDifficulty, PuzzleRatingDelta, RatedScoringOutcome, ImportedLichessPuzzleDefinition, PuzzleRatingSnapshot } from './types';
+import type { PuzzleDefinition, PuzzleAttempt, SolveResult, FailureReason, PuzzleSourceKind, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSessionMode, UserPuzzlePerf, RatedEligibility, NonRatedReason, PuzzleDifficulty, PuzzleRatingDelta, RatedScoringOutcome, ImportedLichessPuzzleDefinition, PuzzleRatingSnapshot, PuzzleFailSeverity, PuzzleAssistanceType } from './types';
 import { DEFAULT_USER_PUZZLE_PERF, PUZZLE_DIFFICULTY_OFFSETS, DEFAULT_PUZZLE_DIFFICULTY, PUZZLE_GLICKO_CAPS } from './types';
 import {
   protocol as engineProtocol,
@@ -41,6 +41,7 @@ import {
   evalCurrentPosition,
   setEngineEnabledFlag,
   setEvalPositionOverride,
+  toggleEngine,
   visibleEvalForFen,
   type PositionEval,
 } from '../engine/ctrl';
@@ -366,9 +367,22 @@ function completeSolutionTree(rc: PuzzleRoundCtrl): void {
   }
 }
 
+
+
+
+
+
+
+
+
+
+let _puzzleRoundTokenCounter = 0;
+
 export class PuzzleRoundCtrl {
   readonly definition: PuzzleDefinition;
   readonly solutionLine: string[];
+  /** Unique monotonic token for this round lifetime (see _puzzleRoundTokenCounter). */
+  readonly roundToken: number;
   status: RoundStatus;
   /** How many solution moves the user has correctly played (0-based). */
   progressPly: number;
@@ -421,6 +435,28 @@ export class PuzzleRoundCtrl {
    * what tool was requested so the user can confirm or cancel.
    */
   pendingAssistanceAction: FailureReason | null;
+
+  /**
+   * The captured tool action to run when the user resolves the warning modal.
+   * Decision 4 continuation contract: executed EXACTLY once on a verdict
+   * (switch-to-practice or stay-rated), never on cancel. Null when idle.
+   */
+  private pendingAssistanceExec: (() => void) | null = null;
+
+
+
+
+
+
+  private pendingAssistanceToken: number | null = null;
+
+
+
+
+
+
+
+  private opponentReplyOwed = false;
 
   /**
    * Whether the user has checked "remember my choice" in the warning modal.
@@ -519,6 +555,7 @@ export class PuzzleRoundCtrl {
   }
 
   constructor(definition: PuzzleDefinition, redraw: () => void) {
+    this.roundToken = ++_puzzleRoundTokenCounter;
     this.definition = definition;
     this.solutionLine = definition.solutionLine;
     this.status = 'playing';
@@ -954,6 +991,16 @@ export class PuzzleRoundCtrl {
    * On wrong move: sets status='failed', records failure reason.
    */
   submitUserMove(uci: string): { accepted: boolean } {
+
+
+
+
+
+
+    if (this.showAssistanceWarning) {
+      this.revertUserMove();
+      return { accepted: false };
+    }
     if (this.status !== 'playing') {
       recordPuzzleInvalidStateTransition(`round:${this.status}`, 'round:playing', 'submit-user-move');
       return { accepted: false };
@@ -1046,10 +1093,14 @@ export class PuzzleRoundCtrl {
       this.failureReasons.push(reason);
     }
 
-    // On first wrong move, switch from 'play' to 'try' and send result
+    // On first wrong move, switch from 'play' to 'try' and send result.
+    // lila parity (ui/puzzle/src/ctrl.ts:395-408): the first fail in play mode
+    // sends the rated loss once. Latch the rated failure here (send-once); a
+    // later recovered solve cannot unlatch it.
     if (this.mode === 'play') {
       this.setPuzzleMode('try', 'submit-user-move');
       this.canViewSolution = true;
+      this.latchRatedFailure('rated-failure');
     }
 
     // Revert the piece back to its original square after a short delay
@@ -1085,9 +1136,17 @@ export class PuzzleRoundCtrl {
 
   /**
    * Give up and view the solution. Marks the puzzle as failed.
+   * Routed through the rated assistance gate (giving up to see the solution is
+   * a P2-PZ-4 RED true fail): in an active rated solve the reveal defers to the
+   * warning modal and runs on the verdict. Non-rated runs freely.
    * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts viewSolution
    */
   viewSolution(redraw: () => void): void {
+    this.requestAssistanceDuringRated('solution-revealed', () => this.viewSolutionCore(redraw));
+  }
+
+  /** Perform the give-up-and-view-solution action. */
+  private viewSolutionCore(redraw: () => void): void {
     if (this.mode === 'view') return;
     this.setRoundStatus('failed', 'view-solution');
     this.setPuzzleMode('view', 'view-solution');
@@ -1110,6 +1169,14 @@ export class PuzzleRoundCtrl {
    * - there's no next move in the solution line
    */
   playOpponentReply(): void {
+
+
+
+
+    if (this.showAssistanceWarning) {
+      if (this.status === 'playing' && !this.isUserTurn()) this.opponentReplyOwed = true;
+      return;
+    }
     if (this.status !== 'playing') {
       recordPuzzleInvalidStateTransition(`round:${this.status}`, 'round:playing', 'opponent-reply');
       return;
@@ -1204,6 +1271,11 @@ export class PuzzleRoundCtrl {
     };
     if (this.firstWrongPly !== undefined) attempt.firstWrongPly = this.firstWrongPly;
 
+    // P2-PZ-4 [LOCKED]: attempt records MUST store severity + specific assistance type.
+    const p2Outcome = this.computeP2FailOutcome();
+    if (p2Outcome.severity) attempt.p2Severity = p2Outcome.severity;
+    if (p2Outcome.assistanceTypes.length > 0) attempt.assistanceTypes = p2Outcome.assistanceTypes;
+
     // --- Rated completion path ---
     // Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
     // Branches mirror: casual → record only; rated first-play → update perf + history
@@ -1219,14 +1291,20 @@ export class PuzzleRoundCtrl {
       attempt.ratingBefore = snapshotBefore;
       attempt.sessionMode = 'rated';
 
-      // Determine win/loss for the Glicko computation:
-      // - ratedImmediateFailTriggered → rated-immediate-fail (loss)
-      // - status === 'solved' and not immediate-fail → rated-success (win)
-      // - status === 'failed' → rated-failure (loss)
-      const isWin = this.status === 'solved' && !this.ratedImmediateFailTriggered;
-      const ratedOutcome: RatedScoringOutcome = this.ratedImmediateFailTriggered
-        ? 'rated-immediate-fail'
-        : (isWin ? 'rated-success' : 'rated-failure');
+      // Determine win/loss for the Glicko computation, honoring the send-once
+      // failure latch (lila resultSent parity). Once a rated loss has latched
+      // — first wrong move in play mode, or a stay-rated assistance verdict —
+      // a later solve CANNOT flip the outcome to a win (P2-PZ-4: a recovered
+      // solve is a RED true fail). When nothing latched, a solve wins.
+      let isWin: boolean;
+      let ratedOutcome: RatedScoringOutcome;
+      if (this.ratedFailureLatched) {
+        isWin = false;
+        ratedOutcome = this.ratedLatchedOutcome ?? 'rated-failure';
+      } else {
+        isWin = this.status === 'solved';
+        ratedOutcome = isWin ? 'rated-success' : 'rated-failure';
+      }
 
       attempt.ratedOutcome = ratedOutcome;
 
@@ -1358,6 +1436,8 @@ export class PuzzleRoundCtrl {
    * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts skip action
    */
   skipPuzzle(): void {
+
+    if (this.showAssistanceWarning) return;
     if (this.status !== 'playing') return;
     if (!this.failureReasons.includes('skip-pressed')) {
       this.failureReasons.push('skip-pressed');
@@ -1383,6 +1463,10 @@ export class PuzzleRoundCtrl {
         sessionMode: this.currentSessionMode,
       };
       if (this.firstWrongPly !== undefined) attempt.firstWrongPly = this.firstWrongPly;
+      // P2-PZ-4: record severity + assistance type on the skip attempt too.
+      const p2Outcome = this.computeP2FailOutcome();
+      if (p2Outcome.severity) attempt.p2Severity = p2Outcome.severity;
+      if (p2Outcome.assistanceTypes.length > 0) attempt.assistanceTypes = p2Outcome.assistanceTypes;
       saveAttempt(attempt)
         .then(() => getAttempts(this.definition.id))
         .then(allAttempts => updateDueMeta(this.definition.id, allAttempts))
@@ -1400,10 +1484,16 @@ export class PuzzleRoundCtrl {
 
   /**
    * Mark that the user requested a hint.
-   * Sets usedHint flag and records 'hint-used' failure reason.
-   * The actual hint display is a future UI task — this just marks the flag.
+   * Routed through the rated assistance gate: in an active rated solve the
+   * captured action defers to the warning modal and runs exactly once on the
+   * user's verdict (P2-PZ-4 / Decision 4). Non-rated and post-round runs freely.
    */
   useHint(redraw: () => void): void {
+    this.requestAssistanceDuringRated('hint-used', () => this.useHintCore(redraw));
+  }
+
+  /** Perform the hint action. The strict correctness model never consults this. */
+  private useHintCore(redraw: () => void): void {
     if (this.status !== 'playing') return;
     this.usedHint = true;
     if (!this.failureReasons.includes('hint-used')) {
@@ -1424,10 +1514,16 @@ export class PuzzleRoundCtrl {
 
   /**
    * Mark that the user revealed the solution.
-   * Sets revealedSolution flag and records 'solution-revealed' failure reason.
-   * Available during play or after failure.
+   * Routed through the rated assistance gate (solution reveal is a P2-PZ-4 RED
+   * true fail): in an active rated solve it defers to the warning modal and
+   * runs on the verdict. Post-fail reveal (status 'failed') runs freely.
    */
   revealSolution(redraw: () => void): void {
+    this.requestAssistanceDuringRated('solution-revealed', () => this.revealSolutionCore(redraw));
+  }
+
+  /** Perform the solution-reveal action. */
+  private revealSolutionCore(redraw: () => void): void {
     if (this.status !== 'playing' && this.status !== 'failed') return;
     this.revealedSolution = true;
     if (!this.failureReasons.includes('solution-revealed')) {
@@ -1438,10 +1534,18 @@ export class PuzzleRoundCtrl {
 
   /**
    * Mark that the user requested engine lines and activate the engine.
-   * Sets usedEngineReveal flag and records 'engine-lines-shown' failure reason.
-   * Only available after solve/fail (post-round viewing).
+   * Only available after solve/fail (post-round viewing), so the rated
+   * assistance gate is a no-op here (post-round study is free); the gate is
+   * kept on the path for uniformity with the other assistance actions. The
+   * live active-solve engine reveal is intercepted separately by
+   * `engineRevealGate()` before any line content renders.
    */
   showEngineLines(redraw: () => void): void {
+    this.requestAssistanceDuringRated('engine-lines-shown', () => this.showEngineLinesCore(redraw));
+  }
+
+  /** Perform the engine-lines reveal. */
+  private showEngineLinesCore(redraw: () => void): void {
     if (this.status !== 'solved' && this.status !== 'failed') return;
     // Only mark as assisted if used before/during solve — post-solve study is free
     if (this.status === 'failed') {
@@ -1538,6 +1642,69 @@ export class PuzzleRoundCtrl {
     }
   }
 
+  /** True once the active-solve engine reveal has been resolved by a verdict. */
+  private engineRevealResolved = false;
+
+
+
+
+
+
+
+
+
+
+
+
+
+  interceptEngineToggle(): boolean {
+    if (this.isStaleRound()) return false;         // stale handler: swallow, do nothing
+    if (sharedEngineEnabled) return true;          // turning OFF is always allowed
+    if (this.status !== 'playing' || this.mode === 'view') return true; // post-round study is free
+    if (this.currentSessionMode !== 'rated') {
+      // Practice active solve: enabling the engine is an assist — mark and allow.
+      this.notifyEngineUsedDuringSolve();
+      return true;
+    }
+    if (this.engineRevealResolved) return true;    // verdict already accepted this round
+    if (this.showAssistanceWarning) return false;  // verdict pending: swallow, don't re-capture
+    this.requestAssistanceDuringRated('engine-lines-shown', () => {
+      this.engineRevealResolved = true;
+      this.notifyEngineUsedDuringSolve();
+      toggleEngine(); // perform the intercepted toggle exactly once, post-verdict
+    });
+    return false;
+  }
+
+  /**
+   * Pre-render interception seam for the shared-engine toggle during an active
+   * rated solve (Decision 4: the toggle is INTERCEPTED before lines become
+   * visible; the post-hoc notifyEngineUsedDuringSolve notice is NOT the seam).
+   * The view calls this each render with whether the shared engine is enabled,
+   * and MUST NOT render engine line content when it returns false.
+   *
+   * @returns whether engine line content may render this frame.
+   */
+  engineRevealGate(engineOn: boolean): boolean {
+    if (!engineOn) return true;                                 // nothing enabled
+    if (this.status !== 'playing' || this.mode === 'view') return true; // post-round study is free
+    if (this.currentSessionMode !== 'rated') {
+      // Practice active solve: mark assisted (existing behavior); no line gating.
+      this.notifyEngineUsedDuringSolve();
+      return true;
+    }
+    if (this.engineRevealResolved) return true;                 // verdict already given
+    // Rated active solve: raise the modal once and suppress line content until
+    // the user resolves it. The captured action marks the reveal resolved.
+    if (!this.showAssistanceWarning) {
+      this.requestAssistanceDuringRated('engine-lines-shown', () => {
+        this.engineRevealResolved = true;
+        this.notifyEngineUsedDuringSolve();
+      });
+    }
+    return false;
+  }
+
   /**
    * Stop engine evaluation for the puzzle position.
    */
@@ -1560,84 +1727,274 @@ export class PuzzleRoundCtrl {
     return visibleEvalForFen(this.currentEnginePositionContext().currentFen);
   }
 
-  // --- Rated assistance warning handlers ---
-  // These three methods implement the three choices presented by the warning modal.
-  // Adapted from the Lichess rated puzzle assistance flow documented in the audit.
+
+
+
+
+
+
 
   /**
-   * Show the rated assistance warning modal for the given tool action.
-   * If the user has a remembered choice for this session, apply it immediately
-   * without showing the modal.
-   * Returns true if the action should proceed immediately (remembered choice),
-   * false if the modal is now visible and the caller should wait.
+   * Gate a restricted tool action behind the rated assistance flow.
+   * - Non-rated / post-round: runs `exec` immediately and returns true.
+   * - Remembered 'switch-to-casual': downgrades to practice, runs `exec`, returns true.
+   * - Remembered 'stay-rated': latches an immediate-fail, runs `exec`, returns true.
+   * - Otherwise: captures `action` + `exec`, shows the modal, returns false; the
+   *   captured action runs exactly once when the user picks a verdict.
    */
-  requestAssistanceDuringRated(action: FailureReason): boolean {
-    if (this.currentSessionMode !== 'rated') return true; // not rated — allow freely
+  requestAssistanceDuringRated(action: FailureReason, exec: () => void): boolean {
+
+
+    if (this.isStaleRound()) return false;
+    // Blocking dialog: while a verdict is already pending, refuse new requests —
+    // never overwrite the captured continuation (double-capture = lost action).
+    if (this.showAssistanceWarning) return false;
+    // Only an active rated solve is gated. Practice mode (the production default
+    // once the dormancy guard normalizes rated → practice) and post-round study
+    // both run freely.
+    if (this.currentSessionMode !== 'rated' || this.status !== 'playing' || this.mode === 'view') {
+      exec();
+      return true;
+    }
     if (this.rememberedAssistanceChoice === 'switch-to-casual') {
-      // Already chose to switch for this session — silently continue as casual
+      // Already chose to switch for this session — silently continue as casual.
       this.currentSessionMode = 'practice';
+      exec();
       return true;
     }
     if (this.rememberedAssistanceChoice === 'stay-rated') {
-      // Already chose to stay rated — record immediate fail and allow tool
-      this.ratedImmediateFailTriggered = true;
+      // Already chose to stay rated — latch immediate-fail, then allow the tool.
+      this.latchRatedFailure('rated-immediate-fail');
+      exec();
       return true;
     }
-    // Show the modal
+
+
     this.pendingAssistanceAction = action;
+    this.pendingAssistanceExec = exec;
+    this.pendingAssistanceToken = this.roundToken;
     this.showAssistanceWarning = true;
     return false;
   }
 
+
+
+
+
+
+
+  private lifecycleDestroyed = false;
+
+
+
+
+
+
+
+
+
+  markDestroyed(): void {
+    this.lifecycleDestroyed = true;
+    this.invalidatePendingAssistance();
+    if (activeRoundCtrl !== null && activeRoundCtrl.roundToken === this.roundToken) {
+      activeRoundCtrl = null;
+    }
+  }
+
+
+
+
+
+
+
+
+
+
+
+  private isStaleRound(): boolean {
+    return this.lifecycleDestroyed
+      || activeRoundCtrl === null
+      || activeRoundCtrl.roundToken !== this.roundToken;
+  }
+
+
+
+
+
+
+
+  invalidatePendingAssistance(): void {
+    this.showAssistanceWarning = false;
+    this.pendingAssistanceExec = null;
+    this.pendingAssistanceAction = null;
+    this.pendingAssistanceToken = null;
+    this.opponentReplyOwed = false;
+    this.rememberAssistanceChoice = false;
+  }
+
+
+
+
+
+
+
+  private executePendingAssistance(): void {
+    const exec = this.pendingAssistanceExec;
+    const token = this.pendingAssistanceToken;
+    this.pendingAssistanceExec = null;
+    this.pendingAssistanceAction = null;
+    this.pendingAssistanceToken = null;
+    if (token === null || activeRoundCtrl === null || activeRoundCtrl.roundToken !== token) return;
+    if (exec) exec();
+  }
+
   /**
    * User chose to cancel — do not use the tool, leave round as rated.
-   * The warning closes and the round continues in rated mode untouched.
+   * Executes NOTHING and clears the captured action cleanly. If the pending
+   * action was the shared-engine reveal and the engine is somehow already on
+   * (enabled before this round started), it is turned OFF so the render gate
+   * does not immediately re-raise the warning (Sol IMPORTANT-3 cancel stability).
    */
   dismissAssistanceWarning(): void {
+    if (this.isStaleRound()) { this.invalidatePendingAssistance(); return; }
+    if (this.pendingAssistanceAction === 'engine-lines-shown' && sharedEngineEnabled) {
+      toggleEngine();
+    }
     this.showAssistanceWarning = false;
+    this.pendingAssistanceExec = null;
     this.pendingAssistanceAction = null;
+    this.pendingAssistanceToken = null;
     this.rememberAssistanceChoice = false;
+
+
+    this.rekickOwedOpponentReply();
   }
 
   /**
    * User chose to switch this round to casual (practice) mode.
-   * The round is downgraded — no rated scoring will apply at completion.
-   * If rememberAssistanceChoice is true, the choice is saved for this session.
+   * The round is downgraded — no rated scoring will apply at completion — and
+   * the captured action is then executed exactly once (in practice mode).
+   * No-ops (and clears) on a stale round: identity is checked against the
+   * current active round controller.
    */
   chooseAssistanceSwitchToCasual(): void {
+    if (this.isStaleRound()) { this.invalidatePendingAssistance(); return; }
+    if (!this.showAssistanceWarning) return; // only actionable while the modal is open
     this.currentSessionMode = 'practice';
     if (this.rememberAssistanceChoice) {
       this.rememberedAssistanceChoice = 'switch-to-casual';
     }
     this.showAssistanceWarning = false;
-    this.pendingAssistanceAction = null;
     this.rememberAssistanceChoice = false;
+    this.executePendingAssistance();
+    this.rekickOwedOpponentReply();
   }
 
   /**
    * User chose to stay rated and proceed with tool use.
-   * This records an immediate rated failure for the round regardless of whether
-   * the user eventually finds the correct solution.
-   * The tool action is allowed to proceed after this call.
-   * Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
-   * (the rated=true path where the round is already "won" by the puzzle).
+   * Latches an immediate rated failure for the round (send-once) regardless of
+   * whether the user eventually finds the solution, then executes the captured
+   * action exactly once. No-ops (and clears) on a stale round.
+   * Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala.
    */
   chooseStayRatedAndProceed(): void {
-    this.ratedImmediateFailTriggered = true;
+    if (this.isStaleRound()) { this.invalidatePendingAssistance(); return; }
+    if (!this.showAssistanceWarning) return; // only actionable while the modal is open
+    this.latchRatedFailure('rated-immediate-fail');
     if (this.rememberAssistanceChoice) {
       this.rememberedAssistanceChoice = 'stay-rated';
     }
     this.showAssistanceWarning = false;
     this.rememberAssistanceChoice = false;
-    // pendingAssistanceAction is intentionally left set so the caller can
-    // perform the requested tool action after this method returns.
+    this.executePendingAssistance();
+    this.rekickOwedOpponentReply();
+  }
+
+
+
+
+
+
+
+
+  private rekickOwedOpponentReply(): void {
+    if (!this.opponentReplyOwed) return;
+    this.opponentReplyOwed = false; // exactly once
+    const token = this.roundToken;
+    setTimeout(() => {
+      if (activeRoundCtrl === null || activeRoundCtrl.roundToken !== token) return;
+      if (this.status !== 'playing') return;
+      this.playOpponentReply();
+    }, 300);
+  }
+
+  // --- Rated failure latch (lila send-once / resultSent parity) ---
+  // ui/puzzle/src/ctrl.ts:395-408 sends the rated loss ONCE, guarded by
+  // `resultSent`: the first fail in play mode sends `false`, and a later win
+  // recovered through 'try' mode never sends a success. Patzer computes the
+  // rated outcome lazily in recordAttempt(), so we latch the failure the moment
+  // it happens (first wrong move in play mode, or a stay-rated assistance
+  // verdict). Once latched, a subsequent solve cannot flip the outcome to a win.
+  // P2-PZ-4 [LOCKED]: a recovered solve is a RED true fail for rated purposes.
+
+  /** True once this round's rated outcome has latched to a loss (send-once). */
+  ratedFailureLatched = false;
+  /** The latched rated loss outcome ('rated-failure' for wrong move, 'rated-immediate-fail' for stay-rated assistance). */
+  ratedLatchedOutcome: RatedScoringOutcome | null = null;
+  /**
+   * Structural send-once counter (lila resultSent parity). Incremented exactly
+   * once when the rated loss latches, regardless of how many further wrong moves
+   * or assistance verdicts follow. Asserted by tests to prove exactly-one send.
+   */
+  ratedLossSendCount = 0;
+
+  /**
+   * Latch the rated outcome to a loss, once (lila send-once). No-op when the
+   * round is not rated, or when a loss is already latched.
+   * @param outcome the loss classification to record on the attempt.
+   */
+  private latchRatedFailure(outcome: 'rated-failure' | 'rated-immediate-fail'): void {
+    if (this.currentSessionMode !== 'rated') return; // only rated rounds latch
+    if (this.ratedFailureLatched) return;            // send-once guard (resultSent)
+    this.ratedFailureLatched = true;
+    this.ratedLatchedOutcome = outcome;
+    this.ratedLossSendCount++;
   }
 
   /**
-   * Whether the round took a rated immediate-fail due to assistance in stay-rated mode.
-   * Read by the completion path to apply the correct outcome.
+   * Compute the P2-PZ-4 severity + specific assistance types for this attempt.
+   * Register (P2-PZ-4 [LOCKED]): RED true fail = wrong move / engine assistance /
+   * solution reveal; YELLOW soft fail = hint used / own-notes reveal. RED wins
+   * over YELLOW when both apply. Returns null severity for a clean solve.
    */
-  ratedImmediateFailTriggered = false;
+  computeP2FailOutcome(): { severity: PuzzleFailSeverity | null; assistanceTypes: PuzzleAssistanceType[] } {
+    const has = (r: FailureReason): boolean => this.failureReasons.includes(r);
+    const types: PuzzleAssistanceType[] = [];
+    let red = false;
+    let yellow = false;
+    if (has('wrong-first-move') || has('wrong-later-move') || this.firstWrongPly !== undefined) {
+      types.push('wrong-move');
+      red = true;
+    }
+    if (this.usedEngineReveal || has('engine-lines-shown') || has('engine-arrows-shown')) {
+      types.push('engine-assistance');
+      red = true;
+    }
+    if (this.revealedSolution || has('solution-revealed')) {
+      types.push('solution-reveal');
+      red = true;
+    }
+    if (this.usedHint || has('hint-used')) {
+      types.push('hint');
+      yellow = true;
+    }
+    if (has('notes-opened')) {
+      types.push('notes');
+      yellow = true;
+    }
+    const severity: PuzzleFailSeverity | null = red ? 'red' : (yellow ? 'yellow' : null);
+    return { severity, assistanceTypes: types };
+  }
 
   /**
    * The resolved rated outcome for this round, populated after `recordAttempt()` completes.
@@ -1676,6 +2033,9 @@ export function startPuzzleRound(
   // Round change: drop any promotion pending from the previous round so its chooser can
   // never submit a move into this new round's board (sprint Decision 2 cancellation).
   puzzlePromotionCtrl?.reset();
+
+
+  activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = new PuzzleRoundCtrl(definition, redraw);
   return activeRoundCtrl;
 }
@@ -2318,6 +2678,16 @@ export function getPuzzleRoundState(): PuzzleRoundState | null {
   return roundState;
 }
 
+
+
+
+
+
+
+
+
+let _puzzleRoundLoadGeneration = 0;
+
 /**
  * Load a puzzle definition from IDB and transition to the round view.
  * Calls redraw once the definition is loaded (or on error).
@@ -2330,6 +2700,9 @@ async function openPuzzleRoundWithRuntimeHooks(
 ): Promise<void> {
   const validation = validatePuzzleRoundRouteId(id);
   if (!validation.valid || !validation.id) {
+
+
+    activeRoundCtrl?.markDestroyed();
     setPuzzleRoundRecoveryState(puzzleRoundRecoveryMessage(validation.reason ?? 'malformed'), redraw);
     return;
   }
@@ -2343,15 +2716,37 @@ async function openPuzzleRoundWithRuntimeHooks(
   if (roundState && state.puzzleId === id && roundState.status !== 'error') return;
 
   performance.mark('puzzle-load-start');
+
+
+
+
+
+
+
+
+  const loadGeneration = ++_puzzleRoundLoadGeneration;
+  const outgoingCtrl = activeRoundCtrl;
   state = { view: 'round', puzzleId: id };
   roundState = { definition: null, status: 'loading' };
   redraw();
 
   try {
     const def = await (hooks.getDefinition ?? getPuzzleDefinition)(id);
+
+
+
+
+    if (loadGeneration !== _puzzleRoundLoadGeneration) return;
     if (!def) {
       recordPuzzleLoadFail(new Error('PuzzleDefinitionNotFound'), 'round-idb');
       roundState = { definition: null, status: 'error', error: puzzleRoundRecoveryMessage('missing') };
+
+
+
+
+      if (outgoingCtrl !== null && activeRoundCtrl === outgoingCtrl) {
+        outgoingCtrl.markDestroyed();
+      }
     } else {
       roundState = { definition: def, status: 'ready' };
       (hooks.initializePerf ?? initializePuzzlePerfFromStorage)();
@@ -2375,12 +2770,19 @@ async function openPuzzleRoundWithRuntimeHooks(
       (hooks.prefetchPgns ?? prefetchSessionPgns)();
     }
   } catch (e) {
+    // Diagnostics always record genuine load failures, even for superseded loads.
     recordPuzzleLoadFail(e, 'round-idb');
+
+    if (loadGeneration !== _puzzleRoundLoadGeneration) return;
     roundState = {
       definition: null,
       status: 'error',
       error: e instanceof Error ? e.message : 'Failed to load puzzle',
     };
+
+    if (outgoingCtrl !== null && activeRoundCtrl === outgoingCtrl) {
+      outgoingCtrl.markDestroyed();
+    }
   } finally {
     performance.mark('puzzle-load-end');
   }
@@ -2609,15 +3011,26 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
   }
 }
 
-/**
- * Tear down the puzzle Chessground instance. Called from Snabbdom destroy hook.
- */
-export function destroyPuzzleBoard(): void {
+
+
+
+
+
+
+
+
+
+
+
+
+export function destroyPuzzleBoard(forCtrl?: PuzzleRoundCtrl): void {
   puzzleCg?.destroy();
   puzzleCg = undefined;
   puzzleCgAnimationScope = 'static';
   // Clear any pending promotion so a chooser never survives a board teardown.
   puzzlePromotionCtrl = null;
+
+  forCtrl?.markDestroyed();
 }
 
 /**
@@ -3531,6 +3944,7 @@ export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
   prefetchSessionPgns();
 
   roundState = null;
+  activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
   await openGeneratedPuzzleRoundRoute(pick.id, redraw);
 }
@@ -3729,6 +4143,7 @@ export function clearActiveSession(): void {
 }
 
 function resetPuzzleRoundRuntime(): void {
+  activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
   _previewPuzzleId = null;
   _previewRoundCtrl = null;
@@ -3911,6 +4326,7 @@ export async function nextPuzzle(
     const pick = _sessionQueue[0]!;
     await (hooks.saveDefinition ?? savePuzzleDefinition)(pick);
     roundState = null;
+    activeRoundCtrl?.invalidatePendingAssistance();
     activeRoundCtrl = null;
     await openGeneratedPuzzleRoundRoute(pick.id, redraw, hooks);
     return;
@@ -3930,6 +4346,7 @@ export async function nextPuzzle(
     }
     const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
     roundState = null;
+    activeRoundCtrl?.invalidatePendingAssistance();
     activeRoundCtrl = null;
     await openGeneratedPuzzleRoundRoute(pick.id, redraw, hooks);
   } catch (e) {
@@ -3960,6 +4377,7 @@ export async function retryPuzzle(redraw: () => void): Promise<void> {
   // Reset and re-open the same puzzle
   const id = currentDef.id;
   roundState = null;
+  activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
   await openPuzzleRound(id, redraw);
 }
