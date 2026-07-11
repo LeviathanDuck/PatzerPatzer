@@ -125,7 +125,19 @@ const REVIEW_ENGINE_THREADS = 1;
 const REVIEW_ENGINE_HASH_MB = 32;
 const REVIEW_ENGINE_DESKTOP_MAX_THREADS = 4;
 
-export const reviewProtocol = new StockfishProtocol({ threads: REVIEW_ENGINE_THREADS, hash: REVIEW_ENGINE_HASH_MB });
+
+
+
+
+
+
+const REVIEW_ENGINE_INIT_TIMEOUT_MS = 15_000;
+
+export const reviewProtocol = new StockfishProtocol({
+  threads: REVIEW_ENGINE_THREADS,
+  hash: REVIEW_ENGINE_HASH_MB,
+  initTimeoutMs: REVIEW_ENGINE_INIT_TIMEOUT_MS,
+});
 let reviewEngineReady       = false;
 let reviewEngineInitStarted = false;
 let reviewEngineFailed      = false;
@@ -2797,20 +2809,36 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     await reviewProtocol.init(baseUrl);
     recordReviewEngineInitSuccess(initStartedAt);
   } catch (err) {
-    // WASM alloc, SharedArrayBuffer COOP/COEP, or NNUE fetch failure.
+
+
     recordReviewEngineInitFailure(initStartedAt, err);
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[review-engine] init failed — engine unavailable:', msg);
-    reviewEngineFailed = true;
-    resolveReviewEngineReadyWaiters(false);
-    preemptTreeEvalLease('review-engine-init-failed');
-    // Demote every entry still in `analyzing` so they don't appear stuck.
-    _failAnalyzingEntries();
-
-
-    tripReviewRunBreakerForEngineInit();
-    notifyReviewQueueStateChanged();
+    applyReviewEngineInitFailure();
   }
+}
+
+
+
+
+
+
+
+
+
+
+function applyReviewEngineInitFailure(): void {
+  reviewEngineFailed = true;
+  reviewEngineReady  = false;
+  // Resolve every batch-start / tree-eval readiness waiter false in the same transition.
+  resolveReviewEngineReadyWaiters(false);
+  preemptTreeEvalLease('review-engine-init-failed');
+  // Demote every entry still in `analyzing` so they don't appear stuck.
+  _failAnalyzingEntries();
+
+
+  tripReviewRunBreakerForEngineInit();
+  notifyReviewQueueStateChanged();
 }
 
 /** Move any entries stuck in `analyzing` to `error` after an init failure. */

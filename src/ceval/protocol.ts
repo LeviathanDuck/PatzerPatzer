@@ -17,6 +17,51 @@ export type LineCallback = (line: string) => void;
 export interface ProtocolConfig {
   threads?: number; // if omitted: Math.max(1, navigator.hardwareConcurrency - 1)
   hash?:    number; // if omitted: 256
+
+
+
+
+
+
+
+  initTimeoutMs?: number;
+}
+
+/** Emscripten module factory shape returned by the Stockfish web build's default export. */
+type StockfishModuleFactory = (opts: {
+  wasmMemory: WebAssembly.Memory;
+  locateFile: (file: string) => string;
+  mainScriptUrlOrBlob: string;
+}) => Promise<StockfishWebModule>;
+
+/** Minimal Response surface init() consumes from fetch — keeps injected fakes light. */
+interface InitFetchResponse {
+  ok: boolean;
+  status: number;
+  arrayBuffer(): Promise<ArrayBuffer>;
+}
+
+
+
+
+
+
+
+export interface ProtocolInitDependencies {
+  importModule?: (scriptUrl: string) => Promise<{ default: StockfishModuleFactory }>;
+  fetch?: (input: string, init?: { signal?: AbortSignal }) => Promise<InitFetchResponse>;
+  setTimeout?: (handler: () => void, timeoutMs: number) => unknown;
+  clearTimeout?: (handle: unknown) => void;
+}
+
+type ResolvedInitDependencies = Required<ProtocolInitDependencies>;
+
+/** Thrown when an opt-in init handshake exceeds its configured timeout budget. */
+export class EngineInitTimeoutError extends Error {
+  constructor(public readonly timeoutMs: number) {
+    super(`Stockfish init exceeded ${timeoutMs}ms`);
+    this.name = 'EngineInitTimeoutError';
+  }
 }
 
 export interface EngineDeviceCapabilityMetadata {
@@ -89,7 +134,26 @@ export class StockfishProtocol {
   private _deviceMemory: number | undefined = undefined;
   private _hardwareConcurrency: number | undefined = undefined;
 
-  constructor(private config: ProtocolConfig = {}) {}
+
+
+
+
+  private _initInFlight: Promise<void> | undefined;
+  private _initGeneration = 0;
+  private _initTerminated = false;
+  private _initTerminationError: EngineInitTimeoutError | undefined;
+  private readonly _initDeps: ResolvedInitDependencies;
+
+  constructor(private config: ProtocolConfig = {}, deps: ProtocolInitDependencies = {}) {
+    this._initDeps = {
+      // Variable URL: esbuild leaves this dynamic import as a runtime import, unbundled.
+      importModule: deps.importModule ?? ((scriptUrl: string) =>
+        import(scriptUrl) as Promise<{ default: StockfishModuleFactory }>),
+      fetch:        deps.fetch        ?? ((input, init) => fetch(input, init)),
+      setTimeout:   deps.setTimeout   ?? ((handler, ms) => setTimeout(handler, ms)),
+      clearTimeout: deps.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)),
+    };
+  }
 
   /** Human-readable engine name received from the "id name" response. */
   engineName: string | undefined;
@@ -139,52 +203,108 @@ export class StockfishProtocol {
    * Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
    */
   async init(baseUrl: string): Promise<void> {
+
+
+
+    if (this._initTerminated) {
+      return Promise.reject(this._initTerminationError ?? new EngineInitTimeoutError(this.config.initTimeoutMs ?? 0));
+    }
+
+
+    if (this._initInFlight) return this._initInFlight;
+    const run = this._runInit(baseUrl);
+    this._initInFlight = run;
+    try {
+      await run;
+    } finally {
+      if (this._initInFlight === run) this._initInFlight = undefined;
+    }
+  }
+
+  /**
+   * Load Stockfish 18 (smallnet) from baseUrl and begin the UCI handshake.
+   *
+   * When config.initTimeoutMs is unset (the live analysis engine) this runs exactly the original
+   * import → sharedWasmMemory → makeModule → NNUE fetch → `uci` sequence with no added timeout,
+   * abort, or attempt-token machinery. When set (the background review engine) each pending await
+   * is bounded, the NNUE fetch/body reads are abortable, every non-abortable await is followed by
+   * an attempt-invalidation check, a late-completing module from an expired attempt is quit and
+   * never wired, and no `uci`/`readyok` is emitted from an expired attempt.
+   *
+   * Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
+   */
+  private async _runInit(baseUrl: string): Promise<void> {
     const scriptUrl = `${baseUrl}/sf_18_smallnet.js`;
+    const deps = this._initDeps;
+    const timeoutMs = this.config.initTimeoutMs;
+    const timeoutEnabled = timeoutMs !== undefined;
 
     // Snapshot device capability at engine-start for error correlation.
-    // Read once here; all error events below attach these cached values.
-    // navigator.deviceMemory is a Chromium extension not in the standard TS lib —
-    // access via cast. undefined is the correct value on unsupported browsers.
+    // navigator.deviceMemory is a Chromium extension not in the standard TS lib — access via cast.
     this._hardwareConcurrency = navigator.hardwareConcurrency;
     this._deviceMemory = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
-
-    // Record init start timestamp for duration instrumentation.
     this._initStartedAt = Date.now();
 
-    let makeModule: (opts: {
-      wasmMemory: WebAssembly.Memory;
-      locateFile: (file: string) => string;
-      mainScriptUrlOrBlob: string;
-    }) => Promise<StockfishWebModule>;
+    // Attempt token + timeout race (inert unless opted in).
+    const attempt = ++this._initGeneration;
+    const attemptExpired = (): boolean => this._initGeneration !== attempt;
+    const abortController = new AbortController();
+    let timeoutHandle: unknown;
+    let timeoutPromise: Promise<never> | undefined;
+    let createdModule: StockfishWebModule | undefined;
 
-    // Dynamic import of the Emscripten module factory.
-    // The variable URL prevents esbuild from bundling this into main.js.
-    try {
-      ({ default: makeModule } = await import(scriptUrl) as {
-        default: (opts: {
-          wasmMemory: WebAssembly.Memory;
-          locateFile: (file: string) => string;
-          mainScriptUrlOrBlob: string;
-        }) => Promise<StockfishWebModule>;
+    if (timeoutEnabled) {
+      timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = deps.setTimeout(() => {
+          // Invalidate the attempt, reject the awaiter with a typed timeout, THEN abort the
+          // in-flight fetch/body read as cleanup. Rejecting before aborting keeps the timeout
+          // error the deterministic race winner.
+          this._initGeneration++;
+          reject(new EngineInitTimeoutError(timeoutMs));
+          abortController.abort();
+        }, timeoutMs);
       });
-    } catch (e) {
-      this.recordInitFailure('worker-create-failed', e);
-      throw e;
     }
+    const clearInitTimeout = (): void => {
+      if (timeoutHandle !== undefined) {
+        deps.clearTimeout(timeoutHandle);
+        timeoutHandle = undefined;
+      }
+    };
+    const raceInit = <T>(p: Promise<T>): Promise<T> => (timeoutPromise ? Promise.race([p, timeoutPromise]) : p);
+    const failExpired = (): never => {
+      // A post-await expiry the race did not surface directly (underlying settled the same tick).
+      const err = new EngineInitTimeoutError(timeoutMs ?? 0);
+      this.recordInitFailure('init-timeout', err);
+      throw err;
+    };
 
-    // minMem=1536 pages (96 MB) matches Lichess's sf_18_smallnet config.
-    // sharedWasmMemory retries with a smaller max if the initial alloc fails.
-    // Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts
-    let wasmMemory: WebAssembly.Memory;
     try {
-      wasmMemory = sharedWasmMemory(1536);
-    } catch (e) {
-      this.recordInitFailure('wasm-unavailable', e);
-      throw e;
-    }
+      // 1. Dynamic import of the Emscripten module factory (non-abortable await).
+      let makeModule: StockfishModuleFactory;
+      try {
+        ({ default: makeModule } = await raceInit(deps.importModule(scriptUrl)));
+      } catch (e) {
+        throw this._recordInitAwaitError(e, 'worker-create-failed');
+      }
+      // Post-await invalidation: a factory that arrived after the attempt expired is discarded
+      // (no module instance exists yet, nothing to quit).
+      if (attemptExpired()) failExpired();
 
-    try {
-      this.module = await makeModule({
+      // 2. Shared WASM memory. minMem=1536 pages (96 MB) matches Lichess's sf_18_smallnet config;
+      //    sharedWasmMemory retries with a smaller max if the initial alloc fails.
+      //    Adapted from lichess-org/lila: ui/lib/src/ceval/util.ts
+      let wasmMemory: WebAssembly.Memory;
+      try {
+        wasmMemory = sharedWasmMemory(1536);
+      } catch (e) {
+        this.recordInitFailure('wasm-unavailable', e);
+        throw e;
+      }
+
+      // 3. Module creation (non-abortable await). A module that resolves AFTER the attempt
+      //    expired (timeout already fired and the awaiter moved on) must be quit and never wired.
+      const modulePromise = makeModule({
         wasmMemory,
         // Tell Emscripten where to find the .wasm and any other assets it needs.
         locateFile: (file: string) => `${baseUrl}/${file}`,
@@ -192,66 +312,137 @@ export class StockfishProtocol {
         // thread can load the same Stockfish module.
         mainScriptUrlOrBlob: scriptUrl,
       });
-    } catch (e) {
-      this.recordInitFailure(classifyModuleInitFailure(e), e);
-      throw e;
-    }
+      // Late-completion cleanup: if the awaiter already gave up (raceInit threw the timeout), the
+      // module value is not observed by the race path — this trailing handler quits the orphan.
+      void modulePromise.then(
+        (mod) => { if (attemptExpired() && mod !== this.module) this._quitOrphanModule(mod); },
+        () => { /* creation failure already surfaced via the awaited race below */ },
+      );
+      let module: StockfishWebModule;
+      try {
+        module = await raceInit(modulePromise);
+      } catch (e) {
+        throw this._recordInitAwaitError(e, classifyModuleInitFailure(e));
+      }
+      if (attemptExpired()) {
+        this._quitOrphanModule(module);
+        failExpired();
+      }
+      createdModule = module;
+      this.module = module;
 
-    // Init succeeded — log duration for observability.
-    this._enginePhase = 'running';
-    const initDurationMs = Date.now() - this._initStartedAt;
-    console.log(`[ceval] Stockfish module ready in ${initDurationMs}ms`);
-    record({
-      kind: 'engine',
-      severity: Severity.Info,
-      source: 'ceval.protocol',
-      sourceTag: 'engine',
-      message: 'Stockfish module ready',
-      metadata: { durationMs: initDurationMs },
-      redactionClass: 'safe',
-    });
-
-    // Attach UCI output listener before sending any commands.
-    this.module.listen = (line: string) => this.received(line);
-
-    // Error handler for corrupt NNUE data.
-    // Mirrors lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts makeErrorHandler
-    // Promoted into a real failure signal: callers may set onEngineError to be notified.
-    // Logs a closed error class for post-init diagnostics without storing raw engine text.
-    this.module.onError = (msg: string) => {
-      console.error('[ceval] engine error:', msg);
+      // Init succeeded — log duration for observability.
+      this._enginePhase = 'running';
+      const initDurationMs = Date.now() - this._initStartedAt;
+      console.log(`[ceval] Stockfish module ready in ${initDurationMs}ms`);
       record({
         kind: 'engine',
-        severity: Severity.Error,
+        severity: Severity.Info,
         source: 'ceval.protocol',
         sourceTag: 'engine',
-        message: 'Stockfish engine error',
-        metadata: {
-          errorMessageClass: classifyRuntimeErrorMessage(msg),
-          enginePhase: this._enginePhase,
-          ...this.deviceCapabilityMetadata(),
-        },
+        message: 'Stockfish module ready',
+        metadata: { durationMs: initDurationMs },
         redactionClass: 'safe',
       });
-      this.onEngineError?.(msg);
-    };
 
-    // Fetch and load the NNUE evaluation network.
-    // Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
-    const nnueName = this.module.getRecommendedNnue(0);
-    if (nnueName) {
-      console.log('[ceval] loading NNUE:', nnueName);
-      const resp = await fetch(`${baseUrl}/${nnueName}`);
-      if (resp.ok) {
-        this.module.setNnueBuffer(new Uint8Array(await resp.arrayBuffer()), 0);
-        console.log('[ceval] NNUE loaded');
-      } else {
-        console.warn('[ceval] NNUE fetch failed:', resp.status, nnueName);
+      // Attach UCI output listener before sending any commands. The generation/identity guard
+      // refuses lines from an expired or superseded attempt (inert on the live single-attempt
+      // path where the generation never changes); this is what stops a late attempt's `readyok`
+      // from resurrecting a run already marked failed.
+      module.listen = (line: string) => {
+        if (this._initGeneration !== attempt || this.module !== module) return;
+        this.received(line);
+      };
+
+      // Error handler for corrupt NNUE data.
+      // Mirrors lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts makeErrorHandler
+      // Promoted into a real failure signal: callers may set onEngineError to be notified.
+      // Logs a closed error class for post-init diagnostics without storing raw engine text.
+      module.onError = (msg: string) => {
+        if (this._initGeneration !== attempt || this.module !== module) return;
+        console.error('[ceval] engine error:', msg);
+        record({
+          kind: 'engine',
+          severity: Severity.Error,
+          source: 'ceval.protocol',
+          sourceTag: 'engine',
+          message: 'Stockfish engine error',
+          metadata: {
+            errorMessageClass: classifyRuntimeErrorMessage(msg),
+            enginePhase: this._enginePhase,
+            ...this.deviceCapabilityMetadata(),
+          },
+          redactionClass: 'safe',
+        });
+        this.onEngineError?.(msg);
+      };
+
+      // 4. Fetch and load the NNUE evaluation network (abortable when opted in).
+      // Adapted from lichess-org/lila: ui/lib/src/ceval/engines/stockfishWebEngine.ts boot()
+      const nnueName = module.getRecommendedNnue(0);
+      if (nnueName) {
+        console.log('[ceval] loading NNUE:', nnueName);
+        let resp: InitFetchResponse;
+        try {
+          resp = await raceInit(deps.fetch(`${baseUrl}/${nnueName}`, timeoutEnabled ? { signal: abortController.signal } : undefined));
+        } catch (e) {
+          if (e instanceof EngineInitTimeoutError) this.recordInitFailure('init-timeout', e);
+          throw e;
+        }
+        if (attemptExpired()) failExpired();
+        if (resp.ok) {
+          let buffer: ArrayBuffer;
+          try {
+            buffer = await raceInit(resp.arrayBuffer());
+          } catch (e) {
+            if (e instanceof EngineInitTimeoutError) this.recordInitFailure('init-timeout', e);
+            throw e;
+          }
+          if (attemptExpired()) failExpired();
+          module.setNnueBuffer(new Uint8Array(buffer), 0);
+          console.log('[ceval] NNUE loaded');
+        } else {
+          console.warn('[ceval] NNUE fetch failed:', resp.status, nnueName);
+        }
       }
-    }
 
-    // Begin UCI handshake.
-    this.send('uci');
+      // Begin UCI handshake.
+      clearInitTimeout();
+      this.send('uci');
+    } catch (err) {
+      clearInitTimeout();
+      // Cleanup: quit a module created by this now-failed attempt so it cannot linger or emit a
+      // late handshake. Its listen/onError closures are already generation-guarded above.
+      if (createdModule) {
+        this._quitOrphanModule(createdModule);
+        if (this.module === createdModule) this.module = undefined;
+      }
+      this._enginePhase = 'idle';
+      if (err instanceof EngineInitTimeoutError && timeoutEnabled) {
+        this._initTerminated = true;
+        this._initTerminationError = err;
+      }
+      throw err;
+    }
+  }
+
+  /** Record the correct init-failure reason for an awaited step, then return the error to rethrow. */
+  private _recordInitAwaitError(error: unknown, fallbackReason: 'worker-create-failed' | 'wasm-unavailable'): unknown {
+    if (error instanceof EngineInitTimeoutError) {
+      this.recordInitFailure('init-timeout', error);
+      return error;
+    }
+    this.recordInitFailure(fallbackReason, error);
+    return error;
+  }
+
+  /** Best-effort shutdown of an orphaned module from an expired/failed init attempt. */
+  private _quitOrphanModule(module: StockfishWebModule): void {
+    try {
+      module.uci('quit');
+    } catch {
+      /* best effort — the module may already be dead */
+    }
   }
 
   /** Register a callback that fires for every raw UCI line from the engine. */
