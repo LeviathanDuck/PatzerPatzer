@@ -12,6 +12,31 @@ export type VersionedOutboxOperation = 'upsert' | 'delete';
 
 export type VersionedConflictIntent = 'recreate-over-tombstone';
 
+
+
+
+
+
+
+
+export type OutboxFailureClass =
+  | 'transport'
+  | 'retryable-server'
+  | 'metadata-persistence'
+  | 'deterministic';
+
+
+
+
+
+
+
+
+export interface DurableOutboxBinding {
+  identity: string;
+  syncGeneration: number;
+}
+
 export interface VersionedWriteOp {
   opId: string;
   store: RemoteSyncStoreName;
@@ -24,9 +49,30 @@ export interface VersionedWriteOp {
 }
 
 export interface DurableRetryOutboxEntry extends VersionedWriteOp {
+
+
+
+
+
+
+
+
+  identity?: string;
+  syncGeneration?: number;
+
   enqueuedAt: number;
   lastAttemptAt?: number;
+
+  // Total consecutive failures; drives bounded backoff and observability only.
   attemptCount: number;
+
+  // Wave 8 (W8.1): only DETERMINISTIC failures increment this, and it alone drives attempt-cap
+  // quarantine (W8.2). Transport/offline failures bump `attemptCount` but never this, so offline
+  // time can never push a write to permanent quarantine. Absent is read as 0; normalization and
+  // `makeEntry` always emit it so consumers can read it without a `?? 0` guard.
+  deterministicAttemptCount?: number;
+  lastFailureClass?: OutboxFailureClass;
+
   nextAttemptAt: number;
   lastError?: string;
   blockedByOpId?: string;
@@ -53,6 +99,11 @@ export interface VersionedOutboxEnqueueInput {
   payload?: unknown;
   clientUpdatedAt?: number;
   conflictIntent?: VersionedConflictIntent;
+  // Wave 8 (W8.1): optional binding carried onto the built entry. Dormant — no current enqueue
+  // call site supplies it (W8.3 wires the confirmed binding here); omitted input yields an
+  // unbound entry, preserving current behavior.
+  identity?: string;
+  syncGeneration?: number;
 }
 
 export interface VersionedOutboxEnqueueOptions {
@@ -135,6 +186,15 @@ export interface DurableVersionedOutboxItemKeyMutation {
   itemKey: string;
   deleteOpIds: readonly string[];
   putEntries: readonly DurableRetryOutboxEntry[];
+
+
+
+
+
+
+
+
+  deleteRawKeys?: ReadonlyArray<unknown>;
 }
 
 const OUTBOX_DB_NAME = 'patzer-remoteSync-versioned-outbox';
@@ -250,6 +310,23 @@ function sameKey(left: Pick<VersionedWriteOp, 'store' | 'itemKey'>, right: Pick<
   return left.store === right.store && left.itemKey === right.itemKey;
 }
 
+// Wave 8 (W8.1): two entries share a binding only when BOTH their identity and syncGeneration
+// match exactly. Strict equality includes the unbound case (undefined === undefined), so
+// pre-binding entries keep coalescing exactly as before; a bound entry never shares a binding
+// with an unbound one, and different identities/generations never match.
+function sameBinding(
+  left: Pick<DurableRetryOutboxEntry, 'identity' | 'syncGeneration'>,
+  right: Pick<DurableRetryOutboxEntry, 'identity' | 'syncGeneration'>
+): boolean {
+  return left.identity === right.identity && left.syncGeneration === right.syncGeneration;
+}
+
+// Coalescing, delete-wins ordering, and replace all operate strictly within a single binding:
+// the same (store,itemKey) under a different identity/generation is a distinct pending write.
+function sameKeyAndBinding(left: DurableRetryOutboxEntry, right: DurableRetryOutboxEntry): boolean {
+  return sameKey(left, right) && sameBinding(left, right);
+}
+
 function validateEnqueueInput(input: VersionedOutboxEnqueueInput): void {
   assertNonEmpty(input.store, 'store');
   assertNonEmpty(input.itemKey, 'itemKey');
@@ -276,10 +353,25 @@ function makeEntry(input: VersionedOutboxEnqueueInput, options: VersionedOutboxE
     clientUpdatedAt,
     enqueuedAt: now,
     attemptCount: 0,
+    deterministicAttemptCount: 0,
     nextAttemptAt: now,
   };
   if (input.operation === 'upsert') entry.payload = input.payload;
   if (input.operation === 'upsert' && input.conflictIntent !== undefined) entry.conflictIntent = input.conflictIntent;
+
+
+
+
+
+  if (input.identity !== undefined || input.syncGeneration !== undefined) {
+    const boundIdentity = typeof input.identity === 'string' ? input.identity.trim() : '';
+    if (!boundIdentity) throw new Error('Outbox binding requires a non-empty identity.');
+    if (!validVersion(input.syncGeneration) || input.syncGeneration === 0) {
+      throw new Error('Outbox binding requires a positive integer syncGeneration.');
+    }
+    entry.identity = boundIdentity;
+    entry.syncGeneration = input.syncGeneration;
+  }
   return entry;
 }
 
@@ -311,6 +403,55 @@ function normalizeEntry(raw: unknown): DurableRetryOutboxEntry | null {
   if (value.operation === 'upsert') entry.payload = value.payload;
   if (value.operation === 'upsert' && value.conflictIntent === 'recreate-over-tombstone') {
     entry.conflictIntent = 'recreate-over-tombstone';
+  }
+
+
+
+
+
+
+
+
+
+
+  const hasIdentityProp = Object.prototype.hasOwnProperty.call(value, 'identity');
+  const hasGenerationProp = Object.prototype.hasOwnProperty.call(value, 'syncGeneration');
+  if (!hasIdentityProp && !hasGenerationProp) {
+    // Unbound pre-binding row: leave both fields absent.
+  } else if (
+    hasIdentityProp && hasGenerationProp
+    && typeof value.identity === 'string' && value.identity.trim()
+    && validVersion(value.syncGeneration) && value.syncGeneration > 0
+  ) {
+    entry.identity = value.identity.trim();
+    entry.syncGeneration = value.syncGeneration;
+  } else {
+    return null;
+  }
+  // Sol round-2 Important-3b + round-3 residual: failure fields are part of the row contract and
+  // are policed by own-property PRESENCE, exactly like the binding above. Property absent →
+  // legal pre-Wave-8 row (defaults apply; the counter is emitted as 0 so consumers can read it
+  // unguarded). Property PRESENT → the value must be strictly valid (integer >= 0 counter /
+  // recognized class) — including present-as-`undefined`, the round-3 loophole where value
+  // checks read an own-undefined failure field as absent and left the non-conforming raw row
+  // live under a committed migration sentinel. Any present-but-invalid value rejects the row
+  // (return null) so migration routes it verbatim to recovery.
+  const hasDeterministicCountProp = Object.prototype.hasOwnProperty.call(value, 'deterministicAttemptCount');
+  if (hasDeterministicCountProp && !validVersion(value.deterministicAttemptCount)) return null;
+  entry.deterministicAttemptCount = validVersion(value.deterministicAttemptCount)
+    ? Math.floor(value.deterministicAttemptCount)
+    : 0;
+  if (Object.prototype.hasOwnProperty.call(value, 'lastFailureClass')) {
+    if (
+      value.lastFailureClass === 'transport'
+      || value.lastFailureClass === 'retryable-server'
+      || value.lastFailureClass === 'metadata-persistence'
+      || value.lastFailureClass === 'deterministic'
+    ) {
+      entry.lastFailureClass = value.lastFailureClass;
+    } else {
+      return null;
+    }
   }
   if (value.clientUpdatedAt !== undefined) entry.clientUpdatedAt = Math.floor(value.clientUpdatedAt);
   if (value.lastAttemptAt !== undefined) entry.lastAttemptAt = Math.floor(value.lastAttemptAt);
@@ -357,10 +498,16 @@ function resetRetryState(entry: DurableRetryOutboxEntry, now: number): DurableRe
     baseVersion: entry.baseVersion,
     enqueuedAt: entry.enqueuedAt,
     attemptCount: 0,
+    // Wave 8 (W8.1): a successful coalesce onto NEW user intent resets both counters and clears
+    // `lastFailureClass` (design "Durable entry contract" rules) — so the deterministic count is
+    // reset and `lastFailureClass`/`lastError` are deliberately NOT carried over here.
+    deterministicAttemptCount: 0,
     nextAttemptAt: now,
   };
   if (entry.operation === 'upsert') next.payload = entry.payload;
   if (entry.operation === 'upsert' && entry.conflictIntent !== undefined) next.conflictIntent = entry.conflictIntent;
+  if (entry.identity !== undefined) next.identity = entry.identity;
+  if (entry.syncGeneration !== undefined) next.syncGeneration = entry.syncGeneration;
   if (entry.clientUpdatedAt !== undefined) next.clientUpdatedAt = entry.clientUpdatedAt;
   if (entry.blockedByOpId !== undefined) next.blockedByOpId = entry.blockedByOpId;
   return next;
@@ -371,7 +518,7 @@ function coalesceUpsert(entries: DurableRetryOutboxEntry[], incoming: DurableRet
   let lastDeleteOpId = '';
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
-    if (sameKey(entry, incoming) && entry.operation === 'delete') {
+    if (sameKeyAndBinding(entry, incoming) && entry.operation === 'delete') {
       lastDeleteIndex = index;
       lastDeleteOpId = entry.opId;
     }
@@ -379,7 +526,7 @@ function coalesceUpsert(entries: DurableRetryOutboxEntry[], incoming: DurableRet
 
   for (let index = lastDeleteIndex + 1; index < entries.length; index += 1) {
     const entry = entries[index]!;
-    if (!sameKey(entry, incoming) || entry.operation !== 'upsert') continue;
+    if (!sameKeyAndBinding(entry, incoming) || entry.operation !== 'upsert') continue;
     const nextIntent: DurableRetryOutboxEntry = {
       ...entry,
       payload: incoming.payload,
@@ -404,12 +551,12 @@ function coalesceUpsert(entries: DurableRetryOutboxEntry[], incoming: DurableRet
 
 function coalesceDelete(entries: DurableRetryOutboxEntry[], incoming: DurableRetryOutboxEntry): DurableRetryOutboxEntry[] {
   const withoutUnattemptedUpserts = entries.filter(entry => {
-    return !sameKey(entry, incoming) || entry.operation !== 'upsert' || entry.attemptCount > 0;
+    return !sameKeyAndBinding(entry, incoming) || entry.operation !== 'upsert' || entry.attemptCount > 0;
   });
 
   for (let index = withoutUnattemptedUpserts.length - 1; index >= 0; index -= 1) {
     const entry = withoutUnattemptedUpserts[index]!;
-    if (!sameKey(entry, incoming) || entry.operation !== 'delete' || entry.attemptCount > 0) continue;
+    if (!sameKeyAndBinding(entry, incoming) || entry.operation !== 'delete' || entry.attemptCount > 0) continue;
     const nextIntent: DurableRetryOutboxEntry = { ...entry };
     if (incoming.clientUpdatedAt !== undefined) nextIntent.clientUpdatedAt = incoming.clientUpdatedAt;
     const merged = resetRetryState(nextIntent, incoming.nextAttemptAt);
@@ -629,7 +776,7 @@ function pickEnqueueResult(
   incoming: DurableRetryOutboxEntry
 ): DurableRetryOutboxEntry {
   return next.find(entry => entry.opId === incoming.opId)
-    ?? next.find(entry => sameKey(entry, incoming) && entry.operation === incoming.operation)
+    ?? next.find(entry => sameKeyAndBinding(entry, incoming) && entry.operation === incoming.operation)
     ?? incoming;
 }
 
@@ -682,6 +829,19 @@ export async function replaceDurableVersionedOutboxEntry(
     if (hasItemKeyFastPath(storage)) {
       const previous = (await getDurableVersionedOutboxEntriesByOpId(storage, [previousOpId]))[0];
       const subset = await readSameKeyEntries(storage, incoming.store, incoming.itemKey);
+      // Sol round-2 HIGH-2: a replace may only ever consume a previous op under the SAME binding.
+      // A cross-binding `previousOpId` (different identity or generation) is another account's /
+      // generation's pending write — deleting it here would destroy a write W8.2's mismatch
+      // quarantine is responsible for. REJECT the replacement: the incoming op enqueues normally
+      // against its own binding's rows and the foreign previous op is left untouched.
+      if (previous && !sameBinding(previous, incoming)) {
+        const next = coalesceDurableVersionedOutboxEntry(subset, incoming);
+        const delta = diffSameKeyEntries(subset, next);
+        if (delta.deleteOpIds.length > 0 || delta.putEntries.length > 0) {
+          await storage.applyItemKeyMutations([{ store: incoming.store, itemKey: incoming.itemKey, ...delta }]);
+        }
+        return pickEnqueueResult(next, incoming);
+      }
       const entries = subset.filter(entry => entry.opId !== previousOpId);
       const decision = decideReplaceOutcome(entries, incoming, previous);
       const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
@@ -708,6 +868,14 @@ export async function replaceDurableVersionedOutboxEntry(
     }
     const all = await readDurableVersionedOutbox(storage);
     const previous = all.find(entry => entry.opId === previousOpId);
+    // Sol round-2 HIGH-2 (legacy path, same rule as the keyed path above): a cross-binding
+    // previous op is never consumed — the incoming op coalesces normally against the full set
+    // (its own binding's rows) and the foreign previous op survives untouched.
+    if (previous && !sameBinding(previous, incoming)) {
+      const next = coalesceDurableVersionedOutboxEntry(all, incoming);
+      await writeDurableVersionedOutbox(storage, next);
+      return pickEnqueueResult(next, incoming);
+    }
     const entries = all.filter(entry => entry.opId !== previousOpId);
 
 
@@ -856,6 +1024,163 @@ export async function migrateDurableLegacyOutboxMirror(
 
 
 
+export const OUTBOX_BINDING_MIGRATION_SENTINEL_KEY = 'outbox-binding-v1';
+
+export interface OutboxBindingMigrationResult {
+  /** Valid entries that carry a binding after the migration (already-bound + freshly backfilled). */
+  bound: number;
+  /** Previously-unbound valid entries that received the confirmed binding in this run. */
+  backfilled: number;
+  /** Malformed/future raw rows preserved verbatim into `legacy-outbox-recovery` (atomic path). */
+  recovered: number;
+  /** True when the three-store single-transaction (entries + recovery + sentinel) path ran. */
+  atomic: boolean;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function migrateDurableOutboxBinding(
+  storage: DurableVersionedOutboxStorage,
+  migration: {
+    binding: DurableOutboxBinding;
+    now?: number;
+    sentinelKey?: string;
+    sentinelExtra?: Record<string, unknown>;
+  }
+): Promise<OutboxBindingMigrationResult> {
+  const identity = assertNonEmpty(migration.binding?.identity ?? '', 'binding identity');
+  const syncGeneration = migration.binding?.syncGeneration;
+  if (!validVersion(syncGeneration) || syncGeneration <= 0) {
+    throw new Error('Outbox binding migration requires a positive server syncGeneration.');
+  }
+  const now = normalizeNow(migration.now);
+  const sentinelKey = migration.sentinelKey ?? OUTBOX_BINDING_MIGRATION_SENTINEL_KEY;
+  return withDurableOutboxLock(async () => {
+    const raw = await storage.readEntries();
+    const recoveryValues: unknown[] = [];
+    const malformedDeleteKeys: unknown[] = [];
+    const backfilledByKey = new Map<string, { store: string; itemKey: string; entries: DurableRetryOutboxEntry[] }>();
+    let bound = 0;
+    let backfilled = 0;
+    for (const value of raw) {
+      const entry = normalizeEntry(value);
+      if (!entry) {
+        // Malformed / future-schema row: preserve verbatim into recovery, never drop, never
+        // re-parse. On the atomic path it is ALSO removed from `entries` by its RAW primary key
+        // — the keyPath guarantees every live row has one, but it need not be a string (Sol
+        // round-2 Important-3a: a numeric-key probe row was copied to recovery yet stayed live
+        // while the sentinel committed) — so the outbox holds only contract-conforming rows and
+        // a re-run is idempotent; the non-atomic fallback cannot both move and preserve, so it
+        // leaves the row in place as its own holding pen rather than risk a silent drop.
+        recoveryValues.push(value);
+        const rawOpId = value && typeof value === 'object' ? (value as Record<string, unknown>).opId : undefined;
+        if (rawOpId !== undefined && rawOpId !== null) malformedDeleteKeys.push(rawOpId);
+        continue;
+      }
+      // Sol HIGH (fix round 1): normalizeEntry classifies the binding as a unit — a normalized
+      // entry is either fully bound (valid identity + generation > 0) or fully unbound (neither
+      // raw property present). Every partial/invalid combination (null, one-field, numeric-string
+      // or zero generation, wrong types) normalized to null above and went VERBATIM to recovery —
+      // it can never reach this backfill and be silently rebound to the active binding.
+      const alreadyBound = entry.identity !== undefined && entry.syncGeneration !== undefined;
+      if (alreadyBound) {
+        bound += 1;
+        continue;
+      }
+      const migrated: DurableRetryOutboxEntry = {
+        ...entry,
+        identity,
+        syncGeneration,
+        // Conservative reset: historical attempts are not reinterpreted as deterministic.
+        deterministicAttemptCount: 0,
+      };
+      bound += 1;
+      backfilled += 1;
+      const key = `${migrated.store} ${migrated.itemKey}`;
+      const group = backfilledByKey.get(key);
+      if (group) group.entries.push(migrated);
+      else backfilledByKey.set(key, { store: migrated.store, itemKey: migrated.itemKey, entries: [migrated] });
+    }
+
+    const backfillMutations: DurableVersionedOutboxItemKeyMutation[] = Array.from(backfilledByKey.values()).map(group => ({
+      store: group.store,
+      itemKey: group.itemKey,
+      deleteOpIds: [],
+      putEntries: group.entries,
+    }));
+    const sentinelRow = {
+      key: sentinelKey,
+      migratedAt: now,
+      identity,
+      syncGeneration,
+      backfilled,
+      recovered: recoveryValues.length,
+      ...(migration.sentinelExtra ?? {}),
+    };
+
+    if (storage.runLegacyMirrorMigrationTransaction) {
+      // Entry backfills, malformed-row deletes (by RAW key, any key type), recovered values, and
+      // the sentinel commit/abort TOGETHER (design crash matrix). A delete-only carrier mutation
+      // moves the malformed rows via `deleteRawKeys` regardless of the mutation's store/itemKey.
+      const atomicMutations = malformedDeleteKeys.length > 0
+        ? [...backfillMutations, { store: '', itemKey: '', deleteOpIds: [], putEntries: [], deleteRawKeys: malformedDeleteKeys }]
+        : backfillMutations;
+      await storage.runLegacyMirrorMigrationTransaction(atomicMutations, recoveryValues, sentinelRow);
+      return { bound, backfilled, recovered: recoveryValues.length, atomic: true };
+    }
+    // Non-atomic fallback (shim/legacy storages without the three-store transaction): commit only
+    // the entry backfills through the existing keyed/full paths; recovery + sentinel are
+    // unsupported here, so the caller must treat this as a not-yet-completed migration and the
+    // malformed rows are LEFT in place (holding pen) rather than deleted without preservation.
+    if (hasItemKeyFastPath(storage)) {
+      if (backfillMutations.length > 0) await storage.applyItemKeyMutations(backfillMutations);
+    } else if (backfillMutations.length > 0) {
+      const all = await readDurableVersionedOutbox(storage);
+      const puts = backfillMutations.flatMap(mutation => mutation.putEntries);
+      const putIds = new Set(puts.map(entry => entry.opId));
+      await writeDurableVersionedOutbox(storage, sortEntries([
+        ...all.filter(entry => !putIds.has(entry.opId)),
+        ...puts,
+      ]));
+    }
+    return { bound, backfilled, recovered: 0, atomic: false };
+  });
+}
+
+/**
+ * Wave 8 (W8.1) pure attempt-cap predicate, DORMANT until the drain consumes it (W8.2). ONLY a
+ * `deterministic` last failure with a deterministic count at/over the cap is eligible for
+ * permanent quarantine — every other failure class is retryable forever, so accumulated offline
+ * time (which lives in `attemptCount`) can never trip the cap.
+ */
+export function isDurableOutboxDeterministicCapReached(
+  entry: Pick<DurableRetryOutboxEntry, 'lastFailureClass' | 'deterministicAttemptCount'>,
+  maxAttempts: number
+): boolean {
+  const cap = Math.max(1, Math.floor(maxAttempts));
+  return entry.lastFailureClass === 'deterministic' && (entry.deterministicAttemptCount ?? 0) >= cap;
+}
+
+
+
+
 
 
 
@@ -920,7 +1245,7 @@ function decideReplaceOutcome(
   previous: DurableRetryOutboxEntry | undefined
 ): { cancelled: boolean } {
   const laterDelete = incoming.operation === 'upsert'
-    && entries.some(entry => sameKey(entry, incoming)
+    && entries.some(entry => sameKeyAndBinding(entry, incoming)
       && entry.operation === 'delete'
       && (previous === undefined
         || (entry.opId !== previous.blockedByOpId && entry.enqueuedAt >= previous.enqueuedAt)));
@@ -1073,19 +1398,33 @@ export async function recordDurableVersionedOutboxFailure(
   storage: DurableVersionedOutboxStorage,
   opIds: readonly string[],
   error: string,
-  options: { now?: number; jitterMs?: number } = {}
+  // Wave 8 (W8.1): `failureClass` is OPTIONAL and DORMANT — existing callers omit it and get the
+  // pre-Wave-8 behavior byte-for-byte (bump total `attemptCount`, back off, record `lastError`;
+  // no class, no deterministic-count change). When supplied (drain wiring lands in W8.2), the
+  // class is stamped on `lastFailureClass` and ONLY a `deterministic` class advances
+  // `deterministicAttemptCount` — the counter that alone gates attempt-cap quarantine — so
+  // transport/offline/retryable-server/metadata-persistence failures can never quarantine a write.
+  options: { now?: number; jitterMs?: number; failureClass?: OutboxFailureClass } = {}
 ): Promise<DurableRetryOutboxEntry[]> {
   const ids = new Set(opIds);
   const now = normalizeNow(options.now);
+  const failureClass = options.failureClass;
   const failedEntry = (entry: DurableRetryOutboxEntry): DurableRetryOutboxEntry => {
     const attemptCount = entry.attemptCount + 1;
-    return {
+    const updated: DurableRetryOutboxEntry = {
       ...entry,
       attemptCount,
       lastAttemptAt: now,
       nextAttemptAt: now + nextDurableVersionedOutboxBackoffMs(attemptCount, options.jitterMs ?? 0),
       lastError: error,
     };
+    if (failureClass !== undefined) {
+      updated.lastFailureClass = failureClass;
+      if (failureClass === 'deterministic') {
+        updated.deterministicAttemptCount = (entry.deterministicAttemptCount ?? 0) + 1;
+      }
+    }
+    return updated;
   };
   return withDurableOutboxLock(async () => {
     // Keyed path (BUG-2026-07-05-008): same shape as markDurableVersionedOutboxAttemptStarted —
@@ -1179,6 +1518,60 @@ export async function dueDurableVersionedOutboxEntries(
 ): Promise<DurableRetryOutboxEntry[]> {
   const at = normalizeNow(now);
   return (await readDurableVersionedOutbox(storage)).filter(entry => entry.nextAttemptAt <= at);
+}
+
+/**
+ * Wave 9 (W9.1) online-recovery primitive, DORMANT until W9.1 wires the `online` handler. Scans
+ * the outbox in bounded opId windows and makes due (sets `nextAttemptAt = now`) ONLY entries whose
+ * last failure was `transport` and that are still backed off. Deterministic, retryable-server, and
+ * metadata-persistence entries are never touched, and neither counter nor `lastError` is reset —
+ * so an `online` event can rearm connectivity-blocked writes without resurrecting poisoned ones.
+ * Runs under the outbox lock; returns the number of entries made due.
+ */
+export async function makeTransportBackedOffEntriesDue(
+  storage: DurableVersionedOutboxStorage,
+  options: { now?: number; windowSize?: number } = {}
+): Promise<{ updated: number }> {
+  const now = normalizeNow(options.now);
+  const windowSize = Math.max(1, Math.floor(options.windowSize ?? 500));
+  const isTransportBackedOff = (entry: DurableRetryOutboxEntry): boolean =>
+    entry.lastFailureClass === 'transport' && entry.nextAttemptAt > now;
+  return withDurableOutboxLock(async () => {
+    // Windowed fast path ONLY when the storage has BOTH keyed primitives (Sol Important-1, fix
+    // round 1): `readEntriesRange` for bounded window reads AND `putEntries` for changed-row
+    // writes. With `putEntries` alone, each readDurableVersionedOutboxWindow call would fall back
+    // to a FULL readEntries() per window — O(n^2) at 500-row windows — so that shape must take
+    // the single full-pass fallback below instead.
+    if (storage.putEntries && storage.readEntriesRange) {
+      let afterOpId: string | null = null;
+      let updated = 0;
+      for (;;) {
+        const window = await readDurableVersionedOutboxWindow(storage, afterOpId, windowSize);
+        if (window.scannedCount === 0) break;
+        const due = window.entries.filter(isTransportBackedOff).map(entry => ({ ...entry, nextAttemptAt: now }));
+        if (due.length > 0) {
+          await storage.putEntries(due);
+          updated += due.length;
+        }
+        afterOpId = window.lastScannedOpId;
+        if (window.scannedCount < windowSize) break;
+      }
+      return { updated };
+    }
+    // Legacy/shim fallback: exactly ONE full read, then only the changed rows are written (via
+    // keyed putEntries when present, else one full rewrite). This is not the ordinary-enqueue
+    // path, so it does not violate the "no full-store write for enqueue" rule.
+    const entries = await readDurableVersionedOutbox(storage);
+    const changed: DurableRetryOutboxEntry[] = [];
+    const next = entries.map(entry => {
+      if (!isTransportBackedOff(entry)) return entry;
+      const updatedEntry = { ...entry, nextAttemptAt: now };
+      changed.push(updatedEntry);
+      return updatedEntry;
+    });
+    await putChangedEntries(storage, next, changed);
+    return { updated: changed.length };
+  });
 }
 
 
@@ -1693,6 +2086,10 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
             const entriesStore = tx.objectStore(OUTBOX_STORE_NAME);
             for (const mutation of mutations) {
               for (const opId of mutation.deleteOpIds) entriesStore.delete(opId);
+              // Sol round-2 Important-3a: recovered malformed rows are evacuated by their RAW
+              // primary key — a live row's key can be any IDB key type, not just a string, and
+              // the sentinel must never certify a store that still holds a recovered row.
+              for (const rawKey of mutation.deleteRawKeys ?? []) entriesStore.delete(rawKey as IDBValidKey);
               for (const entry of mutation.putEntries) entriesStore.put(entry);
             }
             const recoveryStore = tx.objectStore(LEGACY_OUTBOX_RECOVERY_STORE_NAME);
