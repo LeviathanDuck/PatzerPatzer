@@ -2428,7 +2428,16 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
     viewOnly: false,
     movable: {
       free: false,
-      dests: new Map(),
+      // Trigger-less rounds (user-library / LFYM-saved puzzles) are live at mount:
+      // the solver plays the first move, so configure the solver color + legal dests
+      // immediately using the values already computed above. When a trigger move is
+      // present, the board stays locked at mount (empty dests, color omitted) until the
+      // trigger animation below applies the post-trigger movable config — this is what
+      // preserves the double-count guard (the trigger uses cg.set(), not cg.move()).
+      // Regression provenance: b598b2c76 unconditionally used the empty map here.
+      // (color is omitted rather than set undefined for exactOptionalPropertyTypes.)
+      ...(def.triggerMove ? {} : { color: solverColor }),
+      dests: def.triggerMove ? new Map<Key, Key[]>() : dests,
       showDests: true,
     },
     drawable: { enabled: true },
