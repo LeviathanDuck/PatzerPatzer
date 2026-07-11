@@ -352,6 +352,7 @@ const SYNC_ITEM_STATE_CHANNEL_NAME = 'patzer-remote-sync-item-state';
 
 const itemStateCache = new Map<string, Map<string, RemoteSyncItemStateRow>>();
 const itemStateReady = new Map<string, Promise<void>>();
+const itemStateHydrateGeneration = new Map<string, number>();
 let itemStateWriteChain: Promise<void> = Promise.resolve();
 let itemStateStorageOverride: SyncItemStateStorage | null = null;
 let itemStateDefaultStorage: SyncItemStateStorage | null = null;
@@ -434,8 +435,16 @@ function normalizeItemStateRow(raw: unknown): RemoteSyncItemStateRow | null {
 export function ensureRemoteSyncItemStateReady(identity: string): Promise<void> {
   const existing = itemStateReady.get(identity);
   if (existing) return existing;
-  const hydrate = (async () => {
+
+
+
+  const generation = itemStateHydrateGeneration.get(identity) ?? 0;
+  const hydrate = (async (): Promise<void> => {
     const raw = await itemStateStorage().readAllRows(identity);
+    if ((itemStateHydrateGeneration.get(identity) ?? 0) !== generation) {
+      itemStateReady.delete(identity);
+      return ensureRemoteSyncItemStateReady(identity);
+    }
     const rows = new Map<string, RemoteSyncItemStateRow>();
     for (const value of raw) {
       const row = normalizeItemStateRow(value);
@@ -453,6 +462,7 @@ export function ensureRemoteSyncItemStateReady(identity: string): Promise<void> 
 }
 
 export function invalidateRemoteSyncItemState(identity: string): void {
+  itemStateHydrateGeneration.set(identity, (itemStateHydrateGeneration.get(identity) ?? 0) + 1);
   itemStateCache.delete(identity);
   itemStateReady.delete(identity);
 }
@@ -471,8 +481,10 @@ export function getRemoteSyncItemStateVersion(identity: string, store: string, i
 }
 
 export function createRemoteSyncItemStateResolver(identity: string): (store: string, itemKey: string) => number | null {
-  const cache = requireItemStateCache(identity);
-  return (store, itemKey) => cache.get(encodeRemoteSyncItemStateKey(identity, store, itemKey))?.version ?? null;
+  requireItemStateCache(identity); // Fail loudly at creation if the identity was never ensured.
+
+
+  return (store, itemKey) => requireItemStateCache(identity).get(encodeRemoteSyncItemStateKey(identity, store, itemKey))?.version ?? null;
 }
 
 export function getRemoteSyncItemMarkers(identity: string, store: string, itemKey: string): { updatedAt: number; deletedAt: number } {
@@ -491,28 +503,63 @@ export function waitForRemoteSyncItemStateWrites(): Promise<void> {
   return itemStateWriteChain;
 }
 
+
+
+
+
+
+
+function mutateItemStateRows<T>(
+  identity: string,
+  stateKeys: readonly string[],
+  mutate: (durableByKey: Map<string, RemoteSyncItemStateRow>) => { puts: RemoteSyncItemStateRow[]; deleteKeys: string[]; result: T },
+): Promise<T> {
+  return queueItemStateWrite(() => withItemStateLock(async () => {
+    const storage = itemStateStorage();
+    try {
+      const durableByKey = new Map<string, RemoteSyncItemStateRow>();
+      for (const value of await storage.readRows(stateKeys)) {
+        const row = normalizeItemStateRow(value);
+        if (row && row.identity === identity) durableByKey.set(row.stateKey, row);
+      }
+      const { puts, deleteKeys, result } = mutate(durableByKey);
+      if (puts.length > 0 || deleteKeys.length > 0) {
+        await storage.applyRows(puts, deleteKeys);
+        const cache = itemStateCache.get(identity);
+        if (cache) {
+          for (const row of puts) cache.set(row.stateKey, row);
+          for (const stateKey of deleteKeys) cache.delete(stateKey);
+        }
+        publishItemStateInvalidation(identity);
+      }
+      return result;
+    } catch (error) {
+      // The durable state is now unknown relative to this tab's cache: drop the cache so the
+      // next reader/writer re-hydrates from storage truth.
+      invalidateRemoteSyncItemState(identity);
+      throw error;
+    }
+  }));
+}
+
 export function recordRemoteSyncItemStateVersions(
   identity: string,
   records: ReadonlyArray<{ store: string; itemKey: string; version: number }>
 ): Promise<number> {
   if (records.length === 0) return Promise.resolve(0);
-  return queueItemStateWrite(async () => {
-    await ensureRemoteSyncItemStateReady(identity);
-    const cache = requireItemStateCache(identity);
-    const changed: RemoteSyncItemStateRow[] = [];
+  const stateKeys = records.map(record => encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey));
+  return mutateItemStateRows(identity, stateKeys, durableByKey => {
+    const puts: RemoteSyncItemStateRow[] = [];
     for (const record of records) {
       const stateKey = encodeRemoteSyncItemStateKey(identity, record.store, record.itemKey);
-      const previous = cache.get(stateKey);
+      const previous = durableByKey.get(stateKey);
       if (previous?.version === record.version) continue;
-      const next: RemoteSyncItemStateRow = {
+      puts.push({
         ...(previous ?? { stateKey, identity, store: record.store, itemKey: record.itemKey }),
         version: record.version,
-      };
-      cache.set(stateKey, next);
-      changed.push(next);
+      });
     }
-    if (changed.length > 0) await itemStateStorage().putRows(changed);
-    return changed.length;
+    return { puts, deleteKeys: [], result: puts.length };
   });
 }
 
@@ -521,14 +568,13 @@ export function recordRemoteSyncItemMarkers(
   mutations: ReadonlyArray<RemoteSyncItemMarkerMutation>
 ): Promise<void> {
   if (mutations.length === 0) return Promise.resolve();
-  return queueItemStateWrite(async () => {
-    await ensureRemoteSyncItemStateReady(identity);
-    const cache = requireItemStateCache(identity);
+  const stateKeys = mutations.map(mutation => encodeRemoteSyncItemStateKey(identity, mutation.store, mutation.itemKey));
+  return mutateItemStateRows(identity, stateKeys, durableByKey => {
     const puts: RemoteSyncItemStateRow[] = [];
-    const deletes: string[] = [];
+    const deleteKeys: string[] = [];
     for (const mutation of mutations) {
       const stateKey = encodeRemoteSyncItemStateKey(identity, mutation.store, mutation.itemKey);
-      const previous = cache.get(stateKey);
+      const previous = durableByKey.get(stateKey);
       const next: RemoteSyncItemStateRow = {
         ...(previous ?? { stateKey, identity, store: mutation.store, itemKey: mutation.itemKey }),
       };
@@ -542,26 +588,23 @@ export function recordRemoteSyncItemMarkers(
       }
       if (next.version === undefined && next.updatedAt === undefined && next.deletedAt === undefined) {
         // Nothing left on the row: drop it rather than storing an empty shell.
-        if (previous) {
-          cache.delete(stateKey);
-          deletes.push(stateKey);
-        }
+        if (previous) deleteKeys.push(stateKey);
         continue;
       }
-      cache.set(stateKey, next);
       puts.push(next);
     }
-    if (puts.length > 0) await itemStateStorage().putRows(puts);
-    if (deletes.length > 0) await itemStateStorage().deleteRows(deletes);
+    return { puts, deleteKeys, result: undefined };
   });
 }
 
 export function resetRemoteSyncItemState(identity: string): Promise<void> {
-  return queueItemStateWrite(async () => {
+  // Same serialization as every other mutation (chain + cross-tab lock), so a reset can never
+  // interleave with a writer's read-merge-commit window.
+  return queueItemStateWrite(() => withItemStateLock(async () => {
     await itemStateStorage().clearIdentity(identity);
     invalidateRemoteSyncItemState(identity);
     publishItemStateInvalidation(identity);
-  });
+  }));
 }
 
 function migrationSentinelKey(identity: string): string {
@@ -589,7 +632,9 @@ export function migrateRemoteSyncItemStateToIdb(
   snapshot: RemoteSyncItemStateMigrationSnapshot,
   options: { cleanupLocalStorage?: () => void; now?: number } = {}
 ): Promise<RemoteSyncItemStateMigrationResult> {
-  return withItemStateLock(async () => {
+
+
+  return queueItemStateWrite(() => withItemStateLock(async () => {
     const storage = itemStateStorage();
     const sentinelKey = migrationSentinelKey(identity);
     const existing = await storage.readMeta(sentinelKey);
@@ -611,6 +656,19 @@ export function migrateRemoteSyncItemStateToIdb(
       if (record.deletedAt !== undefined) row.deletedAt = record.deletedAt;
       rowsByKey.set(stateKey, row);
     }
+    // EXISTING-FIELD-WINS merge (Sol Critical-3): any row a live writer already recorded is
+    // newer authority than the legacy snapshot — migration must never downgrade a version or
+    // clobber a live marker. Fields only fill gaps.
+    for (const value of await storage.readRows(Array.from(rowsByKey.keys()))) {
+      const durable = normalizeItemStateRow(value);
+      if (!durable || durable.identity !== identity) continue;
+      const legacy = rowsByKey.get(durable.stateKey);
+      if (!legacy) continue;
+      rowsByKey.set(durable.stateKey, {
+        ...legacy,
+        ...durable,
+      });
+    }
     const rows = Array.from(rowsByKey.values());
     await storage.runStateMigrationTransaction(rows, {
       key: sentinelKey,
@@ -622,5 +680,5 @@ export function migrateRemoteSyncItemStateToIdb(
     invalidateRemoteSyncItemState(identity);
     publishItemStateInvalidation(identity);
     return { alreadyComplete: false, migratedRows: rows.length };
-  });
+  }));
 }
