@@ -1990,6 +1990,102 @@ export async function loadGamesByAccountFromIdb(accountId: string): Promise<Stor
   });
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function reduceGamesByAccountFromIdb<T>(
+  accountId: string,
+  reduce: (accumulator: T, record: StoredGameRecord) => T,
+  initial: T,
+): Promise<T> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    // Wrapped so a legitimately-undefined T still counts as an explicitly-settled result.
+    let completedResult: { value: T } | undefined;
+
+    const settleResolve = (value: T): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const settleReject = (error: unknown): void => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    let openedTx: IDBTransaction;
+    try {
+      openedTx = db.transaction('games', 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+    const tx = openedTx;
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) {
+        settleResolve(completedResult.value);
+      } else {
+        settleReject(new Error(
+          'Games account-reduce cursor transaction completed before settling a result (coding invariant violation)',
+        ));
+      }
+    };
+    tx.onerror = () => {
+      recordTxFailure(tx, 'onerror', 'read');
+      settleReject(tx.error ?? new Error('Games account-reduce read transaction failed'));
+    };
+    tx.onabort = () => {
+      recordTxFailure(tx, 'onabort', 'read');
+      settleReject(tx.error ?? new DOMException('Games account-reduce read transaction aborted', 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      cursorRequest = tx.objectStore('games').index('accountId').openCursor(IDBKeyRange.only(accountId));
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      return;
+    }
+
+    let accumulator = initial;
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) {
+        // Exhaustion: record the result but do not resolve here — wait for tx.oncomplete.
+        completedResult = { value: accumulator };
+        return;
+      }
+      try {
+        accumulator = reduce(accumulator, cursor.value as StoredGameRecord);
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* Transaction may already be inactive. */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(recordReqFailure(cursorRequest, 'games', 'cursor'));
+    };
+  });
+}
+
 /**
  * Load the PGN for a single game by id from the per-game `games` store.
  * Returns undefined if the record does not exist (e.g. pre-migration session).

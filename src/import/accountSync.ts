@@ -1,6 +1,6 @@
 import type { ChessAccount } from '../accounts';
 import { getAccount, recordAccountSync, updateAccount } from '../accounts';
-import { loadGamesFromIdb, saveGamesToIdb } from '../idb';
+import { getExistingGameKeys, reduceGamesByAccountFromIdb, saveGamesDeltaToIdb } from '../idb';
 import { chesscomGameTimestamp, fetchChesscomGames, fetchChesscomLifetimeBest } from './chesscom';
 import { fetchChesscomImportedAccountStats } from './profiles';
 import {
@@ -68,32 +68,27 @@ function emptyResult(account: ChessAccount, mode: AccountSyncMode): AccountSyncR
   };
 }
 
-function hasPlatformGameId(game: ImportedGame): boolean {
-  return game.id.startsWith('chesscom:') || game.id.startsWith('lichess:');
-}
-
-function gameCompositeKey(game: ImportedGame): string {
-  return [
-    game.source ?? '',
-    (game.white ?? '').toLowerCase(),
-    (game.black ?? '').toLowerCase(),
-    game.date ?? '',
-    game.result ?? '',
-  ].join('|');
-}
-
-function dedupeIncoming(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
-  const seenIds = new Set(existing.map(g => g.id));
-  const seenCompositeKeys = new Set(existing.filter(g => !hasPlatformGameId(g)).map(gameCompositeKey));
+/**
+ * Dedupe account-sync fetched games against the ids already in the `games` store, using a bounded
+ * incoming-id membership set (from getExistingGameKeys — only the incoming ids are probed, never a
+ * whole-library load; Lane D R2 / D1b, BUG-2026-07-01-002). Drops any incoming game whose id already
+ * exists, collapses duplicate ids within the batch, and stamps `importedAt` (Date.now()) on each
+ * genuinely-new game — matching the stamp the prior full-library dedupe applied.
+ *
+ * Account-sync fetched games always carry a platform id (`chesscom:`/`lichess:`), so the id set is
+ * the complete dedup key here. The prior dedupe's composite-key fallback (white/black/date/result)
+ * existed only for NON-platform PGN-paste rows, which account sync never produces; preserving it
+ * would require the whole-library load this slice exists to eliminate.
+ */
+function dedupeIncomingAgainstExisting(
+  existingIds: ReadonlySet<string>,
+  incoming: ImportedGame[],
+): ImportedGame[] {
+  const seenIds = new Set(existingIds);
   const importedAt = Date.now();
   const result: ImportedGame[] = [];
   for (const game of incoming) {
     if (seenIds.has(game.id)) continue;
-    if (!hasPlatformGameId(game)) {
-      const key = gameCompositeKey(game);
-      if (seenCompositeKeys.has(key)) continue;
-      seenCompositeKeys.add(key);
-    }
     seenIds.add(game.id);
     result.push({ ...game, importedAt });
   }
@@ -118,10 +113,6 @@ function minTimestamp(account: ChessAccount, games: ImportedGame[]): number | nu
     .map(g => gameTimestamp(account, g))
     .filter((timestamp): timestamp is number => timestamp !== undefined);
   return timestamps.length > 0 ? Math.min(...timestamps) : null;
-}
-
-async function loadExistingGames(): Promise<ImportedGame[]> {
-  return (await loadGamesFromIdb())?.games ?? [];
 }
 
 
@@ -232,10 +223,16 @@ export async function syncAccountGames(account: ChessAccount, options: AccountSy
     throw new Error(`Unsupported account platform: ${account.platform}`);
   }
 
-  const existing = await loadExistingGames();
-  const newGames = dedupeIncoming(existing, fetched);
+  // Delta-only persistence (Lane D R2 / D1b, BUG-2026-07-01-002): membership-check ONLY the incoming
+  // ids (bounded — never the whole library), then write & enqueue ONLY the genuinely-new rows.
+  const existingIds = await getExistingGameKeys(fetched.map(g => g.id));
+  const newGames = dedupeIncomingAgainstExisting(existingIds, fetched);
   if (newGames.length > 0) {
-    await saveGamesToIdb([...existing, ...newGames]);
+
+
+
+
+    await saveGamesDeltaToIdb(newGames);
     invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
   }
 
@@ -304,8 +301,8 @@ export interface AccountSyncOlderResult {
 /**
  * Fetch games OLDER than the account's earliest imported game and merge them
  * into the same account. Uses account.oldestGameTimestamp as the exclusive
- * upper bound for the backward fetch. Dedupes via dedupeIncoming and lowers
- * the account's oldest cursor via recordAccountSync.
+ * upper bound for the backward fetch. Dedupes incoming ids against the stored
+ * games (bounded) and lowers the account's oldest cursor via recordAccountSync.
  *
  * Does NOT touch the forward sync cursor (newestGameTimestamp).
  */
@@ -401,10 +398,14 @@ export async function syncAccountGamesOlder(
     throw new Error(`Unsupported account platform: ${account.platform}`);
   }
 
-  const existing = await loadExistingGames();
-  const newGames = dedupeIncoming(existing, fetched);
+  // Delta-only persistence (Lane D R2 / D1b): see syncAccountGames. On a cooperative abort, `fetched`
+  // holds only the batches actually pulled, so only committed coverage is persisted here and recorded
+  // below. saveGamesDeltaToIdb REJECTS on storage failure, so the cursor is never lowered over rows
+  // that did not persist.
+  const existingIds = await getExistingGameKeys(fetched.map(g => g.id));
+  const newGames = dedupeIncomingAgainstExisting(existingIds, fetched);
   if (newGames.length > 0) {
-    await saveGamesToIdb([...existing, ...newGames]);
+    await saveGamesDeltaToIdb(newGames);
     invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
   }
 
@@ -501,12 +502,22 @@ export async function syncAccountGamesWithBackfill(
 
   // Accounts imported before the oldest-cursor bookkeeping existed have games
   // but no backward boundary. Derive it from the already-imported games so the
-  // backfill has a cursor to page back from. One IDB games load, same as every
-  // sync phase already performs for dedupe.
+  // backfill has a cursor to page back from.
   if (refreshed.oldestGameTimestamp === null) {
-    const existing = await loadExistingGames();
-    const ownGames = existing.filter(g => g.accountId === account.id);
-    const derivedOldest = minTimestamp(refreshed, ownGames);
+
+
+
+
+
+    const derivedOldest = await reduceGamesByAccountFromIdb<number | null>(
+      account.id,
+      (oldestSoFar, record) => {
+        const ts = gameTimestamp(refreshed, { id: record.id, pgn: record.pgn });
+        if (ts === undefined) return oldestSoFar;
+        return oldestSoFar === null ? ts : Math.min(oldestSoFar, ts);
+      },
+      null,
+    );
     if (derivedOldest !== null) {
       await recordAccountSync(account.id, null, derivedOldest, null);
       refreshed = await getAccount(account.id) ?? refreshed;
@@ -603,9 +614,10 @@ export async function peekAccountSync(account: ChessAccount, options: AccountPee
   }
   if (options.signal?.aborted) throw peekAbortError();
 
-  // Count only: dedupe against existing games but never persist.
-  const existing = await loadExistingGames();
-  const newGames = dedupeIncoming(existing, fetched);
+  // Count only: dedupe incoming ids against the stored games (bounded incoming-id probe — never a
+  // whole-library load; Lane D R2 / D1b) but never persist.
+  const existingIds = await getExistingGameKeys(fetched.map(g => g.id));
+  const newGames = dedupeIncomingAgainstExisting(existingIds, fetched);
   return {
     accountId: account.id,
     supported: true,
