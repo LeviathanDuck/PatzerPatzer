@@ -25,7 +25,9 @@ export type StudyRouteVisibility = 'exclude' | 'include' | 'only';
 
 
 
-export type StudyRouteAnalysisState = 'analyzed' | 'not-analyzed';
+
+
+export type StudyRouteAnalysisState = 'analyzed' | 'not-analyzed' | 'no-game';
 export type StudyRouteField =
   | 'q' | 'source' | 'tag' | 'folder' | 'fav' | 'sort' | 'view' | 'pages'
 
@@ -52,7 +54,7 @@ export interface StudyRouteState {
   players?: string;                 // free-text player/opponent substring, bounded
   results?: StudyRouteResult[];     // raw PGN outcome multi-select (serialized as repeated `result=`)
   dest?: StudyRouteDestination[];   // destination multi-select
-  analysisState?: StudyRouteAnalysisState[];  // enrichment analyzed/not-analyzed multi-select (E1-route)
+  analysisState?: StudyRouteAnalysisState[];
   addedFrom?: string;               // recentlyAdded range, inclusive, 'YYYY-MM-DD'
   addedTo?: string;
   modifiedFrom?: string;            // recentlyModified range, inclusive, 'YYYY-MM-DD'
@@ -133,7 +135,7 @@ const SOURCE_ORDER: readonly StudyRouteSource[] = ['analysis', 'openings', 'puzz
 const SOURCES = new Set<StudyRouteSource>(SOURCE_ORDER);
 const RESULT_ORDER: readonly StudyRouteResult[] = ['white', 'black', 'draw', 'unknown'];
 const DEST_ORDER: readonly StudyRouteDestination[] = ['played', 'masters', 'repertoire', 'prep', 'uncategorized'];
-const ANALYSIS_STATE_ORDER: readonly StudyRouteAnalysisState[] = ['analyzed', 'not-analyzed'];
+const ANALYSIS_STATE_ORDER: readonly StudyRouteAnalysisState[] = ['analyzed', 'not-analyzed', 'no-game'];
 const VISIBILITIES = new Set<StudyRouteVisibility>(['exclude', 'include', 'only']);
 const SORT_TOKENS = new Set<StudyRouteSortToken>(['created', 'updated', 'title']);
 const SORT_DIRECTIONS = new Set<StudySortDir>(['asc', 'desc']);

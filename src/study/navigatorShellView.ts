@@ -1123,6 +1123,9 @@ const ADV_RESULT_OPTIONS: ReadonlyArray<{ value: StudyRouteResult; label: string
 const ADV_ANALYSIS_OPTIONS: ReadonlyArray<{ value: StudyRouteAnalysisState; label: string }> = [
   { value: 'analyzed', label: 'Analyzed' },
   { value: 'not-analyzed', label: 'Not analyzed' },
+
+
+  { value: 'no-game', label: 'No game' },
 ];
 // Display labels mirror SAVE_FLOW_GAME_DESTINATIONS (src/save/saveFlowCtrl.ts) plus the synthetic
 // Unsorted bucket for `uncategorized` (slice 2 maps that to DESTINATION_UNSORTED_FACET_VALUE).
@@ -1250,6 +1253,7 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
         commitAdvancedEdit(redraw);
       }),
     ]),
+
 
 
 
