@@ -1505,6 +1505,321 @@ export async function saveGameToIdb(game: ImportedGame): Promise<void> {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type GamesDeltaSyncItem = RemoteSyncItem & {
+  conflictIntent?: 'recreate-over-tombstone';
+};
+
+export interface SaveGamesDeltaOptions {
+
+
+
+
+
+
+
+
+  recreateOverTombstoneIds?: ReadonlySet<string>;
+}
+
+export interface GamesDeltaResult {
+  /** The changed records, in first-appearance input order — exactly the rows put to `games`. */
+  changed: StoredGameRecord[];
+  /** One upsert sync item per changed record (distinct itemKeys), recreate-intent stamped per option. */
+  syncItems: GamesDeltaSyncItem[];
+}
+
+/** How each StoredGameRecord key participates in delta detection (fix round 2, Sol REQUIRED-1):
+ *  - `content`          — participates in the delta signature; incoming value is authoritative
+ *                         (replace semantics: an omitted optional becomes a null overwrite).
+ *  - `write-once`       — participates in the signature, but buildDeltaCandidate preserves the
+ *                         prior stored value on updates (`importedAt` always; `sourcePgn` when the
+ *                         prior is non-null), so it can neither spuriously flip a stable row nor be
+ *                         rewritten/nulled by a partial incoming game.
+ *  - `volatile`         — EXCLUDED from the signature: a write stamp, not content, so re-persisting
+ *                         an unchanged game never registers as a change (`updatedAt` only). */
+type GameDeltaKeyRole = 'content' | 'write-once' | 'volatile';
+
+// COMPILE-TIME EXHAUSTIVENESS: `satisfies Record<keyof StoredGameRecord, ...>` forces every key of
+// StoredGameRecord — present and future — to be classified here. Adding a field to the record type
+// breaks `tsc` at this literal until the new key is given an explicit role, so a future field can
+// never silently bypass the content signature. The delta harness additionally pins the emitted key
+// set at runtime as the test-side alarm.
+const GAME_DELTA_KEY_ROLES = {
+  id:                  'content',
+  pgn:                 'content',
+  white:               'content',
+  black:               'content',
+  result:              'content',
+  date:                'content',
+  timeClass:           'content',
+  opening:             'content',
+  eco:                 'content',
+  source:              'content',
+  whiteRating:         'content',
+  blackRating:         'content',
+  importedUsername:    'content',
+  accountId:           'content',
+  importedAt:          'write-once',
+  updatedAt:           'volatile',
+  platformAccuracies:  'content',
+  whiteResultCode:     'content',
+  blackResultCode:     'content',
+  termination:         'content',
+  uuid:                'content',
+  finalFen:            'content',
+  openingUrl:          'content',
+  variant:             'content',
+  timeControl:         'content',
+  rated:               'content',
+  startTime:           'content',
+  endTime:             'content',
+  tournamentUrl:       'content',
+  matchUrl:            'content',
+  ratingDelta:         'content',
+  opponentRatingDelta: 'content',
+  sourcePgn:           'write-once',
+} as const satisfies Record<keyof StoredGameRecord, GameDeltaKeyRole>;
+
+// Every non-volatile key participates in the signature (write-once keys are already normalized to
+// the prior row's value by buildDeltaCandidate before the signature comparison runs).
+const GAME_DELTA_CONTENT_KEYS: readonly (keyof StoredGameRecord)[] =
+  (Object.keys(GAME_DELTA_KEY_ROLES) as (keyof StoredGameRecord)[])
+    .filter(key => GAME_DELTA_KEY_ROLES[key] !== 'volatile');
+
+/** Canonical content signature (excludes `updatedAt`; treats absent optional === null) so two
+ *  records are "content-equal" iff every game field except the write stamp matches. */
+function gameRecordContentSignature(record: StoredGameRecord): string {
+  const canonical: Record<string, unknown> = {};
+  for (const key of GAME_DELTA_CONTENT_KEYS) {
+    const value = record[key];
+    canonical[key] = value === undefined ? null : value;
+  }
+  return JSON.stringify(canonical);
+}
+
+
+
+
+
+
+
+
+
+
+
+function buildDeltaCandidate(game: ImportedGame, prior: StoredGameRecord | undefined): StoredGameRecord {
+  const record = importedGameToRecord(game);
+  if (prior) {
+    record.importedAt = prior.importedAt;
+    if (prior.sourcePgn !== null && prior.sourcePgn !== undefined) record.sourcePgn = prior.sourcePgn;
+  }
+  return record;
+}
+
+/**
+ * Pure delta computation (no IDB) — testable in isolation. De-dupes the input by id (last write
+ * wins, first-appearance order preserved), then emits exactly the rows whose content differs from
+ * the corresponding stored record (or that have no stored record). Each changed record yields one
+ * upsert sync item; recreate-over-tombstone intent is stamped only for ids in
+ * `recreateOverTombstoneIds`.
+ */
+export function computeGamesDelta(
+  games: readonly ImportedGame[],
+  existingById: ReadonlyMap<string, StoredGameRecord>,
+  recreateOverTombstoneIds?: ReadonlySet<string>,
+): GamesDeltaResult {
+  const order: string[] = [];
+  const gameById = new Map<string, ImportedGame>();
+  for (const game of games) {
+    if (!gameById.has(game.id)) order.push(game.id);
+    gameById.set(game.id, game); // last occurrence wins
+  }
+
+  const changed: StoredGameRecord[] = [];
+  for (const id of order) {
+    const game = gameById.get(id)!;
+    const prior = existingById.get(id);
+    const candidate = buildDeltaCandidate(game, prior);
+    if (prior && gameRecordContentSignature(prior) === gameRecordContentSignature(candidate)) continue;
+    changed.push(candidate);
+  }
+
+  const syncItems: GamesDeltaSyncItem[] = changed.map(record => {
+    const item: GamesDeltaSyncItem = {
+      store: 'games',
+      itemKey: record.id,
+      payload: record,
+      updatedAt: record.updatedAt,
+      operation: 'upsert',
+    };
+    if (recreateOverTombstoneIds?.has(record.id)) item.conflictIntent = 'recreate-over-tombstone';
+    return item;
+  });
+
+  return { changed, syncItems };
+}
+
+// Keyed games reads are TRANSACTION-BOUNDED (fix round 1, Sol IMPORTANT-2; design R1 "bounded"
+// primitives): at most this many keyed requests ride one readonly transaction. Larger id sets run
+// one short transaction per chunk and merge — a 30k-id probe never pins a single transaction with
+// an unbounded request flood.
+const GAMES_KEYED_READ_TX_LIMIT = 1000;
+
+function chunkGameIds(ids: readonly string[], size: number): string[][] {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
+  return chunks;
+}
+
+/** Read one CHUNK of game records by id in a single short readonly transaction — only the
+ *  requested ids, never a full-store scan. Rejects on storage failure (honest-rejection contract,
+ *  BUG-2026-07-10-007); a missing id is simply absent from the result, not an error. */
+function readGameRecordsChunk(db: IDBDatabase, ids: readonly string[], into: Map<string, StoredGameRecord>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('games', 'readonly');
+    const store = tx.objectStore('games');
+    let settled = false;
+    const fail = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(err ?? new DOMException('games read failed', 'UnknownError'));
+    };
+    for (const id of ids) {
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const record = req.result as StoredGameRecord | undefined;
+        if (record) into.set(id, record);
+      };
+      req.onerror = () => fail(recordReqFailure(req, 'games', 'read', id));
+    }
+    tx.oncomplete = () => { if (!settled) { settled = true; resolve(); } };
+    tx.onabort = () => fail(tx.error);
+    tx.onerror = () => fail(tx.error);
+  });
+}
+
+/** Read specific game records by id: deduplicated, then chunked at GAMES_KEYED_READ_TX_LIMIT ids
+ *  per short readonly transaction, results merged. Rejects on the first failed chunk. */
+async function readGameRecordsByIds(db: IDBDatabase, ids: readonly string[]): Promise<Map<string, StoredGameRecord>> {
+  const result = new Map<string, StoredGameRecord>();
+  const distinct = [...new Set(ids)];
+  if (distinct.length === 0) return result;
+  for (const chunk of chunkGameIds(distinct, GAMES_KEYED_READ_TX_LIMIT)) {
+    await readGameRecordsChunk(db, chunk, result);
+  }
+  return result;
+}
+
+/**
+ * Bounded read: fetch specific game records by id (first-occurrence input order preserved,
+ * duplicate ids deduplicated, missing ids skipped). Only the requested ids are read — never a
+ * full-store `getAll()` — in transaction-bounded chunks (GAMES_KEYED_READ_TX_LIMIT). Rejects on
+ * storage failure.
+ */
+export async function getGamesByIds(ids: readonly string[]): Promise<StoredGameRecord[]> {
+  const db = await openGameDb();
+  const map = await readGameRecordsByIds(db, ids);
+  const out: StoredGameRecord[] = [];
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const record = map.get(id);
+    if (record) out.push(record);
+  }
+  return out;
+}
+
+/**
+ * Bounded read: which of the SUPPLIED game ids already exist in the `games` store, via keys-only
+ * `getKey(id)` probes — never `getAll()`/`getAllKeys()`, so the cost is O(supplied ids), not
+ * O(library) (fix round 1, Sol IMPORTANT-1; CR-2/AP-2 — no record values are deserialized and the
+ * whole library's key set is never materialized). Input ids are deduplicated and probed in
+ * transaction-bounded chunks (GAMES_KEYED_READ_TX_LIMIT). Returns the subset of supplied ids that
+ * exist. Rejects on storage failure.
+ */
+export async function getExistingGameKeys(ids: readonly string[]): Promise<Set<string>> {
+  const existing = new Set<string>();
+  const distinct = [...new Set(ids)];
+  if (distinct.length === 0) return existing;
+  const db = await openGameDb();
+  for (const chunk of chunkGameIds(distinct, GAMES_KEYED_READ_TX_LIMIT)) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('games', 'readonly');
+      const store = tx.objectStore('games');
+      let settled = false;
+      const fail = (err: unknown) => {
+        if (settled) return;
+        settled = true;
+        reject(err ?? new DOMException('games key probe failed', 'UnknownError'));
+      };
+      for (const id of chunk) {
+        const req = store.getKey(id);
+        req.onsuccess = () => { if (req.result !== undefined) existing.add(id); };
+        req.onerror = () => fail(recordReqFailure(req, 'games', 'read', id));
+      }
+      tx.oncomplete = () => { if (!settled) { settled = true; resolve(); } };
+      tx.onabort = () => fail(tx.error);
+      tx.onerror = () => fail(tx.error);
+    });
+  }
+  return existing;
+}
+
+/** Bounded read: number of stored game records via the index-backed `count()` (no record reads). */
+export async function countGamesInIdb(): Promise<number> {
+  const db = await openGameDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('games', 'readonly').objectStore('games').count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(recordReqFailure(req, 'games', 'read'));
+  });
+}
+
+
+
+
+
+
+
+
+
+export async function saveGamesDeltaToIdb(
+  games: readonly ImportedGame[],
+  options: SaveGamesDeltaOptions = {},
+): Promise<void> {
+  if (games.length === 0) return;
+  const db = await openGameDb();
+  const ids = [...new Set(games.map(game => game.id))];
+  const existingById = await readGameRecordsByIds(db, ids);
+  const { changed, syncItems } = computeGamesDelta(games, existingById, options.recreateOverTombstoneIds);
+  if (changed.length === 0) return; // duplicate delta: zero writes, zero enqueues
+
+  const tx = db.transaction('games', 'readwrite');
+  const store = tx.objectStore('games');
+  for (const record of changed) store.put(record);
+  await txDone(tx, 'write'); // REJECTS on transaction failure — before the enqueue below
+
+  enqueueMainDbPutBatch(syncItems);
+  void captureStorageEstimate('post-idb-write');
+}
+
 export async function saveNavStateToIdb(selectedId: string | null, path: string): Promise<void> {
   try {
     const db = await openGameDb();
