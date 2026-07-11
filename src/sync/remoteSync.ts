@@ -3069,7 +3069,14 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
   }));
 
 
-  durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+
+
+
+  try {
+    durableOutboxCountCache = await countDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage());
+  } catch {
+    durableOutboxCountCache = null;
+  }
 }
 
 async function migrateLegacyOutboxToVersioned(): Promise<number> {

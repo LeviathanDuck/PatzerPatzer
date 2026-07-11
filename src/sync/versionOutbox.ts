@@ -97,6 +97,13 @@ export interface DurableVersionedOutboxStorage {
 
 
   getEntriesByItemKey?(store: string, itemKey: string): Promise<unknown[]>;
+
+
+
+
+
+
+  getEntriesByItemKeys?(keys: ReadonlyArray<{ store: string; itemKey: string }>): Promise<unknown[][]>;
   applyItemKeyMutations?(mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>): Promise<void>;
 
 
@@ -744,23 +751,44 @@ export async function enqueueDurableVersionedOutboxEntries(
   }
   return withDurableOutboxLock(async () => {
     if (hasItemKeyFastPath(storage)) {
-      const groups = new Map<string, { store: RemoteSyncStoreName; itemKey: string; inputs: VersionedOutboxEnqueueInput[] }>();
-      for (const input of inputs) {
-        const key = `${input.store}\u0000${input.itemKey}`;
+
+
+
+
+      const incomingEntries = inputs.map(input => makeEntry(input, options.now !== undefined ? { now: options.now } : {}));
+      const groups = new Map<string, { store: RemoteSyncStoreName; itemKey: string; entries: DurableRetryOutboxEntry[] }>();
+      for (const incoming of incomingEntries) {
+        const key = `${incoming.store}\u0000${incoming.itemKey}`;
         const group = groups.get(key);
         if (group) {
-          group.inputs.push(input);
+          group.entries.push(incoming);
         } else {
-          groups.set(key, { store: input.store, itemKey: input.itemKey, inputs: [input] });
+          groups.set(key, { store: incoming.store as RemoteSyncStoreName, itemKey: incoming.itemKey, entries: [incoming] });
+        }
+      }
+
+
+
+      const groupList = Array.from(groups.values());
+      let beforeSubsets: DurableRetryOutboxEntry[][];
+      if (storage.getEntriesByItemKeys) {
+        const raw = await storage.getEntriesByItemKeys(groupList.map(group => ({ store: group.store, itemKey: group.itemKey })));
+        beforeSubsets = groupList.map((_, index) => sortEntries((raw[index] ?? [])
+          .map(normalizeEntry)
+          .filter((entry): entry is DurableRetryOutboxEntry => entry !== null)));
+      } else {
+        beforeSubsets = [];
+        for (const group of groupList) {
+          beforeSubsets.push(await readSameKeyEntries(storage, group.store, group.itemKey));
         }
       }
       const mutations: DurableVersionedOutboxItemKeyMutation[] = [];
       const finalEntries: DurableRetryOutboxEntry[] = [];
-      for (const group of groups.values()) {
-        const before = await readSameKeyEntries(storage, group.store, group.itemKey);
+      for (let index = 0; index < groupList.length; index += 1) {
+        const group = groupList[index]!;
+        const before = beforeSubsets[index]!;
         let subset = before;
-        for (const input of group.inputs) {
-          const incoming = makeEntry(input, options.now !== undefined ? { now: options.now } : {});
+        for (const incoming of group.entries) {
           subset = coalesceDurableVersionedOutboxEntry(subset, incoming);
         }
         const delta = diffSameKeyEntries(before, subset);
@@ -1128,6 +1156,55 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
         db.close();
       }
     },
+    async getEntriesByItemKeys(keys: ReadonlyArray<{ store: string; itemKey: string }>): Promise<unknown[][]> {
+      if (keys.length === 0) return [];
+      const db = await openOutboxDb(dbName);
+      try {
+        return await new Promise((resolve, reject) => {
+
+
+
+          const objectStore = db.transaction(OUTBOX_STORE_NAME, 'readonly').objectStore(OUTBOX_STORE_NAME);
+          const indexNames = (objectStore as { indexNames?: { contains?(name: string): boolean } }).indexNames;
+          const hasIndex = typeof objectStore.index === 'function'
+            && (typeof indexNames?.contains !== 'function' || indexNames.contains(OUTBOX_BY_ITEM_KEY_INDEX));
+          let index: IDBIndex | null = null;
+          if (hasIndex) {
+            try {
+              index = objectStore.index(OUTBOX_BY_ITEM_KEY_INDEX);
+            } catch {
+              index = null; // Shim advertised index() but has no byItemKey — use the fallback.
+            }
+          }
+          if (index) {
+            const indexed = index;
+            const results: unknown[][] = new Array(keys.length);
+            let pending = keys.length;
+            keys.forEach((key, position) => {
+              const request = indexed.getAll([key.store, key.itemKey]);
+              request.onerror = () => reject(request.error ?? new Error('Could not read durable RemoteSync outbox entries by item keys.'));
+              request.onsuccess = () => {
+                results[position] = Array.isArray(request.result) ? request.result : [];
+                pending -= 1;
+                if (pending === 0) resolve(results);
+              };
+            });
+            return;
+          }
+          const request = objectStore.getAll();
+          request.onerror = () => reject(request.error ?? new Error('Could not read durable RemoteSync outbox entries by item keys.'));
+          request.onsuccess = () => {
+            const rows = Array.isArray(request.result) ? request.result : [];
+            resolve(keys.map(key => rows.filter(row => {
+              const record = row as Record<string, unknown> | null;
+              return !!record && record.store === key.store && record.itemKey === key.itemKey;
+            })));
+          };
+        });
+      } finally {
+        db.close();
+      }
+    },
     async applyItemKeyMutations(mutations: ReadonlyArray<DurableVersionedOutboxItemKeyMutation>): Promise<void> {
       const deleteOpIds = mutations.flatMap(mutation => mutation.deleteOpIds);
       const putEntries = mutations.flatMap(mutation => mutation.putEntries);
@@ -1142,8 +1219,20 @@ export function createIndexedDbDurableVersionedOutboxStorage(dbName = OUTBOX_DB_
           tx.onabort = () => reject(tx.error ?? new Error('Durable RemoteSync outbox item-key mutation aborted.'));
           tx.oncomplete = () => resolve();
           const store = tx.objectStore(OUTBOX_STORE_NAME);
-          for (const opId of deleteOpIds) store.delete(opId);
-          for (const entry of putEntries) store.put(entry);
+
+
+
+          try {
+            for (const opId of deleteOpIds) store.delete(opId);
+            for (const entry of putEntries) store.put(entry);
+          } catch (error) {
+            try {
+              tx.abort();
+            } catch {
+              // Already aborting/inactive: the onabort/onerror handlers still settle the promise.
+            }
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
         });
       } finally {
         db.close();
