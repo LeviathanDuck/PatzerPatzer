@@ -1166,6 +1166,14 @@ export interface SyncItemStateStorage {
 
   applyRows(puts: ReadonlyArray<{ stateKey: string }>, deleteKeys: readonly string[]): Promise<void>;
   clearIdentity(identity: string): Promise<void>;
+
+
+
+
+
+
+
+  resetIdentityRows?(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void>;
   readMeta(key: string): Promise<unknown>;
   putMeta(row: { key: string }): Promise<void>;
   /**
@@ -1286,6 +1294,39 @@ export function createIndexedDbSyncItemStateStorage(dbName = OUTBOX_DB_NAME): Sy
             if (record && record.identity === identity && typeof record.stateKey === 'string') {
               store.delete(record.stateKey);
             }
+          }
+        };
+      }));
+    },
+    async resetIdentityRows(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void> {
+
+
+
+      return withDb(db => new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(SYNC_ITEM_STATE_STORE_NAME, 'readwrite');
+        tx.onerror = () => reject(tx.error ?? new Error('Sync item-state reset failed.'));
+        tx.onabort = () => reject(tx.error ?? new Error('Sync item-state reset aborted.'));
+        tx.oncomplete = () => resolve();
+        const store = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
+        const request = store.getAll();
+        request.onerror = () => reject(request.error ?? new Error('Could not read sync item-state rows for reset.'));
+        request.onsuccess = () => {
+          try {
+            const existing = Array.isArray(request.result) ? request.result : [];
+            for (const row of existing) {
+              const record = row as Record<string, unknown> | null;
+              if (record && record.identity === identity && typeof record.stateKey === 'string') {
+                store.delete(record.stateKey);
+              }
+            }
+            for (const row of rows) store.put(row);
+          } catch (error) {
+            try {
+              tx.abort();
+            } catch {
+              // Already aborting/inactive: the handlers settle the promise.
+            }
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         };
       }));

@@ -411,6 +411,11 @@ class MemorySyncItemStateStorage implements SyncItemStateStorage {
     }
   }
 
+  async resetIdentityRows(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void> {
+    await this.clearIdentity(identity);
+    await this.putRows(rows);
+  }
+
   async readMeta(key: string): Promise<unknown> {
     return this.meta.get(key) ?? null;
   }
@@ -757,37 +762,46 @@ const itemStateResetPending = new Set<string>();
 
 
 
+
 const itemStateResetRebuild = new Map<string, () => Promise<ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>>();
+
+/** Test hook: collectors registered by reset calls persist by design; unit blocks that reuse an
+ * identity across storage swaps clear them here. */
+export function resetItemStateRebuildForTests(): void {
+  itemStateResetRebuild.clear();
+}
 // Where each identity's localStorage blob lives (registered by the readiness gate) so the
 // ephemeral posture can dual-write version commits into it.
 const itemStateBlobMirror = new Map<string, RemoteSyncVersionStorage>();
 
 function queueIdentityClear(identity: string): Promise<void> {
   return queueItemStateWrite(() => withItemStateLock(async () => {
+
+
+
+
+
+
+
+
+
     try {
-      await itemStateStorage().clearIdentity(identity);
+      const rebuild = itemStateResetRebuild.get(identity);
+      let rows: RemoteSyncItemStateRow[] = [];
+      if (rebuild) rows = foldMarkerMaxMutationsToRows(identity, await rebuild());
+      const storage = itemStateStorage();
+      if (storage.resetIdentityRows) {
+        await storage.resetIdentityRows(identity, rows);
+      } else {
+        // Shim-only fallback (no atomic reset): the poison window still guards this tab; the
+        // cross-tab empty interval only exists on storages that never see real peers.
+        await storage.clearIdentity(identity);
+        if (rows.length > 0) await storage.putRows(rows);
+      }
     } catch (error) {
       invalidateRemoteSyncItemState(identity);
       throw error;
     }
-
-
-
-
-
-
-    const rebuild = itemStateResetRebuild.get(identity);
-    if (rebuild) {
-      try {
-        const mutations = await rebuild();
-        const rows = foldMarkerMaxMutationsToRows(identity, mutations);
-        if (rows.length > 0) await itemStateStorage().putRows(rows);
-      } catch (error) {
-        invalidateRemoteSyncItemState(identity);
-        throw error;
-      }
-    }
-    itemStateResetRebuild.delete(identity);
     itemStateResetPending.delete(identity);
     invalidateRemoteSyncItemState(identity);
     publishItemStateInvalidation(identity);
