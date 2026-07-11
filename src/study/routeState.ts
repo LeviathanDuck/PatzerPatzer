@@ -21,11 +21,16 @@ export type StudyRouteDestination = 'played' | 'masters' | 'repertoire' | 'prep'
 // Tri-state hidden-item visibility (design §2.3/§4). Unset/absent = the plain eye-toggle governs
 // (studyCtrl's showHiddenItems()); an explicit token overrides it in slice 2's plan construction.
 export type StudyRouteVisibility = 'exclude' | 'include' | 'only';
+
+
+
+
+export type StudyRouteAnalysisState = 'analyzed' | 'not-analyzed';
 export type StudyRouteField =
   | 'q' | 'source' | 'tag' | 'folder' | 'fav' | 'sort' | 'view' | 'pages'
 
 
-  | 'srcs' | 'tags' | 'players' | 'result' | 'dest'
+  | 'srcs' | 'tags' | 'players' | 'result' | 'dest' | 'analysisState'
   | 'addedFrom' | 'addedTo' | 'modifiedFrom' | 'modifiedTo' | 'vis';
 
 export interface StudyRouteState {
@@ -47,6 +52,7 @@ export interface StudyRouteState {
   players?: string;                 // free-text player/opponent substring, bounded
   results?: StudyRouteResult[];     // raw PGN outcome multi-select (serialized as repeated `result=`)
   dest?: StudyRouteDestination[];   // destination multi-select
+  analysisState?: StudyRouteAnalysisState[];  // enrichment analyzed/not-analyzed multi-select (E1-route)
   addedFrom?: string;               // recentlyAdded range, inclusive, 'YYYY-MM-DD'
   addedTo?: string;
   modifiedFrom?: string;            // recentlyModified range, inclusive, 'YYYY-MM-DD'
@@ -120,13 +126,14 @@ const DEFAULT_STATE: StudyRouteState = {
 
 const PARAM_ORDER: readonly StudyRouteField[] = [
   'q', 'source', 'tag', 'folder', 'fav', 'sort', 'view', 'pages',
-  'srcs', 'tags', 'players', 'result', 'dest', 'addedFrom', 'addedTo', 'modifiedFrom', 'modifiedTo', 'vis',
+  'srcs', 'tags', 'players', 'result', 'dest', 'analysisState', 'addedFrom', 'addedTo', 'modifiedFrom', 'modifiedTo', 'vis',
 ];
 const KNOWN_PARAMS = new Set<StudyRouteField>(PARAM_ORDER);
 const SOURCE_ORDER: readonly StudyRouteSource[] = ['analysis', 'openings', 'puzzles', 'manual', 'import'];
 const SOURCES = new Set<StudyRouteSource>(SOURCE_ORDER);
 const RESULT_ORDER: readonly StudyRouteResult[] = ['white', 'black', 'draw', 'unknown'];
 const DEST_ORDER: readonly StudyRouteDestination[] = ['played', 'masters', 'repertoire', 'prep', 'uncategorized'];
+const ANALYSIS_STATE_ORDER: readonly StudyRouteAnalysisState[] = ['analyzed', 'not-analyzed'];
 const VISIBILITIES = new Set<StudyRouteVisibility>(['exclude', 'include', 'only']);
 const SORT_TOKENS = new Set<StudyRouteSortToken>(['created', 'updated', 'title']);
 const SORT_DIRECTIONS = new Set<StudySortDir>(['asc', 'desc']);
@@ -369,6 +376,8 @@ export function serializeStudyRouteState(state: StudyRouteState): string {
   for (const result of results) params.append('result', result);
   const dest = state.dest ? DEST_ORDER.filter(d => state.dest!.includes(d)) : [];
   for (const d of dest) params.append('dest', d);
+  const analysisState = state.analysisState ? ANALYSIS_STATE_ORDER.filter(s => state.analysisState!.includes(s)) : [];
+  for (const s of analysisState) params.append('analysisState', s);
   if (state.addedFrom) params.set('addedFrom', state.addedFrom);
   if (state.addedTo) params.set('addedTo', state.addedTo);
   if (state.modifiedFrom) params.set('modifiedFrom', state.modifiedFrom);
@@ -495,6 +504,12 @@ export function parseStudyRouteState(input: string): StudyRouteStateParseResult 
   const dest = parseEnumList('dest', allValues(grouped, 'dest', duplicateParams), DEST_ORDER, invalidParams);
   if (dest.length > 0) state.dest = dest;
 
+
+
+
+  const analysisState = parseEnumList('analysisState', allValues(grouped, 'analysisState', duplicateParams), ANALYSIS_STATE_ORDER, invalidParams);
+  if (analysisState.length > 0) state.analysisState = analysisState;
+
   let addedFrom = parseDateBound('addedFrom', lastValue(grouped, 'addedFrom', duplicateParams), invalidParams);
   let addedTo = parseDateBound('addedTo', lastValue(grouped, 'addedTo', duplicateParams), invalidParams);
   if (addedFrom !== undefined && addedTo !== undefined && addedFrom > addedTo) {
@@ -549,6 +564,7 @@ export function studyRouteNeedsFullLibraryScan(state: StudyRouteState): boolean 
     || (state.tags?.length ?? 0) > 0
     || (state.results?.length ?? 0) > 0
     || (state.dest?.length ?? 0) > 0
+    || (state.analysisState?.length ?? 0) > 0
     || Boolean(state.players)
     || Boolean(state.addedFrom) || Boolean(state.addedTo)
     || Boolean(state.modifiedFrom) || Boolean(state.modifiedTo)

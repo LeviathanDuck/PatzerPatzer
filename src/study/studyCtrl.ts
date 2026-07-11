@@ -207,6 +207,7 @@ let _advTags:         StudyRouteState['tags'];
 let _advPlayers:      StudyRouteState['players'];
 let _advResults:      StudyRouteState['results'];
 let _advDestinations: StudyRouteState['dest'];
+let _advAnalysisStates: StudyRouteState['analysisState'];
 let _advAddedFrom:    StudyRouteState['addedFrom'];
 let _advAddedTo:      StudyRouteState['addedTo'];
 let _advModifiedFrom: StudyRouteState['modifiedFrom'];
@@ -501,6 +502,12 @@ export function createStudyQueryPlan(
   const effectiveTags = _advTags?.length ? _advTags : (_filterTag ? [_filterTag] : []);
   const resultCandidates = advancedResultCandidates(_advResults);
   const destinationCandidates = advancedDestinationCandidates(_advDestinations);
+
+
+
+
+
+  const analysisStates = _advAnalysisStates ?? [];
   const recentlyAdded = advancedDateRange(_advAddedFrom, _advAddedTo);
   const recentlyModified = advancedDateRange(_advModifiedFrom, _advModifiedTo);
   const playerFilter = _advPlayers?.trim() ? [_advPlayers.trim()] : [];
@@ -525,6 +532,7 @@ export function createStudyQueryPlan(
     ...(playerFilter.length ? { players: playerFilter } : {}),
     ...(resultCandidates.length ? { results: resultCandidates } : {}),
     ...(destinationCandidates.length ? { destinations: destinationCandidates } : {}),
+    ...(analysisStates.length ? { analysisStates: [...analysisStates] } : {}),
     ...(recentlyAdded ? { recentlyAdded } : {}),
     ...(recentlyModified ? { recentlyModified } : {}),
     hiddenMode,
@@ -988,6 +996,7 @@ export function advTags(): StudyRouteState['tags']                 { return _adv
 export function advPlayers(): StudyRouteState['players']           { return _advPlayers; }
 export function advResults(): StudyRouteState['results']           { return _advResults; }
 export function advDestinations(): StudyRouteState['dest']         { return _advDestinations; }
+export function advAnalysisStates(): StudyRouteState['analysisState'] { return _advAnalysisStates; }
 export function advAddedFrom(): StudyRouteState['addedFrom']       { return _advAddedFrom; }
 export function advAddedTo(): StudyRouteState['addedTo']           { return _advAddedTo; }
 export function advModifiedFrom(): StudyRouteState['modifiedFrom'] { return _advModifiedFrom; }
@@ -999,6 +1008,7 @@ export function setAdvTags(v: StudyRouteState['tags']): void         { _advTags 
 export function setAdvPlayers(v: string): void                       { const t = v.trim(); _advPlayers = t ? t : undefined; }
 export function setAdvResults(v: StudyRouteState['results']): void   { _advResults = v && v.length ? v : undefined; }
 export function setAdvDestinations(v: StudyRouteState['dest']): void { _advDestinations = v && v.length ? v : undefined; }
+export function setAdvAnalysisStates(v: StudyRouteState['analysisState']): void { _advAnalysisStates = v && v.length ? v : undefined; }
 export function setAdvAddedFrom(v: string | undefined): void         { _advAddedFrom = v || undefined; }
 export function setAdvAddedTo(v: string | undefined): void           { _advAddedTo = v || undefined; }
 export function setAdvModifiedFrom(v: string | undefined): void      { _advModifiedFrom = v || undefined; }
@@ -1014,6 +1024,7 @@ export function clearAdvancedSearch(): void {
   _advPlayers = undefined;
   _advResults = undefined;
   _advDestinations = undefined;
+  _advAnalysisStates = undefined;
   _advAddedFrom = undefined;
   _advAddedTo = undefined;
   _advModifiedFrom = undefined;
@@ -1047,6 +1058,7 @@ export function studyLibraryRouteSnapshot(pages: number = loadedStudyPageCount()
   if (_advPlayers)              snapshot.players = _advPlayers;
   if (_advResults?.length)      snapshot.results = _advResults;
   if (_advDestinations?.length) snapshot.dest = _advDestinations;
+  if (_advAnalysisStates?.length) snapshot.analysisState = _advAnalysisStates;
   if (_advAddedFrom)            snapshot.addedFrom = _advAddedFrom;
   if (_advAddedTo)              snapshot.addedTo = _advAddedTo;
   if (_advModifiedFrom)         snapshot.modifiedFrom = _advModifiedFrom;
@@ -1075,6 +1087,7 @@ export function applyStudyLibraryRouteState(state: StudyRouteState): void {
   _advPlayers      = state.players;
   _advResults      = state.results;
   _advDestinations = state.dest;
+  _advAnalysisStates = state.analysisState;
   _advAddedFrom    = state.addedFrom;
   _advAddedTo      = state.addedTo;
   _advModifiedFrom = state.modifiedFrom;
