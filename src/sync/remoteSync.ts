@@ -39,6 +39,7 @@ import {
 } from './versionMetadata';
 import {
   buildRecreateRequeueInput,
+  collectOutboxMarkerCoverFromRaw,
   countDurableVersionedOutboxEntries,
   decideRecreateOverTombstone,
   defaultDurableVersionedOutboxStorage,
@@ -482,7 +483,7 @@ function resetCurrentIdentityVersionMetadata(): void {
 
 
 
-  resetRemoteSyncItemState(identity, { rebuildMarkers: collectMarkerRebuildMutations })
+  resetRemoteSyncItemState(identity, { rebuildMarkers: buildMarkerRebuildCover })
     .catch(error => {
       recordRemoteSyncLog('pull', 'error', `Could not clear per-item version state after a generation change: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -2823,7 +2824,7 @@ function clearRemoteSyncMarkers(options: { clearOutbox?: boolean; clearGeneratio
 
 
 
-  resetRemoteSyncItemState(clearingIdentity, { rebuildMarkers: collectMarkerRebuildMutations })
+  resetRemoteSyncItemState(clearingIdentity, { rebuildMarkers: buildMarkerRebuildCover })
     .catch(error => {
       recordRemoteSyncLog('logout', 'error', `Could not clear per-item sync state: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -3326,19 +3327,10 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
 
 
 
-async function collectMarkerRebuildMutations(): Promise<RemoteSyncItemMarkerMaxMutation[]> {
+
+function buildMarkerRebuildCover(rawEntries: readonly unknown[]): RemoteSyncItemMarkerMaxMutation[] {
   if (isRemoteSyncItemStateEphemeral()) return [];
-  const entries = await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage());
-  return entries.map(entry => {
-    const enqueuedAt = Number.isFinite(entry.enqueuedAt) && entry.enqueuedAt > 0 ? entry.enqueuedAt : undefined;
-    const cover = entry.clientUpdatedAt ?? enqueuedAt ?? Date.now();
-    return {
-      store: entry.store,
-      itemKey: entry.itemKey,
-      updatedAt: cover,
-      ...(entry.operation === 'delete' ? { deletedAt: cover } : {}),
-    };
-  });
+  return collectOutboxMarkerCoverFromRaw(rawEntries);
 }
 
 

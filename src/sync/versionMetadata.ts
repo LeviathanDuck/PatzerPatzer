@@ -411,9 +411,14 @@ class MemorySyncItemStateStorage implements SyncItemStateStorage {
     }
   }
 
-  async resetIdentityRows(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void> {
+  async resetIdentityRows(
+    identity: string,
+    buildRows: ((outboxEntries: readonly unknown[]) => ReadonlyArray<{ stateKey: string }>) | null,
+  ): Promise<void> {
     await this.clearIdentity(identity);
-    await this.putRows(rows);
+
+
+    if (buildRows) await this.putRows(buildRows([]));
   }
 
   async readMeta(key: string): Promise<unknown> {
@@ -763,7 +768,7 @@ const itemStateResetPending = new Set<string>();
 
 
 
-const itemStateResetRebuild = new Map<string, () => Promise<ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>>();
+const itemStateResetRebuild = new Map<string, (outboxEntries: readonly unknown[]) => ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>();
 
 /** Test hook: collectors registered by reset calls persist by design; unit blocks that reuse an
  * identity across storage swaps clear them here. */
@@ -787,18 +792,28 @@ function queueIdentityClear(identity: string): Promise<void> {
 
     try {
       const rebuild = itemStateResetRebuild.get(identity);
-      let rows: RemoteSyncItemStateRow[] = [];
-      if (rebuild) rows = foldMarkerMaxMutationsToRows(identity, await rebuild());
       const storage = itemStateStorage();
       if (storage.resetIdentityRows) {
-        await storage.resetIdentityRows(identity, rows);
+
+
+
+        await storage.resetIdentityRows(
+          identity,
+          rebuild ? raw => foldMarkerMaxMutationsToRows(identity, rebuild(raw)) : null,
+        );
       } else {
         // Shim-only fallback (no atomic reset): the poison window still guards this tab; the
-        // cross-tab empty interval only exists on storages that never see real peers.
+        // cross-tab empty interval only exists on storages that never see real peers. Without
+        // an entries read, the builder derives cover from an empty set.
         await storage.clearIdentity(identity);
+        const rows = rebuild ? foldMarkerMaxMutationsToRows(identity, rebuild([])) : [];
         if (rows.length > 0) await storage.putRows(rows);
       }
     } catch (error) {
+
+
+
+      itemStateResetPending.add(identity);
       invalidateRemoteSyncItemState(identity);
       throw error;
     }
@@ -830,7 +845,8 @@ export interface RemoteSyncItemStateResetOptions {
 
 
 
-  rebuildMarkers?: () => Promise<ReadonlyArray<RemoteSyncItemMarkerMaxMutation>>;
+
+  rebuildMarkers?: (outboxEntries: readonly unknown[]) => ReadonlyArray<RemoteSyncItemMarkerMaxMutation>;
 }
 
 export function resetRemoteSyncItemState(identity: string, options: RemoteSyncItemStateResetOptions = {}): Promise<void> {

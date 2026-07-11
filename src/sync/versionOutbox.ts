@@ -731,6 +731,37 @@ export async function replaceDurableVersionedOutboxEntry(
   });
 }
 
+
+
+
+
+
+
+
+export interface OutboxMarkerCoverMutation {
+  store: string;
+  itemKey: string;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
+export function collectOutboxMarkerCoverFromRaw(raw: readonly unknown[], now = Date.now()): OutboxMarkerCoverMutation[] {
+  const cover: OutboxMarkerCoverMutation[] = [];
+  for (const value of raw) {
+    const entry = normalizeEntry(value);
+    if (!entry) continue;
+    const enqueuedAt = Number.isFinite(entry.enqueuedAt) && entry.enqueuedAt > 0 ? entry.enqueuedAt : undefined;
+    const coverAt = entry.clientUpdatedAt ?? enqueuedAt ?? now;
+    cover.push({
+      store: entry.store,
+      itemKey: entry.itemKey,
+      updatedAt: coverAt,
+      ...(entry.operation === 'delete' ? { deletedAt: coverAt } : {}),
+    });
+  }
+  return cover;
+}
+
 export interface LegacyOutboxMirrorMigrationResult {
   /** Valid legacy items whose enqueue-equivalent mutations were committed. */
   migrated: number;
@@ -1173,7 +1204,14 @@ export interface SyncItemStateStorage {
 
 
 
-  resetIdentityRows?(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void>;
+
+
+
+
+  resetIdentityRows?(
+    identity: string,
+    buildRows: ((outboxEntries: readonly unknown[]) => ReadonlyArray<{ stateKey: string }>) | null,
+  ): Promise<void>;
   readMeta(key: string): Promise<unknown>;
   putMeta(row: { key: string }): Promise<void>;
   /**
@@ -1298,28 +1336,53 @@ export function createIndexedDbSyncItemStateStorage(dbName = OUTBOX_DB_NAME): Sy
         };
       }));
     },
-    async resetIdentityRows(identity: string, rows: ReadonlyArray<{ stateKey: string }>): Promise<void> {
+    async resetIdentityRows(
+      identity: string,
+      buildRows: ((outboxEntries: readonly unknown[]) => ReadonlyArray<{ stateKey: string }>) | null,
+    ): Promise<void> {
+
+
 
 
 
       return withDb(db => new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(SYNC_ITEM_STATE_STORE_NAME, 'readwrite');
+        const tx = db.transaction([SYNC_ITEM_STATE_STORE_NAME, OUTBOX_STORE_NAME], 'readwrite');
         tx.onerror = () => reject(tx.error ?? new Error('Sync item-state reset failed.'));
         tx.onabort = () => reject(tx.error ?? new Error('Sync item-state reset aborted.'));
         tx.oncomplete = () => resolve();
-        const store = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
-        const request = store.getAll();
-        request.onerror = () => reject(request.error ?? new Error('Could not read sync item-state rows for reset.'));
-        request.onsuccess = () => {
-          try {
-            const existing = Array.isArray(request.result) ? request.result : [];
-            for (const row of existing) {
-              const record = row as Record<string, unknown> | null;
-              if (record && record.identity === identity && typeof record.stateKey === 'string') {
-                store.delete(record.stateKey);
+        const stateStore = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
+        const finish = (rows: ReadonlyArray<{ stateKey: string }>): void => {
+          const stateRequest = stateStore.getAll();
+          stateRequest.onerror = () => reject(stateRequest.error ?? new Error('Could not read sync item-state rows for reset.'));
+          stateRequest.onsuccess = () => {
+            try {
+              const existing = Array.isArray(stateRequest.result) ? stateRequest.result : [];
+              for (const row of existing) {
+                const record = row as Record<string, unknown> | null;
+                if (record && record.identity === identity && typeof record.stateKey === 'string') {
+                  stateStore.delete(record.stateKey);
+                }
               }
+              for (const row of rows) stateStore.put(row);
+            } catch (error) {
+              try {
+                tx.abort();
+              } catch {
+                // Already aborting/inactive: the handlers settle the promise.
+              }
+              reject(error instanceof Error ? error : new Error(String(error)));
             }
-            for (const row of rows) store.put(row);
+          };
+        };
+        if (!buildRows) {
+          finish([]);
+          return;
+        }
+        const entriesRequest = tx.objectStore(OUTBOX_STORE_NAME).getAll();
+        entriesRequest.onerror = () => reject(entriesRequest.error ?? new Error('Could not read outbox entries for reset cover.'));
+        entriesRequest.onsuccess = () => {
+          try {
+            finish(buildRows(Array.isArray(entriesRequest.result) ? entriesRequest.result : []));
           } catch (error) {
             try {
               tx.abort();
