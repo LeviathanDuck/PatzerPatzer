@@ -118,11 +118,40 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
         const parentContext = parentNode?.fen === cand.fenBefore
           ? contextFromNodeList(parentNodes, 'lfym-silent-parent', cand.parentPath)
           : fenOnlyPositionContext(cand.fenBefore, 'lfym-silent-parent', 'candidate-parent-path-mismatch');
+
+
+
+
+
+
+
         evalPositionSilent(
           parentContext,
           cand.parentPath,
           cand.parentPath.length >= 2 ? cand.parentPath.slice(0, -2) : '',
           cand.ply - 1,
+          parentNode?.fen ?? null,
+          ev => {
+            // Display-only delivery: fires ONLY when ctrl.ts adjudicated a FEN mismatch (the
+            // matching-node case stores to evalCache as before and never calls this). Route the
+            // non-cache result to the two consumers the old cache write used to feed:
+            // 1) the candidate's evalDiff — inject the display eval through
+            //    requestRetroBackgroundEval's existing eval-getter seam for the parent path only;
+            requestRetroBackgroundEval(cand, path =>
+              path === cand.parentPath ? ev : evalCache.get(path));
+            // 2) the dual-eval "vs Engine Best" box — merge into the frozen snapshot (the view
+            //    prefers snapshot values over its live evalCache fallback, which the display-only
+            //    result deliberately never populates). Only fill genuinely-missing values.
+            const snap = retro.getSolvingMoveSnapshot();
+            if (snap && snap.parentPath === cand.parentPath
+                && snap.engineBestCp === undefined && snap.engineBestMate === undefined) {
+              retro.setSolvingMoveSnapshot({
+                ...snap,
+                engineBestCp:   ev.cp,
+                engineBestMate: ev.mate,
+              });
+            }
+          },
         );
       }
 

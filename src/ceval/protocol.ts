@@ -126,6 +126,12 @@ export class StockfishProtocol {
   private onLine: LineCallback | undefined;
   private _initStartedAt: number | undefined;
   private _enginePhase: EnginePhase = 'idle';
+
+
+
+
+
+  private _searchGeneration = 0;
   private _positionContext: EnginePositionContext | null = null;
 
   // Device capability snapshot — read once at engine-start for error correlation.
@@ -490,14 +496,30 @@ export class StockfishProtocol {
   go(depth: number, multiPv = 1, movetime?: number): void {
     this.send(`setoption name MultiPV value ${multiPv}`);
     const timeClause = movetime !== undefined ? ` movetime ${movetime}` : '';
+    this._searchGeneration++;
     this._enginePhase = 'analyzing';
     this.send(`go depth ${depth}${timeClause}`);
   }
 
-  /** Interrupt a running search. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   stop(): void {
+    const generationAtSend = this._searchGeneration;
     this.send('stop');
-    this._enginePhase = 'idle';
+    if (this._searchGeneration === generationAtSend) this._enginePhase = 'idle';
   }
 
 
@@ -530,6 +552,7 @@ export class StockfishProtocol {
    */
   goPlay(depth: number): void {
     this.send('setoption name MultiPV value 1');
+    this._searchGeneration++;
     this._enginePhase = 'analyzing';
     this.send(`go depth ${depth}`);
   }

@@ -11,6 +11,7 @@ import { isDeeperEval } from '../idb/index';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import { type EngineMode, type EngineStrengthConfig, STRENGTH_LEVELS, DEFAULT_STRENGTH_LEVEL } from './types';
 import { record, Severity } from '../diagnostics';
+import { nodeListAt } from '../tree/ops';
 import {
   contextFromNodeList,
   engineFenEquals,
@@ -100,6 +101,13 @@ export function initEngine(deps: {
 
 let silentEvalActive = false;
 let onSilentEvalBestmove: (() => void) | null = null;
+
+
+let silentEvalFenGuardDropLogAt = 0;
+const SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS = 15_000;
+
+
+let silentEvalCancelStopFailureLogAt = 0;
 
 export function isSilentEvalActive(): boolean {
   return silentEvalActive;
@@ -1310,8 +1318,19 @@ export function toggleEngine(): void {
       evalCurrentPosition();
     }
   } else {
+
+
+
+
+
+
+
+
+
+
+    const silentCancelOwnedStop = cancelSilentEval();
     cancelLiveEngineUiRefresh();
-    protocol.stop();
+    if (!silentCancelOwnedStop) protocol.stop();
     currentEval  = {};
     currentEvalIdentity = null;
     evalIsThreat = false;
@@ -1343,6 +1362,47 @@ export function setEvalNode(id: string, path: string, ply: number, parentPath: s
 }
 export function isEngineSearchActive(): boolean { return engineSearchActive; }
 
+
+
+
+
+
+function recordSilentEvalFenGuardDrop(stage: 'start' | 'store', nodePly: number, hasNode: boolean): void {
+  const now = Date.now();
+  if (now - silentEvalFenGuardDropLogAt < SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS) return;
+  silentEvalFenGuardDropLogAt = now;
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.ctrl',
+    sourceTag: 'engine',
+    message: 'silent-eval-fen-guard-drop',
+    metadata: {
+      eventType: 'silent-eval-fen-guard-drop',
+      stage,
+      ply:     nodePly,
+      hasNode,
+    },
+    redactionClass: 'safe',
+  });
+}
+
+
+
+
+
+
+
+function currentTreeNodeFenAtPath(path: string): string | null {
+  try {
+    const nodes = nodeListAt(_getCtrl().root, path);
+    if (nodes.length !== path.length / 2 + 1) return null;
+    return nodes[nodes.length - 1]?.fen ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Evaluate a single FEN position silently (no UI updates, no arrows, no redraws).
  * Stores the result in evalCache at `nodePath` when the engine bestmove arrives.
@@ -1359,11 +1419,35 @@ export function evalPositionSilent(
   nodePath:        string,
   parentPath:      string,
   nodePly:         number,
+  expectedNodeFen: string | null,
+  onDisplayResult?: (ev: PositionEval) => void,
 ): void {
   if (!engineEnabled || !engineReady) return;
   if (engineMode === 'play') return;
   if (isSilentEvalActive()) return;
   if (engineSearchActive) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const storeAllowed = expectedNodeFen !== null && engineFenEquals(expectedNodeFen, positionContext.currentFen);
+  if (!storeAllowed && !onDisplayResult) {
+    recordSilentEvalFenGuardDrop('start', nodePly, expectedNodeFen !== null);
+    return;
+  }
+  // The searched FEN is this result's identity — captured here, never re-read from mutable state.
+  const searchedFen = positionContext.currentFen;
 
   // Park the eval-node tracking on the target path so the bestmove path guard
   // (line 715) does not reject the result as stale.
@@ -1384,26 +1468,40 @@ export function evalPositionSilent(
     onSilentEvalBestmove = null;
 
     const stored: PositionEval = { ...currentEval };
-    if (stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined)) {
-      const cached = evalCache.get(nodePath);
-      if (!cached || !cached.depth || stored.depth > cached.depth) {
-        const pEval = evalCache.get(parentPath);
-        if (pEval?.cp !== undefined && stored.cp !== undefined) {
-          stored.delta = stored.cp - pEval.cp;
-        }
-        if (pEval) {
-          const nodeWcV    = evalWinChances(stored);
-          const parentWcV  = evalWinChances(pEval);
-          if (nodeWcV !== undefined && parentWcV !== undefined) {
-            const whiteToMove    = nodePly % 2 === 1;
-            const moverNodeWc    = whiteToMove ? nodeWcV   : -nodeWcV;
-            const moverParentWc  = whiteToMove ? parentWcV : -parentWcV;
-            stored.loss = (moverParentWc - moverNodeWc) / 2;
+    const hasResult = stored.depth !== undefined && (stored.cp !== undefined || stored.mate !== undefined);
+    if (!storeAllowed) {
+
+
+      if (hasResult) onDisplayResult?.(stored);
+    } else if (hasResult) {
+
+
+
+
+      const nodeFenNow = currentTreeNodeFenAtPath(nodePath);
+      if (nodeFenNow === null || !engineFenEquals(nodeFenNow, searchedFen)) {
+        recordSilentEvalFenGuardDrop('store', nodePly, nodeFenNow !== null);
+      } else {
+        const cached = evalCache.get(nodePath);
+        if (!cached || !cached.depth || stored.depth! > cached.depth) {
+          const pEval = evalCache.get(parentPath);
+          if (pEval?.cp !== undefined && stored.cp !== undefined) {
+            stored.delta = stored.cp - pEval.cp;
           }
+          if (pEval) {
+            const nodeWcV    = evalWinChances(stored);
+            const parentWcV  = evalWinChances(pEval);
+            if (nodeWcV !== undefined && parentWcV !== undefined) {
+              const whiteToMove    = nodePly % 2 === 1;
+              const moverNodeWc    = whiteToMove ? nodeWcV   : -nodeWcV;
+              const moverParentWc  = whiteToMove ? parentWcV : -parentWcV;
+              stored.loss = (moverParentWc - moverNodeWc) / 2;
+            }
+          }
+          if (cached?.label && !stored.label) stored.label = cached.label;
+          evalCache.set(nodePath, stored);
+          bumpEvalCacheRevision();
         }
-        if (cached?.label && !stored.label) stored.label = cached.label;
-        evalCache.set(nodePath, stored);
-        bumpEvalCacheRevision();
       }
     }
     // Resume live analysis once the silent eval is done.
@@ -1418,4 +1516,113 @@ export function evalPositionSilent(
   beginForegroundSearch('lfym-silent-eval', positionContext);
   protocol.setPositionContext(positionContext);
   protocol.go(analysisDepth, 1, searchUntilDepth ? undefined : searchTime);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function cancelSilentEval(): boolean {
+  if (!silentEvalActive) return false;
+  const searchOutstanding = engineSearchActive;
+  invalidateForegroundSearchIdentity();
+  onSilentEvalBestmove = null;
+  silentEvalActive     = false;
+  currentEval          = {};
+  currentEvalIdentity  = null;
+  pendingLines         = [];
+  pendingLivePromotion = null;
+  // No override state may linger onto the successor search.
+  _activeSearchDescriptor = { isOverride: false, blackToMove: false, hasCacheTarget: true };
+  cancelLiveEngineUiRefresh();
+  if (searchOutstanding) {
+
+
+
+
+
+
+
+
+
+    pendingEval = true;
+    pendingStopCount++;
+    const creditsBeforeStop = pendingStopCount;
+    try {
+      protocol.stop();
+    } catch (error) {
+
+
+
+
+      const now = Date.now();
+      if (now - silentEvalCancelStopFailureLogAt >= SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS) {
+        silentEvalCancelStopFailureLogAt = now;
+        record({
+          kind: 'engine',
+          severity: Severity.Warn,
+          source: 'engine.ctrl',
+          sourceTag: 'engine',
+          message: 'silent-eval-cancel-stop-failed',
+          metadata: {
+            eventType: 'silent-eval-cancel-stop-failed',
+            errorName: error instanceof Error ? error.name : 'UnknownError',
+          },
+          redactionClass: 'safe',
+        });
+      }
+      // Truthful accounting: the stop command was not accepted, so nothing will drain OUR credit —
+      // roll it back. Skip the rollback when the module emitted the owed bestmove synchronously
+      // BEFORE throwing (the drain gate already consumed the credit; never go negative).
+      if (pendingStopCount === creditsBeforeStop) pendingStopCount--;
+      // Successor delivery must not depend on the failed command. If the protocol reports no
+      // active search, no bestmove will ever arrive to fire the queued pendingEval — clear the
+      // dead search bookkeeping and start the successor directly (no-ops when the engine is
+      // disabled, e.g. the toggle-off seam). If the protocol still reports analyzing, the old
+      // search's own bestmove — its identity already invalidated above — will stale-drop through
+      // parseEngineLine and fire pendingEval via the existing path.
+      if (!protocol.isAnalyzing() && pendingEval) {
+        engineSearchActive = false;
+        evalCurrentPosition();
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+
+
+export function __getPendingStopCountForTests(): number { return pendingStopCount; }
+export function __getPendingEvalForTests(): boolean { return pendingEval; }
+export function __resetEngineDrainStateForTests(): void {
+  silentEvalActive     = false;
+  onSilentEvalBestmove = null;
+  pendingStopCount     = 0;
+  pendingEval          = false;
+  engineSearchActive   = false;
+  currentEval          = {};
+  currentEvalIdentity  = null;
+  pendingLines         = [];
+  pendingLivePromotion = null;
 }
