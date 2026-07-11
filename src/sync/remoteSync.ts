@@ -1942,6 +1942,22 @@ export async function ensureRemoteSyncItemStateReadiness(): Promise<void> {
 }
 
 async function ensureRemoteSyncItemStateActive(identity: string): Promise<void> {
+
+
+
+
+
+  let gateIdentity = identity;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await activateItemStateForIdentity(gateIdentity);
+    const current = storedServerIdentity();
+    if (current === gateIdentity) return;
+    gateIdentity = current;
+  }
+  await activateItemStateForIdentity(gateIdentity);
+}
+
+async function activateItemStateForIdentity(identity: string): Promise<void> {
   await ensureRemoteSyncItemVersionsActive(localStorage, identity);
   if (!isRemoteSyncItemStateEphemeral() && !markerMigrationMemo.has(identity)) {
     await migrateRemoteSyncItemMarkersToIdb(identity, collectLegacyMarkerRecords(), {
@@ -4762,9 +4778,11 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
     try {
 
 
+      await ensureRemoteSyncItemStateActive(identity);
+
+
 
       const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
-      await ensureRemoteSyncItemStateActive(identity);
       const resolveVersion = createRemoteSyncItemStateResolver(identity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
