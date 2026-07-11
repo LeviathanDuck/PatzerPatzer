@@ -3223,11 +3223,14 @@ async function waitForPendingVersionedOutboxWrites(): Promise<void> {
 // localStorage outbox mirror, which cannot hold them). null means unknown — fall back to legacy.
 let durableOutboxCountCache: number | null = null;
 
-async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
+async function enqueueVersionedOutboxItem(item: RemoteSyncItem, operationIdentity?: string): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
 
-  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+
+
+
+  const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const baseVersion = getRemoteSyncItemStateVersion(identity, item.store, item.itemKey);
   await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
     store: item.store,
@@ -3239,9 +3242,9 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
   });
 }
 
-async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]): Promise<void> {
+async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[], operationIdentity?: string): Promise<void> {
   if (items.length === 0) return;
-  const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+  const identity = operationIdentity ?? await ensureRemoteSyncItemStateActive(storedServerIdentity());
   const resolveVersion = createRemoteSyncItemStateResolver(identity);
   await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
@@ -3266,10 +3269,10 @@ async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]
   }
 }
 
-async function migrateLegacyOutboxToVersioned(): Promise<number> {
+async function migrateLegacyOutboxToVersioned(operationIdentity?: string): Promise<number> {
   const snapshot = readOutboxSnapshot({ logInvalid: true });
   if (snapshot.valid.length === 0) return 0;
-  await Promise.all(snapshot.valid.map(enqueueVersionedOutboxItem));
+  await Promise.all(snapshot.valid.map(item => enqueueVersionedOutboxItem(item, operationIdentity)));
   writeOutboxSnapshot([], snapshot.preservedInvalid);
   return snapshot.valid.length;
 }
@@ -3322,24 +3325,32 @@ export function enqueueRemoteSyncItem(item: RemoteSyncItem): void {
 
 
   queuePendingVersionedOutboxWrite((async () => {
-    // Chain drain FIRST (rule 6), gate LAST (round 4): no await sits between the stabilized
-    // identity and the synchronous suppression read below.
-    await waitForRemoteSyncItemStateWrites();
-    const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
-    if (!isDeletedItem(normalized) && shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity)) {
-      recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
+    // ONE identity per attempt (round 5, Sol Critical-1): suppression, markers, and the CAS
+    // base must never split accounts. If the stored identity moved during the marker awaits,
+    // RESTART the whole attempt under the new identity before anything durable commits.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      // Chain drain FIRST (rule 6), gate LAST (round 4): no await sits between the stabilized
+      // identity and the synchronous suppression read below.
+      await waitForRemoteSyncItemStateWrites();
+      const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+      if (!isDeletedItem(normalized) && shouldSuppressRemoteSyncUpsert(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity)) {
+        recordSuppressedRemoteSyncEnqueue(normalized.store, normalized.itemKey);
+        return;
+      }
+      if (isDeletedItem(normalized)) await rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
+      else {
+        await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
+        await clearItemDeletedAt(normalized.store, normalized.itemKey, opIdentity);
+      }
+      if (storedServerIdentity() !== opIdentity) continue; // Identity moved: redo under it.
+      // Legacy mirror BEFORE the durable enqueue — parity with the pre-Wave-6 order, where the
+      // mirror was written unconditionally while the durable write settled asynchronously.
+      const snapshot = readOutboxSnapshot({ logInvalid: true });
+      writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
+      await enqueueVersionedOutboxItem(normalized, opIdentity);
       return;
     }
-    if (isDeletedItem(normalized)) await rememberItemDeletedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
-    else {
-      await rememberItemUpdatedAt(normalized.store, normalized.itemKey, normalized.updatedAt, opIdentity);
-      await clearItemDeletedAt(normalized.store, normalized.itemKey, opIdentity);
-    }
-    // Legacy mirror BEFORE the durable enqueue — parity with the pre-Wave-6 order, where the
-    // mirror was written unconditionally while the durable write settled asynchronously.
-    const snapshot = readOutboxSnapshot({ logInvalid: true });
-    writeOutboxSnapshot(mergeOutboxItem(snapshot.valid, normalized), snapshot.preservedInvalid);
-    await enqueueVersionedOutboxItem(normalized);
+    throw new Error('RemoteSync identity kept changing during enqueue; retry after login settles.');
   })().catch(error => {
     const message = error instanceof Error ? error.message : 'Could not persist versioned RemoteSync outbox entry.';
     recordRemoteSyncLog('flush', 'error', message);
@@ -3389,24 +3400,30 @@ export function enqueueRemoteSyncItemsBatch(items: readonly RemoteSyncItem[]): v
   const normalized: RemoteSyncItem[] = [];
   const queueOpId = safeBeginProgress('queueing', { total: candidates.length });
   queuePendingVersionedOutboxWrite((async () => {
-    await waitForRemoteSyncItemStateWrites();
-    const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
-    for (const entry of candidates) {
-      if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt, opIdentity)) {
-        recordSuppressedRemoteSyncEnqueue(entry.store, entry.itemKey);
-        continue;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await waitForRemoteSyncItemStateWrites();
+      const opIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
+      normalized.length = 0;
+      for (const entry of candidates) {
+        if (!isDeletedItem(entry) && shouldSuppressRemoteSyncUpsert(entry.store, entry.itemKey, entry.updatedAt, opIdentity)) {
+          recordSuppressedRemoteSyncEnqueue(entry.store, entry.itemKey);
+          continue;
+        }
+        normalized.push(entry);
       }
-      normalized.push(entry);
-    }
-    if (normalized.length === 0) return;
-    for (const entry of normalized) {
-      if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
-      else {
-        await rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
-        await clearItemDeletedAt(entry.store, entry.itemKey, opIdentity);
+      if (normalized.length === 0) return;
+      for (const entry of normalized) {
+        if (isDeletedItem(entry)) await rememberItemDeletedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
+        else {
+          await rememberItemUpdatedAt(entry.store, entry.itemKey, entry.updatedAt, opIdentity);
+          await clearItemDeletedAt(entry.store, entry.itemKey, opIdentity);
+        }
       }
+      if (storedServerIdentity() !== opIdentity) continue; // Identity moved: redo under it.
+      await enqueueVersionedOutboxItemsBatch(normalized, opIdentity);
+      return;
     }
-    await enqueueVersionedOutboxItemsBatch(normalized);
+    throw new Error('RemoteSync identity kept changing during batch enqueue; retry after login settles.');
   })().then(() => {
     safeCompleteProgress(queueOpId);
     safeClearProgressIssue('durable-enqueue-failed');
@@ -3989,7 +4006,7 @@ async function drainVersionedRemoteSyncOutbox(
 
 
   const drainIdentity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
-  const migrated = await migrateLegacyOutboxToVersioned();
+  const migrated = await migrateLegacyOutboxToVersioned(drainIdentity);
   await waitForPendingVersionedOutboxWrites();
   const result = await runVersionedPreWriteGate({
     versionStorage: localStorage,
