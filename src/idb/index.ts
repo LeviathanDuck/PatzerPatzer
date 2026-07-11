@@ -153,6 +153,40 @@ function recordReqFailure(
   return err;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function recordTxFailure(tx: IDBTransaction, eventLabel: string, operationType?: string): void {
+  const storeNames = Array.from(tx.objectStoreNames);
+  const storeName = storeNames.length === 1 ? storeNames[0]! : storeNames.join(',');
+  const mode = tx.mode ?? 'unknown';
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    sourceTag: 'idb',
+    message: `IDB transaction ${eventLabel}`,
+    metadata: {
+      storeName,
+      operation: operationType ?? (mode === 'readonly' ? 'read' : 'write'),
+      mode,
+      errorName: tx.error?.name ?? 'UnknownError',
+    },
+    redactionClass: 'safe',
+  });
+}
+
 function enqueueMainDbPut(storeName: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt = Date.now()): void {
   void import('../sync/remoteSync')
     .then(({ enqueueRemoteSyncUpsert }) => enqueueRemoteSyncUpsert(storeName, itemKey, payload, updatedAt))
@@ -917,6 +951,8 @@ export async function putDiagnosticEvent(event: DiagnosticEvent): Promise<void> 
 
 
 
+
+
 export async function getDiagnosticEvents(options: { limit?: number; kind?: string } = {}): Promise<DiagnosticEvent[]> {
   const limit = options.limit ?? 100;
   if (limit <= 0) return [];
@@ -956,9 +992,11 @@ export async function getDiagnosticEvents(options: { limit?: number; kind?: stri
       }
     };
     tx.onerror = () => {
+      recordTxFailure(tx, 'onerror', 'read');
       settleReject(tx.error ?? new Error('Diagnostic-events read transaction failed'));
     };
     tx.onabort = () => {
+      recordTxFailure(tx, 'onabort', 'read');
       settleReject(tx.error ?? new DOMException('Diagnostic-events read transaction aborted', 'AbortError'));
     };
 
@@ -1023,12 +1061,13 @@ export async function getDiagnosticSession(sessionId: string): Promise<Diagnosti
   });
 }
 
-// Settlement-family sibling of getDiagnosticEvents (BUG-2026-07-10-014). Settle ONLY from the
-// owning transaction's outcome; both the exhaustion and limit-cap stops record the accumulated
-// list and stop driving the cursor. The recency ordering (index('startedAt') 'prev') and the limit
-// cap are byte-preserved. See getDiagnosticEvents for the full family rationale (bespoke onabort
-// record() dropped for AbortError synthesis; cursor-onerror recordReqFailure retained; no reader
-// recursion).
+
+
+
+
+
+
+
 export async function getRecentDiagnosticSessions(limit: number): Promise<DiagnosticSession[]> {
   if (limit <= 0) return [];
 
@@ -1067,9 +1106,11 @@ export async function getRecentDiagnosticSessions(limit: number): Promise<Diagno
       }
     };
     tx.onerror = () => {
+      recordTxFailure(tx, 'onerror', 'read');
       settleReject(tx.error ?? new Error('Diagnostic-sessions read transaction failed'));
     };
     tx.onabort = () => {
+      recordTxFailure(tx, 'onabort', 'read');
       settleReject(tx.error ?? new DOMException('Diagnostic-sessions read transaction aborted', 'AbortError'));
     };
 
@@ -1280,11 +1321,13 @@ export async function replaceDiagnosticAggregates(
   await txDone(tx);
 }
 
-// Settlement-family sibling of getDiagnosticEvents (BUG-2026-07-10-014). Full-scan (no limit): only
-// exhaustion records the accumulated list, then tx.oncomplete resolves. The optional kind filter is
-// byte-preserved (index('kind').openCursor(kind) vs the full store.openCursor()). The previous bare
-// `tx.onabort = () => reject(tx.error)` is replaced by the family's AbortError-synthesis reject so a
-// null tx.error still surfaces a typed rejection; cursor-onerror recordReqFailure retained.
+
+
+
+
+
+
+
 export async function getDiagnosticAggregates(kind?: DiagnosticAggregateKind): Promise<DiagnosticAggregate[]> {
   const db = await openGameDb();
   return new Promise((resolve, reject) => {
@@ -1321,9 +1364,11 @@ export async function getDiagnosticAggregates(kind?: DiagnosticAggregateKind): P
       }
     };
     tx.onerror = () => {
+      recordTxFailure(tx, 'onerror', 'read');
       settleReject(tx.error ?? new Error('Diagnostic-aggregates read transaction failed'));
     };
     tx.onabort = () => {
+      recordTxFailure(tx, 'onabort', 'read');
       settleReject(tx.error ?? new DOMException('Diagnostic-aggregates read transaction aborted', 'AbortError'));
     };
 
@@ -1827,6 +1872,7 @@ export function classifyStoredAnalysisRecord(
 
 
 
+
 function collectAnalysisLibraryClassificationCursor(
   db: IDBDatabase,
   analysisVersion: number,
@@ -1865,9 +1911,11 @@ function collectAnalysisLibraryClassificationCursor(
       }
     };
     tx.onerror = () => {
+      recordTxFailure(tx, 'onerror', 'read');
       settleReject(tx.error ?? new Error('Analysis-library classification transaction failed'));
     };
     tx.onabort = () => {
+      recordTxFailure(tx, 'onabort', 'read');
       settleReject(tx.error ?? new DOMException('Analysis-library classification transaction aborted', 'AbortError'));
     };
 
