@@ -174,6 +174,53 @@ export function forceClearEvalPositionOverride(_reason: string): void {
  * Mirrors the Lichess `onNewCeval` exact-FEN check (node.fen !== ev.fen).
  */
 let _activeOverrideFen: string | null = null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface ActiveSearchDescriptor {
+  /** True when the active search is an override (openings / puzzle / study-detail). */
+  isOverride: boolean;
+  /** Override searches only: negate raw engine scores to white POV (searched FEN is black-to-move). */
+  blackToMove: boolean;
+  /** False for override searches — they have no analysis-tree node to promote into `evalCache`. */
+  hasCacheTarget: boolean;
+}
+let _activeSearchDescriptor: ActiveSearchDescriptor = {
+  isOverride: false,
+  blackToMove: false,
+  hasCacheTarget: true,
+};
+
+/** Whether a FEN's side-to-move field is black. */
+function fenIsBlackToMove(fen: string): boolean {
+  return fen.split(' ')[1] === 'b';
+}
+
+/**
+ * Whether the active search's raw engine score must be negated to reach white POV.
+ * Threat mode never negates (threatEval is displayed from the threatened side). Override searches
+ * derive it from the searched FEN's side-to-move (Decision 2); normal analysis uses tree-ply
+ * parity (odd ply = black to move), unchanged.
+ */
+function scoreShouldNegateForWhitePov(): boolean {
+  if (evalIsThreat) return false;
+  if (_activeSearchDescriptor.isOverride) return _activeSearchDescriptor.blackToMove;
+  return evalNodePly % 2 === 1;
+}
+
 export const evalCache = new Map<string, PositionEval>();
 
 
@@ -886,8 +933,10 @@ function parseEngineLine(line: string): void {
       if (!evalIsThreat) acceptCurrentEvalIdentity();
       const ev = evalIsThreat ? threatEval : currentEval;
       if (score !== undefined) {
-        // Normalize to white's perspective — odd plies are black to move, so negate.
-        const s = (!evalIsThreat && evalNodePly % 2 === 1) ? -score : score;
+
+
+
+        const s = scoreShouldNegateForWhitePov() ? -score : score;
         if (isMate) {
           ev.mate = s;
           delete ev.cp;
@@ -901,12 +950,24 @@ function parseEngineLine(line: string): void {
       if (depth !== undefined && !evalIsThreat) ev.depth = depth;
       if ((score !== undefined || best) && !isSilentEvalActive()) {
         if (!evalIsThreat) {
-          _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
 
 
 
 
-          if (currentEval.depth !== undefined && (currentEval.cp !== undefined || currentEval.mate !== undefined)) {
+
+
+
+          if (!_activeSearchDescriptor.isOverride) {
+            _onLiveEvalInfo?.(evalNodePath, { ...currentEval });
+          }
+
+
+
+
+
+
+
+          if (_activeSearchDescriptor.hasCacheTarget && currentEval.depth !== undefined && (currentEval.cp !== undefined || currentEval.mate !== undefined)) {
             const identity = activeForegroundSearchIdentity;
             if (identity) {
               pendingLivePromotion = {
@@ -926,7 +987,9 @@ function parseEngineLine(line: string): void {
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts multiPv handling.
       if (!foregroundSearchStillCurrent()) return; // stale owner/FEN guard
       acceptCurrentEvalIdentity();
-      const s = evalNodePly % 2 === 1 ? -score : score;
+      // White-POV normalization for secondary PVs — same descriptor-aware rule as the primary
+      // branch so override searches negate by searched-FEN side-to-move, not placeholder ply 0.
+      const s = scoreShouldNegateForWhitePov() ? -score : score;
       const idx = pvIndex - 1;
       if (!pendingLines[idx]) pendingLines[idx] = {};
       const pl = pendingLines[idx]!;
@@ -1001,7 +1064,13 @@ function parseEngineLine(line: string): void {
 
 
 
-        promoteLiveEval(evalNodePath, evalNodePly, evalParentPath, stored);
+
+
+
+
+        if (_activeSearchDescriptor.hasCacheTarget) {
+          promoteLiveEval(evalNodePath, evalNodePly, evalParentPath, stored);
+        }
         syncArrowDebounced();
         _redraw();
         if (pendingEval) {
@@ -1018,8 +1087,10 @@ function parseEngineLine(line: string): void {
 let _onEngineReady: (() => void) | null = null;
 export function setOnEngineReady(fn: (() => void) | null): void { _onEngineReady = fn; }
 
-// Wire protocol message handler at module init.
-protocol.onMessage(line => {
+
+
+
+function handleEngineMessage(line: string): void {
   if (line.trim() === 'readyok') {
     engineReady = true;
     if (_onEngineReady) {
@@ -1029,11 +1100,22 @@ protocol.onMessage(line => {
     }
     _redraw();
   } else {
-    if (!isSilentEvalActive() && (line.startsWith('info') || line.startsWith('bestmove'))) {
-    }
     parseEngineLine(line);
   }
-});
+}
+
+// Wire protocol message handler at module init.
+protocol.onMessage(handleEngineMessage);
+
+
+
+
+
+
+
+export function __ingestEngineLineForTests(line: string): void {
+  handleEngineMessage(line);
+}
 
 // --- Flip FEN color (null-move trick for threat analysis) ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts threatMode position setup.
@@ -1052,6 +1134,9 @@ export function evalThreatPosition(): void {
   cancelLiveEngineUiRefresh();
   threatEval   = {};
   evalIsThreat = true;
+  // Threat is not an override: scoreShouldNegateForWhitePov() short-circuits on evalIsThreat and
+  // threat output never promotes, but reset the descriptor so no prior override state lingers.
+  _activeSearchDescriptor = { isOverride: false, blackToMove: false, hasCacheTarget: true };
   protocol.stop();
   const context = fenOnlyPositionContext(
     flipFenColor(_getCtrl().node.fen),
@@ -1112,6 +1197,13 @@ export function evalCurrentPosition(): void {
     const owner = _evalPositionOverrideOwner ?? sharedProtocolOwnerForSurface(positionOverride.surface);
     beginForegroundSearch(owner, positionOverride);
     _activeOverrideFen = positionOverride.currentFen;
+
+
+    _activeSearchDescriptor = {
+      isOverride: true,
+      blackToMove: fenIsBlackToMove(positionOverride.currentFen),
+      hasCacheTarget: false,
+    };
     protocol.setPositionContext(positionOverride);
 
 
@@ -1122,6 +1214,10 @@ export function evalCurrentPosition(): void {
   }
 
   const ctrl = _getCtrl();
+
+
+
+  _activeSearchDescriptor = { isOverride: false, blackToMove: false, hasCacheTarget: true };
   const cached = evalCache.get(ctrl.path);
   const cachedHasLines = !!cached?.moves?.length && (cached?.lines?.length ?? 0) >= multiPv - 1;
   if (cached && cachedHasLines) {
@@ -1278,6 +1374,9 @@ export function evalPositionSilent(
 
   // Activate silent mode so info/bestmove handlers skip visible UI side effects.
   silentEvalActive = true;
+  // Silent eval is not an override — it stores via its own explicit-path bestmove handler, not
+  // promoteLiveEval — but reset the descriptor so no prior override state affects POV/promotion.
+  _activeSearchDescriptor = { isOverride: false, blackToMove: false, hasCacheTarget: true };
 
   onSilentEvalBestmove = () => {
     // Immediately restore normal state so live eval can resume.
