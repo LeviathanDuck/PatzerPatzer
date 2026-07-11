@@ -17,10 +17,13 @@ import {
 } from './versionDrain';
 import {
   advanceRemoteSyncPullCursor,
-  createRemoteSyncItemVersionResolver,
-  getRemoteSyncItemVersion,
+  createRemoteSyncItemStateResolver,
+  ensureRemoteSyncItemVersionsActive,
+  getRemoteSyncItemStateVersion,
   readRemoteSyncVersionMetadata,
+  recordRemoteSyncItemStateVersions,
   recordRemoteSyncItemVersions,
+  resetRemoteSyncItemState,
   resetRemoteSyncVersionMetadata,
   setRemoteSyncPullCursor,
   type RemoteSyncItemVersionRecord,
@@ -460,6 +463,11 @@ export function getRemoteSyncGeneration(): number | undefined {
 function resetCurrentIdentityVersionMetadata(): void {
   const identity = storedServerIdentity();
   resetRemoteSyncVersionMetadata(localStorage, identity);
+
+
+
+
+  void resetRemoteSyncItemState(identity);
   // The gap-observation marker's `pullCursorAtObservation` is only meaningful relative to the
   // metadata blob just reset (pullCursor -> 0 on next read), so stale comparisons must not survive.
   clearServerVersionGapObservation(identity);
@@ -3041,7 +3049,10 @@ let durableOutboxCountCache: number | null = null;
 async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
   const deleted = isDeletedItem(item);
   const payload = deleted ? undefined : item.payload;
-  const baseVersion = getRemoteSyncItemVersion(localStorage, storedServerIdentity(), item.store, item.itemKey);
+
+  const identity = storedServerIdentity();
+  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  const baseVersion = getRemoteSyncItemStateVersion(identity, item.store, item.itemKey);
   await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), {
     store: item.store,
     itemKey: item.itemKey,
@@ -3055,7 +3066,8 @@ async function enqueueVersionedOutboxItem(item: RemoteSyncItem): Promise<void> {
 async function enqueueVersionedOutboxItemsBatch(items: readonly RemoteSyncItem[]): Promise<void> {
   if (items.length === 0) return;
   const identity = storedServerIdentity();
-  const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  const resolveVersion = createRemoteSyncItemStateResolver(identity);
   await enqueueDurableVersionedOutboxEntries(defaultDurableVersionedOutboxStorage(), items.map(item => {
     const deleted = isDeletedItem(item);
     return {
@@ -3509,7 +3521,7 @@ async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Pro
 
 
 type VersionedPullCursorMode = 'set' | 'advance' | 'none';
-function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): number {
+async function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): Promise<number> {
   const latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
     ? Math.floor(latestVersion)
     : 0;
@@ -3527,7 +3539,14 @@ function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion:
     records.push({ store, itemKey, version });
   }
   const identity = storedServerIdentity();
-  const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, records, latest);
+
+
+
+
+  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  await recordRemoteSyncItemStateVersions(identity, records);
+  const recordMax = records.reduce((max, record) => Math.max(max, record.version), latest);
+  const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, [], recordMax);
   if (cursorMode === 'set') {
     setRemoteSyncPullCursor(localStorage, identity, latest);
   } else if (cursorMode === 'advance') {
@@ -3694,7 +3713,7 @@ async function applyVersionedRevalidationPull(
     markVersionedPullUnsafeSkipped(counts);
     return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
   }
-  const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, forcedFullPull ? 'set' : 'advance');
+  const latestVersion = await rememberVersionedPullMetadata(items, result.latestVersion, forcedFullPull ? 'set' : 'advance');
   clearVersionedPullUnsafeSkipped();
   return { ok: true, latestVersion };
 }
@@ -3926,7 +3945,7 @@ async function commitDataManagementDeleteKeys(
       // never move the pull cursor (audit F-1 — advancing here skips rows other browsers wrote
       // between our last pull and this delete; the next routine pull re-pulls our own tombstones
       // idempotently and advances the cursor itself).
-      const latestVersion = rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
+      const latestVersion = await rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
       for (const tombstone of tombstones) rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
       removeOutboxItemsForCommittedDeletes(tombstones);
 
@@ -4103,7 +4122,8 @@ export interface RemoteSyncUntrackedScanCounts {
 async function computeRemoteSyncUntrackedScanCounts(): Promise<RemoteSyncUntrackedScanCounts> {
   const identity = storedServerIdentity();
   const keysByStore = await readLocalRemoteSyncItemKeysByStore();
-  const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+  await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+  const resolveVersion = createRemoteSyncItemStateResolver(identity);
   const pendingKeys = new Set(
     (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
       .map(entry => `${entry.store}::${entry.itemKey}`),
@@ -4566,7 +4586,8 @@ export async function queueLocalLibraryForRemoteSync(): Promise<SyncResult> {
 
 
       const localItems = await readLocalRemoteSyncItems({ includeSuppressed: true });
-      const resolveVersion = createRemoteSyncItemVersionResolver(localStorage, identity);
+      await ensureRemoteSyncItemVersionsActive(localStorage, identity);
+      const resolveVersion = createRemoteSyncItemStateResolver(identity);
       const pendingKeys = new Set(
         (await readDurableVersionedOutbox(defaultDurableVersionedOutboxStorage()))
           .map(entry => `${entry.store}\u0000${entry.itemKey}`),
@@ -4707,10 +4728,12 @@ async function performRequeueQuarantineRecord(record: DurableQuarantineRecord): 
 
     const current = await readCurrentLocalRemoteSyncItem(record.store, record.itemKey);
     const useCurrent = current !== null && !isDeletedItem(current) ? { payload: current.payload, updatedAt: current.updatedAt } : null;
+    const requeueIdentity = storedServerIdentity();
+    await ensureRemoteSyncItemVersionsActive(localStorage, requeueIdentity);
     await enqueueDurableVersionedOutboxEntry(defaultDurableVersionedOutboxStorage(), buildRecreateRequeueInput(
       record,
       useCurrent,
-      getRemoteSyncItemVersion(localStorage, storedServerIdentity(), record.store, record.itemKey),
+      getRemoteSyncItemStateVersion(requeueIdentity, record.store, record.itemKey),
     ));
     durableOutboxCountCache = null;
     scheduleRemoteSyncFlush();
@@ -4840,7 +4863,7 @@ async function runRemoteSyncPullOutcome(plan: RemoteSyncPullPlan, options: Remot
     }
     if (plan.mode === 'cursor') {
       if (canAdvancePullVersionMetadata(counts)) {
-        const latestVersion = rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
+        const latestVersion = await rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
         counts.latestVersion = latestVersion;
         if (plan.forcedFullPull) counts.fullVersionPull = 1;
         clearVersionedPullUnsafeSkipped();

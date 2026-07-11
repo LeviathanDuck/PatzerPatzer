@@ -366,9 +366,62 @@ export function setRemoteSyncItemStateStorageForTests(storage: SyncItemStateStor
   itemStateReady.clear();
 }
 
+
+
+
+
+class MemorySyncItemStateStorage implements SyncItemStateStorage {
+  private rows = new Map<string, Record<string, unknown>>();
+  private meta = new Map<string, Record<string, unknown>>();
+
+  async readAllRows(identity: string): Promise<unknown[]> {
+    return Array.from(this.rows.values()).filter(row => row.identity === identity);
+  }
+
+  async readRows(stateKeys: readonly string[]): Promise<unknown[]> {
+    return stateKeys.map(stateKey => this.rows.get(stateKey)).filter((row): row is Record<string, unknown> => row !== undefined);
+  }
+
+  async putRows(rows: ReadonlyArray<{ stateKey: string }>): Promise<void> {
+    for (const row of rows) this.rows.set(row.stateKey, row as Record<string, unknown>);
+  }
+
+  async deleteRows(stateKeys: readonly string[]): Promise<void> {
+    for (const stateKey of stateKeys) this.rows.delete(stateKey);
+  }
+
+  async applyRows(puts: ReadonlyArray<{ stateKey: string }>, deleteKeys: readonly string[]): Promise<void> {
+    for (const stateKey of deleteKeys) this.rows.delete(stateKey);
+    for (const row of puts) this.rows.set(row.stateKey, row as Record<string, unknown>);
+  }
+
+  async clearIdentity(identity: string): Promise<void> {
+    for (const [stateKey, row] of Array.from(this.rows)) {
+      if (row.identity === identity) this.rows.delete(stateKey);
+    }
+  }
+
+  async readMeta(key: string): Promise<unknown> {
+    return this.meta.get(key) ?? null;
+  }
+
+  async putMeta(row: { key: string }): Promise<void> {
+    this.meta.set(row.key, row as Record<string, unknown>);
+  }
+
+  async runStateMigrationTransaction(rows: ReadonlyArray<{ stateKey: string }>, sentinelRow: { key: string }): Promise<void> {
+    for (const row of rows) this.rows.set(row.stateKey, row as Record<string, unknown>);
+    this.meta.set(sentinelRow.key, sentinelRow as Record<string, unknown>);
+  }
+}
+
 function itemStateStorage(): SyncItemStateStorage {
   if (itemStateStorageOverride) return itemStateStorageOverride;
-  if (!itemStateDefaultStorage) itemStateDefaultStorage = createIndexedDbSyncItemStateStorage();
+  if (!itemStateDefaultStorage) {
+    itemStateDefaultStorage = typeof indexedDB === 'undefined'
+      ? new MemorySyncItemStateStorage()
+      : createIndexedDbSyncItemStateStorage();
+  }
   return itemStateDefaultStorage;
 }
 
@@ -733,4 +786,86 @@ export function migrateRemoteSyncItemStateToIdb(
     publishItemStateInvalidation(identity);
     return { alreadyComplete: false, migratedRows: rows.length };
   }));
+}
+
+
+
+
+
+
+const itemVersionsMigrated = new Set<string>();
+
+/**
+ * Decode the blob's `store::itemKey` map keys back into records for the S7 migration snapshot.
+ * Exported for the migration only; the encoding itself stays private to this module.
+ */
+function decodeItemVersionEntries(itemVersions: Record<string, number>): Array<{ store: string; itemKey: string; version: number }> {
+  const records: Array<{ store: string; itemKey: string; version: number }> = [];
+  for (const [key, version] of Object.entries(itemVersions)) {
+    const separator = key.indexOf('::');
+    if (separator <= 0) continue;
+    try {
+      records.push({
+        store: decodeURIComponent(key.slice(0, separator)),
+        itemKey: decodeURIComponent(key.slice(separator + 2)),
+        version,
+      });
+    } catch {
+      // An undecodable legacy key is dropped from the snapshot rather than poisoning the
+      // migration; the item re-records its version on its next accepted write or pull.
+    }
+  }
+  return records;
+}
+
+
+
+
+
+
+
+
+
+export function migrateRemoteSyncVersionsFromLocalStorage(
+  storage: RemoteSyncVersionStorage,
+  identity: string
+): Promise<RemoteSyncItemStateMigrationResult> {
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  const versionRecords = state.needsFullPull ? [] : decodeItemVersionEntries(state.itemVersions);
+  return migrateRemoteSyncItemStateToIdb(identity, { versionRecords, markerRecords: [] }, {
+    cleanupLocalStorage: () => {
+      const current = readRemoteSyncVersionMetadata(storage, identity);
+      if (current.needsFullPull) return; // No blob (or an unreadable one): nothing to strip.
+      if (Object.keys(current.itemVersions).length === 0) return; // Already stripped.
+      writeRemoteSyncVersionMetadata(storage, {
+        identity: current.identity,
+        latestVersion: current.latestVersion,
+        itemVersions: {},
+        pullCursor: current.pullCursor,
+        pullCursors: current.pullCursors,
+      });
+    },
+  });
+}
+
+/**
+ * The Wave 5 readiness gate: every sync entry path (pull, drain, reconcile, enqueue,
+ * quarantine requeue) awaits this before touching per-item versions. Migrate-once is
+ * process-local memoized; the migration itself is sentinel-guarded and cross-tab locked, so
+ * repeated calls converge cheaply.
+ */
+export async function ensureRemoteSyncItemVersionsActive(
+  storage: RemoteSyncVersionStorage,
+  identity: string
+): Promise<void> {
+  if (!itemVersionsMigrated.has(identity)) {
+    await migrateRemoteSyncVersionsFromLocalStorage(storage, identity);
+    itemVersionsMigrated.add(identity);
+  }
+  await ensureRemoteSyncItemStateReady(identity);
+}
+
+/** Test seam: forget the process-local migrate-once memo (the sentinel still governs truth). */
+export function resetItemVersionsMigrationMemoForTests(): void {
+  itemVersionsMigrated.clear();
 }

@@ -1,10 +1,11 @@
 import type { RemoteSyncStoreName } from './remoteSyncMigrations';
 import {
-  createRemoteSyncItemVersionResolver,
-  getRemoteSyncItemVersion,
-  readRemoteSyncVersionMetadata,
-  recordRemoteSyncItemVersion,
+  createRemoteSyncItemStateResolver,
   recordRemoteSyncItemVersions,
+  ensureRemoteSyncItemStateReady,
+  getRemoteSyncItemStateVersion,
+  recordRemoteSyncItemStateVersions,
+  readRemoteSyncVersionMetadata,
   type RemoteSyncVersionStorage,
 } from './versionMetadata';
 import {
@@ -266,13 +267,21 @@ function matchingRecoveredConflict(entry: DurableRetryOutboxEntry, conflict: Ver
   return samePayload(current.payload, entry.payload) ? current : null;
 }
 
-function recordAcceptedVersion(
-  storage: RemoteSyncVersionStorage,
+
+
+
+
+async function recordAcceptedVersion(
+  versionStorage: RemoteSyncVersionStorage,
   identity: string,
   item: VersionedSyncItem
-): boolean {
-  recordRemoteSyncItemVersion(storage, identity, item.store, item.itemKey, item.version);
-  return getRemoteSyncItemVersion(storage, identity, item.store, item.itemKey) === item.version;
+): Promise<boolean> {
+  await recordRemoteSyncItemStateVersions(identity, [{ store: item.store, itemKey: item.itemKey, version: item.version }]);
+  // The display/back-compat latestVersion stays in the localStorage blob (Wave 5 keeps
+  // cursors/latest there); an empty-records call advances it with max semantics only.
+  recordRemoteSyncItemVersions(versionStorage, identity, [], item.version);
+  await ensureRemoteSyncItemStateReady(identity);
+  return getRemoteSyncItemStateVersion(identity, item.store, item.itemKey) === item.version;
 }
 
 function mergeCounts(target: Record<string, number>, key: string, amount = 1): void {
@@ -298,6 +307,9 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
 const DRAIN_LOCK_NAME = 'patzer-remoteSync-drain';
 
 async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<VersionedOutboxDrainResult> {
+
+
+  await ensureRemoteSyncItemStateReady(options.identity);
   const now = normalizeNow(options.now);
   const batchSize = Math.max(1, Math.floor(options.batchSize ?? DEFAULT_BATCH_SIZE));
   const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? DEFAULT_MAX_DRAIN_ATTEMPTS));
@@ -437,7 +449,17 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       }));
       let batchRecorded = false;
       try {
-        recordRemoteSyncItemVersions(options.versionStorage, options.identity, records);
+
+
+
+        await recordRemoteSyncItemStateVersions(options.identity, records.map(record => ({
+          store: record.store,
+          itemKey: record.itemKey,
+          version: record.version,
+        })));
+        // Blob latestVersion advance (display/back-compat, stays in localStorage): failure here
+        // keeps the pre-Wave-5 semantics of failing the batch's metadata write.
+        recordRemoteSyncItemVersions(options.versionStorage, options.identity, [], records.reduce((max, record) => Math.max(max, record.version), 0));
         batchRecorded = true;
       } catch (error) {
         noteMetadataError(error);
@@ -445,9 +467,9 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
       }
 
       if (batchRecorded) {
-        // Spot-verify the batch write landed via one metadata read (the resolver), not N
+        // Spot-verify the batch write landed via one cache read per item (the resolver), not N
         // individual storage reads — preserves the old per-item verify step in effect.
-        const resolveVersion = createRemoteSyncItemVersionResolver(options.versionStorage, options.identity);
+        const resolveVersion = createRemoteSyncItemStateResolver(options.identity);
         for (const candidate of versionCandidates) {
           if (resolveVersion(candidate.item.store, candidate.item.itemKey) === candidate.item.version) {
             durableCandidateOpIds.add(candidate.entry.opId);
@@ -458,7 +480,7 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
         // cannot stall its neighbors. Items that still fail keep metadataWriteFailed below.
         for (const candidate of versionCandidates) {
           try {
-            if (recordAcceptedVersion(options.versionStorage, options.identity, candidate.item)) {
+            if (await recordAcceptedVersion(options.versionStorage, options.identity, candidate.item)) {
               durableCandidateOpIds.add(candidate.entry.opId);
             }
           } catch (error) {
@@ -508,7 +530,7 @@ async function runDrainPass(options: VersionedOutboxDrainOptions): Promise<Versi
 
           let conflictVersionRecorded = false;
           try {
-            conflictVersionRecorded = recordAcceptedVersion(options.versionStorage, options.identity, conflict.current);
+            conflictVersionRecorded = await recordAcceptedVersion(options.versionStorage, options.identity, conflict.current);
           } catch (error) {
             noteMetadataError(error);
             conflictVersionRecorded = false;
