@@ -991,6 +991,121 @@ export async function dueDurableVersionedOutboxEntries(
 
 
 
+
+export interface SyncItemStateStorage {
+  readAllRows(identity: string): Promise<unknown[]>;
+  putRows(rows: ReadonlyArray<{ stateKey: string }>): Promise<void>;
+  deleteRows(stateKeys: readonly string[]): Promise<void>;
+  clearIdentity(identity: string): Promise<void>;
+  readMeta(key: string): Promise<unknown>;
+  putMeta(row: { key: string }): Promise<void>;
+  /**
+   * The migration commit: every state row AND the completion sentinel land in ONE readwrite
+   * transaction — an abort loses both, so a retry is idempotent and a sentinel can never claim
+   * completion for rows that were not written (the design's crash matrix).
+   */
+  runStateMigrationTransaction(
+    rows: ReadonlyArray<{ stateKey: string }>,
+    sentinelRow: { key: string; [field: string]: unknown },
+  ): Promise<void>;
+}
+
+export function createIndexedDbSyncItemStateStorage(dbName = OUTBOX_DB_NAME): SyncItemStateStorage {
+  const withDb = async <T>(fn: (db: IDBDatabase) => Promise<T>): Promise<T> => {
+    const db = await openOutboxDb(dbName);
+    try {
+      return await fn(db);
+    } finally {
+      db.close();
+    }
+  };
+  const readwrite = (db: IDBDatabase, storeNames: string | string[], apply: (tx: IDBTransaction) => void): Promise<void> =>
+    new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeNames, 'readwrite');
+      tx.onerror = () => reject(tx.error ?? new Error('Sync item-state write failed.'));
+      tx.onabort = () => reject(tx.error ?? new Error('Sync item-state write aborted.'));
+      tx.oncomplete = () => resolve();
+      try {
+        apply(tx);
+      } catch (error) {
+        try {
+          tx.abort();
+        } catch {
+          // Already aborting/inactive: the handlers above still settle the promise.
+        }
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  return {
+    async readAllRows(identity: string): Promise<unknown[]> {
+      return withDb(db => new Promise((resolve, reject) => {
+        // Full-store getAll + identity filter: the store holds compact metadata rows only, and
+        // this runs once per identity hydrate — not per item (the whole point of the cache).
+        const request = db.transaction(SYNC_ITEM_STATE_STORE_NAME, 'readonly').objectStore(SYNC_ITEM_STATE_STORE_NAME).getAll();
+        request.onerror = () => reject(request.error ?? new Error('Could not read sync item-state rows.'));
+        request.onsuccess = () => {
+          const rows = Array.isArray(request.result) ? request.result : [];
+          resolve(rows.filter(row => !!row && typeof row === 'object' && (row as Record<string, unknown>).identity === identity));
+        };
+      }));
+    },
+    async putRows(rows): Promise<void> {
+      if (rows.length === 0) return;
+      return withDb(db => readwrite(db, SYNC_ITEM_STATE_STORE_NAME, tx => {
+        const store = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
+        for (const row of rows) store.put(row);
+      }));
+    },
+    async deleteRows(stateKeys): Promise<void> {
+      if (stateKeys.length === 0) return;
+      return withDb(db => readwrite(db, SYNC_ITEM_STATE_STORE_NAME, tx => {
+        const store = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
+        for (const stateKey of stateKeys) store.delete(stateKey);
+      }));
+    },
+    async clearIdentity(identity: string): Promise<void> {
+      const rows = await this.readAllRows(identity);
+      const stateKeys = rows
+        .map(row => (row as Record<string, unknown>).stateKey)
+        .filter((value): value is string => typeof value === 'string');
+      await this.deleteRows(stateKeys);
+    },
+    async readMeta(key: string): Promise<unknown> {
+      return withDb(db => new Promise((resolve, reject) => {
+        const store = db.transaction(SYNC_ITEM_STATE_META_STORE_NAME, 'readonly').objectStore(SYNC_ITEM_STATE_META_STORE_NAME);
+        if (typeof store.get === 'function') {
+          const request = store.get(key);
+          request.onerror = () => reject(request.error ?? new Error('Could not read sync item-state metadata.'));
+          request.onsuccess = () => resolve(request.result ?? null);
+          return;
+        }
+        const request = store.getAll();
+        request.onerror = () => reject(request.error ?? new Error('Could not read sync item-state metadata.'));
+        request.onsuccess = () => {
+          const rows = Array.isArray(request.result) ? request.result : [];
+          resolve(rows.find(row => !!row && typeof row === 'object' && (row as Record<string, unknown>).key === key) ?? null);
+        };
+      }));
+    },
+    async putMeta(row): Promise<void> {
+      return withDb(db => readwrite(db, SYNC_ITEM_STATE_META_STORE_NAME, tx => {
+        tx.objectStore(SYNC_ITEM_STATE_META_STORE_NAME).put(row);
+      }));
+    },
+    async runStateMigrationTransaction(rows, sentinelRow): Promise<void> {
+      return withDb(db => readwrite(db, [SYNC_ITEM_STATE_STORE_NAME, SYNC_ITEM_STATE_META_STORE_NAME], tx => {
+        const stateStore = tx.objectStore(SYNC_ITEM_STATE_STORE_NAME);
+        for (const row of rows) stateStore.put(row);
+        tx.objectStore(SYNC_ITEM_STATE_META_STORE_NAME).put(sentinelRow);
+      }));
+    },
+  };
+}
+
+
+
+
+
 let onOutboxUpgradeBlocked: ((dbName: string) => void) | null = null;
 
 export function setOnOutboxUpgradeBlocked(handler: ((dbName: string) => void) | null): void {
