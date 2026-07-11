@@ -509,6 +509,12 @@ export function ensureRemoteSyncItemStateReady(identity: string): Promise<void> 
   if (pendingReset) {
     return pendingReset.then(() => ensureRemoteSyncItemStateReady(identity));
   }
+
+
+
+  if (itemStateResetPending.has(identity)) {
+    return queueIdentityClear(identity).then(() => ensureRemoteSyncItemStateReady(identity));
+  }
   const existing = itemStateReady.get(identity);
   if (existing) return existing;
 
@@ -667,6 +673,18 @@ export function recordRemoteSyncItemStateVersions(
       const durable = durableByKey.get(stateKey);
       if (!durable || JSON.stringify(durable) !== JSON.stringify(finalRow)) puts.push(finalRow);
     }
+
+
+
+    const ephemeral = itemStateStorageOverride ? itemStateOverrideIsEphemeral : itemStateStorageIsEphemeral;
+    if (ephemeral && puts.length > 0) {
+      const mirror = itemStateBlobMirror.get(identity);
+      if (mirror) {
+        recordRemoteSyncItemVersions(mirror, identity, puts
+          .filter(row => row.version !== undefined)
+          .map(row => ({ store: row.store, itemKey: row.itemKey, version: row.version! })));
+      }
+    }
     return { puts, deleteKeys: [], result: puts.length };
   });
 }
@@ -722,6 +740,28 @@ export function recordRemoteSyncItemMarkers(
 
 const itemStateResetBarrier = new Map<string, Promise<void>>();
 
+
+
+
+const itemStateResetPending = new Set<string>();
+// Where each identity's localStorage blob lives (registered by the readiness gate) so the
+// ephemeral posture can dual-write version commits into it.
+const itemStateBlobMirror = new Map<string, RemoteSyncVersionStorage>();
+
+function queueIdentityClear(identity: string): Promise<void> {
+  return queueItemStateWrite(() => withItemStateLock(async () => {
+    try {
+      await itemStateStorage().clearIdentity(identity);
+    } catch (error) {
+      invalidateRemoteSyncItemState(identity);
+      throw error;
+    }
+    itemStateResetPending.delete(identity);
+    invalidateRemoteSyncItemState(identity);
+    publishItemStateInvalidation(identity);
+  }));
+}
+
 export function resetRemoteSyncItemState(identity: string): Promise<void> {
 
 
@@ -729,16 +769,8 @@ export function resetRemoteSyncItemState(identity: string): Promise<void> {
 
 
   invalidateRemoteSyncItemState(identity);
-  const clear = queueItemStateWrite(() => withItemStateLock(async () => {
-    try {
-      await itemStateStorage().clearIdentity(identity);
-    } catch (error) {
-      invalidateRemoteSyncItemState(identity);
-      throw error;
-    }
-    invalidateRemoteSyncItemState(identity);
-    publishItemStateInvalidation(identity);
-  }));
+  itemStateResetPending.add(identity);
+  const clear = queueIdentityClear(identity);
   const barrier = clear.catch(() => undefined).then(() => {
     if (itemStateResetBarrier.get(identity) === barrier) itemStateResetBarrier.delete(identity);
   });
@@ -906,6 +938,38 @@ export async function ensureRemoteSyncItemVersionsActive(
   if (!itemVersionsMigrated.has(identity)) {
     await migrateRemoteSyncVersionsFromLocalStorage(storage, identity);
     itemVersionsMigrated.add(identity);
+  }
+
+
+
+
+  itemStateBlobMirror.set(identity, storage);
+  await ensureRemoteSyncItemStateReady(identity);
+
+
+
+
+
+
+  const ephemeral = itemStateStorageOverride ? itemStateOverrideIsEphemeral : itemStateStorageIsEphemeral;
+  if (ephemeral) return; // The blob map IS the durable source there; never strip or re-import.
+  const state = readRemoteSyncVersionMetadata(storage, identity);
+  if (state.needsFullPull || Object.keys(state.itemVersions).length === 0) return;
+  const entries = decodeItemVersionEntries(state.itemVersions);
+  const newer = entries.filter(record => {
+    const current = getRemoteSyncItemStateVersion(identity, record.store, record.itemKey);
+    return current === null || record.version > current;
+  });
+  if (newer.length > 0) await recordRemoteSyncItemStateVersions(identity, newer);
+  const current = readRemoteSyncVersionMetadata(storage, identity);
+  if (!current.needsFullPull && Object.keys(current.itemVersions).length > 0) {
+    writeRemoteSyncVersionMetadata(storage, {
+      identity: current.identity,
+      latestVersion: current.latestVersion,
+      itemVersions: {},
+      pullCursor: current.pullCursor,
+      pullCursors: current.pullCursors,
+    });
   }
   await ensureRemoteSyncItemStateReady(identity);
 }
