@@ -103,6 +103,20 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
 
     const liveOrBatchBest = retro.liveBestMove() ?? cand.bestMove;
     if (info.uci !== liveOrBatchBest) {
+      // Checkmate short-circuit (BUG-2026-07-10-033).
+      // Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts onJump —
+      //   `node.san?.endsWith('#') → onWin()` BEFORE any ceval / checkCeval.
+      // A delivered mate ends the game, so it wins immediately, BEFORE the eval path is
+      // entered — regardless of whether it was the engine-best move. This is the non-best
+      // branch (info.uci !== liveOrBatchBest); the exact-best branch already resolves via
+      // the before-move hook's onWin(). Without this, a non-best mating move fell through to
+      // setFeedback('eval') and never resolved to a win because ceval never adjudicates a
+      // terminal (mated) position.
+      if (info.san.endsWith('#')) {
+        retro.onWin();
+        return;
+      }
+
       // Refresh evalDiff from the current cache before feedback renders.
       // The live ceval has just evaluated the played-move position (after navigate),
       // so the cache may now be deeper than at session-build time.
