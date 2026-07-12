@@ -1115,6 +1115,11 @@ export class PuzzleRoundCtrl {
    */
   private revertUserMove(): void {
     setTimeout(() => {
+
+
+
+
+      if (this.isStaleRound()) return;
       // Restore the board to the current correct position
       const cg = getPuzzleCg();
       if (!cg) return;
@@ -1236,6 +1241,9 @@ export class PuzzleRoundCtrl {
     // Reset feedback to 'none' so the view shows "Your turn" again.
     // A short delay keeps "Best move!" visible during the position transition.
     setTimeout(() => {
+
+
+      if (this.isStaleRound()) return;
       if (this.status === 'playing') {
         this.feedback = 'none';
         this.redraw();
@@ -1329,7 +1337,14 @@ export class PuzzleRoundCtrl {
     // Auto-next: advance to the next puzzle after a short delay
     if (_autoNext && this.status === 'solved') {
       const redraw = this.redraw;
-      setTimeout(() => { nextPuzzle(redraw); }, 800);
+      setTimeout(() => {
+
+
+
+
+        if (this.isStaleRound()) return;
+        nextPuzzle(redraw);
+      }, 800);
     }
 
 
@@ -1871,7 +1886,12 @@ export class PuzzleRoundCtrl {
 
 
 
-  private isStaleRound(): boolean {
+
+
+
+
+
+  isStaleRound(): boolean {
     return this.lifecycleDestroyed
       || activeRoundCtrl === null
       || activeRoundCtrl.roundToken !== this.roundToken;
@@ -2969,6 +2989,11 @@ function handlePuzzleMove(
     }
     // Correct move — schedule opponent reply
     setTimeout(() => {
+
+
+
+
+      if (rc.isStaleRound()) return;
       rc.playOpponentReply();
     }, 300);
   } else {
@@ -3072,6 +3097,12 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
   // compute the post-trigger position and set it directly with lastMove highlight.
   if (def.triggerMove) {
     setTimeout(() => {
+
+
+
+
+
+      if (rc && rc.isStaleRound()) return;
       const cg = getPuzzleCg();
       if (!cg) return;
       // Play trigger move sound
@@ -3100,6 +3131,10 @@ export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
   // Enable "View the solution" button after 4 seconds (matches Lichess gating)
   if (rc) {
     setTimeout(() => {
+
+
+
+      if (rc.isStaleRound()) return;
       if (rc.mode !== 'view') {
         rc.canViewSolution = true;
         redraw();
