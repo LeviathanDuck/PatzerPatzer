@@ -17,7 +17,7 @@ import { engineEnabled } from '../engine/ctrl';
 
 
 
-import { listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
+import { getAccount, listAccounts, type AccountCategory, type ChessAccount } from '../accounts';
 import { loadGamesByAccountFromIdb } from '../idb';
 import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode, type SampleGameMatch } from './tree';
 import type { ImportSpeed, ImportDateRange } from '../import/filters';
@@ -41,7 +41,8 @@ import {
 } from './treeBuildDiagnostics';
 import { getDeviceMetadata } from '../diagnostics/session';
 import { contextFromRootAndMoves, type EnginePositionContext } from '../engine/positionContext';
-import { opponentsTreeUrlScopesMatch } from './routeOrchestration';
+import { isOpponentsTreeRoute, opponentsTreeUrlScopesMatch } from './routeOrchestration';
+import type { Route } from '../router';
 import {
   DEFAULT_OPENINGS_TREE_COLOR,
   normalizeOpeningsTreeColor,
@@ -122,6 +123,12 @@ let _collectionsLoaded = false;
 
 
 let _collectionsLoadError = false;
+
+
+
+
+
+let _sourceRefreshGeneration = 0;
 let _sampleGamesSortMode: SampleGamesSortMode = 'recent';
 let _sampleGamesResultFilter: SampleGamesResultFilter = 'all';
 let _routeRecoveryMessage: string | null = null;
@@ -254,6 +261,9 @@ export function initOpeningsPage(page: OpeningsPage = 'library'): void {
 export function invalidateCollections(): void {
   _collectionsLoaded = false;
   _accountsLoaded = false;
+
+
+  _sourceRefreshGeneration++;
 }
 
 /** Current openings page mode. */
@@ -1757,4 +1767,194 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
   }
 
   redraw();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Which Opening Tree sources a refresh run should re-read. */
+export interface OpeningsSourceRefreshScope {
+  collections?: boolean;
+  accounts?: boolean;
+  accountSession?: boolean;
+}
+
+/** Injectable read seam so the coordinator can be exercised without IndexedDB in tests. */
+export interface OpeningsSourceRefreshDeps {
+  loadCollections: typeof loadCollections;
+  listAccounts: typeof listAccounts;
+  loadGamesByAccountFromIdb: typeof loadGamesByAccountFromIdb;
+  // Bounded single-account authoritative metadata read for the mounted session (NOT the whole
+  // registry). See refreshOpeningsSource for why the session rebuild reads this directly.
+  getAccount: typeof getAccount;
+}
+
+const DEFAULT_OPENINGS_SOURCE_REFRESH_DEPS: OpeningsSourceRefreshDeps = {
+  loadCollections,
+  listAccounts,
+  loadGamesByAccountFromIdb,
+  getAccount,
+};
+
+
+
+
+
+export function invalidateOpeningsSourceRefresh(): void {
+  _sourceRefreshGeneration++;
+}
+
+
+
+
+
+
+
+
+export function shouldRefreshAccountSession(
+  plan: { games: boolean; accounts: boolean },
+  isOpponentsTreeRouteActive: boolean,
+): boolean {
+  return (plan.games || plan.accounts) && isOpponentsTreeRouteActive;
+}
+
+
+
+
+
+
+
+
+export function shouldInvalidateOpeningsOnRouteChange(route: Route): boolean {
+  return !isOpponentsTreeRoute(route);
+}
+
+/** Account id of the active account session (page 'session', collection id `account:<id>`), else null. */
+function activeAccountSessionId(): string | null {
+  if (_currentPage !== 'session') return null;
+  const id = _activeCollection?.id;
+  if (!id || !id.startsWith('account:')) return null;
+  return id.slice('account:'.length);
+}
+
+/**
+ * Run one latest-only background source refresh. See the block comment above for the full contract.
+ * Only the sources named in `scope` are read; an inactive account session is never rebuilt. The
+ * loaded flags and in-memory snapshots are left untouched until every required read settles, then
+ * swapped once — so the currently-visible cards/session stay mounted throughout.
+ */
+export async function refreshOpeningsSource(
+  redraw: () => void,
+  scope: OpeningsSourceRefreshScope = { collections: true, accounts: true, accountSession: true },
+  deps: OpeningsSourceRefreshDeps = DEFAULT_OPENINGS_SOURCE_REFRESH_DEPS,
+): Promise<void> {
+  const generation = ++_sourceRefreshGeneration;
+
+  const wantCollections = !!scope.collections;
+  const wantAccounts = !!scope.accounts;
+  // Only rebuild the session when an account session is actually active — nothing else has a
+  // shared-store-backed source to refresh. Captured up front so a mid-read switch is detectable.
+  const sessionAccountId = scope.accountSession ? activeAccountSessionId() : null;
+
+  if (!wantCollections && !wantAccounts && !sessionAccountId) return;
+
+  let nextCollections: ResearchCollection[] | undefined;
+  let nextAccounts: ChessAccount[] | undefined;
+  let nextSessionGames: Awaited<ReturnType<typeof loadGamesByAccountFromIdb>> | undefined;
+  let nextSessionAccount: ChessAccount | undefined;
+  try {
+    [nextCollections, nextAccounts, nextSessionGames, nextSessionAccount] = await Promise.all([
+      wantCollections ? deps.loadCollections() : Promise.resolve(undefined),
+      wantAccounts ? deps.listAccounts() : Promise.resolve(undefined),
+      sessionAccountId ? deps.loadGamesByAccountFromIdb(sessionAccountId) : Promise.resolve(undefined),
+      // Bounded single-account authoritative metadata read for the mounted session, in the SAME
+      // read pass as its games, so metadata and games are ALWAYS mutually consistent regardless of
+      // which overlapping refresh commits (Sol round 3 finding 1). This is one account row, NOT the
+      // whole registry (no accounts.getAll), and it does not depend on plan.accounts having
+      // repopulated _accounts this run.
+      sessionAccountId ? deps.getAccount(sessionAccountId) : Promise.resolve(undefined),
+    ]);
+  } catch (e) {
+    console.warn('[openings] source refresh failed', e);
+    // A superseded run must not touch state at all — not even the error flag; the newer run owns it.
+    if (generation !== _sourceRefreshGeneration) return;
+
+
+    _collectionsLoadError = true;
+    redraw();
+    return;
+  }
+
+  // Latest-only swap gate: a newer refresh or a route hydration bumped the generation while we were
+  // reading. Drop this stale result rather than clobber newer / route-owned state.
+  if (generation !== _sourceRefreshGeneration) return;
+
+  let changed = false;
+
+  if (nextCollections) {
+    nextCollections.sort((a, b) => b.createdAt - a.createdAt);
+    _collections = nextCollections;
+    _collectionsLoaded = true;
+    _collectionsLoadError = false;
+    changed = true;
+  }
+
+  if (nextAccounts) {
+    _accounts = nextAccounts;
+    _accountsLoaded = true;
+    changed = true;
+  }
+
+  // Account-session settle: only if the SAME account session is still active (the user did not
+  // switch or leave the page while the reads were in flight). The bounded getAccount(sessionAccountId)
+  // above is authoritative for THIS session, read in the same pass as its games, so metadata and
+  // games are ALWAYS mutually consistent regardless of which overlapping refresh commits (Sol round 3
+  // finding 1). Reading metadata directly (not via _accounts) also subsumes the direct/deep-link
+  // cold-_accounts case (round-2 finding 3): a deep-link session never populated _accounts, but
+  // getAccount reads its metadata regardless.
+  if (sessionAccountId && activeAccountSessionId() === sessionAccountId) {
+    if (nextSessionAccount) {
+      // Authoritative metadata present: rebuild with consistent metadata + games from this pass.
+      // Re-opening through openCollection() keeps the current tree visible for a same-collection
+      // rebuild, so the session never blanks; that build's own generation stale-drops a superseded
+      // rebuild. No await precedes this synchronous commit, so the one-generation gate above holds.
+      openCollection(createAccountResearchCollection(nextSessionAccount, nextSessionGames ?? []), redraw);
+      return; // openCollection() already redraws.
+    }
+
+
+
+
+
+
+
+
+
+
+    closeSession();
+    setRouteRecoveryMessage(
+      'The account you were viewing is no longer saved, so its opening tree was closed.',
+    );
+    redraw();
+    return;
+  }
+
+  if (changed) redraw();
 }
