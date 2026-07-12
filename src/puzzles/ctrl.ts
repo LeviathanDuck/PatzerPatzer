@@ -1279,18 +1279,9 @@ export class PuzzleRoundCtrl {
     // --- Rated completion path ---
     // Adapted from lichess-org/lila: modules/puzzle/src/main/PuzzleFinisher.scala
     // Branches mirror: casual → record only; rated first-play → update perf + history
-    if (this.currentSessionMode === 'rated' && this.definition.sourceKind === 'imported-lichess') {
-      // Source gating already passed (imported-lichess). Compute rated outcome async.
-      const puzzleDef = this.definition as ImportedLichessPuzzleDefinition;
-      const now = Date.now();
-      const snapshotBefore: PuzzleRatingSnapshot = {
-        rating: _currentUserPerf.glicko.rating,
-        deviation: _currentUserPerf.glicko.deviation,
-        timestamp: now,
-      };
-      attempt.ratingBefore = snapshotBefore;
-      attempt.sessionMode = 'rated';
-
+    const isRatedPersistencePath =
+      this.currentSessionMode === 'rated' && this.definition.sourceKind === 'imported-lichess';
+    if (isRatedPersistencePath) {
       // Determine win/loss for the Glicko computation, honoring the send-once
       // failure latch (lila resultSent parity). Once a rated loss has latched
       // — first wrong move in play mode, or a stay-rated assistance verdict —
@@ -1307,70 +1298,7 @@ export class PuzzleRoundCtrl {
       }
 
       attempt.ratedOutcome = ratedOutcome;
-
-      // Fire the async rating update after the attempt is persisted.
-      // We use an IIFE to capture current state cleanly.
-      const capturedPerf = { ..._currentUserPerf };
-      const capturedPuzzleRating = puzzleDef.rating;
-      const capturedAttempt = attempt;
-      (async () => {
-        // Check eligibility (already-solved / cooldown) — only update if eligible.
-        const eligibility = await getPuzzleRatedEligibility(puzzleDef.id);
-        if (!eligibility.eligible) {
-          capturedAttempt.ratedOutcome = 'not-rated';
-          capturedAttempt.nonRatedReason = eligibility.reason;
-          if (eligibility.reason === 'already-solved') this.ratedOutcomeResolved = 'already-solved';
-          return;
-        }
-        const { newPerf, delta } = computeRatedUpdate(capturedPerf, capturedPuzzleRating, isWin, now);
-        capturedAttempt.ratingAfter = {
-          rating: newPerf.glicko.rating,
-          deviation: newPerf.glicko.deviation,
-          timestamp: now,
-        };
-        capturedAttempt.ratingDelta = delta;
-        this.ratedOutcomeResolved = capturedAttempt.ratedOutcome ?? null;
-        this.lastRatingDelta = delta.delta;
-        await persistUserPerf(newPerf);
-        await appendRatingHistory({
-          timestamp: now,
-          rating: Math.round(newPerf.glicko.rating),
-          deviation: newPerf.glicko.deviation,
-        });
-
-        // Auto-advance rated stream: after rating is persisted, load next puzzle.
-        // Guard: only fires when the user is in an active rated stream session.
-        if (_ratedStreamActive) {
-          const completedId = capturedAttempt.puzzleId ?? this.definition.id;
-          _sessionSeenIds.add(completedId);
-          const redrawFn = this.redraw;
-          setTimeout(async () => {
-            if (!_ratedStreamActive) return; // user may have stopped stream
-            redrawFn(); // refresh rating display first
-            try {
-              const next = await selectNextRatedPuzzle();
-              if (next) {
-                _ratedStreamCount++;
-                _sessionSeenIds.add(next.id);
-                await openGeneratedPuzzleRoundRoute(next.id, redrawFn);
-              } else {
-                _emptyRatedStream = true;
-                _ratedStreamActive = false;
-                redrawFn();
-              }
-            } catch (e) {
-              // selectNextRatedPuzzle() now rethrows genuine storage failures (BUG-2026-07-10-002)
-              // instead of resolving an empty list; this setTimeout callback has no caller to
-              // propagate to, so fall back to the existing empty-stream state instead of leaving
-              // an unhandled promise rejection.
-              console.warn('[puzzle-ctrl] rated stream advance failed', e);
-              _emptyRatedStream = true;
-              _ratedStreamActive = false;
-              redrawFn();
-            }
-          }, 300);
-        }
-      })().catch(e => console.warn('[puzzle-round] rated update failed', e));
+      this.finalizeRatedAttemptOrdered(attempt, isWin);
     } else {
       attempt.ratedOutcome = 'not-rated';
       attempt.nonRatedReason = this.currentSessionMode === 'practice'
@@ -1404,14 +1332,136 @@ export class PuzzleRoundCtrl {
       setTimeout(() => { nextPuzzle(redraw); }, 800);
     }
 
-    // Fire-and-forget persistence — append-only semantics.
-    // After saving the attempt, update the puzzle's due-again metadata.
-    saveAttempt(attempt)
-      .then(() => getAttempts(this.definition.id))
-      .then(allAttempts => updateDueMeta(this.definition.id, allAttempts))
-      .catch(e => console.warn('[puzzle-round] attempt save / due-meta update failed', e));
+
+
+
+
+
+    if (!isRatedPersistencePath) {
+      persistAttemptOrdered(attempt);
+    }
 
     return attempt;
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+  private finalizeRatedAttemptOrdered(attempt: PuzzleAttempt, isWin: boolean): void {
+    const puzzleDef = this.definition as ImportedLichessPuzzleDefinition;
+    const now = Date.now();
+    attempt.ratingBefore = {
+      rating: _currentUserPerf.glicko.rating,
+      deviation: _currentUserPerf.glicko.deviation,
+      timestamp: now,
+    };
+    attempt.sessionMode = 'rated';
+
+    const capturedPerf = { ..._currentUserPerf };
+    const capturedPuzzleRating = puzzleDef.rating;
+    const capturedAttempt = attempt;
+    void (async () => {
+      try {
+
+
+
+        const eligibility = await (
+          _ratedPersistenceTestHooks?.eligibility ?? getPuzzleRatedEligibility
+        )(puzzleDef.id);
+        if (!eligibility.eligible) {
+          capturedAttempt.ratedOutcome = 'not-rated';
+          capturedAttempt.nonRatedReason = eligibility.reason;
+          if (eligibility.reason === 'already-solved') this.ratedOutcomeResolved = 'already-solved';
+        } else {
+          const { newPerf, delta } = computeRatedUpdate(capturedPerf, capturedPuzzleRating, isWin, now);
+          capturedAttempt.ratingAfter = {
+            rating: newPerf.glicko.rating,
+            deviation: newPerf.glicko.deviation,
+            timestamp: now,
+          };
+          capturedAttempt.ratingDelta = delta;
+          this.ratedOutcomeResolved = capturedAttempt.ratedOutcome ?? null;
+          this.lastRatingDelta = delta.delta;
+          await persistUserPerf(newPerf);
+          await appendRatingHistory({
+            timestamp: now,
+            rating: Math.round(newPerf.glicko.rating),
+            deviation: newPerf.glicko.deviation,
+          });
+
+
+
+
+
+
+
+
+          if (_ratedStreamActive && activeRoundCtrl?.roundToken === this.roundToken) {
+            const completedId = capturedAttempt.puzzleId ?? this.definition.id;
+            _sessionSeenIds.add(completedId);
+            const redrawFn = this.redraw;
+            setTimeout(async () => {
+              if (!_ratedStreamActive) return; // user may have stopped stream
+
+              if (activeRoundCtrl?.roundToken !== this.roundToken) return;
+              redrawFn(); // refresh rating display first
+              try {
+                const next = await selectNextRatedPuzzle();
+
+
+                if (!_ratedStreamActive || activeRoundCtrl?.roundToken !== this.roundToken) return;
+                if (next) {
+                  _ratedStreamCount++;
+                  _sessionSeenIds.add(next.id);
+                  await openGeneratedPuzzleRoundRoute(next.id, redrawFn);
+                } else {
+                  _emptyRatedStream = true;
+                  _ratedStreamActive = false;
+                  redrawFn();
+                }
+              } catch (e) {
+                // selectNextRatedPuzzle() now rethrows genuine storage failures (BUG-2026-07-10-002)
+                // instead of resolving an empty list; this setTimeout callback has no caller to
+                // propagate to, so fall back to the existing empty-stream state instead of leaving
+                // an unhandled promise rejection.
+                console.warn('[puzzle-ctrl] rated stream advance failed', e);
+
+
+                if (activeRoundCtrl?.roundToken !== this.roundToken) return;
+                _emptyRatedStream = true;
+                _ratedStreamActive = false;
+                redrawFn();
+              }
+            }, 300);
+          }
+        }
+      } catch (e) {
+        // Rating math failed — the ordered write below still lands the
+        // LATCHED outcome (never a silent loss of the attempt itself).
+        console.warn('[puzzle-round] rated update failed', e);
+      }
+      // Decision 5: the ONE ordered write, strictly AFTER the rating math
+      // resolved (or conclusively failed). Teardown adjudication (round-token
+      // machinery): the attempt was snapshotted from the completed round and
+      // is keyed by its own puzzleId, so the write still lands when the round
+      // was replaced mid-math — round-data-scoped, it can never record
+      // against a different round; only the stream-advance navigation above
+      // is round-scoped and token-guarded.
+      try {
+        await _ratedPersistenceTestHooks?.beforeAttemptWrite?.(capturedAttempt);
+      } catch (e) {
+        console.warn('[puzzle-round] beforeAttemptWrite test hook failed', e);
+      }
+      persistAttemptOrdered(capturedAttempt);
+    })();
   }
 
   /**
@@ -1467,10 +1517,20 @@ export class PuzzleRoundCtrl {
       const p2Outcome = this.computeP2FailOutcome();
       if (p2Outcome.severity) attempt.p2Severity = p2Outcome.severity;
       if (p2Outcome.assistanceTypes.length > 0) attempt.assistanceTypes = p2Outcome.assistanceTypes;
-      saveAttempt(attempt)
-        .then(() => getAttempts(this.definition.id))
-        .then(allAttempts => updateDueMeta(this.definition.id, allAttempts))
-        .catch(e => console.warn('[puzzle-round] skip attempt save / due-meta update failed', e));
+      if (this.currentSessionMode === 'rated' && this.definition.sourceKind === 'imported-lichess') {
+
+
+
+
+
+        attempt.ratedOutcome = this.ratedFailureLatched
+          ? (this.ratedLatchedOutcome ?? 'rated-failure')
+          : 'rated-failure';
+        this.finalizeRatedAttemptOrdered(attempt, false);
+      } else {
+        // Practice skip: immediate write, unchanged (no rating math applies).
+        persistAttemptOrdered(attempt);
+      }
     }
 
     this.redraw();
@@ -2009,6 +2069,43 @@ export class PuzzleRoundCtrl {
    * Used by `renderRatingDisplay` to show "+8" or "-12".
    */
   lastRatingDelta: number | undefined = undefined;
+}
+
+
+
+
+
+/**
+ * The ONE attempt-persistence chain: save the attempt row, then refresh the
+ * puzzle's due-again metadata from the full attempt history. Rated attempts
+ * reach this ONLY after the rating math resolves (Decision 5); non-rated
+ * attempts call it directly from the sync tail. Append-only semantics.
+ */
+function persistAttemptOrdered(attempt: PuzzleAttempt): void {
+  saveAttempt(attempt)
+    .then(() => getAttempts(attempt.puzzleId))
+    .then(allAttempts => updateDueMeta(attempt.puzzleId, allAttempts))
+    .catch(e => console.warn('[puzzle-round] attempt save / due-meta update failed', e));
+}
+
+
+
+
+
+
+
+export interface RatedPersistenceTestHooks {
+  /** Replaces the rated eligibility lookup (stall/shape the rating math). */
+  eligibility?: (puzzleId: string) => Promise<RatedEligibility>;
+  /** Awaited immediately before the single ordered attempt write. */
+  beforeAttemptWrite?: (attempt: PuzzleAttempt) => Promise<void> | void;
+}
+
+let _ratedPersistenceTestHooks: RatedPersistenceTestHooks | null = null;
+
+
+export function __setRatedPersistenceTestHooks(hooks: RatedPersistenceTestHooks | null): void {
+  _ratedPersistenceTestHooks = hooks;
 }
 
 // ---------------------------------------------------------------------------
