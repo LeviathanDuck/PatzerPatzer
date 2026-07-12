@@ -25,6 +25,10 @@ $stmt->execute([$config['user_key'], $restoreId]);
 patzer_json(200, [
     'ok' => true,
     'restoreId' => $restoreId,
+    // Advertise the restore payload-serialization contract so the new client can require this
+    // capability before it begins sending exact payloadJson chunks (server-first rollout). Old
+    // servers omit this field; new clients must fail closed when it is absent.
+    'restoreHashContract' => PATZER_RESTORE_HASH_CONTRACT,
     'syncGeneration' => $meta['syncGeneration'],
     'generationReason' => $meta['generationReason'],
 ]);

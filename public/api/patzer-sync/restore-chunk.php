@@ -6,7 +6,9 @@ require __DIR__ . '/_bootstrap.php';
 $config = patzer_require_admin();
 $pdo = patzer_db($config);
 patzer_require_fresh_generation($pdo, $config);
-$body = patzer_read_json_body();
+// Exact-payloadJson chunks carry raw payload strings, so this endpoint bounds the request body
+// (rejected 413 before any decode) instead of reading an unlimited php://input.
+$body = patzer_read_json_body(PATZER_RESTORE_CHUNK_MAX_BYTES);
 $restoreId = patzer_restore_id($body);
 $items = $body['items'] ?? null;
 if (!is_array($items)) patzer_json(400, ['ok' => false, 'error' => 'Expected items array.']);
@@ -29,7 +31,9 @@ foreach ($items as $item) {
         'itemKey' => $itemKey,
         'updatedAt' => $updatedAt,
         'deletedAt' => $deleted ? $updatedAt : null,
-        'payload' => patzer_item_payload($item),
+        // exact-payload-json-v1: prefer the browser's transported payloadJson bytes verbatim; fall
+        // back to the legacy decoded-object re-encode for old clients during the rollout window.
+        'payload' => patzer_restore_item_payload($item),
     ];
     $counts[$store] = ($counts[$store] ?? 0) + 1;
     if ($deleted) $tombstones[$store] = ($tombstones[$store] ?? 0) + 1;
