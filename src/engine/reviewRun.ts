@@ -45,6 +45,20 @@ export const REVIEW_RUN_BREAKER_FAILURE_THRESHOLD = 3;
 /** What tripped the circuit breaker — drives the header's banner copy. */
 export type ReviewRunBreakerReason = 'consecutive-failures' | 'engine-init-failure';
 
+
+
+
+
+
+
+
+export interface ReviewRunPersistedPauseNotice {
+  reason: string;
+  message: string;
+  active: boolean;
+  recordedAt: number;
+}
+
 export interface ReviewRunTimeControlContext {
   speeds: string[];
 }
@@ -84,6 +98,12 @@ export interface ReviewRunManifest {
   consecutiveFailureCount: number;
   /** Set when the breaker trips; cleared by `withReviewRunBreakerCleared` ("Retry failed"). */
   breakerTrippedReason: ReviewRunBreakerReason | null;
+
+
+
+
+
+  pauseNotice?: ReviewRunPersistedPauseNotice | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -200,6 +220,16 @@ export interface ReviewRunStaleInput {
   retryingFailedGame: boolean;
   lastProgressSeconds: number | null;
   staleThresholdSeconds: number;
+
+
+
+
+
+
+
+  lastEngineOutputSeconds: number | null;
+  /** Absent-liveness threshold in seconds; aligned with the 12s silence watchdog semantics. */
+  engineLivenessThresholdSeconds: number;
 }
 
 export interface ReviewSearchIdentitySnapshot {
@@ -354,6 +384,7 @@ export function createReviewRunManifest(params: {
     lifecycleState:     'running',
     consecutiveFailureCount: 0,
     breakerTrippedReason:    null,
+    pauseNotice:             null,
     createdAt:          now,
     updatedAt:          now,
   };
@@ -367,6 +398,8 @@ export function normalizeReviewRunManifest(manifest: ReviewRunManifest): ReviewR
 
     consecutiveFailureCount: manifest.consecutiveFailureCount ?? 0,
     breakerTrippedReason:    manifest.breakerTrippedReason ?? null,
+
+    pauseNotice:             manifest.pauseNotice ?? null,
   };
 }
 
@@ -955,10 +988,21 @@ export function isReviewRunStale(input: ReviewRunStaleInput): boolean {
     || input.lifecycleState === 'retrying-failed-game'
     || input.lifecycleState === 'breaker-paused'
     || input.retryingFailedGame;
+
+
+
+
+
+  const stoppedPositionProgress =
+    input.lastProgressSeconds !== null
+    && input.lastProgressSeconds >= input.staleThresholdSeconds;
+  const absentEngineLiveness =
+    input.lastEngineOutputSeconds !== null
+    && input.lastEngineOutputSeconds >= input.engineLivenessThresholdSeconds;
   return input.running
     && !staleExcludedState
-    && input.lastProgressSeconds !== null
-    && input.lastProgressSeconds >= input.staleThresholdSeconds;
+    && stoppedPositionProgress
+    && absentEngineLiveness;
 }
 
 export function reviewSearchIdentityMatches(

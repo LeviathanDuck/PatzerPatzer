@@ -1226,11 +1226,26 @@ function becomeLeader(
   if (opts.resumeManifestAfterTakeover !== false && _libraryGames.length > 0) {
     void takeOverAsLeader(resumeAfterTakeover);
   }
+
+
+
+
+
+
+
+
+
+
+  anchorReviewEngineLiveness();
+  reconcileReviewStaleWatch();
 }
 
 function resignLeadership(): void {
   if (!isCurrentLeader) return;
   isCurrentLeader = false;
+
+
+  stopReviewStaleWatch();
 
 
 
@@ -1490,6 +1505,10 @@ async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
 
 
     if (reviewItemQueueOwner === entry && reviewItemIndex < reviewItemQueue.length) {
+
+
+      anchorReviewEngineLiveness();
+      reconcileReviewStaleWatch();
       awaitReadyThenDispatch();
       return;
     }
@@ -1515,6 +1534,15 @@ async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
     invalidateReviewDispatchWaiters();
     // fall through to the manifest resume below
   }
+
+
+
+
+
+
+
+
+  anchorReviewEngineLiveness();
   reviewTakeoverRecoveryActive = true;
   const displaySnapshot = queue;
 
@@ -1549,6 +1577,14 @@ async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
       reviewPendingTakeoverResume = false;
       void takeOverAsLeader(pendingResume);
     }
+
+
+
+
+
+
+
+    reconcileReviewStaleWatch();
   }
   // A superseded recovery hands the attended-resume responsibility to the re-kicked takeover — the
   // stale tenure must not resume a run it no longer owns.
@@ -1623,6 +1659,19 @@ async function mirrorQueueFromManifest(): Promise<boolean> {
 
 
   reviewItemQueueOwner = null;
+
+
+
+
+  const mirroredNotice = activeReviewRun?.pauseNotice ?? null;
+  currentReviewPauseNotice = mirroredNotice
+    ? {
+        reason:     mirroredNotice.reason as ReviewPauseNoticeReason,
+        message:    mirroredNotice.message,
+        active:     mirroredNotice.active,
+        recordedAt: mirroredNotice.recordedAt,
+      }
+    : null;
   return true;
 }
 
@@ -1806,6 +1855,10 @@ function markReviewPauseNotice(reason: ReviewPauseNoticeReason, message: string)
   };
   currentReviewPauseNotice = notice;
   lastReviewPauseNotice = notice;
+
+
+
+  persistReviewRunPauseNoticeToManifest();
 }
 
 function clearActiveReviewPauseNoticeAfterProgress(): void {
@@ -1815,6 +1868,25 @@ function clearActiveReviewPauseNoticeAfterProgress(): void {
     active: false,
   };
   lastReviewPauseNotice = currentReviewPauseNotice;
+  persistReviewRunPauseNoticeToManifest();
+}
+
+
+
+
+
+
+function persistReviewRunPauseNoticeToManifest(): void {
+  if (!isCurrentLeader || !activeReviewRun) return;
+  activeReviewRun.pauseNotice = currentReviewPauseNotice
+    ? {
+        reason:     currentReviewPauseNotice.reason,
+        message:    currentReviewPauseNotice.message,
+        active:     currentReviewPauseNotice.active,
+        recordedAt: currentReviewPauseNotice.recordedAt,
+      }
+    : null;
+  persistActiveReviewRun();
 }
 
 export function isReviewAutoRetryEnabled(): boolean {
@@ -2095,6 +2167,12 @@ function haltReviewQueueForBreaker(): void {
   queuePaused = true;
   queuePauseReason = 'breaker';
   hiddenSuspendedOwnerTabId = null;
+
+
+
+
+  resetReviewBatchElapsed();
+  reconcileReviewStaleWatch();
   syncReviewUnattendedWakeLock();
 }
 
@@ -2148,6 +2226,14 @@ let reviewStorageHealth: ReviewStorageHealth = 'ok';
 const FAILED_GAME_RETRY_BASE_MS = 2_000;
 const FAILED_GAME_RETRY_MAX_MS  = 30_000;
 const REVIEW_STALE_PROGRESS_MS  = 90_000;
+
+
+
+
+const REVIEW_ENGINE_LIVENESS_STALE_MS = 12_000;
+
+
+const REVIEW_STALE_WATCH_INTERVAL_MS = 4_000;
 
 interface FailedGameState {
   gameId:     string;
@@ -2251,7 +2337,14 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry, opts: { incrementAttem
     failedGameRetryTimer = null;
     failedGameRetryEntry = null;
     state.retrying = false;
-    if (queuePaused || reviewEngineFailed || !queue.includes(entry) || entry.status !== 'error') return;
+    if (queuePaused || reviewEngineFailed || !queue.includes(entry) || entry.status !== 'error') {
+
+
+
+
+      reconcileReviewStaleWatch();
+      return;
+    }
     entry.status = 'pending';
     entry.done = entry.cache?.size ?? entry.done;
     persistManifestEntry(entry);
@@ -2516,17 +2609,31 @@ if (typeof document !== 'undefined') {
 let reviewBatchStartedAt:   number | null = null;
 let reviewLastProgressAt:   number | null = null;
 
+
+
+
+
+let reviewLastEngineOutputAt: number | null = null;
+
+function anchorReviewEngineLiveness(now = Date.now()): void {
+  reviewLastEngineOutputAt = now;
+}
+
 function ensureReviewBatchElapsedStarted(): void {
   if (reviewBatchStartedAt === null) {
     const now = Date.now();
     reviewBatchStartedAt = now;
     if (reviewLastProgressAt === null) reviewLastProgressAt = now;
+    // A fresh run/resume gets a full liveness window before "absent engine liveness" can contribute
+    // to staleness — otherwise a run would look instantly stale before the engine's first output.
+    reviewLastEngineOutputAt = now;
   }
 }
 
 function resetReviewBatchElapsed(): void {
   reviewBatchStartedAt = null;
   reviewLastProgressAt = null;
+  reviewLastEngineOutputAt = null;
 }
 
 function markReviewQueueProgress(clearPausedNotice = false): void {
@@ -2535,6 +2642,123 @@ function markReviewQueueProgress(clearPausedNotice = false): void {
   if (activeReviewRun?.lifecycleState === 'stale') {
     setActiveReviewRunState('running');
   }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function currentReviewRunStale(now = Date.now()): boolean {
+  const running = isBulkRunning();
+  if (!running) return false;
+  const progressAnchor = reviewLastProgressAt ?? activeReviewRun?.updatedAt ?? reviewBatchStartedAt;
+  const lastProgressSeconds = progressAnchor !== null && progressAnchor !== undefined
+    ? (now - progressAnchor) / 1000
+    : null;
+  const engineOutputAnchor = reviewLastEngineOutputAt ?? reviewBatchStartedAt ?? activeReviewRun?.updatedAt;
+  const lastEngineOutputSeconds = engineOutputAnchor !== null && engineOutputAnchor !== undefined
+    ? (now - engineOutputAnchor) / 1000
+    : null;
+  return isReviewRunStale({
+    running,
+    paused: isBulkPaused(),
+    pauseReason: queuePauseReason,
+    lifecycleState: activeReviewRun?.lifecycleState ?? null,
+    retryingFailedGame: failedGameRetryTimer !== null,
+    lastProgressSeconds,
+    staleThresholdSeconds: REVIEW_STALE_PROGRESS_MS / 1000,
+    lastEngineOutputSeconds,
+    engineLivenessThresholdSeconds: REVIEW_ENGINE_LIVENESS_STALE_MS / 1000,
+  });
+}
+
+/**
+ * Leader writer: record the surfaced `browser-stalled` state once per transition. Returns true only
+ * on the transition (so the caller redraws exactly once, never once per timer tick). The notice is
+ * persisted into the manifest by markReviewPauseNotice so observers mirror it.
+ */
+function markReviewRunStaleSurfaced(): boolean {
+  const alreadySurfaced = currentReviewPauseNotice?.reason === 'browser-stalled'
+    && currentReviewPauseNotice.active === true
+    && activeReviewRun?.lifecycleState === 'stale';
+  if (alreadySurfaced) return false;
+  markReviewPauseNotice('browser-stalled', 'No review progress was detected for the stale-progress threshold.');
+  setActiveReviewRunState('stale');
+  return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function reviewStaleWatchEligible(): boolean {
+  return isCurrentLeader && isBulkRunning() && !reviewEngineFailed;
+}
+
+/** The leader-owned timer callback: evaluate staleness and surface it push-based (no user pull). */
+function evaluateReviewStalePush(): void {
+
+
+
+
+
+
+
+
+
+  if (!reviewStaleWatchEligible()) { reconcileReviewStaleWatch(); return; }
+  if (currentReviewRunStale() && markReviewRunStaleSurfaced()) {
+    notifyReviewQueueStateChanged();
+  }
+}
+
+let reviewStaleWatchTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Arm the single leader-owned stale-watch timer (idempotent: exactly one per tab/run generation). */
+function startReviewStaleWatch(): void {
+  if (reviewStaleWatchTimer !== null) return;
+  reviewStaleWatchTimer = setInterval(evaluateReviewStalePush, REVIEW_STALE_WATCH_INTERVAL_MS);
+}
+
+/** Clear the leader-owned stale-watch timer (idempotent). */
+function stopReviewStaleWatch(): void {
+  if (reviewStaleWatchTimer !== null) {
+    clearInterval(reviewStaleWatchTimer);
+    reviewStaleWatchTimer = null;
+  }
+}
+
+
+
+
+
+
+
+
+function reconcileReviewStaleWatch(): void {
+  if (reviewStaleWatchEligible()) startReviewStaleWatch();
+  else stopReviewStaleWatch();
 }
 
 // --- Per-position engine state ---
@@ -3226,6 +3450,10 @@ function _failAnalyzingEntries(): void {
       persistManifestEntry(entry);
     }
   }
+
+
+
+  reconcileReviewStaleWatch();
 }
 
 /** True when the review engine failed to initialise. */
@@ -3250,8 +3478,12 @@ function parseReviewLine(line: string, consumedSearch: ReviewSearchDescriptor | 
 
     if (!searchOwnerDescriptorIsActive(searchOwnerHead(reviewSearchOwner), reviewActiveSearchToken)) return;
     if (!currentReviewSearchIdentityMatches()) return;
-    // Engine is alive and searching — reset the silence watchdog.
+
+
+
+
     petWatchdog();
+    reviewLastEngineOutputAt = Date.now();
     let isMate = false;
     let score: number | undefined;
     let best:  string | undefined;
@@ -4049,6 +4281,9 @@ function advanceQueue(): void {
     resetReviewBatchElapsed();
 
 
+    reconcileReviewStaleWatch();
+
+
 
     void autoContinueReviewRun();
     return;
@@ -4061,6 +4296,8 @@ function advanceQueue(): void {
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
   persistManifestEntry(entry);
+
+  reconcileReviewStaleWatch();
   void startEntryBatch(entry);
 }
 
@@ -4588,6 +4825,11 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
     queuePaused = false;
     queuePauseReason = null;
     setActiveReviewRunState('running');
+
+
+
+    anchorReviewEngineLiveness();
+    reconcileReviewStaleWatch();
     if (!reviewEngineInitStarted && !reviewEngineFailed) {
       void initReviewEngine('/stockfish-web');
     }
@@ -4600,6 +4842,11 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   queuePauseReason = 'reload';
   markReviewPauseNotice('interrupted-after-reload', 'Review was interrupted after reload and needs Resume to continue.');
   setActiveReviewRunState('interrupted-after-reload');
+
+
+
+  resetReviewBatchElapsed();
+  reconcileReviewStaleWatch();
   notifyReviewQueueStateChanged();
 }
 
@@ -4676,10 +4923,17 @@ export async function fenceReviewQueueForDataManagement(
     queuePauseReason = null;
     resetReviewBatchElapsed();
     setActiveReviewRunState('batch-complete');
+
   } else if (stopped && activeIndex < 0 && !queuePaused && !reviewEngineFailed) {
     advanceQueue();
   }
 
+
+
+
+
+
+  reconcileReviewStaleWatch();
   notifyReviewQueueStateChanged();
   return { owner, stopped, removed: affectedEntries.length };
 }
@@ -4730,6 +4984,8 @@ export function cancelBulkReview(): void {
   setActiveReviewRunState('canceled');
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
+
+  reconcileReviewStaleWatch();
   void clearReviewQueueManifest();
   notifyReviewQueueStateChanged();
 }
@@ -4766,6 +5022,8 @@ export function pauseBulkReview(): void {
   // The queue is idle until resumeBulkReview; elapsed time restarts on resume.
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
+
+  reconcileReviewStaleWatch();
   notifyReviewQueueStateChanged();
 }
 
@@ -4802,6 +5060,8 @@ export function suspendBulkReviewForHiddenTab(): void {
   flushReviewCheckpoint();
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
+
+  reconcileReviewStaleWatch();
   notifyReviewQueueStateChanged();
 }
 
@@ -4817,6 +5077,10 @@ export function resumeBulkReview(): void {
   hiddenSuspendedOwnerTabId = null;
   setActiveReviewRunState('running');
   ensureReviewBatchElapsedStarted();
+
+
+
+  anchorReviewEngineLiveness();
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
@@ -4832,6 +5096,9 @@ export function resumeBulkReview(): void {
   } else {
     advanceQueue();
   }
+
+
+  reconcileReviewStaleWatch();
   syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
@@ -5228,17 +5495,18 @@ export function getQueueSummary(): QueueSummary {
       })()
     : null;
   const rawLifecycleState = activeReviewRun?.lifecycleState ?? null;
-  const stale = isReviewRunStale({
-    running,
-    paused,
-    pauseReason: queuePauseReason,
-    lifecycleState: rawLifecycleState,
-    retryingFailedGame: failedGameRetryTimer !== null,
-    lastProgressSeconds,
-    staleThresholdSeconds: REVIEW_STALE_PROGRESS_MS / 1000,
-  });
-  if (stale && currentReviewPauseNotice?.active !== true) {
-    markReviewPauseNotice('browser-stalled', 'No review progress was detected for the stale-progress threshold.');
+
+
+
+
+  let stale: boolean;
+  if (isCurrentLeader) {
+    stale = currentReviewRunStale(now);
+    // No redraw here (this is a mid-render pull; the push timer owns redraw-on-transition), but keep
+    // the surfaced state consistent so the returned summary and the leader's persisted manifest agree.
+    if (stale) markReviewRunStaleSurfaced();
+  } else {
+    stale = currentReviewPauseNotice?.reason === 'browser-stalled' && currentReviewPauseNotice.active === true;
   }
   const lifecycleState = stale ? 'stale' : rawLifecycleState;
 
@@ -5434,6 +5702,13 @@ export function retryReviewRunFailedGames(): void {
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
+
+
+
+
+
+  anchorReviewEngineLiveness();
+  reconcileReviewStaleWatch();
   syncReviewUnattendedWakeLock();
   notifyReviewQueueStateChanged();
 }
