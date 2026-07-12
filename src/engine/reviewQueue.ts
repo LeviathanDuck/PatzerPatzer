@@ -145,6 +145,31 @@ let reviewProtocolThreads   = REVIEW_ENGINE_THREADS;
 const reviewGameStartedAt = new WeakMap<ReviewQueueEntry, number>();
 const reviewEngineReadyWaiters = new Set<(ready: boolean) => void>();
 
+
+
+
+
+
+
+
+interface ReviewDispatchIdentity {
+  epoch: number;
+  generation: number;
+  runId: string | null;
+  activeIndex: number;
+  entry: ReviewQueueEntry | undefined;
+  itemIndex: number;
+}
+
+
+
+
+let pendingReadyDispatch: ReviewDispatchIdentity | undefined;
+
+
+
+let reviewDispatchEpoch = 0;
+
 export type ReviewProtocolMessageHandler = (line: string) => void;
 
 export interface TreeEvalEngineLease {
@@ -200,7 +225,7 @@ function finishTreeEvalPreemptDrain(reason: 'bestmove' | 'timeout'): void {
   }
 
   if (!queuePaused && !reviewSearchActive && reviewItemQueue[reviewItemIndex]) {
-    sendNextItem();
+    awaitReadyThenDispatch();
   }
 }
 
@@ -244,6 +269,184 @@ function waitForReviewEngineReady(timeoutMs = 15_000): Promise<boolean> {
     };
     const timer = setTimeout(() => done(false), timeoutMs);
     reviewEngineReadyWaiters.add(done);
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+function acceptReviewEngineReadyok(): boolean {
+  if (reviewEngineFailed) return false;   // expired/abandoned attempt — terminal until reload
+  if (reviewEngineReady) return true;     // idempotent: already handshook
+  reviewEngineReady = true;
+  resolveReviewEngineReadyWaiters(true);
+  return true;
+}
+
+
+function captureReviewDispatchIdentity(): ReviewDispatchIdentity {
+  return {
+    epoch: reviewDispatchEpoch,
+    generation: reviewSearchGeneration,
+    runId: activeReviewRun?.runId ?? null,
+    activeIndex,
+    entry: activeIndex >= 0 ? queue[activeIndex] : undefined,
+    itemIndex: reviewItemIndex,
+  };
+}
+
+
+
+
+
+
+
+
+function invalidateReviewDispatchWaiters(): void {
+  reviewDispatchEpoch++;
+  pendingReadyDispatch = undefined;
+}
+
+
+
+
+
+
+
+
+
+
+function reviewDispatchIdentityStillCurrent(captured: ReviewDispatchIdentity): boolean {
+  if (captured.epoch !== reviewDispatchEpoch) return false;
+  if (!isCurrentLeader) return false;
+  if (queuePaused) return false;
+  if (reviewSearchGeneration !== captured.generation) return false;
+  if ((activeReviewRun?.runId ?? null) !== captured.runId) return false;
+  if (activeIndex !== captured.activeIndex) return false;
+  const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+  if (!entry || entry !== captured.entry || entry.status !== 'analyzing') return false;
+  if (reviewItemIndex !== captured.itemIndex) return false;
+
+
+
+
+
+  if (reviewItemQueueOwner !== entry) return false;
+  return true;
+}
+
+
+
+
+
+
+function recordReviewDispatchWaiterRetired(): void {
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-queue',
+    message: 'review-dispatch-waiter-retired-stale',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      queueDepth: queue.length,
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function reviewDispatchReadyGuard(captured: ReviewDispatchIdentity): boolean {
+  if (!reviewDispatchIdentityStillCurrent(captured)) return false;
+  if (reviewEngineFailed || !reviewEngineReady) return false;
+  if (treeEvalPreemptDrainActive) return false;
+  if (reviewSearchActive || reviewDispatchBarrierWaiting) return false;
+  if (reviewDispatchDeferTimer !== undefined) return false;
+  if (reviewItemIndex >= reviewItemQueue.length) return false;
+  return true;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function awaitReadyThenDispatch(): void {
+  if (reviewEngineFailed) return;
+  if (reviewEngineReady) {
+
+
+    if (reviewDispatchReadyGuard(captureReviewDispatchIdentity())) {
+      reviewDispatchEpoch++;
+      dispatchReviewItemNow();
+    }
+    return;
+  }
+  if (!reviewEngineInitStarted) void initReviewEngine('/stockfish-web');
+  if (pendingReadyDispatch) return;   // a wait is already in flight — join it (dedup)
+  const captured = captureReviewDispatchIdentity();
+  pendingReadyDispatch = captured;
+  void waitForReviewEngineReady().then(ready => {
+    if (pendingReadyDispatch === captured) pendingReadyDispatch = undefined;
+    if (!ready) {
+
+
+
+
+
+
+
+
+      if (!reviewDispatchIdentityStillCurrent(captured)) {
+        recordReviewDispatchWaiterRetired();
+        return;
+      }
+      // Never-readyok / engine-failed-while-waiting: settle into the atomic failure state rather
+      // than leaving the run silently wedged. Idempotent if another path already failed it.
+      if (!reviewEngineFailed) applyReviewEngineInitFailure();
+      return;
+    }
+    // SUCCESS branch: the full guard (identity + engine + dispatch-machinery) decides.
+    if (reviewDispatchReadyGuard(captured)) {
+      reviewDispatchEpoch++;
+      dispatchReviewItemNow();
+    }
   });
 }
 
@@ -936,6 +1139,12 @@ function becomeLeader(
 ): void {
   if (isCurrentLeader) return;
   isCurrentLeader = true;
+
+
+  invalidateOutstandingReviewMirrors();
+
+
+  reviewLeadershipEpoch++;
   writeLeaderToken();
   if (leaderHeartbeatTimer === null) {
     leaderHeartbeatTimer = setInterval(writeLeaderToken, LEADER_HEARTBEAT_MS);
@@ -1022,6 +1231,18 @@ function becomeLeader(
 function resignLeadership(): void {
   if (!isCurrentLeader) return;
   isCurrentLeader = false;
+
+
+
+
+  invalidateReviewDispatchWaiters();
+
+
+
+  invalidateOutstandingReviewMirrors();
+
+
+  reviewLeadershipEpoch++;
   if (leaderHeartbeatTimer !== null) {
     clearInterval(leaderHeartbeatTimer);
     leaderHeartbeatTimer = null;
@@ -1067,8 +1288,10 @@ function startObserverPolling(): void {
 /** Rebuild the local read-only queue mirror from the manifest (observer tabs only). */
 async function refreshObserverQueue(): Promise<void> {
   if (isCurrentLeader) return;
-  await mirrorQueueFromManifest();
-  notifyReviewQueueStateChanged();
+  const committed = await mirrorQueueFromManifest();
+
+
+  if (committed) notifyReviewQueueStateChanged();
 }
 
 /**
@@ -1217,26 +1440,164 @@ function initLeaderElection(): void {
  * picks up in-progress games from where the manifest/analysis-library left
  * off rather than restarting them. No-op if there is nothing to resume.
  */
+
+
+
+let reviewTakeoverRecoveryActive = false;
+
+
+
+
+
+let reviewLeadershipEpoch = 0;
+
+
+
+
+
+let reviewPendingTakeover = false;
+let reviewPendingTakeoverResume = false;
+
 async function takeOverAsLeader(resumeAfterTakeover = false): Promise<void> {
   if (!isCurrentLeader) return;
+  if (reviewTakeoverRecoveryActive) {
+
+
+
+
+
+    reviewPendingTakeover = true;
+    reviewPendingTakeoverResume = reviewPendingTakeoverResume || resumeAfterTakeover;
+    return;
+  }
   if (queue.length > 0) {
     // This tab already has live queue state (e.g. it enqueued games itself
     // before winning an election) — just make sure it's progressing.
-    if (activeIndex < 0 && !reviewEngineFailed) advanceQueue();
-    return;
+    if (reviewEngineFailed) return;
+    const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
+    if (!entry) {
+      advanceQueue();
+      return;
+    }
+    if (entry.status !== 'analyzing') return;
+
+
+
+
+
+
+
+
+
+    if (reviewItemQueueOwner === entry && reviewItemIndex < reviewItemQueue.length) {
+      awaitReadyThenDispatch();
+      return;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    reviewItemQueue = [];
+    reviewItemIndex = 0;
+    reviewItemQueueOwner = null;
+    invalidateReviewDispatchWaiters();
+    // fall through to the manifest resume below
   }
-  await resumeReviewQueueFromManifest(_libraryGames);
-  if (resumeAfterTakeover && queuePaused && queuePauseReason === 'reload') {
+  reviewTakeoverRecoveryActive = true;
+  const displaySnapshot = queue;
+
+
+
+  const tenureEpoch = reviewLeadershipEpoch;
+  let takeoverSuperseded = false;
+  try {
+    await resumeReviewQueueFromManifest(_libraryGames);
+  } finally {
+    reviewTakeoverRecoveryActive = false;
+    takeoverSuperseded = !isCurrentLeader || reviewLeadershipEpoch !== tenureEpoch;
+
+
+
+
+
+
+
+    if (!takeoverSuperseded && queue === displaySnapshot && queue.length > 0) {
+      queue = [];
+      activeIndex = -1;
+      notifyReviewQueueStateChanged();
+    }
+
+
+
+
+    if (reviewPendingTakeover) {
+      const pendingResume = reviewPendingTakeoverResume;
+      reviewPendingTakeover = false;
+      reviewPendingTakeoverResume = false;
+      void takeOverAsLeader(pendingResume);
+    }
+  }
+  // A superseded recovery hands the attended-resume responsibility to the re-kicked takeover — the
+  // stale tenure must not resume a run it no longer owns.
+  if (!takeoverSuperseded && resumeAfterTakeover && queuePaused && queuePauseReason === 'reload') {
     resumeBulkReview();
+
+
+
+    if (!queuePaused) clearActiveReviewPauseNoticeAfterProgress();
   }
 }
 
-/** Rebuild a read-only mirror of `queue` from the manifest, for observer-tab display only. */
-async function mirrorQueueFromManifest(): Promise<void> {
+
+
+
+
+let reviewMirrorGeneration = 0;
+
+
+
+
+
+
+
+
+
+function invalidateOutstandingReviewMirrors(): void {
+  reviewMirrorGeneration++;
+}
+
+
+
+
+
+
+async function mirrorQueueFromManifest(): Promise<boolean> {
+  const mirrorGeneration = ++reviewMirrorGeneration;
   const loadedRun = await loadLatestReviewRunManifest();
-  if (loadedRun) activeReviewRun = normalizeReviewRunManifest(loadedRun);
   const { entries: manifest, errorDetail } = await loadReviewQueueManifestWithDiagnostics();
   if (errorDetail) recordReviewManifestReadFailure(errorDetail, false);
+
+
+
+
+
+
+
+  if (isCurrentLeader || reviewMirrorGeneration !== mirrorGeneration) return false;
+  if (loadedRun) activeReviewRun = normalizeReviewRunManifest(loadedRun);
   queue = sortByActiveBatchOrder(manifest, record => record.gameId).map(record => {
     const game = _libraryGames.find(g => g.id === record.gameId);
     // Fallback placeholder when the library snapshot hasn't caught up yet —
@@ -1257,6 +1618,12 @@ async function mirrorQueueFromManifest(): Promise<void> {
     };
   });
   activeIndex = queue.findIndex(e => e.status === 'analyzing');
+
+
+
+
+  reviewItemQueueOwner = null;
+  return true;
 }
 
 // Library snapshot used by observer-mode manifest mirroring and by leader
@@ -2180,6 +2547,13 @@ let reviewParentPath       = '';
 let reviewSearchActive     = false;
 let reviewItemQueue:       ReviewBatchItem[] = [];
 let reviewItemIndex        = 0;
+
+
+
+
+
+
+let reviewItemQueueOwner: ReviewQueueEntry | null = null;
 // Engine-result→node binding guard (BUG-2026-06-29-019): bounded re-search when a result's best
 // move is illegal in the item's own FEN (the engine answered for a different position). Re-searching
 // the same FEN re-syncs a one-position-behind engine; after the cap, the game errors loudly.
@@ -2192,7 +2566,7 @@ let reviewActiveDepth      = bulkReviewDepth;
 // --- Stop/bestmove race hardening ---
 // Instead of a raw pending-stop counter (which can desync across rapid pause/resume/cancel
 // sequences), we use a monotonic generation token.  Every stop() call increments the
-// generation; sendNextItem() and watchdog-retry captures the generation at search start.
+// generation; dispatchReviewItemNow() and watchdog-retry captures the generation at search start.
 // The bestmove handler discards any result whose captured generation doesn't match the
 // current generation, closing the window where a stale bestmove could be misattributed to
 // the next position and permanently swallow its result.
@@ -2201,7 +2575,7 @@ let reviewActiveDepth      = bulkReviewDepth;
 // info-accumulation and the bestmove handler can double-check position identity in logs.
 
 let reviewSearchGeneration      = 0;   // incremented on every stop() or new-search start
-let reviewSearchStartGeneration = 0;   // captured at sendNextItem() / watchdog-retry
+let reviewSearchStartGeneration = 0;   // captured at dispatchReviewItemNow() / watchdog-retry
 let reviewInflightFen           = '';  // FEN of the currently-active search
 let reviewSearchInvalidatedAt: number | null = null;
 
@@ -2265,7 +2639,7 @@ function beginDispatchBarrier(): void {
     reviewDispatchBarrierWaiting = false;
     const dropped = searchOwnerReset(reviewSearchOwner);
     recordReviewSearchOwnerReset('barrier-timeout', dropped);
-    if (!queuePaused && reviewItemQueue[reviewItemIndex]) sendNextItem();
+    if (!queuePaused && reviewItemQueue[reviewItemIndex]) awaitReadyThenDispatch();
   }, REVIEW_DISPATCH_BARRIER_TIMEOUT_MS);
 }
 
@@ -2274,7 +2648,7 @@ function maybeFinishDispatchBarrier(): void {
   if (!reviewDispatchBarrierWaiting) return;
   if (searchOwnerOutstanding(reviewSearchOwner) > 0) return;
   clearDispatchBarrier();
-  if (!queuePaused && reviewItemQueue[reviewItemIndex]) sendNextItem();
+  if (!queuePaused && reviewItemQueue[reviewItemIndex]) awaitReadyThenDispatch();
 }
 
 function clearReviewSearchIdentity(): void {
@@ -2442,7 +2816,7 @@ function clearDispatchDefer(): void {
 // is caught within WATCHDOG_SILENCE_MS no matter how slow the machine is, and a legitimately
 // long search is never killed because it keeps petting the timer. A generous absolute ceiling
 // is a backstop for the (very rare) "emits info forever but never returns bestmove" mode.
-// Armed in sendNextItem(), pet on each info line, cleared on bestmove, disarmed on pause/cancel.
+// Armed in dispatchReviewItemNow(), pet on each info line, cleared on bestmove, disarmed on pause/cancel.
 
 let reviewWatchdogTimer:         ReturnType<typeof setTimeout> | undefined = undefined; // silence timer
 let reviewWatchdogAbsoluteTimer: ReturnType<typeof setTimeout> | undefined = undefined; // hard backstop
@@ -2498,6 +2872,7 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
   reviewCurrentEval = {};
   reviewItemQueue = [];
   reviewItemIndex = 0;
+  reviewItemQueueOwner = null;
   reviewMismatchRetryIndex = -1;
   reviewMismatchRetryCount = 0;
 
@@ -2606,7 +2981,7 @@ function advanceToNextItem(): void {
   }
 
   if (reviewItemIndex < reviewItemQueue.length) {
-    sendNextItem();
+    awaitReadyThenDispatch();
   } else {
     finishEntry(entry);
   }
@@ -2755,18 +3130,20 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
 
   reviewProtocol.onMessage(line => {
     if (line.trim() === 'readyok') {
-      reviewEngineReady = true;
-      resolveReviewEngineReadyWaiters(true);
+
+
+      if (!acceptReviewEngineReadyok()) return;
       console.log('[review-engine] ready');
       // If a game is waiting for the engine, kick off its batch now — but never while a search
-      // is already framed or the pipeline is still draining (double-dispatch guard).
+      // is already framed or the pipeline is still draining (double-dispatch guard). Routing
+      // through the gate keeps a single dispatch entry point; the fast path dispatches directly.
       const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
       if (
         entry && entry.status === 'analyzing' && reviewItemQueue.length > 0
         && !reviewSearchActive && !reviewDispatchBarrierWaiting
         && searchOwnerOutstanding(reviewSearchOwner) === 0
       ) {
-        sendNextItem();
+        awaitReadyThenDispatch();
       }
       return;
     }
@@ -3099,7 +3476,7 @@ function onReviewBestmove(consumedSearch: ReviewSearchDescriptor | null): void {
     }
     reviewMismatchRetryIndex = reviewItemIndex;
     reviewMismatchRetryCount = retriesForItem + 1;
-    sendNextItem(); // re-search the same item; this re-syncs a one-position-behind engine
+    awaitReadyThenDispatch(); // re-search the same item; this re-syncs a one-position-behind engine
     return;
   }
   // Result is bound to the correct position — clear any mismatch retry state for this item.
@@ -3154,7 +3531,7 @@ function onReviewBestmove(consumedSearch: ReviewSearchDescriptor | null): void {
   notifyReviewQueueStateChanged();
 
   if (reviewItemIndex < reviewItemQueue.length) {
-    sendNextItem();
+    awaitReadyThenDispatch();
   } else {
     finishEntry(entry);
   }
@@ -3162,14 +3539,23 @@ function onReviewBestmove(consumedSearch: ReviewSearchDescriptor | null): void {
 
 // --- Send next batch item to the background engine ---
 
-function sendNextItem(): void {
+
+
+
+function dispatchReviewItemNow(): void {
   const item = reviewItemQueue[reviewItemIndex];
   if (!item) return;
   if (treeEvalPreemptDrainActive) return;
 
   if (shouldDeferDispatch()) {
     reviewDispatchDeferCount++;
-    reviewDispatchDeferTimer = setTimeout(sendNextItem, REVIEW_DISPATCH_DEFER_MS);
+
+
+
+    reviewDispatchDeferTimer = setTimeout(() => {
+      reviewDispatchDeferTimer = undefined;
+      awaitReadyThenDispatch();
+    }, REVIEW_DISPATCH_DEFER_MS);
     return;
   }
   reviewDispatchDeferCount = 0;
@@ -3573,6 +3959,15 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
 
 async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
   try {
+
+
+
+
+
+    if (!entry.game.pgn || entry.game.pgn.trim().length === 0) {
+      markActiveEntryErrored(`review entry has no game data (game ${entry.game.id})`);
+      return;
+    }
     // entry is always 'pending'/'analyzing' here, never 'complete' — ctrl/cache
     // have not been evicted yet. Build them now if this entry was enqueued
     // lazily (LAZY_BUILD_THRESHOLD) and hasn't entered the analyzing slot before.
@@ -3617,18 +4012,19 @@ async function startEntryBatch(entry: ReviewQueueEntry): Promise<void> {
 
     reviewItemQueue   = items;
     reviewItemIndex   = 0;
+
+    reviewItemQueueOwner = entry;
     reviewCurrentEval = {};
     reviewMismatchRetryIndex = -1;
     reviewMismatchRetryCount = 0;
     reviewActiveDepth = entry.depth;
 
-    // Ensure engine is ready before sending first position.
-    if (!reviewEngineReady) {
-      // initReviewEngine readyok handler will call sendNextItem when ready.
-      return;
-    }
 
-    sendNextItem();
+
+
+
+
+    awaitReadyThenDispatch();
   } catch (error) {
     markActiveEntryErrored(`failed to start review batch for game ${entry.game.id}`, error);
   }
@@ -4024,9 +4420,34 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number, feed: 'bul
  */
 export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Promise<void> {
   setLibraryGamesForReviewQueue(games);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const recoveryEpoch = reviewLeadershipEpoch;
+  const recoverySuperseded = (): boolean => reviewLeadershipEpoch !== recoveryEpoch;
+
   const loadedRun = await loadLatestReviewRunManifest();
+  if (recoverySuperseded()) return;
   activeReviewRun = loadedRun ? normalizeReviewRunManifest(loadedRun) : null;
   const failureRecords = await loadReviewFailureRecords();
+  if (recoverySuperseded()) return;
   failedGameAttempts = new Map(failureRecords.map(record => [record.key, {
     gameId:       record.gameId,
     depth:        record.depth,
@@ -4042,12 +4463,14 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   // if this tab later wins leadership, takeOverAsLeader() performs the real
   // (heavy) resume at that point.
   if (!isCurrentLeader) {
-    await mirrorQueueFromManifest();
-    notifyReviewQueueStateChanged();
+    if (await mirrorQueueFromManifest()) notifyReviewQueueStateChanged();
     return;
   }
 
   const { entries: manifest, errorDetail } = await loadReviewQueueManifestWithDiagnostics();
+
+
+  if (recoverySuperseded()) return;
   if (errorDetail) recordReviewManifestReadFailure(errorDetail, true);
   if (manifest.length === 0) return;
 
@@ -4061,12 +4484,22 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   for (const record of sortByActiveBatchOrder(manifest, record => record.gameId)) {
     const game = gamesById.get(record.gameId);
     if (!game) {
-      // Game deleted from the library between sessions — drop it out of the resumed queue.
+
+
+
+
+
+      if (recoverySuperseded()) return;
       void clearReviewQueueManifestEntry(record.gameId);
       continue;
     }
 
     const stored = await loadAnalysisFromIdb(record.gameId);
+
+
+
+
+    if (recoverySuperseded()) return;
     if (storedAnalysisMatchesReviewDepth(stored, record.minimumDepthUsed ?? record.depth)) {
       // Finished between the last manifest write and the interruption — nothing to resume.
       _analyzedGameIds.add(record.gameId);
@@ -4124,14 +4557,29 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
   }
 
   if (rebuilt.length === 0) {
-    // All manifest rows were already complete: nothing to resume, but the loop above may have
-    // added games to _analyzedGameIds. Publish that state change exactly once — no engine work,
-    // no queue rebuild — so the Games list redraws its reviewed badges now instead of on the
-    // next queue touch (BUG-2026-07-02-003).
-    if (recoveryCompletedGames) notifyReviewQueueStateChanged();
+
+
+    if (recoverySuperseded()) return;
+
+
+
+
+
+
+
+
+    const hadSnapshot = queue.length > 0;
+    if (hadSnapshot) {
+      queue = [];
+      activeIndex = -1;
+    }
+    if (recoveryCompletedGames || hadSnapshot) notifyReviewQueueStateChanged();
     return;
   }
 
+
+
+  if (recoverySuperseded()) return;
   queue = rebuilt;
   activeIndex = -1;
   hiddenSuspendedOwnerTabId = null;
@@ -4169,6 +4617,9 @@ function stopActiveReviewSearchForDataManagement(): void {
   clearDispatchDefer();
   clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
+
+
+  invalidateReviewDispatchWaiters();
   if (reviewSearchActive) {
     reviewSearchGeneration++;
     searchOwnerMarkAllStale(reviewSearchOwner);
@@ -4179,6 +4630,7 @@ function stopActiveReviewSearchForDataManagement(): void {
   reviewCurrentEval = {};
   reviewItemQueue = [];
   reviewItemIndex = 0;
+  reviewItemQueueOwner = null;
 }
 
 export async function fenceReviewQueueForDataManagement(
@@ -4245,6 +4697,11 @@ export function cancelBulkReview(): void {
   clearDispatchBarrier();
   clearTreeEvalPreemptDrain();
   clearFailedGameRetryTimer();
+
+
+
+
+  invalidateReviewDispatchWaiters();
   reviewWatchdogRetries = 0;
   reviewWatchdogTriggeredAt = null;
   if (reviewSearchActive) {
@@ -4261,6 +4718,11 @@ export function cancelBulkReview(): void {
   recordReviewQueueLifecycleEvent('review-queue-cleared', Severity.Info);
   queue       = [];
   activeIndex = -1;
+
+
+  reviewItemQueue = [];
+  reviewItemIndex = 0;
+  reviewItemQueueOwner = null;
   queuePaused = false;
   queuePauseReason = null;
   hiddenSuspendedOwnerTabId = null;
@@ -4358,10 +4820,12 @@ export function resumeBulkReview(): void {
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');
   }
-  // Resume the active entry if one was mid-analysis when paused.
+
+
+
   const entry = activeIndex >= 0 ? queue[activeIndex] : undefined;
   if (entry && entry.status === 'analyzing' && reviewItemIndex < reviewItemQueue.length) {
-    sendNextItem();
+    awaitReadyThenDispatch();
   } else if (scheduleNextRetryableFailedGame()) {
     // Retry resumes after the normal controlled backoff instead of immediately
     // hammering a game that was already failing.
@@ -4402,7 +4866,7 @@ export function resumeUnattendedReviewInThisTab(): void {
     && !reviewDispatchBarrierWaiting
     && reviewItemIndex < reviewItemQueue.length
   ) {
-    sendNextItem();
+    awaitReadyThenDispatch();
   } else if (failedGameRetryTimer === null && scheduleNextRetryableFailedGame()) {
     // Retry resumes through the normal backoff path.
   } else if (activeIndex < 0 && queue.some(candidate => candidate.status === 'pending')) {
