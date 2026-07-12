@@ -26,6 +26,7 @@ import { loadManifest, loadFilteredShard, findMatchingShards } from './shardLoad
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
+import { parseFen } from 'chessops/fen';
 
 function txStoreName(tx: IDBTransaction): string {
   const storeNames = Array.from(tx.objectStoreNames);
@@ -151,20 +152,104 @@ function openPuzzleDb(): Promise<IDBDatabase> {
 
 // --- Definitions ---
 
-export async function savePuzzleDefinition(def: PuzzleDefinition): Promise<void> {
-  // Validate solution line consistency before persisting.
+/**
+ * Outcome of a savePuzzleDefinition() attempt (BUG-2026-07-10-030 / Decision 7).
+ *
+ * The save is now a REJECTING contract instead of a fire-and-forget void: a
+ * validation refusal or a caught IDB write failure resolves an explicit
+ * `{ ok: false }` result rather than resolving silently. Every caller that
+ * shows a "saved" confirmation MUST branch on `ok` so success UI appears ONLY
+ * after an actual write — otherwise a refused/failed save silently masquerades
+ * as a success (the original defect). Producers audited to consume this:
+ * createPuzzleFromSolution / createPuzzleFromStart (src/main.ts) and the LFYM
+ * single + bulk save callers (src/analyse/retroView.ts).
+ */
+export type SavePuzzleDefinitionResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: 'empty-solution-line' | 'invalid-start-fen' | 'strict-mismatch' | 'write-failed';
+      message: string;
+    };
+
+
+
+
+
+
+
+
+
+
+
+export function anchorSolutionLine(moves: readonly string[] | undefined, anchorUci: string): string[] {
+  return moves && moves.length > 0 && moves[0] === anchorUci ? [...moves] : [anchorUci];
+}
+
+/** Aggregate outcome of a bulk savePuzzleDefinition run (LFYM session-end bulk save). */
+export interface BulkSaveSummary {
+  /** Definitions that actually reached a durable write (`ok:true`). */
+  saved: number;
+  /** Definitions whose save was rejected (`ok:false`). */
+  failed: number;
+  /**
+   * UI-facing classification driven off REAL writes, not `Promise.all` completion:
+   * - `none`       — nothing was attempted.
+   * - `all-saved`  — every attempted save was written.
+   * - `partial`    — some written, some rejected (surface the failures).
+   * - `all-failed` — every save was rejected (explicit FAILURE UI, never a false "Saved 0").
+   */
+  outcome: 'none' | 'all-saved' | 'partial' | 'all-failed';
+}
+
+
+
+
+
+
+
+
+
+export function summarizeBulkSaveResults(results: readonly SavePuzzleDefinitionResult[]): BulkSaveSummary {
+  const saved = results.reduce((n, r) => (r.ok ? n + 1 : n), 0);
+  const failed = results.length - saved;
+  let outcome: BulkSaveSummary['outcome'];
+  if (results.length === 0) outcome = 'none';
+  else if (failed === 0) outcome = 'all-saved';
+  else if (saved === 0) outcome = 'all-failed';
+  else outcome = 'partial';
+  return { saved, failed, outcome };
+}
+
+export async function savePuzzleDefinition(def: PuzzleDefinition): Promise<SavePuzzleDefinitionResult> {
+  // Validate solution line consistency before persisting. A refusal now REJECTS
+  // the save via an explicit failure result (Decision 7) instead of resolving
+  // silently, so callers only show success after an actual write.
   if (!def.solutionLine || def.solutionLine.length === 0) {
     console.warn('[puzzleDb] refusing to save definition with empty solutionLine', def.id);
-    return;
+    return { ok: false, reason: 'empty-solution-line', message: `empty solutionLine for ${def.id}` };
   }
-  if (!def.startFen || def.startFen.split(' ').length < 2) {
+
+
+
+
+
+  if (!def.startFen || def.startFen.split(' ').length < 2 || parseFen(def.startFen).isErr) {
     console.warn('[puzzleDb] refusing to save definition with invalid startFen', def.id);
-    return;
+    return { ok: false, reason: 'invalid-start-fen', message: `invalid startFen for ${def.id}` };
   }
-  // strictSolutionMove must match solutionLine[0]
+  // strictSolutionMove must match solutionLine[0]. A mismatch means the strict
+  // answer and the stored line disagree — a producer bug. Refuse the save
+  // instead of silently rewriting the strict move over the caller's intent
+  // (Do Not Preserve: the silent strictSolutionMove rewrite), which had let
+  // answer corruption slip through as a "successful" save.
   if (def.strictSolutionMove && def.strictSolutionMove !== def.solutionLine[0]) {
-    console.warn('[puzzleDb] strictSolutionMove mismatch, correcting', def.id);
-    def.strictSolutionMove = def.solutionLine[0]!;
+    console.warn('[puzzleDb] refusing to save definition with strictSolutionMove/solutionLine mismatch', def.id);
+    return {
+      ok: false,
+      reason: 'strict-mismatch',
+      message: `strictSolutionMove ${def.strictSolutionMove} != solutionLine[0] ${def.solutionLine[0]} for ${def.id}`,
+    };
   }
   try {
     def.updatedAt = Date.now();
@@ -173,8 +258,10 @@ export async function savePuzzleDefinition(def: PuzzleDefinition): Promise<void>
     tx.objectStore(STORE_DEFINITIONS).put(def);
     await txDone(tx);
     enqueuePuzzlePut('puzzle-definitions', def.id, def, def.updatedAt ?? Date.now());
+    return { ok: true };
   } catch (e) {
     console.warn('[puzzleDb] definition save failed', e);
+    return { ok: false, reason: 'write-failed', message: e instanceof Error ? e.message : String(e) };
   }
 }
 

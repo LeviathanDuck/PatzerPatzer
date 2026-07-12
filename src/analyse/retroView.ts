@@ -24,7 +24,7 @@ import { setRetroVisibleEngineEnabled, resetRetroVisibleEngineUi } from '../ceva
 import { syncArrow, evalCache } from '../engine/ctrl';
 import { evalWinChances } from '../engine/winchances';
 import { retroCandidateToDefinition } from '../puzzles/adapters';
-import { savePuzzleDefinition, saveAttempt } from '../puzzles/puzzleDb';
+import { savePuzzleDefinition, saveAttempt, summarizeBulkSaveResults } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
 import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
 import renderSaveFlowModal from '../save/saveFlowView';
@@ -549,7 +549,14 @@ function persistLfymSaveFlowResult(
     fen: cand.fenBefore,
     source: 'lfym',
   };
-  savePuzzleDefinition(def).then(() => {
+  // Success UI ("Saved!") only after an actual write — a rejected save must not
+  // flash a false confirmation (Decision 7 / BUG-030).
+  savePuzzleDefinition(def).then(result => {
+    if (!result.ok) {
+      console.warn('[retro-save] definition save rejected', cand.path, result.reason);
+      redraw();
+      return;
+    }
     _savedPaths.add(cand.path);
     _savingConfirm.add(cand.path);
     redraw();
@@ -621,7 +628,11 @@ function renderSaveToLibrary(
 
 // Tracks bulk-save state: 'idle' | 'saving' | 'done'
 let _bulkSaveState: 'idle' | 'saving' | 'done' = 'idle';
+// Real-write accounting for the completed bulk save (never derived from Promise.all
+// completion alone): _bulkSaveCount = writes that actually landed (ok:true),
+// _bulkSaveFailed = rejected saves. Drives the honest done-state UI below.
 let _bulkSaveCount = 0;
+let _bulkSaveFailed = 0;
 
 /**
  * Renders a "Save N failed to Library" button at session end.
@@ -681,6 +692,20 @@ function renderBulkSaveToLibrary(
   const unsaved = failed.filter(c => !_savedPaths.has(c.path));
 
   if (_bulkSaveState === 'done') {
+
+    if (_bulkSaveCount === 0) {
+      // Every write was rejected — explicit FAILURE, never a false "Saved 0 puzzles!".
+      // State reverts to idle after the timeout, re-offering the button for retry.
+      return h('div.retro-bulk-save', h('span.retro-save__error',
+        `Could not save ${_bulkSaveFailed} position${_bulkSaveFailed === 1 ? '' : 's'} — try again`,
+      ));
+    }
+    if (_bulkSaveFailed > 0) {
+      // Partial success — report the real written count AND surface that some failed.
+      return h('div.retro-bulk-save', h('span.retro-save__confirm',
+        `Saved ${_bulkSaveCount} — ${_bulkSaveFailed} failed`,
+      ));
+    }
     return h('div.retro-bulk-save', h('span.retro-save__confirm',
       `Saved ${_bulkSaveCount} puzzle${_bulkSaveCount === 1 ? '' : 's'}!`,
     ));
@@ -703,25 +728,36 @@ function renderBulkSaveToLibrary(
     on: { click: () => {
       _bulkSaveState = 'saving';
       redraw();
+
+
+
+
       const saves = unsaved.map(c => {
         const def = retroCandidateToDefinition(c);
         const outcome = retro.getOutcome(c.ply);
-        return savePuzzleDefinition(def).then(() => {
+        return savePuzzleDefinition(def).then(async result => {
+          if (!result.ok) {
+            console.warn('[retro-bulk-save] definition save rejected', c.path, result.reason);
+            return result;
+          }
           _savedPaths.add(c.path);
           // Persist the retro outcome as a first-attempt record so retry/due logic knows
           // this puzzle was already encountered and what happened.
           if (outcome) {
-            return saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
+            await saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
               console.warn('[retro-bulk-save] attempt save failed', e),
             );
           }
+          return result;
         });
       });
-      Promise.all(saves).then(() => {
-        _bulkSaveCount = count;
+      Promise.all(saves).then(results => {
+        const summary = summarizeBulkSaveResults(results);
+        _bulkSaveCount = summary.saved;
+        _bulkSaveFailed = summary.failed;
         _bulkSaveState = 'done';
         redraw();
-        // Revert to quiet state after 3 seconds.
+        // Revert to quiet state after 3 seconds (re-offers the button for any failures).
         setTimeout(() => {
           _bulkSaveState = 'idle';
           redraw();
