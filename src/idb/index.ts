@@ -1507,6 +1507,21 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
     void captureStorageEstimate('post-idb-write');
   } catch (e) {
     console.warn('[idb] save failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveGamesToIdb on games,game-library',
+      metadata: {
+        storeName: 'games,game-library',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -1525,6 +1540,21 @@ export async function saveGameToIdb(game: ImportedGame): Promise<void> {
     void captureStorageEstimate('post-idb-write');
   } catch (e) {
     console.warn('[idb] single-game save failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveGameToIdb on games',
+      metadata: {
+        storeName: 'games',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2241,6 +2271,21 @@ export async function saveAnalysisToIdb(
     await persistAnalysisToIdb(status, gameId, nodes, depth, reviewEngine, requestedAt);
   } catch (e) {
     console.warn('[idb] analysis save failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveAnalysisToIdb on analysis-library',
+      metadata: {
+        storeName: 'analysis-library',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
