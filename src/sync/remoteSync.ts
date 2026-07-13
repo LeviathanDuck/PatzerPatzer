@@ -145,6 +145,18 @@ const REMOTE_POLL_INTERVAL_MS = 60_000;
 const SYNC_LOG_LIMIT = 80;
 const BACKUP_FORMAT = 'patzer-sync-backup';
 
+
+
+
+
+
+
+
+
+
+
+const RESTORE_HASH_CONTRACT = 'exact-payload-json-v1';
+
 export type { RemoteSyncItem, RemoteSyncOperation, RemoteSyncStoreName };
 export type RemoteStoreName = RemoteSyncStoreName;
 
@@ -327,6 +339,19 @@ interface BackupCounts {
   stores: Record<string, { items: number; tombstones: number }>;
 }
 
+/**
+ * A backup row prepared for restore under `exact-payload-json-v1`, and the EXACT wire shape sent to
+ * restore-chunk.php. An upsert carries the single `payloadJson` string produced by
+ * prepareRestoreItem(); a tombstone carries no payload of any kind (the server stages SQL NULL).
+ *
+ * Deliberately retains NEITHER the decoded `payload` NOR `operation`: the decoded object must never
+ * reach the wire again (PHP would re-encode it and expand floats), and `deleted` is the single
+ * framed deletion signal on both sides of the hash.
+ */
+type PreparedRestoreItem =
+  | { store: RemoteSyncStoreName; itemKey: string; updatedAt: number; deleted: false; payloadJson: string }
+  | { store: RemoteSyncStoreName; itemKey: string; updatedAt: number; deleted: true };
+
 interface RawBackupBundle {
   ok?: boolean;
   format?: string;
@@ -350,7 +375,8 @@ export interface RemoteSyncBackupPreview {
   generationReason?: string;
   currentSyncGeneration: number;
   expectedSyncGeneration: number;
-  items: RemoteSyncItem[];
+  /** Prepared rows: the single serialization source for BOTH `hash` and the restore-chunk transport. */
+  items: PreparedRestoreItem[];
   counts: BackupCounts;
   hash: string;
   warnings: string[];
@@ -3341,7 +3367,7 @@ function normalizeBackupBundle(raw: unknown, fileName: string): {
   userKey?: string;
   syncGeneration: number;
   generationReason?: string;
-  items: RemoteSyncItem[];
+  items: PreparedRestoreItem[];
   counts: BackupCounts;
   warnings: string[];
 } {
@@ -3382,20 +3408,37 @@ function normalizeBackupBundle(raw: unknown, fileName: string): {
     ...(typeof bundle.userKey === 'string' && bundle.userKey.trim() ? { userKey: bundle.userKey } : {}),
     syncGeneration,
     ...(typeof bundle.generationReason === 'string' && bundle.generationReason.trim() ? { generationReason: bundle.generationReason } : {}),
-    items,
+    // Serialize ONCE, here: every downstream consumer (the expected hash and the restore-chunk
+    // transport) reads the same prepared string. Counts above are still computed from the
+    // normalized items, before preparation.
+    items: items.map(prepareRestoreItem),
     counts: computed,
     warnings,
   };
 }
 
-function payloadJsonForHash(item: RemoteSyncItem): string {
-  if (isDeletedItem(item)) return '';
-  const json = JSON.stringify(item.payload);
-  if (typeof json !== 'string') throw new Error(`Backup item ${item.store}/${item.itemKey} payload cannot be encoded.`);
-  return json;
+/**
+ * The SOLE `JSON.stringify(payload)` point of the restore path (exact-payload-json-v1). The string
+ * produced here is what the expected hash frames AND what restore-chunk.php stages verbatim — if a
+ * second serialization were introduced anywhere, the two could drift apart and every float-bearing
+ * restore would be rejected again (BUG-2026-07-11-001).
+ */
+function prepareRestoreItem(item: RemoteSyncItem): PreparedRestoreItem {
+  if (isDeletedItem(item)) {
+    // Tombstone: nothing is serialized, and no payload field is transported (server stages NULL).
+    return { store: item.store, itemKey: item.itemKey, updatedAt: item.updatedAt, deleted: true };
+  }
+  const payloadJson = JSON.stringify(item.payload);
+  if (typeof payloadJson !== 'string') throw new Error(`Backup item ${item.store}/${item.itemKey} payload cannot be encoded.`);
+  return { store: item.store, itemKey: item.itemKey, updatedAt: item.updatedAt, deleted: false, payloadJson };
 }
 
-async function hashBackupItems(items: RemoteSyncItem[]): Promise<string> {
+/** Accessor, NOT a serializer: it reads the string prepareRestoreItem() already produced. */
+function payloadJsonForHash(item: PreparedRestoreItem): string {
+  return item.deleted ? '' : item.payloadJson;
+}
+
+async function hashBackupItems(items: PreparedRestoreItem[]): Promise<string> {
   const sorted = [...items].sort((a, b) => a.store.localeCompare(b.store) || a.itemKey.localeCompare(b.itemKey));
   const lines = sorted.map(item => [
     item.store,
@@ -4341,6 +4384,8 @@ interface RestoreStartResponse {
   restoreId?: string;
   syncGeneration?: number;
   generationReason?: string;
+  /** Absent on a pre-exact-payload-json-v1 server — the client then refuses to stage anything. */
+  restoreHashContract?: string;
   error?: string;
 }
 
@@ -4366,6 +4411,16 @@ export async function restoreRemoteSyncBackup(preview: RemoteSyncBackupPreview):
     });
     if (!start.ok || !start.restoreId) throw new Error(start.error || 'Could not start restore job.');
 
+    // Capability gate — FAIL CLOSED before staging a single row. An old server would accept the
+    // decoded-object fallback and then re-encode our floats, so its commit would reject this backup
+    // anyway; aborting here means no rows are staged, no live rows change, and (because local
+    // clearing is post-commit only) no local browser data is touched.
+    if (start.restoreHashContract !== RESTORE_HASH_CONTRACT) {
+      throw new Error('This sync server does not support safe exact-payload restore. Update the server before restoring; no backup data was staged and no local data was cleared.');
+    }
+
+    // preview.items are already the exact wire shape (payloadJson strings, tombstones payload-free):
+    // the bytes hashed above are the bytes staged by the server. Never log them — they are user data.
     for (const batch of chunks(preview.items, RESTORE_CHUNK_SIZE)) {
       const result = await postJson<{ ok?: boolean; error?: string }>('restore-chunk.php', {
         restoreId: start.restoreId,
