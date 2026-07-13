@@ -84,6 +84,17 @@ export function bindKeyboardHandlers(deps: {
       return; // swallow other keys on puzzle page to avoid analysis board conflicts
     }
 
+    // Consult the active workspace's board-input module before running the Analysis shortcut
+    // block. A `surface-owned` module (future drill / read-only / puzzle) owns its own keys and
+    // its own preventDefault, suppressing Analysis navigation/flip/engine shortcuts. The handle is
+    // the guarded instance facade, so a superseded module cannot receive keys. Analysis (no
+    // module) and Study (`analysis-default`) fall through to the block below unchanged.
+    const input = activeWorkspace()?.boardInputModule;
+    if (input?.keyboardPolicy.kind === 'surface-owned') {
+      input.keyboardPolicy.handleKeydown(e);
+      return;
+    }
+
     if (e.shiftKey) {
       if (e.key === 'ArrowLeft')       { e.preventDefault(); previousBranch(); _redraw(); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); nextBranch();     _redraw(); }
