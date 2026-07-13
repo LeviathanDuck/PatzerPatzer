@@ -39,7 +39,7 @@ import { deleteNodeAt, promoteAt, pathInit, nodeListAt, mainlineNodeList, pathIs
 import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
-  flipStudyBoard, studyDetailRouteSnapshot, detailOrientation,
+  flipStudyBoard, studyDetailRouteSnapshot, detailOrientation, mountStudyWorkspace,
 } from './studyDetailCtrl';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
@@ -1345,7 +1345,17 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
             h('button.study-practice-line__btn', {
               attrs: { title: 'Practice now', 'aria-label': 'Practice now' },
               on: { click: () => {
-                initDrillView([line], line.fens[0] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', line.trainAs, redraw);
+                // Embedded Study launch: restore the Study workspace when the drill finally exits
+                // (CCW-H03b). The one-shot callback survives "Practice Again" and is consumed only
+                // on final teardown, and only if the drill was still the active workspace.
+                initDrillView(
+                  [line],
+                  line.fens[0] ?? 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                  line.trainAs,
+                  redraw,
+                  'quiz',
+                  () => mountStudyWorkspace(redraw),
+                );
                 redraw();
               }},
             }, '▶'),
@@ -1410,7 +1420,10 @@ function renderColorPicker(study: StudyItem, root: import('../tree/types').TreeN
     }
 
     if (!seq) { redraw(); return; }
-    initDrillView([seq], startFen, color, redraw);
+    // Embedded Study launch (color-picker / extracted-line): restore the Study workspace on final
+    // drill exit (CCW-H03b). One-shot; survives "Practice Again"; consumed only if the drill was
+    // still the active workspace.
+    initDrillView([seq], startFen, color, redraw, 'quiz', () => mountStudyWorkspace(redraw));
     redraw();
   };
 

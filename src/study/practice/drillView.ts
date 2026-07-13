@@ -3,8 +3,6 @@
 
 
 
-import { Chessground as makeChessground } from '@lichess-org/chessground';
-import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chess } from 'chessops/chess';
 import { chessgroundDests } from 'chessops/compat';
@@ -12,11 +10,16 @@ import { parseFen } from 'chessops/fen';
 import { makeSanAndPlay } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
-import { createDrillBoardAdapter, type DrillBoardAdapter } from './boardAdapter';
+import { createDrillBoardAdapter, type DrillBoardController } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
 import { scheduleNext, positionKey, isDue } from './scheduler';
 import { getPositionProgress, savePositionProgress, saveDrillAttempt } from '../studyDb';
-import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../../board/animation';
+import { renderBoard } from '../../board/index';
+import {
+  mountWorkspace,
+  unmountWorkspace,
+  type WorkspaceInstance,
+} from '../../analyse/workspaceCore';
 import type { TrainableSequence, PositionProgress, DrillAttempt } from '../types';
 
 // --- Module-level drill state ---
@@ -26,9 +29,49 @@ let _sequences:  TrainableSequence[]  = [];
 let _rootFen:    string               = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 let _trainAs:    'white' | 'black'    = 'white';
 let _startedAt:  number               = 0;
-let _cgRef:      CgApi | null         = null;
-let _adapter:    DrillBoardAdapter | null = null;
+let _adapter:    DrillBoardController | null = null;
 let _redraw:     () => void           = () => {};
+
+// --- Workspace-core migration state (CCW-H03b) ---
+// The drill is now a module-owned workspace surface (boardAdapter.ts is its WorkspaceBoardInputModule)
+// rather than a forked Chessground. `_workspaceInstance` is the instance mounted for the current run
+// (unmounted by endDrill). `_drillRunGeneration` is a monotonic run id: every delayed
+// opponent/learn/feedback/advance callback captures it and stale-drops if it no longer matches — a
+// superseded workspace or a restarted/exited drill's timer must be a no-op (the P0 no-stale-mutation
+// contract). All outstanding timer handles are tracked so restart/end can cancel them.
+// `_restoreCallback` is the one-shot Study-restore callback for an embedded launch (survives
+// "Practice Again", consumed only on final teardown).
+let _workspaceInstance: WorkspaceInstance | null = null;
+let _drillRunGeneration = 0;
+let _restoreCallback: (() => void) | null = null;
+const _drillTimers = new Set<ReturnType<typeof setTimeout>>();
+
+// --- Delayed-work scheduling + stale-drop guard (CCW-H03b) ---
+
+/** Schedule a drill timer whose handle is tracked so restart/end can cancel it. */
+function drillTimeout(fn: () => void, ms: number): void {
+  const handle = setTimeout(() => {
+    _drillTimers.delete(handle);
+    fn();
+  }, ms);
+  _drillTimers.add(handle);
+}
+
+/** Cancel every outstanding drill timer (called on run restart in initDrillView and on endDrill). */
+function clearDrillTimers(): void {
+  for (const handle of _drillTimers) clearTimeout(handle);
+  _drillTimers.clear();
+}
+
+/**
+ * True when a delayed callback captured at `run`/`adapter` may still mutate the board or session:
+ * the run must still be current, the adapter must still be the active controller, and its port must
+ * be live (board present + workspace still the active one). A superseded workspace or a
+ * restarted/exited drill's timer therefore becomes a no-op — the P0 no-stale-mutation contract.
+ */
+function drillCallbackLive(run: number, adapter: DrillBoardController | null): adapter is DrillBoardController {
+  return run === _drillRunGeneration && adapter === _adapter && adapter !== null && adapter.isLive();
+}
 
 // Performance stats — tracked during session, preserved for summary on completion/early exit.
 let _totalPositions   = 0;
@@ -51,23 +94,57 @@ export function isDrillActive(): boolean {
  * Must be called before renderDrillView().
  */
 export function initDrillView(
-  sequences: TrainableSequence[],
-  rootFen:   string,
-  trainAs:   'white' | 'black',
-  redraw:    () => void,
-  mode:      DrillMode = 'quiz',
+  sequences:      TrainableSequence[],
+  rootFen:        string,
+  trainAs:        'white' | 'black',
+  redraw:         () => void,
+  mode:           DrillMode = 'quiz',
+  onExitRestore?: () => void,
 ): void {
-  _sequences     = sequences;
-  _rootFen       = rootFen;
-  _trainAs       = trainAs;
-  _redraw        = redraw;
+  // New run: bump the generation and cancel any leftover timers so a prior run's callbacks no-op.
+  _drillRunGeneration++;
+  clearDrillTimers();
+
+  _sequences      = sequences;
+  _rootFen        = rootFen;
+  _trainAs        = trainAs;
+  _redraw         = redraw;
   _session        = createDrillSession(sequences, mode);
   _startedAt      = Date.now();
-  _totalPositions  = 0;
-  _correctFirst    = 0;
-  _showSummary     = false;
-  // Board will be created via Chessground insert hook on first render.
-  // No sync needed yet — syncDrillBoard() is called from the insert hook.
+  _totalPositions = 0;
+  _correctFirst   = 0;
+  _showSummary    = false;
+
+  // One-shot Study-restore callback: only (re)set when an embedded launch supplies one, so a
+  // "Practice Again" restart (which omits it) preserves the original restore without briefly
+  // restoring Study. Cleared on final teardown (endDrill).
+  if (onExitRestore !== undefined) _restoreCallback = onExitRestore;
+
+  // Build the drill board-input controller and mount it as the active workspace. The controller
+  // drives the board only through the guarded port it receives at attach time; the board itself is
+  // rendered by the shared lifecycle's renderBoard() inside `.drill-board-wrap` (renderDrillBoard).
+  // syncDrillBoard() runs from the controller's onAttached, i.e. once the port is attached.
+  const run = _drillRunGeneration;
+  const adapter = createDrillBoardAdapter({
+    initialFen:         rootFen,
+    initialOrientation: trainAs,
+    handleMove:         (orig, dest) => { onUserMove(orig, dest); },
+    handleKeydown:      handleDrillKeydown,
+    onAttached:         () => { syncDrillBoard(); },
+    isRunCurrent:       () => run === _drillRunGeneration,
+  });
+  _adapter = adapter;
+  _workspaceInstance = mountWorkspace({
+    id: 'orp-drill',
+    boardInputMode: 'practice-grading',
+    boardInputModule: adapter.module,
+    getCursor: adapter.getCursor,
+    getOrientation: adapter.getOrientation,
+    redraw,
+    // Module-owned dispatch runs on movable.events.after (sharedTreeMoveTarget returns null for
+    // module-owned), so this shared-tree commit hook is intentionally unreachable.
+    handleUserMove: () => {},
+  });
 }
 
 /** Snapshot current stats and show summary without destroying session data. */
@@ -79,13 +156,26 @@ function captureSummary(): void {
   _showSummary      = true;
 }
 
-/** Tear down the drill and release board resources. */
-export function endDrill(): void {
+/** Tear down the drill: unmount the workspace, cancel timers, and restore Study if this was an
+ *  embedded launch still owning the active workspace. */
+export function endDrill(reason: string = 'drill-end'): void {
   if (!_showSummary) captureSummary();
-  _cgRef?.destroy();
-  _cgRef    = null;
+  // Bump the run generation before any teardown so every in-flight timer stale-drops, then cancel
+  // the tracked handles.
+  _drillRunGeneration++;
+  clearDrillTimers();
+  // Capture and clear the stored instance + restore callback before unmounting.
+  const instance = _workspaceInstance;
+  const restore  = _restoreCallback;
+  _workspaceInstance = null;
+  _restoreCallback   = null;
+  // Guarded unmount: releases the drill ONLY if it is still the active workspace, so a stale drill
+  // exit can never replace a newer Analysis/Study/other workspace.
+  const wasActive = instance ? unmountWorkspace(instance, reason) : false;
   _adapter  = null;
   _session  = null;
+  // Restore Study only after a still-active embedded drill was actually unmounted.
+  if (wasActive && restore) restore();
 }
 
 export function isDrillSummary(): boolean {
@@ -142,7 +232,7 @@ function syncDrillBoard(): void {
 
   if (seq && seq.trainAs !== _trainAs) {
     _trainAs = seq.trainAs;
-    _cgRef?.set({ orientation: _trainAs, movable: { color: _trainAs } });
+    adapter.reorient(_trainAs);
   }
 
   if (session.isDone || session.feedback === 'complete') {
@@ -160,9 +250,12 @@ function syncDrillBoard(): void {
     const keys = uci ? uciToKeys(uci) : null;
     if (keys) {
       const afterFen = seq?.fens[idx] ?? _rootFen;
-      setTimeout(() => {
-        if (!_session || _session.mode !== 'learn') return; // session may have changed
-        adapter.animateOpponentMove(keys[0], keys[1], afterFen);
+      const run     = _drillRunGeneration;
+      const capAdapter = adapter;
+      drillTimeout(() => {
+        if (!drillCallbackLive(run, capAdapter)) return;             // stale-drop (P0)
+        if (!_session || _session.mode !== 'learn') return;          // session may have changed
+        capAdapter.animateOpponentMove(keys[0], keys[1], afterFen);
         const prevMode = _session.mode;
         _session = _session.advance();
         // Detect learn→quiz transition and seed level-1 for all positions in these sequences.
@@ -172,7 +265,12 @@ function syncDrillBoard(): void {
           );
         }
         _redraw();
-        setTimeout(() => syncDrillBoard(), 300);
+        const run2 = _drillRunGeneration;
+        const capAdapter2 = _adapter;
+        drillTimeout(() => {
+          if (!drillCallbackLive(run2, capAdapter2)) return;         // stale-drop (P0)
+          syncDrillBoard();
+        }, 300);
       }, 700);
     } else {
       _session = _session?.advance() ?? null;
@@ -187,9 +285,7 @@ function syncDrillBoard(): void {
       const fenBefore = getFenBefore(idx, seq);
       adapter.setPosition(fenBefore, _trainAs);
       const dests = computeDrillDests(fenBefore);
-      adapter.enableUserInput(dests, (orig, dest) => {
-        onUserMove(orig, dest);
-      });
+      adapter.enableUserInput(dests);
     } else {
       // Opponent's turn: auto-animate their move, then advance.
       adapter.disableUserInput();
@@ -197,11 +293,19 @@ function syncDrillBoard(): void {
       const keys = uci ? uciToKeys(uci) : null;
       if (keys) {
         const afterFen = seq?.fens[idx] ?? _rootFen;
-        setTimeout(() => {
-          adapter.animateOpponentMove(keys[0], keys[1], afterFen);
+        const run     = _drillRunGeneration;
+        const capAdapter = adapter;
+        drillTimeout(() => {
+          if (!drillCallbackLive(run, capAdapter)) return;           // stale-drop (P0)
+          capAdapter.animateOpponentMove(keys[0], keys[1], afterFen);
           _session = _session?.advance() ?? null;
           _redraw();
-          setTimeout(() => syncDrillBoard(), 350);
+          const run2 = _drillRunGeneration;
+          const capAdapter2 = _adapter;
+          drillTimeout(() => {
+            if (!drillCallbackLive(run2, capAdapter2)) return;       // stale-drop (P0)
+            syncDrillBoard();
+          }, 350);
         }, 500);
       } else {
         // No move data — advance anyway.
@@ -216,9 +320,7 @@ function syncDrillBoard(): void {
     const fenBefore = getFenBefore(idx, seq);
     adapter.setPosition(fenBefore, _trainAs);
     const dests = computeDrillDests(fenBefore);
-    adapter.enableUserInput(dests, (orig, dest) => {
-      onUserMove(orig, dest);
-    });
+    adapter.enableUserInput(dests);
   }
 }
 
@@ -392,12 +494,16 @@ function onUserMove(orig: Key, dest: Key): void {
     if (prevFeedback === 'waiting') _correctFirst++;
     _adapter.flashFeedback('correct');
     _redraw();
-    // Persist correct grading (fire-and-forget).
+    // Persist correct grading (fire-and-forget). This may finish after exit — it records an attempt
+    // that already occurred and touches only IDB, never board/session state.
     void persistGrading(fenBefore, seqId, expectedSan, san, true, _session.attemptsAtPosition).catch(e =>
       console.warn('[drillView] persistGrading failed', e),
     );
     // Advance after brief pause.
-    setTimeout(() => {
+    const run = _drillRunGeneration;
+    const capAdapter = _adapter;
+    drillTimeout(() => {
+      if (!drillCallbackLive(run, capAdapter)) return;               // stale-drop (P0)
       if (!_session) return;
       _session = _session.advance();
       _redraw();
@@ -415,7 +521,7 @@ function onUserMove(orig: Key, dest: Key): void {
     // Show the correct move and wait for user to click Next.
     const uci  = seq?.moves[idx];
     const keys = uci ? uciToKeys(uci) : null;
-    if (keys) _adapter.showCorrectMove(keys[0], keys[1]);
+    if (keys) _adapter.showCorrectMove(keys[0], keys[1], seq?.fens[idx] ?? _rootFen);
     _adapter.disableUserInput();
     _redraw();
   }
@@ -423,92 +529,62 @@ function onUserMove(orig: Key, dest: Key): void {
 
 // --- VNode rendering ---
 
-let _drillKeyHandler: ((e: KeyboardEvent) => void) | null = null;
-
 export function renderDrillView(redraw: () => void): VNode {
   if (_showSummary || !_session || _session.isDone || _session.feedback === 'complete') {
     if (_session?.isDone || _session?.feedback === 'complete') captureSummary();
     return renderDrillSummary(redraw);
   }
-  return h('div.drill-session', {
-    hook: {
-      insert: () => {
-        _drillKeyHandler = (e: KeyboardEvent) => {
-          const tag = (e.target as HTMLElement)?.tagName;
-          if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-
-          if (e.key === 'Enter' || e.key === ' ') {
-            const fb = _session?.feedback;
-            if (fb === 'correct' || fb === 'showAnswer' || fb === 'complete') {
-              e.preventDefault();
-              if (!_session) return;
-              _session = _session.advance();
-              redraw();
-              syncDrillBoard();
-            }
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            captureSummary();
-            endDrill();
-            redraw();
-          } else if (
-            e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
-            e.key === 'ArrowUp'   || e.key === 'ArrowDown'
-          ) {
-            e.preventDefault();
-          }
-        };
-        document.addEventListener('keydown', _drillKeyHandler);
-      },
-      destroy: () => {
-        if (_drillKeyHandler) {
-          document.removeEventListener('keydown', _drillKeyHandler);
-          _drillKeyHandler = null;
-        }
-      },
-    },
-  }, [
+  return h('div.drill-session', [
     renderDrillBoard(),
     renderDrillSidebar(redraw),
   ]);
 }
 
+/**
+ * Surface-owned drill keyboard handler (CCW-H03b). Was a document-level `keydown` listener bound on
+ * the drill session's insert/destroy hooks; it is now routed here by src/keyboard.ts ONLY while the
+ * drill is the active workspace, so Analysis branch navigation, flip, engine, threat, best-move, and
+ * help are suppressed throughout the drill. Inert during the summary screen and once no session
+ * remains, matching the pre-migration lifecycle where the listener was removed when the drill board
+ * unmounted.
+ */
+function handleDrillKeydown(e: KeyboardEvent): void {
+  const tag = (e.target as HTMLElement)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (_showSummary || !_session) return;
+
+  if (e.key === 'Enter' || e.key === ' ') {
+    const fb = _session.feedback;
+    if (fb === 'correct' || fb === 'showAnswer' || fb === 'complete') {
+      e.preventDefault();
+      _session = _session.advance();
+      _redraw();
+      syncDrillBoard();
+    }
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    captureSummary();
+    endDrill('keyboard-escape');
+    _redraw();
+  } else if (
+    e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+    e.key === 'ArrowUp'   || e.key === 'ArrowDown'
+  ) {
+    e.preventDefault();
+  }
+}
+
 // --- Board ---
 
 function renderDrillBoard(): VNode {
+  // The drill board IS the shared lifecycle's renderBoard(): board/index.ts selects this surface's
+  // module-owned config and installs the canonical movable.events.after callback. `.drill-board-wrap`
+  // supplies the fixed board dimensions and receives the feedback-flash class (the module resolves it
+  // via boardEl.closest('.drill-board-wrap') at attach). No local Chessground or key lifecycle here.
   return h('div.drill-board-wrap', {
     key: 'drill-board',
-    hook: {
-      insert: (vnode) => {
-        const el  = vnode.elm as HTMLElement;
-        const cg  = makeChessground(el, {
-          orientation: _trainAs,
-          viewOnly:    false,
-          animation:   puzzleBoardAnimationConfig(),
-          movable: {
-            free:      false,
-            color:     _trainAs,
-            dests:     new Map(),
-            showDests: true,
-          },
-          drawable: { enabled: false },
-        });
-        _cgRef   = cg;
-        _adapter = createDrillBoardAdapter(cg, el);
-        syncDrillBoard();
-      },
-      destroy: () => {
-        _cgRef?.destroy();
-        _cgRef   = null;
-        _adapter = null;
-      },
-    },
-  });
+  }, [renderBoard()]);
 }
-
-onBoardAnimationChange('puzzle', () => {
-  _cgRef?.set({ animation: puzzleBoardAnimationConfig() });
-});
 
 // --- Sidebar ---
 
