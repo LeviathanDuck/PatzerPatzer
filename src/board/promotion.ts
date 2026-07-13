@@ -23,6 +23,9 @@ import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
 import { key2pos } from '@lichess-org/chessground/util';
 import type { Role } from 'chessops';
+import { Chess } from 'chessops/chess';
+import { makeFen, parseFen } from 'chessops/fen';
+import { parseSquare } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 
 /** Access the live Chessground instance for the owning surface, or undefined when unmounted. */
@@ -40,6 +43,18 @@ export interface PromotionHooks {
   cancel: () => void;
   /** Called with orig/dest and the chosen role once the user picks a piece. */
   submit: (orig: Key, dest: Key, role: Role) => void;
+
+
+
+
+
+
+
+
+
+
+
+  applyPromotedVisual?: (postPromotionFen: string) => void;
 }
 
 /** The four promotable roles, in the vertical stacking order used by the chooser. */
@@ -50,6 +65,62 @@ interface Promoting {
   dest: Key;
   /** Color of the promoting pawn (white → rank 8, black → rank 1). */
   color: 'white' | 'black';
+
+
+
+
+
+
+  preMoveFen: string | null;
+}
+
+
+
+
+
+
+
+
+function detectPromotingPawn(fen: string, orig: Key, dest: Key): 'white' | 'black' | null {
+  const destRank = dest[1];
+  if (destRank !== '8' && destRank !== '1') return null;
+  try {
+    const setup = parseFen(fen);
+    if (setup.isErr) return null;
+    const pos = Chess.fromSetup(setup.value);
+    if (pos.isErr) return null;
+    const sq = parseSquare(orig);
+    if (sq === undefined) return null;
+    const piece = pos.value.board.get(sq);
+    if (piece?.role !== 'pawn') return null;
+    return destRank === '8' ? 'white' : 'black';
+  } catch {
+    return null;
+  }
+}
+
+
+
+
+
+
+
+function promotedPositionFen(preMoveFen: string, orig: Key, dest: Key, role: Role): string | null {
+  try {
+    const setup = parseFen(preMoveFen);
+    if (setup.isErr) return null;
+    const pos = Chess.fromSetup(setup.value);
+    if (pos.isErr) return null;
+    const from = parseSquare(orig);
+    const to = parseSquare(dest);
+    if (from === undefined || to === undefined) return null;
+    const move = { from, to, promotion: role };
+    if (!pos.value.isLegal(move)) return null;
+    pos.value.play(move);
+    return makeFen(pos.value.toSetup());
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -95,13 +166,31 @@ export class PromotionCtrl {
         const piece = g.state.pieces.get(dest) ?? g.state.pieces.get(orig);
         const destRank = dest[1];
         if (piece?.role === 'pawn' && (destRank === '8' || destRank === '1')) {
-          this.promoting = { orig, dest, color: destRank === '8' ? 'white' : 'black' };
+          this.promoting = { orig, dest, color: destRank === '8' ? 'white' : 'black', preMoveFen: null };
           this.hooks.redraw();
           return true;
         }
         return false;
       }) || false
     );
+  }
+
+
+
+
+
+
+
+
+
+
+
+  startFromFen(preMoveFen: string, orig: Key, dest: Key): boolean {
+    const color = detectPromotingPawn(preMoveFen, orig, dest);
+    if (!color) return false;
+    this.promoting = { orig, dest, color, preMoveFen };
+    this.hooks.redraw();
+    return true;
   }
 
   /**
@@ -112,7 +201,19 @@ export class PromotionCtrl {
     const promoting = this.promoting;
     if (!promoting) return;
     this.promoting = null;
-    this.hooks.withGround(g => promote(g, promoting.dest, role));
+    if (promoting.preMoveFen !== null) {
+
+
+
+      const applyVisual = this.hooks.applyPromotedVisual;
+      if (applyVisual) {
+        const postFen = promotedPositionFen(promoting.preMoveFen, promoting.orig, promoting.dest, role);
+        if (postFen) applyVisual(postFen);
+      }
+    } else {
+      // Legacy raw-ground path (Analysis + current puzzle solve mount) — UNCHANGED.
+      this.hooks.withGround(g => promote(g, promoting.dest, role));
+    }
     this.hooks.submit(promoting.orig, promoting.dest, role);
     this.hooks.redraw();
   }
