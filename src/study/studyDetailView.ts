@@ -23,7 +23,7 @@ import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
   protocol, engineReady,
-  clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved,
+  clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved, getOnLiveEvalImproved,
   visibleEvalForFen, evalLineFirstMoveLegalInFen,
   type EvalLine, type PositionEval,
 } from '../engine/ctrl';
@@ -792,9 +792,23 @@ const ICON_FLIP = ''; // licon.ChasingArrows — flip board
 
 let _studyEngineOn = false;
 
+// Prior main-surface live-eval save callback, captured when the Study Detail engine starts and
+// RESTORED when it stops, so the main analysis board keeps auto-persisting live-eval improvements
+// after Study Detail exits (BUG-2026-07-12-001). `undefined` = no capture in effect (idle);
+// a captured value may legitimately be `null` (nothing was registered on the main surface), so
+// `undefined` is the distinct empty sentinel.
+let _priorOnLiveEvalImproved: (() => void) | null | undefined;
+
+
+
+
+
+let _studyPositionContextTestOverride: (() => EnginePositionContext | null) | undefined;
+
 export function studyEngineOn(): boolean { return _studyEngineOn; }
 
 function studyPositionContext(): EnginePositionContext | null {
+  if (_studyPositionContextTestOverride) return _studyPositionContextTestOverride();
   const root = detailRoot();
   const node = detailNode();
   if (!node) return null;
@@ -808,6 +822,10 @@ function startStudyEngine(redraw: () => void): void {
   if (!context) return;
   _studyEngineOn = true;
   setEvalPositionOverride('study-detail', context);
+  // Save the current (main-surface) live-eval callback so stopStudyEngine can restore it instead of
+  // nulling it. Only capture when the slot is empty so a double-start (start called again before a
+  // stop) can't overwrite the saved main callback with the study redraw (BUG-2026-07-12-001).
+  if (_priorOnLiveEvalImproved === undefined) _priorOnLiveEvalImproved = getOnLiveEvalImproved();
   setOnLiveEvalImproved(redraw);
   evalCurrentPosition();
   redraw();
@@ -817,7 +835,11 @@ function stopStudyEngine(redraw: () => void): void {
   _studyEngineOn = false;
   protocol.stop();
   clearEvalPositionOverride('study-detail');
-  setOnLiveEvalImproved(null);
+  // Restore the previously-registered (main-surface) live-eval callback instead of nulling it, so
+  // the main analysis board resumes auto-persisting live-eval improvements after study exit. If no
+  // prior was captured (stop without a preceding start), fall back to null — the pre-fix behavior.
+  setOnLiveEvalImproved(_priorOnLiveEvalImproved ?? null);
+  _priorOnLiveEvalImproved = undefined;
   redraw();
 }
 
@@ -834,6 +856,20 @@ function syncStudyEngine(redraw: () => void): void {
   setEvalPositionOverride('study-detail', context);
   evalCurrentPosition();
 }
+
+
+
+
+
+export const __ccp2016CallbackOwnershipTestSeam = {
+  startStudyEngine,
+  stopStudyEngine,
+  setOnLiveEvalImproved,
+  getOnLiveEvalImproved,
+  setPositionContextOverride(fn: (() => EnginePositionContext | null) | null): void {
+    _studyPositionContextTestOverride = fn ?? undefined;
+  },
+};
 
 type StudyPlayerColor = 'white' | 'black';
 

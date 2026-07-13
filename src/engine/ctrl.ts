@@ -117,6 +117,9 @@ export function isSilentEvalActive(): boolean {
 // Registered by main.ts to debounce IDB persistence.
 let _onLiveEvalImproved: (() => void) | null = null;
 export function setOnLiveEvalImproved(fn: (() => void) | null): void { _onLiveEvalImproved = fn; }
+// Symmetric getter so a transient owner (e.g. Study Detail's engine) can capture the current
+// callback before overwriting it and RESTORE it on exit, instead of nulling it (BUG-2026-07-12-001).
+export function getOnLiveEvalImproved(): (() => void) | null { return _onLiveEvalImproved; }
 
 
 
