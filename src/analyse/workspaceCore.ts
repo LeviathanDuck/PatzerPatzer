@@ -237,6 +237,13 @@ export function createActiveSlot<T extends { teardown(reason: string): void }>()
 
 const workspaceSlot = createActiveSlot<WorkspaceInstance>();
 
+
+
+
+
+
+let mountSeq = 0;
+
 /** The currently-mounted workspace, or null before any mount. The board lifecycle reads this. */
 export function activeWorkspace(): WorkspaceInstance | null {
   return workspaceSlot.get();
@@ -314,9 +321,32 @@ function guardBoardInputModule(
  * active instance is torn down first (§5).
  */
 export function mountWorkspace(adapter: WorkspaceAdapter): WorkspaceInstance {
-  // Human-readable id: adapter id + mount timestamp (design §9 open-decision 2 default) — sufficient
-  // for the single-active-slot model; no cross-process collision-proofing needed.
-  const instanceId = `${adapter.id}-${Date.now()}`;
+  // Fail-closed mount validation (CCW-H03a-3), FIRST — before allocating an instanceId, building an
+  // instance, or touching workspaceSlot, so a rejected mount leaves the current active instance
+  // alive. This is what makes board/index.ts's module-less Analysis fallback safe: no non-Analysis
+  // workspace can silently reach it.
+  if (
+    adapter.boardInputModule
+    && adapter.boardInputModule.mode !== adapter.boardInputMode
+  ) {
+    throw new Error(
+      `[workspace] board-input mode mismatch: adapter=${adapter.boardInputMode} module=${adapter.boardInputModule.mode}`,
+    );
+  }
+
+  if (
+    !adapter.boardInputModule
+    && !(adapter.id === 'analysis' && adapter.boardInputMode === 'free-analysis')
+  ) {
+    throw new Error(
+      `[workspace] ${adapter.id}/${adapter.boardInputMode} requires an explicit board-input module`,
+    );
+  }
+
+
+
+
+  const instanceId = `${adapter.id}-${Date.now()}-${(++mountSeq).toString(36)}`;
 
   // Instance guarding (design §"Instance guarding") — one liveKey per mount, reusing the EXISTING
   // providerIsLive discipline (NOT a second active registry/map). A mount's facade is live only

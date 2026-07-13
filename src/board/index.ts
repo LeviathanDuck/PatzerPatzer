@@ -4,6 +4,7 @@
 
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
 import { key2pos, uciToMove } from '@lichess-org/chessground/util';
 import type { NormalMove, Role, SquareName } from 'chessops';
@@ -14,12 +15,17 @@ import { makeSan, makeSanAndPlay } from 'chessops/san';
 import { makeSquare, makeUci, parseSquare, parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import type { AnalyseCtrl } from '../analyse/ctrl';
-import { activeWorkspace } from '../analyse/workspaceCore';
+import { activeWorkspace, providerIsLive } from '../analyse/workspaceCore';
+import type {
+  WorkspaceBoardInputHandle,
+  WorkspaceBoardPort,
+  WorkspaceCursor,
+} from '../analyse/workspaceCore';
 import { boardZoom, applyBoardZoom, saveBoardZoom } from './cosmetics';
 import { syncArrow } from '../engine/ctrl';
 import type { ImportedGame } from '../import/types';
 import { addNode } from '../tree/ops';
-import type { Clock, TreeNode } from '../tree/types';
+import type { Clock, TreeNode, TreePath } from '../tree/types';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from './animation';
 import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from './arrowBrushes';
 import { capturePremoveInput, currentPremoveCaptureSnapshot } from './premoves';
@@ -125,14 +131,22 @@ export let orientation: 'white' | 'black' = 'white';
 let pendingPromotion: { orig: string; dest: string; color: 'white' | 'black' } | null = null;
 
 export function setOrientation(v: 'white' | 'black'): void {
+  // Always update the module-global orientation first — it stays Analysis's backing value even for
+  // a module-owned surface (which flips through its own module/port instead of the shared board).
   orientation = v;
+  // CCW-H03a-3: a module-owned board owns its own orientation; do not touch the shared Chessground
+  // or rebind its resize handle for it. Analysis (no module) and Study (analysis-default) fall
+  // through unchanged. Branch on the active input's config policy, not a mode string compare.
+  const input = activeWorkspace()?.boardInputModule ?? null;
+  if (input && input.configPolicy.kind === 'module-owned') return;
   // Apply to the live board immediately so the orientation change takes effect
   // without waiting for the next full renderBoard() cycle.
   // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts flip() cgInstance.set pattern.
   cgInstance?.set({ orientation: v });
   // When orientation changes, Chessground calls redrawAll() → renderWrap() →
-  // element.innerHTML = '', which destroys cg-resize. Re-attach it.
-  if (_cgWrap) bindBoardResizeHandle(_cgWrap);
+  // element.innerHTML = '', which destroys cg-resize. Re-attach it — but only when the shared
+  // lifecycle owns resize (no module, or a module that allows resize).
+  if (_cgWrap && (!input || input.allowResize)) bindBoardResizeHandle(_cgWrap);
 }
 
 // --- Board sync ---
@@ -187,6 +201,74 @@ export function uciToSan(fen: string, uci: string): string {
   }
 }
 
+// --- Shared-tree move transaction target (CCW-H03a-3) ---
+//
+// A single per-move-transaction handle to the tree cursor + navigation + commit for whichever
+// workspace owns the shared-tree move pipeline (Analysis or a shared-tree module such as Study).
+// Resolving it ONCE per transaction and threading it through every move function replaces the old
+// pattern of re-reading `_getCtrl()`/`activeWorkspace()` at pre- and post-move points, which could
+// mix a pre-move snapshot from one session with a post-move read from another (the exact
+// cross-session hazard this slice closes). Module-owned surfaces do NOT dispatch through this path
+// (they run on movable.events.after), so resolution fails closed to `null` for them.
+interface SharedTreeMoveTarget {
+  cursor(): WorkspaceCursor;
+  navigate(path: TreePath): void;
+  commit(parentPath: TreePath, node: TreeNode): void;
+}
+
+/**
+ * Resolve the shared-tree move target for the CURRENT active workspace, once per move transaction.
+ * - A workspace whose module dispatches `module-owned` → `null` (fail closed; those moves never
+ *   reach this pipeline).
+ * - A workspace whose module dispatches `shared-tree` (Study) → the captured instance's session +
+ *   guarded navigate + guarded handleUserMove commit.
+ * - A module-less workspace → only `free-analysis` (Analysis) may use the legacy Analysis closures;
+ *   any other module-less mount fails closed (final defense behind mount validation).
+ * - No active workspace (bootstrap) → the legacy Analysis closures.
+ */
+function sharedTreeMoveTarget(): SharedTreeMoveTarget | null {
+  const ws = activeWorkspace();
+  const input = ws ? ws.boardInputModule : null;
+  if (ws && input) {
+    const dispatch = input.moveDispatch;
+    if (dispatch.kind === 'module-owned') return null;
+    // shared-tree module (e.g. Study): read/write through this exact captured instance.
+    return {
+      cursor: () => ws.session(),
+      navigate: path => { dispatch.navigate(path); },
+      commit: (parentPath, node) => {
+        if (input.isLive()) ws.handleUserMove(parentPath, node);
+      },
+    };
+  }
+  // No module: the legacy Analysis fallback closures. Legal only for a bootstrap (no workspace) or a
+  // free-analysis workspace; any other module-less mount fails closed despite mount validation.
+  if (ws && ws.boardInputMode !== 'free-analysis') return null;
+  const ctrl = _getCtrl();
+
+
+
+
+
+
+
+  const liveCursor: WorkspaceCursor = {
+    get root() { return ctrl.root; },
+    get path() { return ctrl.path; },
+    get node() { return ctrl.node; },
+    get nodeList() { return ctrl.nodeList; },
+    get mainline() { return ctrl.mainline; },
+  };
+  return {
+    cursor: () => liveCursor,
+    navigate: path => { _navigate(path); },
+    commit: (parentPath, node) => {
+      addNode(ctrl.root, parentPath, node);
+      _navigate(parentPath + node.id);
+    },
+  };
+}
+
 /**
  * Handle a legal move played on the board.
  * If the move already exists as a child: navigate to it.
@@ -194,8 +276,11 @@ export function uciToSan(fen: string, uci: string): string {
  * Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally + addNode
  */
 export function onUserMove(orig: string, dest: string): void {
-  const ctrl = _getCtrl();
-  const setup = parseFen(ctrl.node.fen).unwrap();
+  // Resolve the move target ONCE for the whole transaction; fail closed for module-owned surfaces.
+  const target = sharedTreeMoveTarget();
+  if (!target) return;
+  const cursor = target.cursor();
+  const setup = parseFen(cursor.node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   const fromSq = parseSquare(orig);
   const toSq   = parseSquare(dest);
@@ -211,13 +296,15 @@ export function onUserMove(orig: string, dest: string): void {
   // Fire before-move hooks so analysis-owned handlers (e.g. retro solve interception)
   // can act before navigation. This preserves the timing rule: retro onWin() must
   // run BEFORE navigate so onJump() sees 'win' and skips offTrack detection.
-  fireBeforeMoveHooks({ uci: normUci, fenBefore: ctrl.node.fen, path: ctrl.path });
+  fireBeforeMoveHooks({ uci: normUci, fenBefore: cursor.node.fen, path: cursor.path });
 
   // Check existing children — follow the tree if this move is already there.
-  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  const existingChild = cursor.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
-    _navigate(ctrl.path + existingChild.id);
-    fireMoveHooks({ uci: normUci, fenBefore: ctrl.node.fen, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
+    target.navigate(cursor.path + existingChild.id);
+    // Preserved quirk: this fenBefore is read AFTER navigation (post-jump node fen), exactly as the
+    // pre-extraction code did (it re-read the live ctrl.node.fen after _navigate).
+    fireMoveHooks({ uci: normUci, fenBefore: target.cursor().node.fen, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
     return;
   }
 
@@ -229,10 +316,10 @@ export function onUserMove(orig: string, dest: string): void {
     return;
   }
 
-  const fenBefore = ctrl.node.fen;
-  completeMove(orig, dest);
-  const afterCtrl = _getCtrl();
-  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? normUci });
+  const fenBefore = cursor.node.fen;
+  completeMoveWithTarget(target, orig, dest);
+  const afterCursor = target.cursor();
+  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCursor.node.fen, san: afterCursor.node.san ?? normUci });
 }
 
 /**
@@ -240,8 +327,15 @@ export function onUserMove(orig: string, dest: string): void {
  * Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts addNodeLocally
  */
 export function completeMove(orig: string, dest: string, promotion?: Role): void {
-  const ctrl = _getCtrl();
-  const setup = parseFen(ctrl.node.fen).unwrap();
+  const target = sharedTreeMoveTarget();
+  if (!target) return;
+  completeMoveWithTarget(target, orig, dest, promotion);
+}
+
+// Same as completeMove but reuses an already-resolved target so a whole transaction reads/writes
+// one session (no re-resolve of _getCtrl()/activeWorkspace() mid-move).
+function completeMoveWithTarget(target: SharedTreeMoveTarget, orig: string, dest: string, promotion?: Role): void {
+  const setup = parseFen(target.cursor().node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   const fromSq = parseSquare(orig);
   const toSq = parseSquare(dest);
@@ -254,7 +348,7 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
     pos,
     promotion !== undefined ? { from: fromSq, to: toSq, promotion } : { from: fromSq, to: toSq },
   ) as NormalMove;
-  applyMoveToTree(move, pos);
+  applyMoveToTree(target, move, pos);
 }
 
 /**
@@ -263,8 +357,10 @@ export function completeMove(orig: string, dest: string, promotion?: Role): void
  * while allowing callers to provide an already-selected promotion role.
  */
 export function applyLegalBoardUserMove(orig: string, dest: string, promotion?: Role): void {
-  const ctrl = _getCtrl();
-  const setup = parseFen(ctrl.node.fen).unwrap();
+  const target = sharedTreeMoveTarget();
+  if (!target) return;
+  const cursor = target.cursor();
+  const setup = parseFen(cursor.node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   const fromSq = parseSquare(orig);
   const toSq = parseSquare(dest);
@@ -276,50 +372,48 @@ export function applyLegalBoardUserMove(orig: string, dest: string, promotion?: 
   if (!('from' in move) || !pos.isLegal(move)) return;
 
   const normUci = makeUci(move);
-  const fenBefore = ctrl.node.fen;
-  fireBeforeMoveHooks({ uci: normUci, fenBefore, path: ctrl.path });
+  // Preserved quirk: unlike onUserMove, this fenBefore is captured ONCE pre-move and reused in both
+  // the existing-child and new-node hook payloads (matching the pre-extraction code).
+  const fenBefore = cursor.node.fen;
+  fireBeforeMoveHooks({ uci: normUci, fenBefore, path: cursor.path });
 
-  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  const existingChild = cursor.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
-    _navigate(ctrl.path + existingChild.id);
+    target.navigate(cursor.path + existingChild.id);
     fireMoveHooks({ uci: normUci, fenBefore, fenAfter: existingChild.fen, san: existingChild.san ?? normUci });
     return;
   }
 
-  applyMoveToTree(move as NormalMove, pos);
-  const afterCtrl = _getCtrl();
-  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? normUci });
+  applyMoveToTree(target, move as NormalMove, pos);
+  const afterCursor = target.cursor();
+  fireMoveHooks({ uci: normUci, fenBefore, fenAfter: afterCursor.node.fen, san: afterCursor.node.san ?? normUci });
 }
 
-function applyMoveToTree(move: NormalMove, pos: Chess): void {
-  const ctrl = _getCtrl();
+function applyMoveToTree(target: SharedTreeMoveTarget, move: NormalMove, pos: Chess): void {
+  const cursor = target.cursor();
   const normUci = makeUci(move);
-  const existingChild = ctrl.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
+  const existingChild = cursor.node.children.find(c => c.uci === normUci || c.uci?.startsWith(normUci));
   if (existingChild) {
-    _navigate(ctrl.path + existingChild.id);
+    target.navigate(cursor.path + existingChild.id);
     return;
   }
   const san = makeSanAndPlay(pos, move);
   const newNode: TreeNode = {
     id: scalachessCharPair(move),
-    ply: ctrl.node.ply + 1,
+    ply: cursor.node.ply + 1,
     san,
     uci: makeUci(move),
     fen: makeFen(pos.toSetup()),
     children: [],
   };
-  // Capture the parent node/path before the commit below — ctrl.node/ctrl.path are getters that
-  // move on to the new node once navigation happens, so the log must snapshot these first to keep
-  // reporting the parent's post-insertion child count exactly as before this change.
-  const parentNode = ctrl.node;
-  const parentPath = ctrl.path;
-  const ws = activeWorkspace();
-  if (ws) {
-    ws.handleUserMove(parentPath, newNode);
-  } else {
-    addNode(ctrl.root, parentPath, newNode);
-    _navigate(parentPath + newNode.id);
-  }
+  // Capture the parent node/path before the commit below — the cursor's node/path move on to the new
+  // node once navigation happens, so the log must snapshot these first to keep reporting the
+  // parent's post-insertion child count exactly as before this change.
+  const parentNode = cursor.node;
+  const parentPath = cursor.path;
+  // The resolved target owns the commit: shared-tree module → workspace.handleUserMove; Analysis
+  // fallback → addNode + navigate (verbatim the pre-extraction Analysis path).
+  target.commit(parentPath, newNode);
   console.log('[variation] inserted', {
     id: newNode.id, ply: newNode.ply, san: newNode.san, uci: newNode.uci,
     parentPath, newPath: parentPath + newNode.id,
@@ -328,14 +422,15 @@ function applyMoveToTree(move: NormalMove, pos: Chess): void {
 }
 
 export function playUciMove(uci: string): void {
-  const ctrl = _getCtrl();
+  const target = sharedTreeMoveTarget();
+  if (!target) return;
   const parsed = parseUci(uci);
   if (!parsed) return;
-  const setup = parseFen(ctrl.node.fen).unwrap();
+  const setup = parseFen(target.cursor().node.fen).unwrap();
   const pos = Chess.fromSetup(setup).unwrap();
   const move = normalizeMove(pos, parsed);
   if (!('from' in move) || !pos.isLegal(move)) return;
-  applyMoveToTree(move as NormalMove, pos);
+  applyMoveToTree(target, move as NormalMove, pos);
 }
 
 /**
@@ -344,13 +439,17 @@ export function playUciMove(uci: string): void {
  */
 export function completePromotion(role: Role): void {
   if (!pendingPromotion) return;
+  // Resolve once BEFORE consuming the pending promotion so pre-move FEN, the promoted move, and the
+  // post-move hook data all read the same session.
+  const target = sharedTreeMoveTarget();
+  if (!target) return;
   const { orig, dest } = pendingPromotion;
   pendingPromotion = null;
-  const fenBefore = _getCtrl().node.fen;
-  completeMove(orig, dest, role);
-  const afterCtrl = _getCtrl();
-  const promoUci = afterCtrl.node.uci ?? `${orig}${dest}${role[0]}`;
-  fireMoveHooks({ uci: promoUci, fenBefore, fenAfter: afterCtrl.node.fen, san: afterCtrl.node.san ?? promoUci });
+  const fenBefore = target.cursor().node.fen;
+  completeMoveWithTarget(target, orig, dest, role);
+  const afterCursor = target.cursor();
+  const promoUci = afterCursor.node.uci ?? `${orig}${dest}${role[0]}`;
+  fireMoveHooks({ uci: promoUci, fenBefore, fenAfter: afterCursor.node.fen, san: afterCursor.node.san ?? promoUci });
 }
 
 const PROMOTION_ROLES: Role[] = ['queen', 'knight', 'rook', 'bishop'];
@@ -382,16 +481,71 @@ export function renderPromotionDialog(): VNode | null {
   ]);
 }
 
-export function syncBoard(): void {
-  if (!cgInstance) return;
-  // Cursor sourced from the active workspace instance when mounted (D-core-03), falling back to the
-  // legacy Analysis closure — byte-identical for Analysis (its instance reads the same AnalyseCtrl).
-  const node = activeWorkspace()?.session().node ?? _getCtrl().node;
+// --- Analysis board configuration (CCW-H03a-3) ---
+//
+// The exact Analysis initial + sync Chessground configuration, extracted VERBATIM from the former
+// inline renderBoard()/syncBoard() bodies so a reviewer can diff old-vs-new field for field. These
+// are the `analysis-default` config policy for both Analysis (no module) and Study (its module
+// declares analysis-default). Evaluation order and every field/value are preserved deliberately —
+// the listed pre-existing quirks (root-position lastMove omission rather than explicit clearing, the
+// `new Map()` allocation during premove capture, deep-merge/partial-config semantics) are NOT
+// "fixed" here. `events.move` / `movable.events.after` are intentionally ABSENT: the canonical
+// move-callback installer owns those (see installCanonicalCallbacks).
+
+function analysisInitialConfig(node: TreeNode): CgConfig {
+  // Evaluation order matches the pre-extraction inline body: dests, lastMove, premove snapshot, turn.
   const dests = cachedDests(node.fen);
   const lastMove = uciToMove(node.uci);
   const premoveCapture = currentPremoveCaptureSnapshot();
   const turnColor = node.ply % 2 === 0 ? 'white' : 'black';
-  cgInstance.set({
+  return {
+    orientation,
+    viewOnly: false,
+    drawable: {
+      enabled: true,
+      brushes: {
+        green:    { key: 'g',   color: '#15781B', opacity: 1,    lineWidth: 10 },
+        blue:     { key: 'b',   color: '#003088', opacity: 1,    lineWidth: 10 },
+        yellow:   { key: 'y',   color: '#e68f00', opacity: 1,    lineWidth: 10 },
+        // Explicitly register all brushes used by engine arrow rendering so their
+        // keys are always present in Chessground state regardless of deepMerge order.
+        // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
+        // kept at Chessground defaults except paleBlue which is boosted for visibility.
+        paleBlue: { key: 'pb',  color: '#003088', opacity: 0.65, lineWidth: 15 },
+        paleGrey: { key: 'pgr', color: '#4a4a4a', opacity: 0.35, lineWidth: 15 },
+        red:      { key: 'r',   color: '#882020', opacity: 1,    lineWidth: 10 },
+        repertoire: REPERTOIRE_ARROW_BRUSH,
+        repertoireAlt: REPERTOIRE_ALT_ARROW_BRUSH,
+      },
+    },
+    fen: node.fen,
+    animation: chessBoardAnimationConfig(),
+    turnColor,
+    movable: {
+      free: false,
+      color: premoveCapture?.humanColor ?? turnColor,
+      dests: premoveCapture ? new Map() : dests,
+      showDests: true,
+    },
+    premovable: {
+      enabled: premoveCapture !== null,
+      showDests: true,
+      castle: true,
+      events: {
+        set: onPatzerPremoveSet,
+        unset: () => {},
+      },
+    },
+    ...(lastMove ? { lastMove } : {}),
+  };
+}
+
+function analysisSyncConfig(node: TreeNode): CgConfig {
+  const dests = cachedDests(node.fen);
+  const lastMove = uciToMove(node.uci);
+  const premoveCapture = currentPremoveCaptureSnapshot();
+  const turnColor = node.ply % 2 === 0 ? 'white' : 'black';
+  return {
     fen: node.fen,
     animation: chessBoardAnimationConfig(),
     turnColor,
@@ -409,7 +563,113 @@ export function syncBoard(): void {
       },
     },
     ...(lastMove ? { lastMove } : {}),
-  });
+  };
+}
+
+// --- Canonical move-callback installation (CCW-H03a-3) ---
+//
+// The board lifecycle — NOT a surface module — owns the final move-callback fields. Chessground
+// 10.1 DEEP-MERGES config (node_modules/@lichess-org/chessground/src/config.ts), so an OMITTED
+// callback is not removed; the inactive callback must be written as an explicit `undefined` or the
+// board would fire BOTH events.move and movable.events.after (double dispatch). This installer
+// therefore always writes both fields — one live callback, one explicit undefined — never both live.
+//   - shared-tree (Analysis / Study / any shared-tree module): events.move = guarded shared-tree
+//     move (delegates to onUserMove); movable.events.after = undefined. Preserves the existing
+//     Analysis/Study move timing (events.move).
+//   - module-owned: movable.events.after = guarded module handleMove; events.move = undefined.
+//     Matches the ORP-drill-style movable.events.after timing.
+//
+// Chessground's Config marks these callbacks as optional-without-`undefined`, and the project runs
+// with `exactOptionalPropertyTypes`, so a literal `undefined` on the field is a type error even
+// though a runtime present-and-undefined property is EXACTLY what deep-merge needs to clear the
+// inactive callback. `CLEARED_CALLBACK` is that deliberate escape hatch: the value is `undefined` at
+// runtime, typed as the callback so the property stays present and clears its counterpart.
+type CgMoveFn = NonNullable<NonNullable<CgConfig['events']>['move']>;
+type CgMoveAfterFn = NonNullable<NonNullable<NonNullable<CgConfig['movable']>['events']>['after']>;
+const CLEARED_CALLBACK = undefined as unknown as CgMoveFn & CgMoveAfterFn;
+
+function installCanonicalCallbacks(
+  config: CgConfig,
+  input: WorkspaceBoardInputHandle | null,
+  instanceId: string | null,
+): CgConfig {
+  const dispatch = input ? input.moveDispatch : null;
+  if (input && dispatch && dispatch.kind === 'module-owned') {
+    const guardedModuleMove = (orig: Key, dest: Key): void => {
+      if (!input.isLive()) return;
+      dispatch.handleMove(orig, dest);
+    };
+    return {
+      ...config,
+      events: { ...config.events, move: CLEARED_CALLBACK },
+      movable: {
+        ...config.movable,
+        events: { ...config.movable?.events, after: guardedModuleMove },
+      },
+    };
+  }
+  // Shared-tree / no module. Capture the installing instance id; stale-drop if it is no longer the
+  // active workspace (a null id — bootstrap before any mount — is treated as always live).
+  const liveKey = { instanceId };
+  const guardedSharedTreeMove = (orig: Key, dest: Key): void => {
+    if (!providerIsLive(liveKey)) return;
+    onUserMove(orig, dest);
+  };
+  return {
+    ...config,
+    events: { ...config.events, move: guardedSharedTreeMove },
+    movable: {
+      ...config.movable,
+      events: { ...config.movable?.events, after: CLEARED_CALLBACK },
+    },
+  };
+}
+
+
+
+
+
+
+
+
+
+
+function makeGuardedPort(instanceId: string, capturedCg: CgApi, handleIsLive: () => boolean): WorkspaceBoardPort {
+  const liveKey = { instanceId };
+  const portIsLive = (): boolean =>
+    providerIsLive(liveKey) && cgInstance === capturedCg && handleIsLive();
+  return {
+    instanceId,
+    isLive: portIsLive,
+    set: config => { if (portIsLive()) capturedCg.set(config); },
+    move: (orig, dest) => { if (portIsLive()) capturedCg.move(orig, dest); },
+  };
+}
+
+export function syncBoard(): void {
+  // Capture the board once; all writes below target this exact instance.
+  const capturedCg = cgInstance;
+  if (!capturedCg) return;
+  // One workspace + one session snapshot per selection (CCW-H03a-3). Byte-identical for Analysis:
+  // its instance reads the same AnalyseCtrl, so session().node === _getCtrl().node.
+  const workspace = activeWorkspace();
+  const session = workspace ? workspace.session() : undefined;
+  const node = session?.node ?? _getCtrl().node;
+  const input = workspace ? workspace.boardInputModule : null;
+  let baseConfig: CgConfig;
+  if (workspace && input && input.configPolicy.kind === 'module-owned') {
+    baseConfig = input.configPolicy.sync({
+      instanceId: workspace.instanceId,
+      mode: workspace.boardInputMode,
+      session: session!,
+    });
+  } else {
+    baseConfig = analysisSyncConfig(node);
+  }
+  const config = installCanonicalCallbacks(baseConfig, input, workspace ? workspace.instanceId : null);
+  // Re-entrancy defense: do not apply a config whose owning module went stale mid-selection.
+  if (input && !input.isLive()) return;
+  capturedCg.set(config);
 }
 
 function onPatzerPremoveSet(orig: Key, dest: Key): void {
@@ -421,6 +681,11 @@ function onPatzerPremoveSet(orig: Key, dest: Key): void {
 
 // Adapted from lichess-org/lila: ui/analyse/src/ctrl.ts (flip)
 export function flip(): void {
+  // CCW-H03a-3: a module-owned surface owns its own flipping through its module/port. Return before
+  // toggling the global orientation, touching Chessground, or redrawing. Analysis (no module) and
+  // Study (analysis-default) are unchanged.
+  const input = activeWorkspace()?.boardInputModule ?? null;
+  if (input && input.configPolicy.kind === 'module-owned') return;
   orientation = orientation === 'white' ? 'black' : 'white';
   cgInstance?.set({ orientation });
   _redraw();
@@ -674,58 +939,42 @@ export function renderBoard(): VNode {
     hook: {
       insert: vnode => {
         performance.mark('board-render-start');
-        // D-core-03: cursor from the active workspace instance when mounted, else the legacy closure.
-        const node = activeWorkspace()?.session().node ?? _getCtrl().node;
-        const dests = cachedDests(node.fen);
-        const lastMove = uciToMove(node.uci);
-        const premoveCapture = currentPremoveCaptureSnapshot();
-        const turnColor = node.ply % 2 === 0 ? 'white' : 'black';
-        cgInstance = makeChessground(vnode.elm as HTMLElement, {
-          orientation,
-          viewOnly: false,
-          drawable: {
-            enabled: true,
-            brushes: {
-              green:    { key: 'g',   color: '#15781B', opacity: 1,    lineWidth: 10 },
-              blue:     { key: 'b',   color: '#003088', opacity: 1,    lineWidth: 10 },
-              yellow:   { key: 'y',   color: '#e68f00', opacity: 1,    lineWidth: 10 },
-              // Explicitly register all brushes used by engine arrow rendering so their
-              // keys are always present in Chessground state regardless of deepMerge order.
-              // Mirrors lichess-org/lila: state.ts default brushes; opacity/lineWidth values
-              // kept at Chessground defaults except paleBlue which is boosted for visibility.
-              paleBlue: { key: 'pb',  color: '#003088', opacity: 0.65, lineWidth: 15 },
-              paleGrey: { key: 'pgr', color: '#4a4a4a', opacity: 0.35, lineWidth: 15 },
-              red:      { key: 'r',   color: '#882020', opacity: 1,    lineWidth: 10 },
-              repertoire: REPERTOIRE_ARROW_BRUSH,
-              repertoireAlt: REPERTOIRE_ALT_ARROW_BRUSH,
-            },
-          },
-          fen: node.fen,
-          animation: chessBoardAnimationConfig(),
-          turnColor,
-          movable: {
-            free: false,
-            color: premoveCapture?.humanColor ?? turnColor,
-            dests: premoveCapture ? new Map() : dests,
-            showDests: true,
-          },
-          premovable: {
-            enabled: premoveCapture !== null,
-            showDests: true,
-            castle: true,
-            events: {
-              set: onPatzerPremoveSet,
-              unset: () => {},
-            },
-          },
-          events: {
-            move: onUserMove,
-          },
-          ...(lastMove ? { lastMove } : {}),
-        });
-        // Attach resize handle after Chessground is initialized.
+        // CCW-H03a-3 config-selection sequence (one workspace + one session snapshot per selection):
+        // 1) active workspace once, 2) its session once, 3) node, 4) its board-input handle once.
+        const workspace = activeWorkspace();
+        const session = workspace ? workspace.session() : undefined;
+        const node = session?.node ?? _getCtrl().node;
+        const input = workspace ? workspace.boardInputModule : null;
+        // 5) select config: no module or analysis-default → the extracted Analysis factory;
+        //    module-owned → the module's own complete config (built from the SAME session snapshot).
+        let baseConfig: CgConfig;
+        if (workspace && input && input.configPolicy.kind === 'module-owned') {
+          baseConfig = input.configPolicy.initial({
+            instanceId: workspace.instanceId,
+            mode: workspace.boardInputMode,
+            session: session!,
+          });
+        } else {
+          baseConfig = analysisInitialConfig(node);
+        }
+        // Re-entrancy defense: never construct/apply a config whose owning module went stale.
+        if (input && !input.isLive()) return;
+        // 6) install canonical move callbacks WITHOUT mutating the selected config.
+        const config = installCanonicalCallbacks(baseConfig, input, workspace ? workspace.instanceId : null);
+        // 7) construct exactly one Chessground, 8) assign it to cgInstance.
+        const capturedCg = makeChessground(vnode.elm as HTMLElement, config);
+        cgInstance = capturedCg;
+        // 9) construct the guarded port against that exact API, 10) attach the module (if any).
+        if (workspace && input) {
+          const port = makeGuardedPort(workspace.instanceId, capturedCg, () => input.isLive());
+          input.attach(port, vnode.elm as HTMLElement);
+        }
+        // 11) bind the shared resize handle only when the lifecycle owns resize (no module, or a
+        // module that allows resize). Standalone forks (editor/tree/puzzle) call it directly.
         // Adapted from lichess-org/lila: ui/lib/src/chessgroundResize.ts resizeHandle()
-        bindBoardResizeHandle(vnode.elm as HTMLElement);
+        if (!input || input.allowResize) {
+          bindBoardResizeHandle(vnode.elm as HTMLElement);
+        }
         performance.mark('board-render-end');
       },
       destroy: () => {
@@ -746,9 +995,16 @@ export function syncBoardAndArrow(): void {
 // Used during puzzle board setup to prevent intermediate FEN changes from
 // producing multiple overlapping piece animations (visible as board "vibration").
 export function setAnimationEnabled(enabled: boolean): void {
+  // CCW-H03a-3: a module-owned board subscribes to its own animation scope; leave it alone.
+  const input = activeWorkspace()?.boardInputModule ?? null;
+  if (input && input.configPolicy.kind === 'module-owned') return;
   cgInstance?.set({ animation: { ...chessBoardAnimationConfig(), enabled } });
 }
 
 onBoardAnimationChange('chess', () => {
+  // CCW-H03a-3: this shared listener writes only Analysis-default boards (no module, or an
+  // analysis-default module such as Study). A module-owned surface owns its own animation.
+  const input = activeWorkspace()?.boardInputModule ?? null;
+  if (input && input.configPolicy.kind === 'module-owned') return;
   cgInstance?.set({ animation: chessBoardAnimationConfig() });
 });
