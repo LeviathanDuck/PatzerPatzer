@@ -1537,11 +1537,17 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
   }
 }
 
-/**
- * Save a single game to the per-game `games` store.
- * Use after analysis or when a game's metadata is updated.
- */
-export async function saveGameToIdb(game: ImportedGame): Promise<void> {
+
+
+
+
+
+
+
+
+
+
+export async function saveGameToIdb(game: ImportedGame): Promise<boolean> {
   try {
     const db = await openGameDb();
     const record = importedGameToRecord(game);
@@ -1550,6 +1556,7 @@ export async function saveGameToIdb(game: ImportedGame): Promise<void> {
     await txDone(tx);
     enqueueMainDbPut('games', record.id, record, record.updatedAt);
     void captureStorageEstimate('post-idb-write');
+    return true;
   } catch (e) {
     console.warn('[idb] single-game save failed', e);
 
@@ -1567,6 +1574,7 @@ export async function saveGameToIdb(game: ImportedGame): Promise<void> {
       },
       redactionClass: 'safe',
     });
+    return false;
   }
 }
 

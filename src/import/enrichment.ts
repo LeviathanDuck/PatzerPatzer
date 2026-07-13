@@ -382,8 +382,19 @@ async function processChesscomDeltaItem(item: ChesscomDeltaWorkItem): Promise<vo
 
 
 
-      await saveGameToIdb({ ...ref.game, ...patch });
-      item.onGameEnriched(ref.game.id, patch);
+
+
+
+
+
+      const ok = await saveGameToIdb({ ...ref.game, ...patch });
+      if (ok) {
+        item.onGameEnriched(ref.game.id, patch);
+      } else {
+        recordEnrichmentEvent('enrichment-game-write-failed', Severity.Error, {
+          requestClass: 'game-record-update', errorClass: 'idb-write-false',
+        });
+      }
     } catch (error) {
       recordEnrichmentEvent('enrichment-game-write-failed', Severity.Error, {
         requestClass: 'game-record-update', errorClass: errorClass(error),
@@ -504,9 +515,18 @@ async function processChesscomRescanItem(item: ChesscomRescanWorkItem): Promise<
       if (patch) {
         const updated: ImportedGame = { ...current, ...patch };
         try {
-          await saveGameToIdb(updated);
-          current = updated;
-          item.callbacks.onGameUpdated(current.id, patch);
+
+
+
+          const ok = await saveGameToIdb(updated);
+          if (ok) {
+            current = updated;
+            item.callbacks.onGameUpdated(current.id, patch);
+          } else {
+            recordEnrichmentEvent('enrichment-rescan-write-failed', Severity.Error, {
+              requestClass: 'account-monthly-archive', errorClass: 'idb-write-false',
+            });
+          }
         } catch (error) {
           recordEnrichmentEvent('enrichment-rescan-write-failed', Severity.Error, {
             requestClass: 'account-monthly-archive', errorClass: errorClass(error),
@@ -538,9 +558,17 @@ async function processChesscomRescanItem(item: ChesscomRescanWorkItem): Promise<
       if (delta === undefined) continue;
       const updated: ImportedGame = { ...mergedGames[i]!, ratingDelta: delta };
       try {
-        await saveGameToIdb(updated);
-        mergedGames[i] = updated;
-        item.callbacks.onGameUpdated(updated.id, { ratingDelta: delta });
+
+
+        const ok = await saveGameToIdb(updated);
+        if (ok) {
+          mergedGames[i] = updated;
+          item.callbacks.onGameUpdated(updated.id, { ratingDelta: delta });
+        } else {
+          recordEnrichmentEvent('enrichment-rescan-delta-write-failed', Severity.Error, {
+            requestClass: 'game-record-update', errorClass: 'idb-write-false',
+          });
+        }
       } catch (error) {
         recordEnrichmentEvent('enrichment-rescan-delta-write-failed', Severity.Error, {
           requestClass: 'game-record-update', errorClass: errorClass(error),

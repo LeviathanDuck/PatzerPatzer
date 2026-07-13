@@ -48,6 +48,15 @@ let _pendingTimer:  ReturnType<typeof setTimeout> | null = null;
 
 
 
+const MAX_PERSIST_RETRIES = 5;
+let _persistRetryGameId: string | null = null;
+let _persistRetryCount = 0;
+
+
+
+
+
+
 
 
 export function scheduleGamePersist(gameId: string): void {
@@ -125,9 +134,46 @@ async function performGamePersist(gameId: string, opts?: { isUnload?: boolean })
   // confirmed is still gameId.
   const pgn = buildPgn(true);
 
-  // Upsert into the games store, replacing pgn only — sourcePgn (write-once at import,
-  // src/import/types.ts) is never referenced here, so spreading `game` preserves whatever
-  // value it already carries (or its absence, for legacy rows) instead of touching it.
-  await saveGameToIdb({ ...game, pgn });
-  _onPersisted(gameId, pgn);
+
+
+
+
+
+
+
+
+
+
+
+
+  const ok = await saveGameToIdb({ ...game, pgn });
+  if (ok) {
+
+
+
+    _persistRetryGameId = null;
+    _persistRetryCount = 0;
+    _onPersisted(gameId, pgn);
+  } else if (!opts?.isUnload && _getSelectedGameId() === gameId) {
+
+
+
+
+
+
+
+
+
+
+
+
+    if (gameId !== _persistRetryGameId) {
+      _persistRetryGameId = gameId;
+      _persistRetryCount = 0;
+    }
+    _persistRetryCount += 1;
+    if (_persistRetryCount <= MAX_PERSIST_RETRIES) {
+      scheduleGamePersist(gameId);
+    }
+  }
 }
