@@ -1,14 +1,27 @@
-// Repertoire source browser for Study Library Surface D.
-// Reuses the Study standalone board pattern and the analysis move-list renderer in read-only mode.
 
-import { Chessground as makeChessground } from '@lichess-org/chessground';
-import type { Api as CgApi } from '@lichess-org/chessground/api';
+
+
+
+
+
+import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import { uciToMove } from '@lichess-org/chessground/util';
+import type { Color } from 'chessops/types';
 import { h, type VNode } from 'snabbdom';
 import { renderMoveList } from '../analyse/moveList';
 import { renderMoveNavBar, type MoveNavOverride } from '../analyse/analysisControls';
+import { renderBoard } from '../board/index';
 import { chessBoardAnimationConfig } from '../board/animation';
-import { nodeAtPath, pathInit } from '../tree/ops';
+import {
+  mountWorkspace,
+  unmountWorkspace,
+  type WorkspaceBoardInputModule,
+  type WorkspaceBoardPort,
+  type WorkspaceCursor,
+  type WorkspaceInstance,
+  type WorkspaceSessionSnapshot,
+} from '../analyse/workspaceCore';
+import { mainlineNodeList, nodeAtPath, nodeListAt, pathInit } from '../tree/ops';
 import type { TreeNode, TreePath, Uci } from '../tree/types';
 import { parseRepertoirePgn, type ParsedRepertoireGame } from '../repertoire/parse';
 import type { RepertoireSource } from '../repertoire';
@@ -36,7 +49,17 @@ const emptyState = (): RepertoireBrowseState => ({
 });
 
 let _state = emptyState();
-let _cgRef: CgApi | undefined;
+
+// --- Workspace-core migration state (CCW-H02) ---
+// Repertoire Browse is now a module-owned read-only workspace surface (its inline
+// WorkspaceBoardInputModule drives the shared board through a guarded port) rather than a forked
+// Chessground. `_workspaceInstance` is the instance mounted for the current browse generation;
+// `_browseController` is its read-only controller; `_browseGeneration` is a monotonic id used to
+// stale-guard close/teardown so a superseded browse or a route/destroy transition can never tear
+// down a newer workspace.
+let _workspaceInstance: WorkspaceInstance | null = null;
+let _browseController: BrowseBoardController | null = null;
+let _browseGeneration = 0;
 
 function sourceOrientation(source: RepertoireSource): 'white' | 'black' {
   return source.side === 'black' ? 'black' : 'white';
@@ -105,22 +128,137 @@ function turnColorForPly(ply: number): 'white' | 'black' {
   return ply % 2 === 0 ? 'white' : 'black';
 }
 
-function syncBrowseBoard(): void {
-  const node = activeNode();
-  if (!_cgRef || !node) return;
+// --- Read-only board configuration (CCW-H02) ---
+//
+// browseInitialConfig / browseSyncConfig reproduce the pre-migration forked-board configuration for
+// the shared workspace board, byte-for-byte in observable behavior: view-only, no legal
+// destinations, no premoves, no drawing, and no arrows. The previously-implicit Chessground defaults
+// (coordinates, premoves disabled) are made explicit so the read-only contract never inherits an
+// Analysis default through the shared board's deep-merge. `drawable.visible:false` is required in the
+// shared-board world: `enabled:false` only blocks user drawing, but a late Analysis engine-arrow
+// write targets the global board instance, and an invisible drawable layer keeps it off Browse
+// (mirrors Lichess's read-only ui/analyse/src/study/multiBoard.ts). The initial config omits
+// `lastMove` at the root (conditional) while the sync config always sends `lastMove ?? []` — the
+// empty array is how Chessground's configure() clears the root last-move highlight through the
+// guarded port, replacing the pre-migration raw `state.lastMove = []; redrawAll()` escape hatch.
+
+function browseInitialConfig(session: WorkspaceSessionSnapshot): CgConfig {
+  const node = session.node;
   const lastMove = uciToMove(node.uci);
-  const config = {
+  return {
     fen: node.fen,
-    orientation: _state.orientation,
+    orientation: session.orientation,
+    coordinates: true,
+    viewOnly: true,
+    animation: chessBoardAnimationConfig(),
     turnColor: turnColorForPly(node.ply),
     movable: { free: false, dests: new Map(), showDests: false },
+    premovable: { enabled: false, showDests: false, castle: false },
+    drawable: { enabled: false, visible: false, shapes: [], autoShapes: [] },
+    ...(lastMove ? { lastMove } : {}),
+  };
+}
+
+function browseSyncConfig(session: WorkspaceSessionSnapshot): CgConfig {
+  const node = session.node;
+  const lastMove = uciToMove(node.uci);
+  return {
+    fen: node.fen,
+    orientation: session.orientation,
+    turnColor: turnColorForPly(node.ply),
+    movable: { free: false, dests: new Map(), showDests: false },
+    premovable: { enabled: false, showDests: false, castle: false },
+    drawable: { enabled: false, visible: false, shapes: [], autoShapes: [] },
     lastMove: lastMove ?? [],
   };
-  _cgRef.set(config);
-  if (!lastMove) {
-    _cgRef.state.lastMove = [];
-    _cgRef.redrawAll();
+}
+
+// --- Read-only browse board controller (CCW-H02) ---
+//
+// One controller per successfully-parsed browse source. It owns only its guarded WorkspaceBoardPort
+// and reads the live browse `_state` for its cursor/orientation. `handleMove` is a REQUIRED no-op:
+// the shared board lifecycle always installs module-owned dispatch as `movable.events.after`, but
+// viewOnly:true blocks all board input so it can never fire. Keyboard is surface-owned with a no-op
+// handler so Analysis shortcuts (nav, flip, engine, arrows, best-move) do not run while Browse is
+// visible; Browse has no keyboard-navigation contract of its own.
+interface BrowseBoardController {
+  readonly module: WorkspaceBoardInputModule;
+  getCursor(): WorkspaceCursor;
+  getOrientation(): Color;
+  /** Write the current browse position through the attached guarded port (no-op if detached). */
+  sync(): void;
+}
+
+// Defensive-only FEN for the unreachable no-cursor case (a controller is mounted only for a valid
+// parsed source with a valid active node, and a valid chapter stays selected for its lifetime).
+const BROWSE_FALLBACK_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+function createBrowseBoardController(): BrowseBoardController {
+  let attachedPort: WorkspaceBoardPort | null = null;
+
+  function getCursor(): WorkspaceCursor {
+    const root = activeRoot();
+    const node = activeNode();
+    if (!root || !node) {
+      // Unreachable while mounted; return a coherent single leaf so session()/config never
+      // dereferences a null node.
+      const leaf: TreeNode = { id: '', ply: 0, fen: BROWSE_FALLBACK_FEN, children: [] };
+      return { root: leaf, path: '', node: leaf, nodeList: [leaf], mainline: [leaf] };
+    }
+    return {
+      root,
+      path: _state.path,
+      node,
+      nodeList: nodeListAt(root, _state.path),
+      mainline: mainlineNodeList(root),
+    };
   }
+
+  const getOrientation = (): Color => _state.orientation;
+
+  function sync(): void {
+    const port = attachedPort;
+    if (!port || !activeNode()) return;
+    const session: WorkspaceSessionSnapshot = {
+      ...getCursor(),
+      orientation: _state.orientation,
+      instanceId: port.instanceId,
+    };
+    port.set(browseSyncConfig(session));
+  }
+
+  const module: WorkspaceBoardInputModule = {
+    id: 'repertoire-browse',
+    mode: 'read-only-source-browsing',
+    allowResize: false,
+    configPolicy: {
+      kind: 'module-owned',
+      initial: context => browseInitialConfig(context.session),
+      sync: context => browseSyncConfig(context.session),
+    },
+    moveDispatch: {
+      kind: 'module-owned',
+      handleMove: () => {},
+    },
+    keyboardPolicy: {
+      kind: 'surface-owned',
+      handleKeydown: () => {},
+    },
+    attach(port: WorkspaceBoardPort): void {
+      attachedPort = port;
+      sync();
+    },
+    detach(): void {
+      attachedPort = null;
+    },
+  };
+
+  return { module, getCursor, getOrientation, sync };
+}
+
+/** Push the current browse position onto the shared board through the active controller's port. */
+function syncBrowseBoard(): void {
+  _browseController?.sync();
 }
 
 function setPath(path: TreePath, redraw: () => void): void {
@@ -176,9 +314,26 @@ export function isRepertoireSourceBrowseOpen(): boolean {
   return _state.source !== null || _state.loading || _state.error;
 }
 
-export function closeRepertoireSourceBrowse(): void {
-  _cgRef?.destroy();
-  _cgRef = undefined;
+/** The current browse generation — libraryView captures this to stale-guard its takeover destroy hook. */
+export function repertoireBrowseGeneration(): number {
+  return _browseGeneration;
+}
+
+/**
+ * Close the browse takeover and release its workspace. Idempotent and generation-guarded: when
+ * `expectedGeneration` is supplied and no longer matches the current generation, this is a no-op, so
+ * a stale destroy hook (e.g. after a back button already closed, or after a source switch) can never
+ * tear down a newer workspace. The generation is incremented FIRST so any subsequent stale close
+ * no-ops, then the stored controller/instance are cleared and the workspace is guardedly unmounted
+ * (which only releases it if it is still the active workspace).
+ */
+export function closeRepertoireSourceBrowse(reason: string = 'close', expectedGeneration?: number): void {
+  if (expectedGeneration !== undefined && expectedGeneration !== _browseGeneration) return;
+  _browseGeneration++;
+  const instance = _workspaceInstance;
+  _workspaceInstance = null;
+  _browseController = null;
+  if (instance) unmountWorkspace(instance, reason);
   _state = emptyState();
 }
 
@@ -187,6 +342,9 @@ export function openRepertoireSourceBrowse(
   accentIndex: number,
   options: { uciPrefix?: readonly Uci[] } = {},
 ): void {
+  // Tear down any previous browse generation first (guarded unmount + generation bump), then start a
+  // fresh generation for this source.
+  closeRepertoireSourceBrowse('source-switch');
   _state = {
     source,
     accentIndex,
@@ -217,7 +375,23 @@ export function openRepertoireSourceBrowse(
       error: true,
     };
   }
-  syncBrowseBoard();
+  // Mount a read-only workspace only for a successfully-parsed source with a valid active node.
+  // Loading, parse-error, and zero-chapter states create no board instance.
+  if (activeNode()) {
+    const controller = createBrowseBoardController();
+    _browseController = controller;
+    _workspaceInstance = mountWorkspace({
+      id: 'repertoire-browse',
+      boardInputMode: 'read-only-source-browsing',
+      boardInputModule: controller.module,
+      getCursor: controller.getCursor,
+      getOrientation: controller.getOrientation,
+      redraw: () => {},
+      // Module-owned dispatch runs on movable.events.after; this shared-tree commit hook is
+      // intentionally unreachable for a read-only surface.
+      handleUserMove: () => {},
+    });
+  }
 }
 
 function renderChip(source: RepertoireSource): VNode {
@@ -248,31 +422,17 @@ function renderChapterList(redraw: () => void): VNode {
 }
 
 function renderBrowseBoard(): VNode {
-  return h('div.cg-wrap.repertoire__browse-board', {
-    key: 'repertoire-browse-board',
+  // Sizing wrapper around the canonical shared board. `.repertoire__browse-board` supplies the square
+  // dimensions; renderBoard() owns the `.cg-wrap`, Chessground construction, the guarded port, and
+  // module attach/detach. The generation key forces a fresh board insert+attach on a real source
+  // switch so the newly-mounted module receives its port. The update hook preserves the pre-migration
+  // redraw-time resync, now routed through the guarded port.
+  return h('div.repertoire__browse-board', {
+    key: `repertoire-browse-board:${_browseGeneration}`,
     hook: {
-      insert: (vnode) => {
-        const node = activeNode();
-        if (!node) return;
-        const lastMove = uciToMove(node.uci);
-        _cgRef = makeChessground(vnode.elm as HTMLElement, {
-          orientation: _state.orientation,
-          viewOnly: true,
-          animation: chessBoardAnimationConfig(),
-          fen: node.fen,
-          turnColor: turnColorForPly(node.ply),
-          movable: { free: false, dests: new Map(), showDests: false },
-          drawable: { enabled: false },
-          ...(lastMove ? { lastMove } : {}),
-        });
-      },
       update: () => syncBrowseBoard(),
-      destroy: () => {
-        _cgRef?.destroy();
-        _cgRef = undefined;
-      },
     },
-  });
+  }, [renderBoard()]);
 }
 
 function renderNav(redraw: () => void): VNode {

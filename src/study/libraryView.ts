@@ -55,6 +55,7 @@ import {
   isRepertoireSourceBrowseOpen,
   openRepertoireSourceBrowse,
   renderRepertoireSourceBrowse,
+  repertoireBrowseGeneration,
   repertoireBrowseSourceId,
 } from './repertoireBrowseView';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
@@ -2066,7 +2067,20 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
 
   if (isRepertoireSourceBrowseOpen()) {
-    return h('div.study-page', [
+    // The Browse takeover VNode is the workspace lifecycle owner (CCW-H02). Its board is mounted by
+    // openRepertoireSourceBrowse (both launch paths — repertoire-source row and compliance-report
+    // "Open on board"). A constant key keeps this VNode patched in place across a source switch (only
+    // the inner board-generation key changes), so this destroy hook only fires when the takeover is
+    // actually removed (top-nav departure, back button, deletion, route transition). It closes ONLY
+    // the captured generation, so a stale hook after a source switch or an explicit close is an
+    // idempotent no-op and can never tear down a newer workspace.
+    const capturedGeneration = repertoireBrowseGeneration();
+    return h('div.study-page', {
+      key: 'study-page-repertoire-browse',
+      hook: {
+        destroy: () => closeRepertoireSourceBrowse('browse-view-destroy', capturedGeneration),
+      },
+    }, [
       h('div.study-page__header', [
         h('h1', 'Study Library'),
       ]),
