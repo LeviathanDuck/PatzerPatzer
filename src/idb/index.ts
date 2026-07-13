@@ -19,7 +19,10 @@ import {
 import type { DiagnosticAggregate, DiagnosticAggregateKind, DiagnosticEvent, DiagnosticSession } from '../diagnostics/types';
 import type { DiagnosticReport as AssembledDiagnosticReport } from '../diagnostics/reporting/reportAssembly';
 import type { ReportIssueDraft, ReportIssueDraftStatus } from '../diagnostics/reporting/reportDraftTypes';
-import { record, Severity } from '../diagnostics';
+
+
+
+import { record, record as recordDiagnostic, Severity } from '../diagnostics';
 import { captureStorageEstimate } from '../diagnostics/performance/deviceSignals';
 import type { ReviewRunManifest } from '../engine/reviewRun';
 
@@ -1884,6 +1887,22 @@ export async function saveNavStateToIdb(selectedId: string | null, path: string)
     await txDone(tx);
   } catch (e) {
     console.warn('[idb] nav-state save failed', e);
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveNavStateToIdb on game-library',
+      metadata: {
+        storeName: 'game-library',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2486,6 +2505,21 @@ export async function clearAnalysisFromIdb(gameId: string): Promise<void> {
     enqueueMainDbDelete('analysis', gameId);
   } catch (e) {
     console.warn('[idb] analysis clear failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: clearAnalysisFromIdb on analysis-library',
+      metadata: {
+        storeName: 'analysis-library',
+        operation: 'delete',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2541,6 +2575,22 @@ export async function saveUserTreeToIdb(gameId: string, root: TreeNode): Promise
     await txDone(tx);
   } catch (e) {
     console.warn('[idb] user tree save failed', e);
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveUserTreeToIdb on user-tree',
+      metadata: {
+        storeName: 'user-tree',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2573,6 +2623,22 @@ export async function saveRetroResult(result: RetroSessionResult): Promise<void>
     enqueueMainDbPut('retro-results', result.gameId, result, result.savedAt);
   } catch (e) {
     console.warn('[idb] retro-result save failed', e);
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveRetroResult on retro-results',
+      metadata: {
+        storeName: 'retro-results',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2645,6 +2711,23 @@ export async function saveReviewQueueManifest(entry: ReviewQueueManifestEntry): 
     return true;
   } catch (e) {
     console.warn('[idb] review-queue manifest save failed', e);
+
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveReviewQueueManifest on review-queue',
+      metadata: {
+        storeName: 'review-queue',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
     return false;
   }
 }
@@ -2657,6 +2740,21 @@ export async function clearReviewQueueManifestEntry(gameId: string): Promise<voi
     await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-queue manifest clear failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: clearReviewQueueManifestEntry on review-queue',
+      metadata: {
+        storeName: 'review-queue',
+        operation: 'delete',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2668,6 +2766,21 @@ export async function clearReviewQueueManifest(): Promise<void> {
     await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] review-queue manifest clear-all failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: clearReviewQueueManifest on review-queue',
+      metadata: {
+        storeName: 'review-queue',
+        operation: 'clear',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2711,6 +2824,22 @@ export async function saveReviewRunManifest(manifest: ReviewRunManifest): Promis
     return true;
   } catch (e) {
     console.warn('[idb] review-runs manifest save failed', e);
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveReviewRunManifest on review-runs',
+      metadata: {
+        storeName: 'review-runs',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
     return false;
   }
 }
@@ -2742,6 +2871,21 @@ export async function clearReviewRunManifest(runId: string): Promise<void> {
     await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-runs manifest clear failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: clearReviewRunManifest on review-runs',
+      metadata: {
+        storeName: 'review-runs',
+        operation: 'delete',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2753,6 +2897,23 @@ export async function saveReviewFailureRecord(record: ReviewFailureRecord): Prom
     await txDone(tx);
   } catch (e) {
     console.warn('[idb] review-failures save failed', e);
+
+
+
+
+
+    recordDiagnostic({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveReviewFailureRecord on review-failures',
+      metadata: {
+        storeName: 'review-failures',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2764,6 +2925,21 @@ export async function deleteReviewFailureRecord(key: string): Promise<void> {
     await txDone(tx, 'delete');
   } catch (e) {
     console.warn('[idb] review-failures delete failed', e);
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: deleteReviewFailureRecord on review-failures',
+      metadata: {
+        storeName: 'review-failures',
+        operation: 'delete',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2800,6 +2976,22 @@ export async function saveGameSummary(summary: GameSummary): Promise<void> {
     enqueueMainDbPutClearingDeletedAt('game-summaries', summary.gameId, summary, Number.isNaN(analyzedAt) ? Date.now() : analyzedAt);
   } catch (e) {
     console.warn('[idb] game-summary save failed', e);
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveGameSummary on game-summaries',
+      metadata: {
+        storeName: 'game-summaries',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2872,6 +3064,24 @@ export async function backfillOpenings(): Promise<number> {
     return count;
   } catch (e) {
     console.warn('[idb] backfillOpenings failed', e);
+
+
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: backfillOpenings on games',
+      metadata: {
+        storeName: 'games',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
     return 0;
   }
 }
@@ -2909,6 +3119,23 @@ export async function clearAllIdbData(): Promise<void> {
     await txDone(tx, 'clear');
   } catch (e) {
     console.warn('[idb] clearAllIdbData failed', e);
+
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: clearAllIdbData on all-idb-stores',
+      metadata: {
+        storeName: 'all-idb-stores',
+        operation: 'clear',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
@@ -2932,6 +3159,23 @@ async function savePuzzlesToIdb(): Promise<void> {
     enqueueMainDbPut('saved-review-puzzles', 'saved-puzzles', savedPuzzles, Date.now());
   } catch (e) {
     console.warn('[idb] puzzle save failed', e);
+
+
+
+
+
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: savePuzzlesToIdb on puzzle-library',
+      metadata: {
+        storeName: 'puzzle-library',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
   }
 }
 
