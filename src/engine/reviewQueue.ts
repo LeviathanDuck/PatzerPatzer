@@ -3316,7 +3316,10 @@ function recomputeMissedTactics(): void {
         if (!stored) continue; // shouldn't happen post-completion, but guard defensively
         const rebuiltCache = new Map<string, PositionEval>();
         for (const node of Object.values(stored.nodes)) {
-          if (!node.path) continue; // pre-migration node.id-keyed record — skip
+          // Skip only pre-migration node.id-keyed records (no path field). The root's path is
+          // the empty string '' (falsy but legitimate) — it must be restored, not dropped
+          // (BUG-2026-07-10-035), so ply-1 mistake candidates survive reload.
+          if (typeof node.path !== 'string') continue;
           const ev: PositionEval = {};
           if (node.cp    !== undefined) ev.cp    = node.cp;
           if (node.mate  !== undefined) ev.mate  = node.mate;
@@ -4757,7 +4760,10 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
     // startEntryBatch's `!entry.cache.has(path)` skip logic resumes mid-game, not from ply 0.
     if (stored) {
       for (const entry of Object.values(stored.nodes)) {
-        if (!entry.path) continue; // pre-migration node.id-keyed record — skip
+        // Skip only pre-migration node.id-keyed records (no path field). The root's path is
+        // the empty string '' (falsy but legitimate) — it must be restored, not dropped
+        // (BUG-2026-07-10-035), so ply-1 mistake candidates survive reload.
+        if (typeof entry.path !== 'string') continue;
         const ev: PositionEval = {};
         if (entry.cp    !== undefined) ev.cp    = entry.cp;
         if (entry.mate  !== undefined) ev.mate  = entry.mate;

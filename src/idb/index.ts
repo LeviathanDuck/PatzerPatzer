@@ -508,6 +508,15 @@ export function buildAnalysisNodes(
   getEval:  (path: string) => PositionEvalLike | undefined,
 ): Record<string, StoredNodeEntry> {
   const nodes: Record<string, StoredNodeEntry> = {};
+  // Serialize the ROOT eval under path '' too (BUG-2026-07-10-035). The loop below starts at
+  // i=1, so without this the root (mainline[0], path '') is never persisted — yet
+  // buildRetroCandidates needs getEval('') to flag ply-1 (first-move) mistakes, which then
+  // silently vanish after reload. Additive and keyed by '', mirroring the i>=1 entries.
+  const root = mainline[0];
+  if (root) {
+    const rootEval = getEval('');
+    if (rootEval) nodes[''] = buildAnalysisNodeEntry(root.id, '', root.fen, rootEval);
+  }
   let path = '';
   for (let i = 1; i < mainline.length; i++) {
     const node = mainline[i]!;
