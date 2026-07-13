@@ -15,7 +15,18 @@ import { nodeAtPath, addNode, pathInit, pathLast } from '../tree/ops';
 import { getStudy, saveStudy } from './studyDb';
 import { replaceHashRoute } from '../router';
 import { setOrientation } from '../board/index';
-import { mountWorkspace, type WorkspaceAdapter } from '../analyse/workspaceCore';
+import {
+  mountWorkspace,
+  unmountWorkspace,
+  type WorkspaceAdapter,
+  type WorkspaceInstance,
+} from '../analyse/workspaceCore';
+import { createStudyBoardInputModule } from './studyBoardInput';
+// studyBoardNavigate is a hoisted function declaration in studyDetailView.ts (which already imports
+// from this file). Importing it back completes a module cycle, but that is safe here: it is only
+// READ at move-dispatch call time, never during module evaluation, and function bindings are
+// initialized during ESM instantiation (no TDZ).
+import { studyBoardNavigate } from './studyDetailView';
 import {
   parseStudyDetailRouteState,
   resolveStudyDetailPath,
@@ -280,6 +291,11 @@ function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
   return {
     id: 'study-detail',
     boardInputMode: 'always-new-variation',
+    // CCW-H03a-2: Study is the first real consumer of the mode-aware board-input seam. The module is
+    // pass-through (analysis-default config + keyboard, shared-tree dispatch), so mounting it changes
+    // no behavior this slice — src/board/index.ts does not read `boardInputModule` yet (H03a-3), and
+    // main.ts still special-cases 'always-new-variation'. `navigate` is Study's existing-child follow.
+    boardInputModule: createStudyBoardInputModule(path => studyBoardNavigate(path, redraw)),
     getCursor: () => ({
       root:     _session?.root     ?? EMPTY_STUDY_TREE,
       path:     _session?.path     ?? '',
@@ -305,6 +321,11 @@ function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
   };
 }
 
+// The WorkspaceInstance most recently mounted by Study, retained so `unmountStudyWorkspace` can
+// release EXACTLY that instance via the guarded `unmountWorkspace` (a stale instance can never tear
+// down a newer workspace). Overwritten on every (re)mount; cleared by unmountStudyWorkspace.
+let _workspaceInstance: WorkspaceInstance | null = null;
+
 /**
  * Mount (or re-mount) the Study workspace instance so the shared board reads/writes through this
  * session while Study is the active surface. Called from loadStudyDetail/hydrateStudyDetailRoute
@@ -312,7 +333,21 @@ function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
  * (Analysis, or an earlier study), per workspaceCore's single-active-slot design.
  */
 export function mountStudyWorkspace(redraw: () => void): void {
-  mountWorkspace(buildStudyWorkspaceAdapter(redraw));
+  _workspaceInstance = mountWorkspace(buildStudyWorkspaceAdapter(redraw));
+}
+
+/**
+ * Guarded route-exit unmount for the Study workspace (CCW-H03a-2). Releases ONLY the instance Study
+ * last mounted, via workspaceCore's `unmountWorkspace` (which no-ops if that instance is no longer
+ * the active workspace — e.g. Analysis already superseded it). Idempotent: no-op when nothing is
+ * stored. Returns `unmountWorkspace`'s result (true only when a still-active Study instance was
+ * removed). NOT called anywhere yet — H03a-3 wires the route-exit call in main.ts.
+ */
+export function unmountStudyWorkspace(reason: string): boolean {
+  const instance = _workspaceInstance;
+  if (!instance) return false;
+  _workspaceInstance = null;
+  return unmountWorkspace(instance, reason);
 }
 
 // --- Orientation ---
