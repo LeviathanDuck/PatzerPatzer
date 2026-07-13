@@ -16,6 +16,8 @@
 
 
 
+import type { Config as CgConfig } from '@lichess-org/chessground/config';
+import type { Key } from '@lichess-org/chessground/types';
 import type { Color } from 'chessops/types';
 import type { TreeNode, TreePath } from '../tree/types';
 
@@ -46,6 +48,108 @@ export interface WorkspaceSessionSnapshot extends WorkspaceCursor {
   instanceId: string;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Read-only context handed to a module's config policy / callbacks (synchronous, bounded). */
+export interface WorkspaceBoardInputContext {
+  readonly instanceId: string;
+  readonly mode: BoardInputMode;
+  readonly session: WorkspaceSessionSnapshot;
+}
+
+/**
+ * How a mount's Chessground config is produced.
+ * - `analysis-default`: the existing Analysis initial/sync configuration, unchanged.
+ * - `module-owned`: the module supplies the COMPLETE applicable configuration; it must not inherit
+ *   Analysis callbacks accidentally.
+ * The config functions must be synchronous and bounded: no engine work, persistence, awaits, tree
+ * scans, shell redraws, or timers.
+ */
+export type WorkspaceBoardConfigPolicy =
+  | {
+      readonly kind: 'analysis-default';
+    }
+  | {
+      readonly kind: 'module-owned';
+      initial(context: WorkspaceBoardInputContext): CgConfig;
+      sync(context: WorkspaceBoardInputContext): CgConfig;
+    };
+
+/**
+ * How a user move made on the board is dispatched.
+ * - `shared-tree`: normal tree move generation, promotion, existing-child following, move hooks, and
+ *   `WorkspaceInstance.handleUserMove` (installed on `events.move`).
+ * - `module-owned`: bypasses all Analysis tree/promotion hooks; installed as `movable.events.after`.
+ */
+export type WorkspaceBoardMoveDispatch =
+  | {
+      readonly kind: 'shared-tree';
+      navigate(path: TreePath): void;
+    }
+  | {
+      readonly kind: 'module-owned';
+      handleMove(orig: Key, dest: Key): void;
+    };
+
+/**
+ * Keyboard ownership for a mount.
+ * - `analysis-default`: today's app-wide Analysis shortcut block stays active.
+ * - `surface-owned`: the module receives the keydown and the Analysis shortcut block does not run.
+ */
+export type WorkspaceKeyboardPolicy =
+  | {
+      readonly kind: 'analysis-default';
+    }
+  | {
+      readonly kind: 'surface-owned';
+      handleKeydown(event: KeyboardEvent): void;
+    };
+
+/** The narrow board handle a module gets at `attach` time (no raw CgApi, no destroy). */
+export interface WorkspaceBoardPort {
+  readonly instanceId: string;
+  isLive(): boolean;
+  set(config: CgConfig): void;
+  move(orig: Key, dest: Key): void;
+}
+
+/**
+ * A surface's board-input module: the complete, mode-named ownership of board config, move dispatch,
+ * and keyboard policy for one mount. Supplied to `mountWorkspace` via `WorkspaceAdapter`.
+ */
+export interface WorkspaceBoardInputModule {
+  readonly id: string;
+  readonly mode: BoardInputMode;
+  readonly allowResize: boolean;
+  readonly configPolicy: WorkspaceBoardConfigPolicy;
+  readonly moveDispatch: WorkspaceBoardMoveDispatch;
+  readonly keyboardPolicy: WorkspaceKeyboardPolicy;
+
+  attach(port: WorkspaceBoardPort, boardEl: HTMLElement): void;
+  detach(reason: string): void;
+}
+
+/**
+ * The instance-visible facade. Every callable member is guarded against supersession; lifecycle
+ * `detach` remains exclusively core-owned (so it is omitted here — see `WorkspaceInstance.teardown`).
+ */
+export interface WorkspaceBoardInputHandle
+  extends Omit<WorkspaceBoardInputModule, 'detach'> {
+  isLive(): boolean;
+}
+
 /**
  * The surface-supplied wiring a mount reads through. For Analysis, `getCursor` reads the live
  * AnalyseCtrl session and `getOrientation` reads src/board/index.ts's module-level orientation (its
@@ -59,6 +163,12 @@ export interface WorkspaceSessionSnapshot extends WorkspaceCursor {
 export interface WorkspaceAdapter {
   id: string;
   boardInputMode: BoardInputMode;
+  /**
+   * Optional mode-aware board-input module (CCW-H03a-1). When omitted, the mount resolves to a
+   * `null` board-input handle and behaves exactly as before (Analysis is the only permitted
+   * no-module mount — the fail-closed check for that lands in H03a-3, once Study has a real module).
+   */
+  boardInputModule?: WorkspaceBoardInputModule;
   getCursor: () => WorkspaceCursor;
   getOrientation: () => Color;
   redraw: () => void;
@@ -79,6 +189,13 @@ export interface WorkspaceAdapter {
 export interface WorkspaceInstance {
   readonly instanceId: string;
   readonly boardInputMode: BoardInputMode;
+  /**
+   * The guarded board-input facade for this mount, or `null` when the adapter supplied no module
+   * (CCW-H03a-1). Guarded means every callable member no-ops once this instance is superseded/torn
+   * down; module-owned `initial`/`sync` return `{}` when stale. `detach` is core-owned via
+   * `teardown`, so it is intentionally absent from the facade.
+   */
+  readonly boardInputModule: WorkspaceBoardInputHandle | null;
   session(): WorkspaceSessionSnapshot;
   /** Commit a user-move-created node at `parentPath` and navigate to it. Delegates to the mounting
    *  adapter's `handleUserMove` (see WorkspaceAdapter doc above). */
@@ -104,9 +221,16 @@ export function createActiveSlot<T extends { teardown(reason: string): void }>()
   return {
     get: () => active,
     set(next: T | null, reason: string): void {
+
+
+
+
+
+
       if (next === active) return;
-      active?.teardown(reason);
+      const prev = active;
       active = next;
+      prev?.teardown(reason);
     },
   };
 }
@@ -119,6 +243,72 @@ export function activeWorkspace(): WorkspaceInstance | null {
 }
 
 /**
+ * Wrap a raw adapter module in the instance-visible guarded facade (design §"Instance guarding").
+ * `isLive` is the mount's liveness predicate (`!tornDown && providerIsLive(liveKey)`). Every callable
+ * member is guarded: stale `navigate`/`handleMove`/`handleKeydown`/`attach` return without effect,
+ * and stale module-owned `initial`/`sync` return `{}` (never applied by the board). The raw module's
+ * `detach` is NOT exposed here — teardown owns it (see `mountWorkspace`).
+ */
+function guardBoardInputModule(
+  raw: WorkspaceBoardInputModule,
+  isLive: () => boolean,
+): WorkspaceBoardInputHandle {
+  const rawConfig = raw.configPolicy;
+  const configPolicy: WorkspaceBoardConfigPolicy =
+    rawConfig.kind === 'analysis-default'
+      ? { kind: 'analysis-default' }
+      : {
+          kind: 'module-owned',
+          initial(context: WorkspaceBoardInputContext): CgConfig {
+            return isLive() ? rawConfig.initial(context) : {};
+          },
+          sync(context: WorkspaceBoardInputContext): CgConfig {
+            return isLive() ? rawConfig.sync(context) : {};
+          },
+        };
+
+  const rawDispatch = raw.moveDispatch;
+  const moveDispatch: WorkspaceBoardMoveDispatch =
+    rawDispatch.kind === 'shared-tree'
+      ? {
+          kind: 'shared-tree',
+          navigate(path: TreePath): void {
+            if (isLive()) rawDispatch.navigate(path);
+          },
+        }
+      : {
+          kind: 'module-owned',
+          handleMove(orig: Key, dest: Key): void {
+            if (isLive()) rawDispatch.handleMove(orig, dest);
+          },
+        };
+
+  const rawKeyboard = raw.keyboardPolicy;
+  const keyboardPolicy: WorkspaceKeyboardPolicy =
+    rawKeyboard.kind === 'analysis-default'
+      ? { kind: 'analysis-default' }
+      : {
+          kind: 'surface-owned',
+          handleKeydown(event: KeyboardEvent): void {
+            if (isLive()) rawKeyboard.handleKeydown(event);
+          },
+        };
+
+  return {
+    id: raw.id,
+    mode: raw.mode,
+    allowResize: raw.allowResize,
+    configPolicy,
+    moveDispatch,
+    keyboardPolicy,
+    attach(port: WorkspaceBoardPort, boardEl: HTMLElement): void {
+      if (isLive()) raw.attach(port, boardEl);
+    },
+    isLive,
+  };
+}
+
+/**
  * Construct and activate a workspace for `adapter`. The single place a workspace instance is made
  * (equivalent to lila conditionally building `this.study = new makeStudy(...)`). Any previously
  * active instance is torn down first (§5).
@@ -127,9 +317,24 @@ export function mountWorkspace(adapter: WorkspaceAdapter): WorkspaceInstance {
   // Human-readable id: adapter id + mount timestamp (design §9 open-decision 2 default) — sufficient
   // for the single-active-slot model; no cross-process collision-proofing needed.
   const instanceId = `${adapter.id}-${Date.now()}`;
+
+  // Instance guarding (design §"Instance guarding") — one liveKey per mount, reusing the EXISTING
+  // providerIsLive discipline (NOT a second active registry/map). A mount's facade is live only
+  // while this instance is still the active workspace and teardown has not run.
+  const liveKey = { instanceId };
+  let tornDown = false;
+  const isLive = (): boolean => !tornDown && providerIsLive(liveKey);
+
+  // The raw adapter module is retained PRIVATELY only so teardown can call `detach`; no consumer
+  // reads it. The instance-visible handle is the guarded facade (or null when no module was given).
+  const rawModule = adapter.boardInputModule ?? null;
+  const boardInputModule: WorkspaceBoardInputHandle | null =
+    rawModule ? guardBoardInputModule(rawModule, isLive) : null;
+
   const instance: WorkspaceInstance = {
     instanceId,
     boardInputMode: adapter.boardInputMode,
+    boardInputModule,
     session(): WorkspaceSessionSnapshot {
       const c = adapter.getCursor();
       return {
@@ -143,14 +348,35 @@ export function mountWorkspace(adapter: WorkspaceAdapter): WorkspaceInstance {
       };
     },
     handleUserMove(parentPath: TreePath, node: TreeNode): void {
-      adapter.handleUserMove(parentPath, node);
+
+
+
+      if (isLive()) adapter.handleUserMove(parentPath, node);
     },
-    teardown(_reason: string): void {
-      // D-core-03: nothing owned to release yet — see interface doc above.
+    teardown(reason: string): void {
+      // Idempotent: set tornDown BEFORE detach (so the facade is already dead when the module's
+      // detach runs), and call the raw module's detach at most once. A superseding mount (via
+      // workspaceSlot.set) and an explicit unmountWorkspace both route through here.
+      if (tornDown) return;
+      tornDown = true;
+      rawModule?.detach(reason);
     },
   };
   workspaceSlot.set(instance, `mount:${adapter.id}`);
   return instance;
+}
+
+/**
+ * Deactivate `instance` iff it is STILL the active workspace, and tear it down once (design §"Guarded
+ * unmount"). Returns true only when `instance` was active and was removed; false for an already-
+ * unmounted or superseded instance. A stale instance can never tear down a newer workspace, and a
+ * successful call leaves `activeWorkspace()` null. Study (H03a-2) and the ORP drill (H03b) call this
+ * on route/drill exit.
+ */
+export function unmountWorkspace(instance: WorkspaceInstance, reason: string): boolean {
+  if (workspaceSlot.get() !== instance) return false;
+  workspaceSlot.set(null, `unmount:${reason}`);
+  return true;
 }
 
 // --- Instance-keyed providers (D-core-06 / ledger F3) ---
