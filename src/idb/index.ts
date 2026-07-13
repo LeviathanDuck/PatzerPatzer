@@ -520,8 +520,31 @@ export function buildAnalysisNodes(
 
 export let savedPuzzles: PuzzleCandidate[] = [];
 
+/**
+ * True only once loadPuzzlesFromIdb() has SUCCESSFULLY read the durable saved-puzzles singleton
+ * (including a genuinely-empty library). A failed or absent load leaves this false so the in-memory
+ * `savedPuzzles` mirror is never mistaken for the durable set. This flag is the guard that stops a
+ * masked load failure from letting the next savePuzzle() overwrite — and permanently destroy — the
+ * durable singleton (BUG-2026-07-10-017).
+ *
+ * setSavedPuzzles() deliberately does NOT set it: on the DB-open-failure path loadPuzzlesFromIdb
+ * returns the masked-empty [] and the caller passes that [] straight to setSavedPuzzles(), which
+ * must stay UN-hydrated — otherwise the guard would be defeated by exactly the failure it protects
+ * against. Only loadPuzzlesFromIdb's success path may set it.
+ */
+let _savedPuzzlesHydrated = false;
+
 export function setSavedPuzzles(puzzles: PuzzleCandidate[]): void {
   savedPuzzles = puzzles;
+}
+
+/**
+ * Whether `savedPuzzles` is known to reflect a successful read of the durable singleton. Lets
+ * callers distinguish a failed load (unhydrated) from a genuinely-empty library — the return value
+ * of loadPuzzlesFromIdb alone ([] in both cases) cannot.
+ */
+export function isSavedPuzzlesHydrated(): boolean {
+  return _savedPuzzlesHydrated;
 }
 
 // --- Retro session result ---
@@ -2847,6 +2870,15 @@ export async function clearAllIdbData(): Promise<void> {
 // --- Puzzles ---
 
 async function savePuzzlesToIdb(): Promise<void> {
+  if (!_savedPuzzlesHydrated) {
+    // Last line of defense (BUG-2026-07-10-017): the saved-puzzles record is a SINGLETON — this
+    // put() overwrites the whole durable set. Doing it from an in-memory `savedPuzzles` that is not
+    // known to reflect the durable data (a failed/absent load) would permanently destroy every
+    // previously saved puzzle. Refuse honestly: the write does not happen, and — importantly — the
+    // destructive sync upsert below is not enqueued either.
+    console.error('[idb] puzzle save refused: saved-puzzle set is unhydrated; refusing to overwrite the durable singleton');
+    return;
+  }
   try {
     const db = await openGameDb();
     const tx = db.transaction('puzzle-library', 'readwrite');
@@ -2864,16 +2896,101 @@ export async function loadPuzzlesFromIdb(): Promise<PuzzleCandidate[]> {
     return new Promise((resolve, reject) => {
       const req = db.transaction('puzzle-library', 'readonly')
         .objectStore('puzzle-library').get('saved-puzzles');
-      req.onsuccess = () => resolve((req.result as PuzzleCandidate[] | undefined) ?? []);
-      req.onerror   = () => reject(recordReqFailure(req, 'puzzle-library', 'read', 'saved-puzzles'));
+      req.onsuccess = () => {
+        // A successful read hydrates the in-memory mirror's authority over the durable singleton,
+        // whether it returns saved puzzles or a genuinely-empty library (req.result === undefined
+        // -> []). This is the ONLY place _savedPuzzlesHydrated may become true.
+        _savedPuzzlesHydrated = true;
+        resolve((req.result as PuzzleCandidate[] | undefined) ?? []);
+      };
+      req.onerror   = () => {
+
+
+
+
+        _savedPuzzlesHydrated = false;
+        reject(recordReqFailure(req, 'puzzle-library', 'read', 'saved-puzzles'));
+      };
     });
   } catch (e) {
+
+
+
+
+
+    _savedPuzzlesHydrated = false;
     console.warn('[idb] puzzle load failed', e);
     return [];
   }
 }
 
+
+
+
+
+
+
+let _pendingUnhydratedSaves: Array<{ c: PuzzleCandidate; redraw: () => void }> = [];
+let _rehydrationInFlight = false;
+
 export function savePuzzle(c: PuzzleCandidate, redraw: () => void): void {
+  if (!_savedPuzzlesHydrated) {
+    // `savedPuzzles` is NOT known to reflect the durable singleton (a failed/absent load, or a
+    // failure-invalidated mirror). Appending to it and persisting would overwrite — and destroy —
+    // the durable saved-puzzle library (BUG-2026-07-10-017). Enqueue and share one re-hydration.
+    _pendingUnhydratedSaves.push({ c, redraw });
+    if (!_rehydrationInFlight) {
+      _rehydrationInFlight = true;
+      void drainPendingUnhydratedSaves();
+    }
+    return;
+  }
+  appendPuzzleAndPersist(c, redraw);
+}
+
+
+
+
+
+
+
+
+async function drainPendingUnhydratedSaves(): Promise<void> {
+  try {
+    const loaded = await loadPuzzlesFromIdb().catch(() => null);
+    // loadPuzzlesFromIdb sets _savedPuzzlesHydrated true ONLY on a genuine successful read (and now
+    // false on any failure). Trust that flag as the single source of truth for whether we may write.
+    if (_savedPuzzlesHydrated && loaded) setSavedPuzzles(loaded);
+  } finally {
+    const pending = _pendingUnhydratedSaves;
+    _pendingUnhydratedSaves = [];
+    _rehydrationInFlight = false;
+    if (_savedPuzzlesHydrated) {
+      let appended = false;
+      for (const { c } of pending) {
+        if (savedPuzzles.some(p => p.gameId === c.gameId && p.path === c.path)) continue;
+        savedPuzzles = [...savedPuzzles, c];
+        appended = true;
+      }
+      // A single persist for the whole merged batch (the guard in savePuzzlesToIdb passes now that
+      // the mirror is hydrated). Skip the write entirely if every candidate was a duplicate.
+      if (appended) void savePuzzlesToIdb();
+      for (const { redraw } of pending) redraw();
+    } else {
+      // Re-hydration failed (durable read unavailable): refuse the batch — do not overwrite the
+      // durable set from an unhydrated mirror. Honest failure, no data destruction.
+      console.error('[idb] savePuzzle refused: saved-puzzle library is unhydrated (durable read unavailable); not overwriting the durable set');
+      for (const { redraw } of pending) redraw();
+    }
+  }
+}
+
+/**
+ * Append a candidate to the (hydrated) in-memory set and persist. Dedupe is unchanged from the
+ * original savePuzzle body (gameId + path identity). Callers MUST ensure _savedPuzzlesHydrated is
+ * true before invoking this (savePuzzle enforces it above).
+ */
+function appendPuzzleAndPersist(c: PuzzleCandidate, redraw: () => void): void {
   const already = savedPuzzles.some(p => p.gameId === c.gameId && p.path === c.path);
   if (already) return;
   savedPuzzles = [...savedPuzzles, c];
