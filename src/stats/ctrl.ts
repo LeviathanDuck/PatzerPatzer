@@ -33,6 +33,8 @@ let _loadedGeneration = -1;
 let _requestedGeneration = -1;
 let _loadRequestSequence = 0;
 let _activeLoadRequest = 0;
+let _activeLoadFailed = false;
+let _reloadRequested = false;
 
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 
@@ -125,6 +127,7 @@ export function initStatsPage(redraw: () => void): void {
   if (_summariesLoaded && _loadedGeneration === _dataGeneration) return;
   _summariesLoaded = false;
   _requestedGeneration = _dataGeneration;
+  if (_summariesLoading && _activeLoadFailed) _reloadRequested = true;
   if (!_summariesLoading) loadSummaries(_requestedGeneration);
 }
 
@@ -135,13 +138,12 @@ export function invalidateSummariesCache(): void {
 
 function loadSummaries(generation: number): void {
   _summariesLoading = true;
+  _activeLoadFailed = false;
+  _reloadRequested = false;
   const requestId = ++_loadRequestSequence;
   _activeLoadRequest = requestId;
   const reads = [listGameSummaries(), loadGamesFromIdb()] as const;
-  void Promise.all(reads).catch(async (error) => {
-    await Promise.allSettled(reads);
-    throw error;
-  }).then(([summaries, stored]) => {
+  void Promise.all(reads).then(([summaries, stored]) => {
     if (requestId !== _activeLoadRequest || generation !== _dataGeneration) return;
     _summaries        = summaries;
     _importedGames    = stored?.games ?? [];
@@ -153,14 +155,16 @@ function loadSummaries(generation: number): void {
     _redraw();
   }).catch((error) => {
     if (requestId !== _activeLoadRequest || generation !== _dataGeneration) return;
+    _activeLoadFailed = true;
     recordStatsLoadFail(error);
     _summariesLoaded = true;
     _filteredCache   = null;
     _redraw();
-  }).finally(() => {
+  });
+  void Promise.allSettled(reads).then(() => {
     if (requestId !== _activeLoadRequest) return;
     _summariesLoading = false;
-    if (_requestedGeneration !== generation) loadSummaries(_requestedGeneration);
+    if (_requestedGeneration !== generation || _reloadRequested) loadSummaries(_requestedGeneration);
   });
 }
 
