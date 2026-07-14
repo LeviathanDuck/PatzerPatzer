@@ -1,4 +1,4 @@
-import { getRemoteSyncToken } from '../sync/remoteSync';
+import { getRemoteSyncGeneration, getRemoteSyncToken } from '../sync/remoteSync';
 import { clearClientAuth } from './lichessClient';
 import { record, Severity } from '../diagnostics';
 
@@ -172,6 +172,8 @@ function requireAdminHeaders(initHeaders?: HeadersInit): Headers {
   }
   const headers = new Headers(initHeaders);
   headers.set('Authorization', `Bearer ${token}`);
+  const generation = getRemoteSyncGeneration();
+  if (generation !== undefined) headers.set('X-Patzer-Sync-Generation', String(generation));
   return headers;
 }
 

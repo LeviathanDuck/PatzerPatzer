@@ -92,7 +92,6 @@ if (!$row) {
     patzer_json(401, ['ok' => false, 'error' => 'Lichess book access is not connected.']);
 }
 if (patzer_book_auth_expired($row)) {
-    patzer_delete_book_auth($pdo, $userKey);
     patzer_json(401, ['ok' => false, 'error' => 'Lichess book access has expired.']);
 }
 

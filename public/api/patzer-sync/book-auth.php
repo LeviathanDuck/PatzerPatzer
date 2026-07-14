@@ -11,10 +11,7 @@ $userKey = $config['user_key'];
 
 if ($method === 'GET') {
     $row = patzer_book_auth_row($pdo, $userKey);
-    if ($row && patzer_book_auth_expired($row)) {
-        patzer_delete_book_auth($pdo, $userKey);
-        $row = null;
-    }
+    if ($row && patzer_book_auth_expired($row)) $row = null;
     patzer_json(200, [
         'ok' => true,
         'connected' => $row !== null,
@@ -32,14 +29,26 @@ $action = $body['action'] ?? '';
 if (!is_string($action)) {
     patzer_json(400, ['ok' => false, 'error' => 'Book auth action is required.']);
 }
-
-if ($action === 'disconnect') {
-    patzer_delete_book_auth($pdo, $userKey);
-    patzer_json(200, ['ok' => true, 'connected' => false]);
+if ($action !== 'save' && $action !== 'disconnect') {
+    patzer_json(400, ['ok' => false, 'error' => 'Unsupported book auth action.']);
 }
 
-if ($action !== 'save') {
-    patzer_json(400, ['ok' => false, 'error' => 'Unsupported book auth action.']);
+// Optional fast rejection only. Each credential mutation repeats the authoritative generation
+// comparison while holding the meta row in the same transaction as the book-row write.
+patzer_require_fresh_generation($pdo, $config);
+
+if ($action === 'disconnect') {
+    try {
+        $pdo->beginTransaction();
+        patzer_require_locked_fresh_generation($pdo, $config);
+        $delete = $pdo->prepare('DELETE FROM patzer_book_auth WHERE user_key = ?');
+        $delete->execute([$userKey]);
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        patzer_json(500, ['ok' => false, 'error' => 'Could not disconnect Lichess book access.']);
+    }
+    patzer_json(200, ['ok' => true, 'connected' => false]);
 }
 
 $username = $body['username'] ?? '';
@@ -60,27 +69,35 @@ if ($expiresAtRaw !== null) {
 
 $encrypted = patzer_encrypt_book_token($token, $secret);
 $now = patzer_now_ms();
-$stmt = $pdo->prepare(
-    'INSERT INTO patzer_book_auth
-       (user_key, lichess_username, token_ciphertext, token_iv, token_tag, token_expires_at_ms, updated_at_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE
-       lichess_username = VALUES(lichess_username),
-       token_ciphertext = VALUES(token_ciphertext),
-       token_iv = VALUES(token_iv),
-       token_tag = VALUES(token_tag),
-       token_expires_at_ms = VALUES(token_expires_at_ms),
-       updated_at_ms = VALUES(updated_at_ms)'
-);
-$stmt->execute([
-    $userKey,
-    $username,
-    $encrypted['ciphertext'],
-    $encrypted['iv'],
-    $encrypted['tag'],
-    $expiresAt,
-    $now,
-]);
+try {
+    $pdo->beginTransaction();
+    patzer_require_locked_fresh_generation($pdo, $config);
+    $stmt = $pdo->prepare(
+        'INSERT INTO patzer_book_auth
+           (user_key, lichess_username, token_ciphertext, token_iv, token_tag, token_expires_at_ms, updated_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           lichess_username = VALUES(lichess_username),
+           token_ciphertext = VALUES(token_ciphertext),
+           token_iv = VALUES(token_iv),
+           token_tag = VALUES(token_tag),
+           token_expires_at_ms = VALUES(token_expires_at_ms),
+           updated_at_ms = VALUES(updated_at_ms)'
+    );
+    $stmt->execute([
+        $userKey,
+        $username,
+        $encrypted['ciphertext'],
+        $encrypted['iv'],
+        $encrypted['tag'],
+        $expiresAt,
+        $now,
+    ]);
+    $pdo->commit();
+} catch (Throwable $error) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    patzer_json(500, ['ok' => false, 'error' => 'Could not save Lichess book access.']);
+}
 
 patzer_json(200, [
     'ok' => true,
