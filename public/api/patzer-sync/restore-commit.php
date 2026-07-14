@@ -41,6 +41,7 @@ if ($actualItems !== $expectedItems || $actualTombstones !== $expectedTombstones
 
 $pdo->beginTransaction();
 try {
+    patzer_require_locked_fresh_generation($pdo, $config);
     $deleteLive = $pdo->prepare('DELETE FROM patzer_sync_items WHERE user_key = ?');
     $deleteLive->execute([$config['user_key']]);
 
@@ -75,7 +76,7 @@ try {
     $meta = patzer_bump_generation($pdo, $config['user_key'], 'restore');
     $pdo->commit();
 } catch (Throwable $error) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) $pdo->rollBack();
     patzer_json(500, ['ok' => false, 'error' => 'Restore commit failed.']);
 }
 

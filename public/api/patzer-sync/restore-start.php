@@ -19,8 +19,16 @@ if (isset($body['userKey']) && is_string($body['userKey']) && $body['userKey'] !
 }
 
 $restoreId = bin2hex(random_bytes(16));
-$stmt = $pdo->prepare('DELETE FROM patzer_sync_restore_items WHERE user_key = ? AND restore_id = ?');
-$stmt->execute([$config['user_key'], $restoreId]);
+$pdo->beginTransaction();
+try {
+    $meta = patzer_require_locked_fresh_generation($pdo, $config);
+    $stmt = $pdo->prepare('DELETE FROM patzer_sync_restore_items WHERE user_key = ? AND restore_id = ?');
+    $stmt->execute([$config['user_key'], $restoreId]);
+    $pdo->commit();
+} catch (Throwable $error) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    patzer_json(500, ['ok' => false, 'error' => 'Restore start failed.']);
+}
 
 patzer_json(200, [
     'ok' => true,

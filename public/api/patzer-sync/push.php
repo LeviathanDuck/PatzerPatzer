@@ -209,13 +209,6 @@ function patzer_cas_row_rejection(array $item, Throwable $error): array {
 }
 
 function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): never {
-    $lockMetaStmt = $pdo->prepare(
-        'SELECT sync_version_next
-         FROM patzer_sync_meta
-         WHERE user_key = ?
-         LIMIT 1
-         FOR UPDATE'
-    );
     $advanceMetaStmt = $pdo->prepare(
         'UPDATE patzer_sync_meta
          SET sync_version_next = ?
@@ -247,6 +240,9 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
     // of rolling back the whole batch as a blanket 500, and so the per-user meta row lock is
     // held per item (milliseconds) rather than for the entire batch — concurrent pushers from
     // a second browser no longer time out against a long-lived batch lock.
+    // The locked generation check is therefore also per item: rows committed under N remain
+    // committed, but the first item transaction admitted after N+1 exits with stale-session before
+    // touching its row. The request is intentionally not an all-items atomic transaction.
     foreach ($items as $rawItem) {
             if (!is_array($rawItem)) {
                 $rejected[] = [
@@ -298,11 +294,8 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
 
             try {
                 $pdo->beginTransaction();
-                patzer_sync_meta($pdo, $config['user_key']);
-                $lockMetaStmt->execute([$config['user_key']]);
-                $metaRow = $lockMetaStmt->fetch();
-                $lockMetaStmt->closeCursor();
-                $nextVersion = isset($metaRow['sync_version_next']) ? max(1, (int) $metaRow['sync_version_next']) : 1;
+                $lockedMeta = patzer_require_locked_fresh_generation($pdo, $config);
+                $nextVersion = $lockedMeta['syncVersionNext'];
 
                 $readRowStmt->execute([$config['user_key'], $store, $itemKey]);
                 $existingRow = $readRowStmt->fetch();
@@ -352,7 +345,6 @@ function patzer_handle_version_cas_push(PDO $pdo, array $config, array $items): 
                 $advanceMetaStmt->execute([$nextVersion + 1, $config['user_key']]);
                 $pdo->commit();
             } catch (Throwable $error) {
-                $lockMetaStmt->closeCursor();
                 $readRowStmt->closeCursor();
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 $rejected[] = patzer_cas_row_rejection($rawItem, $error);
@@ -427,6 +419,8 @@ $tombstones = [];
 patzer_reject_legacy_if_existing($pdo, $config, $items);
 $pdo->beginTransaction();
 try {
+    $lockedMeta = patzer_require_locked_fresh_generation($pdo, $config);
+    $nextVersion = $lockedMeta['syncVersionNext'];
     foreach ($items as $item) {
         if (!is_array($item)) patzer_json(400, ['ok' => false, 'error' => 'Sync items must be objects.']);
         $store = patzer_item_store($item);
@@ -454,7 +448,7 @@ try {
                     ':user_key' => $config['user_key'],
                     ':store_name' => $store,
                     ':item_key' => $itemKey,
-                    ':version' => patzer_take_next_sync_version($pdo, $config['user_key']),
+                    ':version' => $nextVersion++,
                     ':payload_json' => $payloadJson,
                     ':updated_at_ms' => max($updatedAt, patzer_account_updated_at($payload)),
                     ':deleted_at_ms' => null,
@@ -477,7 +471,7 @@ try {
                     ':user_key' => $config['user_key'],
                     ':store_name' => $store,
                     ':item_key' => $itemKey,
-                    ':version' => patzer_take_next_sync_version($pdo, $config['user_key']),
+                    ':version' => $nextVersion++,
                     ':payload_json' => $payloadJson,
                     ':updated_at_ms' => $updatedAt,
                     ':deleted_at_ms' => $deleted ? $updatedAt : null,
@@ -487,6 +481,12 @@ try {
         $counts[$store] = ($counts[$store] ?? 0) + 1;
         if ($deleted) $tombstones[$store] = ($tombstones[$store] ?? 0) + 1;
     }
+    $advanceMetaStmt = $pdo->prepare(
+        'UPDATE patzer_sync_meta
+         SET sync_version_next = ?
+         WHERE user_key = ?'
+    );
+    $advanceMetaStmt->execute([$nextVersion, $config['user_key']]);
     $pdo->commit();
 } catch (Throwable $error) {
     $pdo->rollBack();

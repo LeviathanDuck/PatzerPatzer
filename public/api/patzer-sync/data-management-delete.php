@@ -44,6 +44,11 @@ $finalReadStmt = $pdo->prepare(
      WHERE user_key = ? AND `store` = ? AND item_key = ?
      LIMIT 1'
 );
+$advanceMetaStmt = $pdo->prepare(
+    'UPDATE patzer_sync_meta
+     SET sync_version_next = ?
+     WHERE user_key = ?'
+);
 
 function patzer_delete_row_rejection(string $store, string $itemKey, Throwable $error): array {
 
@@ -88,17 +93,20 @@ $latestVersion = 0;
 
 
 
+
+
 foreach ($deleteKeys as $deleteKey) {
     $store = $deleteKey['store'];
     $itemKey = $deleteKey['itemKey'];
     try {
         $pdo->beginTransaction();
+        $lockedMeta = patzer_require_locked_fresh_generation($pdo, $config);
         $readStmt->execute([$config['user_key'], $store, $itemKey]);
         $existing = $readStmt->fetch();
         $readStmt->closeCursor();
         $existingUpdatedAt = is_array($existing) ? (int) $existing['updated_at_ms'] : 0;
         $updatedAt = max(patzer_now_ms(), $existingUpdatedAt + 1);
-        $version = patzer_take_next_sync_version($pdo, $config['user_key']);
+        $version = $lockedMeta['syncVersionNext'];
         $writeStmt->execute([
             ':user_key' => $config['user_key'],
             ':store_name' => $store,
@@ -107,6 +115,7 @@ foreach ($deleteKeys as $deleteKey) {
             ':updated_at_ms' => $updatedAt,
             ':deleted_at_ms' => $updatedAt,
         ]);
+        $advanceMetaStmt->execute([$version + 1, $config['user_key']]);
         $finalReadStmt->execute([$config['user_key'], $store, $itemKey]);
         $final = $finalReadStmt->fetch();
         $finalReadStmt->closeCursor();

@@ -50,6 +50,7 @@ $stmt = $pdo->prepare(
 
 $pdo->beginTransaction();
 try {
+    patzer_require_locked_fresh_generation($pdo, $config);
     foreach ($rows as $row) {
         $stmt->execute([
             ':restore_id' => $restoreId,
@@ -63,7 +64,7 @@ try {
     }
     $pdo->commit();
 } catch (Throwable $error) {
-    $pdo->rollBack();
+    if ($pdo->inTransaction()) $pdo->rollBack();
     patzer_json(500, ['ok' => false, 'error' => 'Restore chunk failed.']);
 }
 
