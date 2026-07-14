@@ -137,7 +137,11 @@ function loadSummaries(generation: number): void {
   _summariesLoading = true;
   const requestId = ++_loadRequestSequence;
   _activeLoadRequest = requestId;
-  void Promise.all([listGameSummaries(), loadGamesFromIdb()]).then(([summaries, stored]) => {
+  const reads = [listGameSummaries(), loadGamesFromIdb()] as const;
+  void Promise.all(reads).catch(async (error) => {
+    await Promise.allSettled(reads);
+    throw error;
+  }).then(([summaries, stored]) => {
     if (requestId !== _activeLoadRequest || generation !== _dataGeneration) return;
     _summaries        = summaries;
     _importedGames    = stored?.games ?? [];
