@@ -20,6 +20,7 @@
 
 
 import type { Config as CgConfig } from '@lichess-org/chessground/config';
+import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
 import { Chess } from 'chessops/chess';
 import { chessgroundDests } from 'chessops/compat';
@@ -28,6 +29,7 @@ import type { Role } from 'chessops';
 import type { VNode } from 'snabbdom';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
 import { PromotionCtrl } from '../board/promotion';
+import { registerModuleAutoShapesProvider, syncArrowForced } from '../board/shapeSink';
 import type {
   WorkspaceBoardInputModule,
   WorkspaceBoardPort,
@@ -37,6 +39,7 @@ import type { TreeNode } from '../tree/types';
 
 /** The minimal puzzle-definition shape the solve module reads (structurally a `PuzzleDefinition`). */
 export interface PuzzleSolveDefinition {
+  readonly id: string;
   readonly startFen: string;
   /** The opponent's trigger move (UCI). When present the board is locked at mount until the trigger
    *  animation applies the post-trigger movable config; when absent the solver is live immediately. */
@@ -173,7 +176,15 @@ export function createPuzzleSolveBoardController(
   // --- Attach-time resources (all released in detach). ---
   let _port: WorkspaceBoardPort | null = null;
   let _unsubAnimation: (() => void) | null = null;
+  let _disposeHintProvider: (() => void) | null = null;
   let _promotionPreMoveFen: string | null = null;
+
+  // Hint identity is adapter-owned and exact: a shape is visible only for this puzzle and the FEN
+  // at which the hint was requested. Position programs leave the stored identity intact so the
+  // provider itself stale-drops on mismatch; clear/detach erase it explicitly.
+  let _hintPuzzleId: string | null = null;
+  let _hintFen: string | null = null;
+  let _hintOrigin: Key | null = null;
 
   // --- Ephemeral cursor (workspace identity/observability; never becomes a shared move tree). ---
   function computePly(fen: string): number {
@@ -277,6 +288,7 @@ export function createPuzzleSolveBoardController(
       movable: { color: pos.movableColor, free: false, dests: pos.dests, showDests: true },
       animation: puzzleBoardAnimationConfig(),
     });
+    syncArrowForced();
   }
 
   function applyTriggerPosition(pos: PuzzleBoardPosition): void {
@@ -288,6 +300,7 @@ export function createPuzzleSolveBoardController(
       ...(pos.lastMove ? { lastMove: pos.lastMove } : {}),
       movable: { color: pos.movableColor, dests: pos.dests, showDests: true },
     });
+    syncArrowForced();
   }
 
   function applyOpponentReply(pos: PuzzleBoardPosition): void {
@@ -300,6 +313,7 @@ export function createPuzzleSolveBoardController(
       ...(pos.lastMove ? { lastMove: pos.lastMove } : {}),
       movable: { color: pos.movableColor, dests: pos.dests },
     });
+    syncArrowForced();
   }
 
   function restoreLivePosition(pos: PuzzleBoardPosition): void {
@@ -312,10 +326,35 @@ export function createPuzzleSolveBoardController(
     livePort()?.set({ orientation: _orientation });
   }
 
-  // --- H05 hint hooks (wired in CCW-H05b through the module-owned shape-sink provider). Stubbed as
-  //     no-ops for H04a: puzzle hints still run through ctrl.ts's direct setAutoShapes until H05b. ---
-  function showHint(_expectedUci: string): void { /* H05b: store hinted origin + force sink recompute */ }
-  function clearHint(): void { /* H05b: clear hinted origin + force sink recompute */ }
+  // --- H05 hint ownership. The shared shape sink owns the Chessground write; this adapter owns the
+  //     exact puzzle/FEN/origin identity and forces immediate recomputation on every state change. ---
+  function hintShapes(): DrawShape[] {
+    if (
+      _hintPuzzleId !== def.id
+      || _hintFen !== _fen
+      || _hintOrigin === null
+      || livePort() === null
+    ) return [];
+    return [{ orig: _hintOrigin, brush: 'green' }];
+  }
+
+  function clearHintState(): void {
+    _hintPuzzleId = null;
+    _hintFen = null;
+    _hintOrigin = null;
+  }
+
+  function showHint(expectedUci: string): void {
+    _hintPuzzleId = def.id;
+    _hintFen = _fen;
+    _hintOrigin = expectedUci.slice(0, 2) as Key;
+    syncArrowForced();
+  }
+
+  function clearHint(): void {
+    clearHintState();
+    syncArrowForced();
+  }
 
   const module: WorkspaceBoardInputModule = {
     id: 'puzzle-solve',
@@ -342,6 +381,8 @@ export function createPuzzleSolveBoardController(
 
     attach(port: WorkspaceBoardPort): void {
       _port = port;
+      _disposeHintProvider?.();
+      _disposeHintProvider = registerModuleAutoShapesProvider(hintShapes);
       // Own the puzzle-animation subscription at the port scope. Only write when the round + port are
       // still live.
       _unsubAnimation = onBoardAnimationChange('puzzle', () => {
@@ -355,6 +396,9 @@ export function createPuzzleSolveBoardController(
     detach(): void {
       // Idempotent, and must never write through the dead port: only unsubscribe, clear any pending
       // promotion chooser, and drop refs.
+      clearHintState();
+      _disposeHintProvider?.();
+      _disposeHintProvider = null;
       if (_unsubAnimation) {
         _unsubAnimation();
         _unsubAnimation = null;
@@ -362,6 +406,7 @@ export function createPuzzleSolveBoardController(
       promotion.reset();
       _promotionPreMoveFen = null;
       _port = null;
+      syncArrowForced();
     },
   };
 
