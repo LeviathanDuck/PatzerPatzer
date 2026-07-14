@@ -1,15 +1,15 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_bootstrap.php';
+require __DIR__ . '/_endpoint-contract.php';
 
-$config = patzer_require_admin();
-$pdo = patzer_db($config);
+$config = patzer_require_operation(patzer_operation_for_request('book-auth.php'));
+$pdo = $config['request_pdo'];
 $secret = patzer_book_token_secret($config);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $userKey = $config['user_key'];
 
-if ($method === 'GET') {
+if ($method === 'GET' || $method === 'HEAD') {
     $row = patzer_book_auth_row($pdo, $userKey);
     if ($row && patzer_book_auth_expired($row)) $row = null;
     patzer_json(200, [
@@ -18,10 +18,6 @@ if ($method === 'GET') {
         'username' => $row ? (string) $row['lichess_username'] : null,
         'updatedAt' => $row ? (int) $row['updated_at_ms'] : null,
     ]);
-}
-
-if ($method !== 'POST') {
-    patzer_json(405, ['ok' => false, 'error' => 'Method not allowed.']);
 }
 
 $body = patzer_read_json_body();

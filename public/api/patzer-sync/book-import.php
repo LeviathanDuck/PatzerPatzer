@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_bootstrap.php';
+require __DIR__ . '/_endpoint-contract.php';
 
 // Relays a PGN import to the Lichess import API with the stored (encrypted) book access token,
 // so the imported game is attributed to the connected Lichess account. The browser never sees
@@ -77,15 +77,10 @@ function patzer_proxy_import(string $pgn, string $token): never {
     exit;
 }
 
-$config = patzer_require_admin();
-$pdo = patzer_db($config);
+$config = patzer_require_operation('B05');
+$pdo = $config['request_pdo'];
 $secret = patzer_book_token_secret($config);
 $userKey = $config['user_key'];
-
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-if ($method !== 'POST') {
-    patzer_json(405, ['ok' => false, 'error' => 'Method not allowed.']);
-}
 
 $row = patzer_book_auth_row($pdo, $userKey);
 if (!$row) {

@@ -1,13 +1,13 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_bootstrap.php';
+require __DIR__ . '/_endpoint-contract.php';
 
 define('PATZER_ACCOUNT_PROFILE_FIELDS', PATZER_SYNC_ACCOUNT_PROFILE_FIELDS);
 define('PATZER_ACCOUNT_CURSOR_FIELDS', PATZER_SYNC_ACCOUNT_CURSOR_FIELDS);
 
-$config = patzer_require_admin();
-$pdo = patzer_db($config);
+$config = patzer_require_operation('S04');
+$pdo = $config['request_pdo'];
 patzer_require_fresh_generation($pdo, $config);
 $body = patzer_read_json_body();
 $items = $body['items'] ?? null;

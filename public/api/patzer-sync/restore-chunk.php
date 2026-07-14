@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_bootstrap.php';
+require __DIR__ . '/_endpoint-contract.php';
 
-$config = patzer_require_admin();
-$pdo = patzer_db($config);
+$config = patzer_require_operation('S08');
+$pdo = $config['request_pdo'];
 patzer_require_fresh_generation($pdo, $config);
 // Exact-payloadJson chunks carry raw payload strings, so this endpoint bounds the request body
 // (rejected 413 before any decode) instead of reading an unlimited php://input.
