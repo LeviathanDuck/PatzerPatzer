@@ -11,7 +11,7 @@
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { AnalyseCtrl } from '../analyse/ctrl';
-import { activeWorkspace, keyProvider, providerIsLive, type KeyedProvider } from '../analyse/workspaceCore';
+import { keyProvider, providerIsLive, type KeyedProvider } from '../analyse/workspaceCore';
 import { annotationShapes as buildBoardGlyphShapes } from '../analyse/boardGlyphs';
 import { formatScore } from '../analyse/evalView';
 import {
@@ -58,7 +58,6 @@ interface ShapeSinkState {
   repertoireArrowShapeProvider: KeyedProvider<() => DrawShape[]>;
   extraArrowSuppressProvider:   KeyedProvider<() => boolean> | null;
   extraAutoShapesProvider:      KeyedProvider<() => DrawShape[]> | null;
-  moduleAutoShapesProvider:     KeyedProvider<() => DrawShape[]> | null;
   arrowDebounceTimer:           ReturnType<typeof setTimeout> | null;
   arrowSuppressUntil:           number;
   lastAutoShapesHash:           string | null;
@@ -71,7 +70,6 @@ const sink: ShapeSinkState = {
   repertoireArrowShapeProvider: { fn: () => [], instanceId: null },
   extraArrowSuppressProvider:   null,
   extraAutoShapesProvider:      null,
-  moduleAutoShapesProvider:     null,
   arrowDebounceTimer:           null,
   arrowSuppressUntil:           0,
   lastAutoShapesHash:           null,
@@ -98,12 +96,6 @@ export function setRepertoireArrowShapeProvider(provider: (() => DrawShape[]) | 
 // Adapted from lichess-org/lila: ui/analyse/src/autoShape.ts makeShapesFromUci + compute
 
 export function buildArrowShapes(): DrawShape[] {
-  const workspace = activeWorkspace();
-  if (workspace?.boardInputModule?.configPolicy.kind === 'module-owned') {
-    const provider = sink.moduleAutoShapesProvider;
-    return provider && providerIsLive(provider) ? provider.fn() : [];
-  }
-
   const shapes: DrawShape[] = [];
   const ctrl = sink.getCtrl();
   if (isSilentEvalActive()) return shapes;
@@ -205,23 +197,6 @@ export function setExtraArrowSuppressProvider(fn: (() => boolean) | null): void 
 // Mirrors lichess-org/lila: ui/analyse/src/autoShape.ts practice hint/hover shape merge.
 export function setExtraAutoShapesProvider(fn: (() => DrawShape[]) | null): void {
   sink.extraAutoShapesProvider = fn ? keyProvider(fn) : null;
-}
-
-/**
- * Register the sole auto-shape provider for a module-owned workspace. Module-owned boards bypass
- * the Analysis pipeline entirely, so this slot stays separate from Analysis practice's extra
- * provider. The returned disposer is exact-registration keyed: a stale owner cannot clear a newer
- * registration that superseded it.
- */
-export function registerModuleAutoShapesProvider(fn: () => DrawShape[]): () => void {
-  const registration = keyProvider(fn);
-  sink.moduleAutoShapesProvider = registration;
-  let disposed = false;
-  return () => {
-    if (disposed) return;
-    disposed = true;
-    if (sink.moduleAutoShapesProvider === registration) sink.moduleAutoShapesProvider = null;
-  };
 }
 
 export function buildEngineArrowShapes(opts?: { suppress?: boolean; includeThreat?: boolean; fen?: string }): DrawShape[] {

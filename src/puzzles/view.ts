@@ -15,8 +15,7 @@ import { explorerCtrl } from '../openings/explorerCtrl';
 import { renderToggleRow } from '../ui';
 import {
   getLibraryCounts, getPuzzleRoundState, getActiveRoundCtrl,
-  ensurePuzzleSolveWorkspace, destroyPuzzleSolveWorkspace, retirePuzzleSolveWorkspace,
-  destroyPuzzleLegacyBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
+  mountPuzzleBoard, destroyPuzzleBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
   getOrCreateMeta, savePuzzleMeta, toggleFavorite,
   isRetrySessionActive, getRetryCount, getRetryIndex, getRetryQueue,
   startRetrySession, nextRetryPuzzle, loadRetryCount,
@@ -34,7 +33,7 @@ import {
   getActiveSession, clearActiveSession,
   retryFailedPuzzles,
   getAutoNext, setAutoNext,
-  getResumePuzzleId, renderPuzzlePromotion, flipPuzzleSolveBoard, flipPuzzlePreviewBoard,
+  getResumePuzzleId, getPuzzleCg, renderPuzzlePromotion,
   getPreviewPuzzleId, getPreviewRoundCtrl, selectPuzzleForPreview, clearPreview, mountPreviewBoard,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
@@ -60,7 +59,6 @@ import { groupByAutomaticFacets, type GeneralLensGameSource } from '../save/gene
 import { loadGameFacetSourceFromIdb } from '../idb';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { writeHashRoute } from '../router';
-import { renderBoard } from '../board';
 
 // ---------------------------------------------------------------------------
 // Puzzle player strips
@@ -282,7 +280,6 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
-  retirePuzzleSolveWorkspace('library-render');
   // Clear puzzle engine position override when back on library page.
   clearCevalPositionOverride('puzzle-post-solve');
   _lastPuzzleEngineFen = '';
@@ -308,14 +305,14 @@ export function renderPuzzleLibrary(redraw: () => void): VNode {
               key: `puzzle-preview-board-${getPreviewPuzzleId()}`,
               hook: {
                 insert: vnode => { mountPreviewBoard(vnode.elm as HTMLElement, redraw); },
-                destroy: () => { destroyPuzzleLegacyBoard(); },
+                destroy: () => { destroyPuzzleBoard(); },
               },
             })
           : h('div.cg-wrap', {
               key: 'puzzle-idle-board',
               hook: {
                 insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
-                destroy: () => { destroyPuzzleLegacyBoard(); },
+                destroy: () => { destroyPuzzleBoard(); },
               },
             }),
       ]),
@@ -1708,7 +1705,11 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
       h('button', {
         attrs: { 'data-icon': PUZZLE_ICON_FLIP, title: 'Flip board' },
         on: { click: () => {
-          flipPuzzleSolveBoard();
+          const cg = getPuzzleCg();
+          if (cg) {
+            const cur = cg.state.orientation;
+            cg.set({ orientation: cur === 'white' ? 'black' : 'white' });
+          }
           close();
         } },
       }, 'Flip board'),
@@ -1808,7 +1809,11 @@ function renderLibraryPreviewActionMenu(redraw: () => void): VNode | null {
       h('button', {
         attrs: { 'data-icon': LIBRARY_ICON_FLIP, title: 'Flip board' },
         on: { click: () => {
-          flipPuzzlePreviewBoard();
+          const cg = getPuzzleCg();
+          if (cg) {
+            const cur = cg.state.orientation;
+            cg.set({ orientation: cur === 'white' ? 'black' : 'white' });
+          }
           close();
         } },
       }, 'Flip board'),
@@ -2203,22 +2208,17 @@ function renderRetryQueueCompletion(completion: RetryQueueCompletion): VNode {
 
 export function renderPuzzleRound(redraw: () => void): VNode {
   const retryCompletion = getRetryQueueCompletion();
-  if (retryCompletion) {
-    retirePuzzleSolveWorkspace('retry-completion-render');
-    return renderRetryQueueCompletion(retryCompletion);
-  }
+  if (retryCompletion) return renderRetryQueueCompletion(retryCompletion);
 
   const rs = getPuzzleRoundState();
 
   // No round state yet (should not normally happen if openPuzzleRound was called)
   if (!rs) {
-    retirePuzzleSolveWorkspace('round-initializing-render');
     return h('div.puzzle-page', h('div.puzzle-round', 'Initializing\u2026'));
   }
 
   // Loading
   if (rs.status === 'loading') {
-    retirePuzzleSolveWorkspace('round-loading-render');
     return h('div.puzzle-page', h('div.puzzle-round', [
       h('span.puzzle-round__loading', 'Loading puzzle\u2026'),
     ]));
@@ -2226,7 +2226,6 @@ export function renderPuzzleRound(redraw: () => void): VNode {
 
   // Error
   if (rs.status === 'error' || !rs.definition) {
-    retirePuzzleSolveWorkspace('round-error-render');
     return h('div.puzzle-page', h('div.puzzle-round', [
       h('div.puzzle-round__error', rs.error ?? 'Unknown error'),
       h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
@@ -2237,7 +2236,6 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   // Layout mirrors lichess-org/lila: ui/puzzle/src/view/main.ts
   const def = rs.definition;
   const rc = getActiveRoundCtrl();
-  const solveRecord = ensurePuzzleSolveWorkspace(def, rc, redraw);
 
   const session = getActiveSession();
   const inRetryQueue = isRetrySessionActive();
@@ -2260,15 +2258,22 @@ export function renderPuzzleRound(redraw: () => void): VNode {
         const [topStrip, bottomStrip] = rc ? renderPuzzlePlayerStrips(rc) : [null, null];
         return h('div.puzzle__board.main-board', [
           topStrip,
-          h('div.puzzle__board-inner', {
-            key: `puzzle-solve-${solveRecord.generation}-${solveRecord.roundToken ?? 'null'}`,
-            hook: {
-              destroy: () => {
-                destroyPuzzleSolveWorkspace(solveRecord, rc, 'solve-vnode-destroy');
+          h('div.puzzle__board-inner', [
+            h('div.cg-wrap', {
+              key: `puzzle-board-${def.id}`,
+              hook: {
+                insert: vnode => {
+                  mountPuzzleBoard(vnode.elm as HTMLElement, redraw);
+                },
+                destroy: () => {
+
+
+
+
+                  destroyPuzzleBoard(rc ?? undefined);
+                },
               },
-            },
-          }, [
-            renderBoard(),
+            }),
             // Promotion chooser overlay — rendered as a sibling of the board .cg-wrap,
             // mirroring lila ui/puzzle/src/view/main.ts:126 ([chessground, promotion.view()]).
             renderPuzzlePromotion(),

@@ -27,17 +27,7 @@ import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathIn
 import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
 import { bindBoardResizeHandle } from '../board/index';
-import {
-  activeWorkspace,
-  mountWorkspace,
-  unmountWorkspace,
-  type WorkspaceInstance,
-} from '../analyse/workspaceCore';
-import {
-  createPuzzleSolveBoardController,
-  type PuzzleBoardPosition,
-  type PuzzleSolveBoardController,
-} from './boardAdapter';
+import { PromotionCtrl } from '../board/promotion';
 import { playMoveSound } from '../board/sound';
 import { loadManifest, loadFilteredShard, findMatchingShards, getManifestThemes, getManifestOpenings, getManifestTotalCount, type PuzzleManifest, type ShardMeta } from './shardLoader';
 import { lichessShardRecordToDefinition, type LichessShardRecord } from './adapters';
@@ -1032,8 +1022,9 @@ export class PuzzleRoundCtrl {
 
     const matched = uciMatches(uci, expected);
 
-    // Clear any hint highlight through the solve adapter's module-owned shape provider.
-    getPuzzleSolveBoardController(this)?.clearHint();
+    // Clear any hint highlight
+    const cg = getPuzzleCg();
+    if (cg) cg.setAutoShapes([]);
 
     // Record move quality — this is data collection only, separate from correctness.
     this.evaluateMove(uci, expected, matched, fenBefore);
@@ -1123,27 +1114,25 @@ export class PuzzleRoundCtrl {
    * Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts revertUserMove
    */
   private revertUserMove(): void {
-    const capturedBoard = getPuzzleSolveBoardController(this);
     setTimeout(() => {
 
 
 
 
-      if (
-        this.isStaleRound()
-        || !capturedBoard
-        || getPuzzleSolveBoardController(this) !== capturedBoard
-        || !capturedBoard.isLive()
-      ) return;
+      if (this.isStaleRound()) return;
       // Restore the board to the current correct position
+      const cg = getPuzzleCg();
+      if (!cg) return;
       const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
       if (pos) {
         const dests = chessgroundDests(pos) as Map<Key, Key[]>;
-        capturedBoard.restoreLivePosition({
+        cg.set({
           fen: makeFen(pos.toSetup()),
           turnColor: pos.turn,
-          movableColor: this.pov,
-          dests,
+          movable: {
+            color: this.pov,
+            dests,
+          },
         });
       }
       this.redraw();
@@ -1208,8 +1197,8 @@ export class PuzzleRoundCtrl {
       return;
     }
 
-    const board = getPuzzleSolveBoardController(this);
-    if (!board?.isLive()) {
+    const cg = getPuzzleCg();
+    if (!cg) {
       recordPuzzleInvalidStateTransition('board:missing', 'board:mounted', 'opponent-reply');
       return;
     }
@@ -1238,28 +1227,23 @@ export class PuzzleRoundCtrl {
     const pos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
     if (pos) {
       const dests = chessgroundDests(pos) as Map<Key, Key[]>;
-      const currentBoard = getPuzzleSolveBoardController(this);
-      if (!currentBoard || currentBoard !== board || !currentBoard.isLive()) return;
-      currentBoard.applyOpponentReply({
+      cg.set({
         fen: makeFen(pos.toSetup()),
         turnColor: pos.turn,
         lastMove: [orig, dest],
-        movableColor: this.pov,
-        dests,
+        movable: {
+          color: this.pov,
+          dests,
+        },
       });
     }
 
     // Reset feedback to 'none' so the view shows "Your turn" again.
     // A short delay keeps "Best move!" visible during the position transition.
-    const capturedBoard = board;
     setTimeout(() => {
 
 
-      if (
-        this.isStaleRound()
-        || getPuzzleSolveBoardController(this) !== capturedBoard
-        || !capturedBoard.isLive()
-      ) return;
+      if (this.isStaleRound()) return;
       if (this.status === 'playing') {
         this.feedback = 'none';
         this.redraw();
@@ -1592,7 +1576,14 @@ export class PuzzleRoundCtrl {
     }
     // Highlight the origin square of the expected move on the board
     const expected = this.currentExpectedMove();
-    if (expected) getPuzzleSolveBoardController(this)?.showHint(expected);
+    const cg = getPuzzleCg();
+    if (expected && cg) {
+      const orig = expected.slice(0, 2) as Key;
+      cg.setAutoShapes([{
+        orig,
+        brush: 'green',
+      }]);
+    }
     redraw();
   }
 
@@ -2158,7 +2149,7 @@ export function startPuzzleRound(
 ): PuzzleRoundCtrl {
   // Round change: drop any promotion pending from the previous round so its chooser can
   // never submit a move into this new round's board (sprint Decision 2 cancellation).
-  _puzzleSolveWorkspace?.controller.promotion.reset();
+  puzzlePromotionCtrl?.reset();
 
 
   activeRoundCtrl?.invalidatePendingAssistance();
@@ -2209,7 +2200,6 @@ export async function selectPuzzleForPreview(id: string, redraw: () => void): Pr
  * Adapted from mountPuzzleBoard, stripped of solve callbacks.
  */
 export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
-  retirePuzzleSolveWorkspace('preview-mount');
   const rc = _previewRoundCtrl;
   if (!rc) return;
   const setup = parseFen(rc.treeNode.fen);
@@ -2220,6 +2210,7 @@ export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
   const turn: 'white' | 'black' = pos.value.turn;
   puzzleOrientation = rc.pov;
   puzzleCg?.destroy();
+  puzzlePromotionCtrl = null; // preview board has no solve-move promotion flow
   puzzleCgAnimationScope = 'puzzle';
   puzzleCg = makeChessground(el, {
     orientation: puzzleOrientation,
@@ -2293,7 +2284,6 @@ export function validatePuzzleRoundRouteId(rawId: string): PuzzleRoundRouteValid
 }
 
 function setPuzzleRoundRecoveryState(error: string, redraw: () => void): void {
-  retirePuzzleSolveWorkspace('round-recovery');
   state = { view: 'round' };
   roundState = { definition: null, status: 'error', error };
   redraw();
@@ -2929,95 +2919,31 @@ export async function __testOpenPuzzleRoundWithHooks(
 }
 
 // --- Puzzle board ---
-// The interactive solve board uses the canonical shared workspace lifecycle. The remaining local
-// Chessground slot is legacy-only for the library preview and permanent static idle board; H04c
-// retires preview ownership separately.
+// Puzzle-local Chessground instance. Kept separate from the analysis board's
+// cgInstance so the two products don't interfere when only one is active.
+// Mirrors lichess-org/lila: ui/puzzle/src/view/chessground.ts (per-puzzle CG lifecycle)
 
 let puzzleCg: CgApi | undefined;
 let puzzleOrientation: 'white' | 'black' = 'white';
 let puzzleCgAnimationScope: 'puzzle' | 'static' = 'static';
 
-export interface PuzzleSolveWorkspaceRecord {
-  readonly generation: number;
-  readonly puzzleId: string;
-  readonly definition: PuzzleDefinition;
-  readonly roundToken: number | null;
-  readonly roundController: PuzzleRoundCtrl | null;
-  readonly instance: WorkspaceInstance;
-  readonly controller: PuzzleSolveBoardController;
-}
+/**
+ * Puzzle-owned promotion chooser controller (board-neutral module, src/board/promotion.ts).
+ * Instantiated per mounted solve board so it can read the live `puzzleCg`. Cleared on
+ * round change (startPuzzleRound) and board destroy so a pending chooser never survives
+ * into the next round. Rendered beside the puzzle `.cg-wrap` via renderPuzzlePromotion().
+ */
+let puzzlePromotionCtrl: PromotionCtrl | null = null;
 
-let _puzzleSolveGeneration = 0;
-let _puzzleSolveWorkspace: PuzzleSolveWorkspaceRecord | null = null;
-
-function puzzleSolveRecordIsCurrent(record: PuzzleSolveWorkspaceRecord): boolean {
-  if (
-    _puzzleSolveWorkspace !== record
-    || record.generation !== _puzzleSolveGeneration
-    || activeWorkspace() !== record.instance
-  ) return false;
-  if (record.roundController) {
-    return record.roundToken === record.roundController.roundToken
-      && activeRoundCtrl?.roundToken === record.roundToken
-      && !record.roundController.isStaleRound();
-  }
-  return record.roundToken === null
-    && activeRoundCtrl === null
-    && roundState?.definition === record.definition;
-}
-
-function exactPuzzleSolveRecord(
-  generation: number,
-  rc: PuzzleRoundCtrl | null,
-): PuzzleSolveWorkspaceRecord | null {
-  const record = _puzzleSolveWorkspace;
-  return record
-    && record.generation === generation
-    && record.roundController === rc
-    && puzzleSolveRecordIsCurrent(record)
-    ? record
-    : null;
-}
-
-/** Exact solve controller for one round (or the current/null fallback when omitted). */
-export function getPuzzleSolveBoardController(
-  rc: PuzzleRoundCtrl | null | undefined = undefined,
-): PuzzleSolveBoardController | null {
-  const expected = rc === undefined ? activeRoundCtrl : rc;
-  const record = _puzzleSolveWorkspace;
-  return record
-    && record.roundController === expected
-    && puzzleSolveRecordIsCurrent(record)
-    ? record.controller
-    : null;
-}
+export function getPuzzleCg(): CgApi | undefined { return puzzleCg; }
+export function getPuzzleOrientation(): 'white' | 'black' { return puzzleOrientation; }
 
 /** Test/inspection seam for the active puzzle promotion controller. */
-export function getPuzzlePromotionCtrl() { return getPuzzleSolveBoardController()?.promotion ?? null; }
+export function getPuzzlePromotionCtrl(): PromotionCtrl | null { return puzzlePromotionCtrl; }
 
 /** Render the pending promotion chooser (or null), for placement beside the puzzle board. */
 export function renderPuzzlePromotion(): VNode | null {
-  return getPuzzleSolveBoardController()?.renderPromotion() ?? null;
-}
-
-/** Solve-board flip through the guarded adapter port. */
-export function flipPuzzleSolveBoard(): void {
-  const controller = getPuzzleSolveBoardController();
-  if (controller?.isLive()) controller.flip();
-}
-
-/** Preview-only legacy flip; never exposes the raw ground. */
-export function flipPuzzlePreviewBoard(): void {
-  if (!_previewRoundCtrl || !puzzleCg) return;
-  puzzleOrientation = puzzleOrientation === 'white' ? 'black' : 'white';
-  puzzleCg.set({ orientation: puzzleOrientation });
-}
-
-/** Destroy only the preview/idle legacy ground retained until H04c. */
-export function destroyPuzzleLegacyBoard(): void {
-  puzzleCg?.destroy();
-  puzzleCg = undefined;
-  puzzleCgAnimationScope = 'static';
+  return puzzlePromotionCtrl ? puzzlePromotionCtrl.view() : null;
 }
 
 /** UCI promotion suffix char for a chosen role ('queen'→'q', 'knight'→'n', …). */
@@ -3062,18 +2988,12 @@ function handlePuzzleMove(
       return;
     }
     // Correct move — schedule opponent reply
-    const capturedBoard = getPuzzleSolveBoardController(rc);
     setTimeout(() => {
 
 
 
 
-      if (
-        rc.isStaleRound()
-        || !capturedBoard
-        || getPuzzleSolveBoardController(rc) !== capturedBoard
-        || !capturedBoard.isLive()
-      ) return;
+      if (rc.isStaleRound()) return;
       rc.playOpponentReply();
     }, 300);
   } else {
@@ -3081,92 +3001,140 @@ function handlePuzzleMove(
   }
 }
 
-/** Create/reuse the exact solve workspace before renderBoard() evaluates its insert hook. */
-export function ensurePuzzleSolveWorkspace(
-  definition: PuzzleDefinition,
-  rc: PuzzleRoundCtrl | null,
-  redraw: () => void,
-): PuzzleSolveWorkspaceRecord {
-  const existing = _puzzleSolveWorkspace;
-  if (
-    existing
-    && existing.generation === _puzzleSolveGeneration
-    && existing.puzzleId === definition.id
-    && existing.definition === definition
-    && existing.roundController === rc
-    && existing.roundToken === (rc?.roundToken ?? null)
-    && activeWorkspace() === existing.instance
-  ) return existing;
+/**
+ * Initialize (or reinitialize) the Chessground board for the current puzzle.
+ * Call this from a Snabbdom insert hook once the DOM element is available.
+ * Mirrors lichess-org/lila: ui/puzzle/src/view/chessground.ts makeConfig
+ */
+export function mountPuzzleBoard(el: HTMLElement, redraw: () => void): void {
+  const def = roundState?.definition;
+  if (!def) return;
 
-  destroyPuzzleLegacyBoard();
+  // Determine orientation from round controller's pov (solver's color).
+  // In our model startFen has the opponent to move (trigger move side).
+  // The solver plays the opposite color.
+  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts makeCgOpts + initiate
+  const rc = getActiveRoundCtrl();
+  const setup = parseFen(def.startFen);
+  if (setup.isErr) {
+    console.error('[puzzle-ctrl] invalid startFen', def.startFen);
+    return;
+  }
+  const pos = Chess.fromSetup(setup.value);
+  if (pos.isErr) {
+    console.error('[puzzle-ctrl] invalid position from startFen', def.startFen);
+    return;
+  }
+  const turn: 'white' | 'black' = pos.value.turn;
+  // Use round ctrl pov if available; otherwise derive from FEN
+  puzzleOrientation = rc ? rc.pov : (turn === 'white' ? 'black' : 'white');
 
-  const generation = ++_puzzleSolveGeneration;
-  let record!: PuzzleSolveWorkspaceRecord;
-  const controller = createPuzzleSolveBoardController({
-    definition,
-    pov: rc?.pov ?? null,
-    gradeMove: (orig, dest, role) => {
-      const current = exactPuzzleSolveRecord(generation, rc);
-      if (!rc || !current || current.controller !== controller || !controller.isLive()) return;
-      handlePuzzleMove(rc, orig, dest, redraw, role);
+  // The solver's color for movable config — solver moves after the trigger
+  const solverColor = puzzleOrientation;
+
+  // Compute legal destinations for the starting position
+  const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
+
+  // Destroy previous instance if any
+  puzzleCg?.destroy();
+  puzzleCgAnimationScope = 'puzzle';
+
+  // The board starts at startFen showing the solver's orientation.
+  // Moves are validated against the stored solution line via PuzzleRoundCtrl.
+  // Adapted from lichess-org/lila: ui/puzzle/src/view/chessground.ts
+  puzzleCg = makeChessground(el, {
+    orientation: puzzleOrientation,
+    fen: def.startFen,
+    turnColor: turn,
+    viewOnly: false,
+    movable: {
+      free: false,
+      // Trigger-less rounds (user-library / LFYM-saved puzzles) are live at mount:
+      // the solver plays the first move, so configure the solver color + legal dests
+      // immediately using the values already computed above. When a trigger move is
+      // present, the board stays locked at mount (empty dests, color omitted) until the
+      // trigger animation below applies the post-trigger movable config — this is what
+      // preserves the double-count guard (the trigger uses cg.set(), not cg.move()).
+      // Regression provenance: b598b2c76 unconditionally used the empty map here.
+      // (color is omitted rather than set undefined for exactOptionalPropertyTypes.)
+      ...(def.triggerMove ? {} : { color: solverColor }),
+      dests: def.triggerMove ? new Map<Key, Key[]>() : dests,
+      showDests: true,
     },
-    redraw,
-    isRoundCurrent: () => Boolean(record && puzzleSolveRecordIsCurrent(record)),
-    onAttached: () => { beginPuzzleSolveTimers(generation, definition, rc, redraw); },
+    drawable: { enabled: true },
+    animation: puzzleBoardAnimationConfig(),
+    events: {
+      move: (orig, dest, _capturedPiece) => {
+        if (!rc) return;
+        // Pawn-to-back-rank → open the promotion chooser; the chooser's submit hook
+        // routes the SUFFIXED UCI back through handlePuzzleMove. No auto-queen shortcut.
+        if (puzzlePromotionCtrl && puzzlePromotionCtrl.start(orig as Key, dest as Key)) return;
+        handlePuzzleMove(rc, orig, dest, redraw);
+      },
+    },
   });
-  const instance = mountWorkspace({
-    id: 'puzzle-solve',
-    boardInputMode: 'practice-grading',
-    boardInputModule: controller.module,
-    getCursor: controller.getCursor,
-    getOrientation: controller.getOrientation,
-    redraw,
-    handleUserMove: () => {},
-  });
-  record = {
-    generation,
-    puzzleId: definition.id,
-    definition,
-    roundToken: rc?.roundToken ?? null,
-    roundController: rc,
-    instance,
-    controller,
-  };
-  _puzzleSolveWorkspace = record;
-  return record;
-}
 
-function beginPuzzleSolveTimers(
-  generation: number,
-  definition: PuzzleDefinition,
-  rc: PuzzleRoundCtrl | null,
-  redraw: () => void,
-): void {
-  if (definition.triggerMove) {
+  // Attach resize handle
+  bindBoardResizeHandle(el);
+
+  // Instantiate the puzzle-owned promotion chooser bound to the freshly mounted board.
+  // The submit hook resolves the active round at selection time; cancel restores the
+  // board to the live position.
+  puzzlePromotionCtrl = new PromotionCtrl({
+    withGround: <A,>(f: (g: CgApi) => A) => (puzzleCg ? f(puzzleCg) : undefined),
+    orientation: () => puzzleOrientation,
+    redraw,
+    cancel: () => { syncPuzzleBoard(); },
+    submit: (promoOrig, promoDest, role) => {
+      const active = getActiveRoundCtrl();
+      if (active) handlePuzzleMove(active, promoOrig, promoDest, redraw, role);
+    },
+  });
+
+  // --- Trigger move: show the opponent's last move before the puzzle ---
+  // Adapted from lichess-org/lila: ui/puzzle/src/ctrl.ts playInitialMove
+  // Instead of cg.move() (which fires the move event and causes double-counting),
+  // compute the post-trigger position and set it directly with lastMove highlight.
+  if (def.triggerMove) {
     setTimeout(() => {
-      const record = exactPuzzleSolveRecord(generation, rc);
-      if (!record?.controller.isLive()) return;
-      const prePos = positionAfterMoves(definition.startFen, []);
-      if (prePos) playMoveSound(uciToSanAtPos(prePos, definition.triggerMove!));
-      const triggerPos = positionAfterMoves(definition.startFen, [definition.triggerMove!]);
+
+
+
+
+
+      if (rc && rc.isStaleRound()) return;
+      const cg = getPuzzleCg();
+      if (!cg) return;
+      // Play trigger move sound
+      const prePos = positionAfterMoves(def.startFen, []);
+      if (prePos) playMoveSound(uciToSanAtPos(prePos, def.triggerMove!));
+      const triggerPos = positionAfterMoves(def.startFen, [def.triggerMove!]);
       if (!triggerPos) return;
-      const orig = definition.triggerMove!.slice(0, 2) as Key;
-      const dest = definition.triggerMove!.slice(2, 4) as Key;
-      record.controller.applyTriggerPosition({
+      const orig = def.triggerMove!.slice(0, 2) as Key;
+      const dest = def.triggerMove!.slice(2, 4) as Key;
+      const dests = chessgroundDests(triggerPos) as Map<Key, Key[]>;
+      const solverColor = rc ? rc.pov : triggerPos.turn;
+      cg.set({
         fen: makeFen(triggerPos.toSetup()),
         turnColor: triggerPos.turn,
         lastMove: [orig, dest],
-        movableColor: rc?.pov ?? triggerPos.turn,
-        dests: chessgroundDests(triggerPos) as Map<Key, Key[]>,
+        movable: {
+          color: solverColor,
+          dests,
+          showDests: true,
+        },
       });
-      if (exactPuzzleSolveRecord(generation, rc)?.controller.isLive()) redraw();
+      redraw();
     }, 500);
   }
 
+  // Enable "View the solution" button after 4 seconds (matches Lichess gating)
   if (rc) {
     setTimeout(() => {
-      const record = exactPuzzleSolveRecord(generation, rc);
-      if (!record?.controller.isLive() || rc.isStaleRound()) return;
+
+
+
+      if (rc.isStaleRound()) return;
       if (rc.mode !== 'view') {
         rc.canViewSolution = true;
         redraw();
@@ -3175,30 +3143,26 @@ function beginPuzzleSolveTimers(
   }
 }
 
-/** Exact captured teardown; a stale A record can never detach/unmount successor B. */
-export function destroyPuzzleSolveWorkspace(
-  capturedRecord: PuzzleSolveWorkspaceRecord,
-  capturedRc: PuzzleRoundCtrl | null,
-  reason: string,
-): void {
-  const ownsCurrentRecord = _puzzleSolveWorkspace === capturedRecord;
-  const ownsActiveInstance = activeWorkspace() === capturedRecord.instance;
-  const ownsCapturedRound = Boolean(
-    capturedRc && capturedRecord.roundController === capturedRc,
-  );
-  const mayInvalidateRound = ownsCurrentRecord && ownsActiveInstance && ownsCapturedRound;
 
-  if (ownsCurrentRecord) _puzzleSolveWorkspace = null;
-  capturedRecord.controller.promotion.reset();
-  unmountWorkspace(capturedRecord.instance, reason);
-  if (mayInvalidateRound && capturedRc) capturedRc.markDestroyed();
-}
 
-/** Retire the currently retained solve record before library/reset/error transitions. */
-export function retirePuzzleSolveWorkspace(reason: string): void {
-  const captured = _puzzleSolveWorkspace;
-  if (!captured) return;
-  destroyPuzzleSolveWorkspace(captured, captured.roundController, reason);
+
+
+
+
+
+
+
+
+
+
+export function destroyPuzzleBoard(forCtrl?: PuzzleRoundCtrl): void {
+  puzzleCg?.destroy();
+  puzzleCg = undefined;
+  puzzleCgAnimationScope = 'static';
+  // Clear any pending promotion so a chooser never survives a board teardown.
+  puzzlePromotionCtrl = null;
+
+  forCtrl?.markDestroyed();
 }
 
 /**
@@ -3220,33 +3184,9 @@ export function puzzleNavigate(path: TreePath, redraw: () => void): void {
  * Sync the puzzle Chessground board to the current tree node.
  */
 export function syncPuzzleBoard(rcOverride?: PuzzleRoundCtrl): void {
+  const cg = puzzleCg;
   const rc = rcOverride ?? activeRoundCtrl;
-  if (!rc) return;
-
-  const position = puzzleBoardPositionForRound(rc);
-  if (!position) return;
-
-  // Library preview remains on the explicitly out-of-scope legacy board.
-  if (rc === _previewRoundCtrl) {
-    const cg = puzzleCg;
-    if (!cg) return;
-    const cfg: Record<string, unknown> = {
-      fen: position.fen,
-      animation: puzzleBoardAnimationConfig(),
-      turnColor: position.turnColor,
-      movable: { color: position.movableColor, dests: position.dests },
-    };
-    if (position.lastMove) cfg.lastMove = position.lastMove;
-    cg.set(cfg as Parameters<typeof cg.set>[0]);
-    return;
-  }
-
-  const controller = getPuzzleSolveBoardController(rc);
-  if (!controller?.isLive()) return;
-  controller.syncFromRound(position);
-}
-
-function puzzleBoardPositionForRound(rc: PuzzleRoundCtrl): PuzzleBoardPosition | null {
+  if (!cg || !rc) return;
 
   // Context-peek mode: show a game-tree position as read-only.
   // The user is browsing pre-puzzle game moves without affecting puzzle state.
@@ -3259,38 +3199,41 @@ function puzzleBoardPositionForRound(rc: PuzzleRoundCtrl): PuzzleBoardPosition |
         const ctxPos = Chess.fromSetup(ctxSetup.value);
         if (ctxPos.isOk) ctxTurn = ctxPos.value.turn;
       }
-      return {
+      const ctxCfg: Record<string, unknown> = {
         fen: ctxNode.fen,
+        animation: puzzleBoardAnimationConfig(),
         turnColor: ctxTurn,
-        movableColor: rc.pov,
-        dests: new Map<Key, Key[]>(),
-        ...(ctxNode.uci
-          ? { lastMove: [ctxNode.uci.slice(0, 2) as Key, ctxNode.uci.slice(2, 4) as Key] as [Key, Key] }
-          : {}),
+        movable: { color: rc.pov, dests: new Map<Key, Key[]>() },
       };
+      if (ctxNode.uci) {
+        ctxCfg.lastMove = [ctxNode.uci.slice(0, 2) as Key, ctxNode.uci.slice(2, 4) as Key];
+      }
+      cg.set(ctxCfg as Parameters<typeof cg.set>[0]);
+      return;
     }
   }
 
   const node = rc.treeNode;
   const setup = parseFen(node.fen);
-  if (setup.isErr) return null;
+  if (setup.isErr) return;
   const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return null;
+  if (pos.isErr) return;
   const turn: 'white' | 'black' = pos.value.turn;
   const movableColor = (rc.mode === 'view' || rc.analysisMode) ? 'both' as const : rc.pov;
   // When browsed away from the live position during play, pass empty dests to prevent
   // accidental moves from a position that isn't the current solve state.
   const isBrowsed = rc.mode !== 'view' && !rc.analysisMode && rc.treePath !== rc.livePath;
   const dests = isBrowsed ? new Map<Key, Key[]>() : (chessgroundDests(pos.value) as Map<Key, Key[]>);
-  return {
+  const setCfg: Record<string, unknown> = {
     fen: node.fen,
+    animation: puzzleBoardAnimationConfig(),
     turnColor: turn,
-    movableColor,
-    dests,
-    ...(node.uci
-      ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] as [Key, Key] }
-      : {}),
+    movable: { color: movableColor, dests },
   };
+  if (node.uci) {
+    setCfg.lastMove = [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key];
+  }
+  cg.set(setCfg as Parameters<typeof cg.set>[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -3427,8 +3370,8 @@ export function puzzleLast(redraw: () => void): void {
  * Reuses the same puzzleCg slot so only one Chessground exists at a time.
  */
 export function mountIdleBoard(el: HTMLElement): void {
-  retirePuzzleSolveWorkspace('idle-mount');
   if (puzzleCg) { puzzleCg.destroy(); puzzleCg = undefined; }
+  puzzlePromotionCtrl = null; // idle board is view-only, no promotion flow
   puzzleCgAnimationScope = 'static';
   puzzleCg = makeChessground(el, {
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -4132,7 +4075,6 @@ export async function retryFailedPuzzles(redraw: () => void): Promise<void> {
   // Prefetch PGNs for the retry queue
   prefetchSessionPgns();
 
-  retirePuzzleSolveWorkspace('retry-failed-puzzles');
   roundState = null;
   activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
@@ -4333,7 +4275,6 @@ export function clearActiveSession(): void {
 }
 
 function resetPuzzleRoundRuntime(): void {
-  retirePuzzleSolveWorkspace('round-runtime-reset');
   activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
   _previewPuzzleId = null;
@@ -4516,7 +4457,6 @@ export async function nextPuzzle(
   if (_sessionQueue.length > 0) {
     const pick = _sessionQueue[0]!;
     await (hooks.saveDefinition ?? savePuzzleDefinition)(pick);
-    retirePuzzleSolveWorkspace('next-puzzle-session');
     roundState = null;
     activeRoundCtrl?.invalidatePendingAssistance();
     activeRoundCtrl = null;
@@ -4537,7 +4477,6 @@ export async function nextPuzzle(
       return;
     }
     const pick = candidates[Math.floor(Math.random() * candidates.length)]!;
-    retirePuzzleSolveWorkspace('next-puzzle-random');
     roundState = null;
     activeRoundCtrl?.invalidatePendingAssistance();
     activeRoundCtrl = null;
@@ -4569,7 +4508,6 @@ export async function retryPuzzle(redraw: () => void): Promise<void> {
 
   // Reset and re-open the same puzzle
   const id = currentDef.id;
-  retirePuzzleSolveWorkspace('retry-puzzle');
   roundState = null;
   activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
