@@ -173,6 +173,7 @@ export function createPuzzleSolveBoardController(
   // --- Attach-time resources (all released in detach). ---
   let _port: WorkspaceBoardPort | null = null;
   let _unsubAnimation: (() => void) | null = null;
+  let _promotionPreMoveFen: string | null = null;
 
   // --- Ephemeral cursor (workspace identity/observability; never becomes a shared move tree). ---
   function computePly(fen: string): number {
@@ -192,7 +193,12 @@ export function createPuzzleSolveBoardController(
     return { root: leaf, path: '', node: leaf, nodeList: [leaf], mainline: [leaf] };
   }
 
-  const isLive = (): boolean => deps.isRoundCurrent() && _port !== null && _port.isLive();
+  function livePort(): WorkspaceBoardPort | null {
+    const port = _port;
+    return deps.isRoundCurrent() && port?.isLive() ? port : null;
+  }
+
+  const isLive = (): boolean => livePort() !== null;
 
   // --- Module-owned config (§4): a COMPLETE applicable puzzle-solve config from module state,
   //     byte-identical to the legacy mountPuzzleBoard config MINUS the events callback (the board
@@ -222,11 +228,19 @@ export function createPuzzleSolveBoardController(
     withGround: () => undefined,
     orientation: () => _orientation,
     redraw: deps.redraw,
-    // Cancelled chooser → the solve wiring restores the live position through restoreLivePosition.
-    cancel: () => { deps.redraw(); },
-    submit: (orig, dest, role) => { deps.gradeMove(orig, dest, role); },
+    // Under movable.events.after the pawn is already on the back rank. Restore the module-tracked
+    // PRE-move FEN through the guarded port; PromotionCtrl.cancel() owns the single redraw.
+    cancel: () => {
+      const preMoveFen = _promotionPreMoveFen;
+      _promotionPreMoveFen = null;
+      if (preMoveFen) livePort()?.set({ fen: preMoveFen });
+    },
+    submit: (orig, dest, role) => {
+      _promotionPreMoveFen = null;
+      deps.gradeMove(orig, dest, role);
+    },
     // Temporary promoted-piece visual through the guarded port (no raw CgApi).
-    applyPromotedVisual: (fen: string) => { _port?.set({ fen }); },
+    applyPromotedVisual: (fen: string) => { livePort()?.set({ fen }); },
   });
 
   // --- Module-owned move dispatch (§4 "User moves and grading"). Installed by the board lifecycle as
@@ -235,7 +249,11 @@ export function createPuzzleSolveBoardController(
   //     otherwise grade once. Never reaches the shared-tree / Analysis pipeline. ---
   function handleMove(orig: Key, dest: Key): void {
     // Pre-move FEN is the module's tracked position (the position BEFORE this move applied).
-    if (promotion.startFromFen(_fen, orig, dest)) return; // chooser opened → defer grading
+    const preMoveFen = _fen;
+    if (promotion.startFromFen(preMoveFen, orig, dest)) {
+      _promotionPreMoveFen = preMoveFen;
+      return; // chooser opened → defer grading
+    }
     deps.gradeMove(orig, dest);
   }
 
@@ -252,7 +270,7 @@ export function createPuzzleSolveBoardController(
 
   function syncFromRound(pos: PuzzleBoardPosition): void {
     updateState(pos);
-    _port?.set({
+    livePort()?.set({
       fen: pos.fen,
       turnColor: pos.turnColor,
       ...(pos.lastMove ? { lastMove: pos.lastMove } : {}),
@@ -264,7 +282,7 @@ export function createPuzzleSolveBoardController(
   function applyTriggerPosition(pos: PuzzleBoardPosition): void {
     updateState(pos);
     // Board PROGRAM: port.set (never port.move) so the trigger cannot enter grading.
-    _port?.set({
+    livePort()?.set({
       fen: pos.fen,
       turnColor: pos.turnColor,
       ...(pos.lastMove ? { lastMove: pos.lastMove } : {}),
@@ -276,7 +294,7 @@ export function createPuzzleSolveBoardController(
     updateState(pos);
     // Board PROGRAM: the round appends the tree node + progress; here only port.set (never port.move),
     // so the reply cannot enter module dispatch.
-    _port?.set({
+    livePort()?.set({
       fen: pos.fen,
       turnColor: pos.turnColor,
       ...(pos.lastMove ? { lastMove: pos.lastMove } : {}),
@@ -291,7 +309,7 @@ export function createPuzzleSolveBoardController(
 
   function flip(): void {
     _orientation = _orientation === 'white' ? 'black' : 'white';
-    _port?.set({ orientation: _orientation });
+    livePort()?.set({ orientation: _orientation });
   }
 
   // --- H05 hint hooks (wired in CCW-H05b through the module-owned shape-sink provider). Stubbed as
@@ -327,10 +345,7 @@ export function createPuzzleSolveBoardController(
       // Own the puzzle-animation subscription at the port scope. Only write when the round + port are
       // still live.
       _unsubAnimation = onBoardAnimationChange('puzzle', () => {
-        const p = _port;
-        if (deps.isRoundCurrent() && p && p.isLive()) {
-          p.set({ animation: puzzleBoardAnimationConfig() });
-        }
+        livePort()?.set({ animation: puzzleBoardAnimationConfig() });
       });
       // Trigger + solution-enable timers begin from attach (design §8), matching today's DOM-insert
       // timing. The later solve wiring supplies this.
@@ -345,6 +360,7 @@ export function createPuzzleSolveBoardController(
         _unsubAnimation = null;
       }
       promotion.reset();
+      _promotionPreMoveFen = null;
       _port = null;
     },
   };
