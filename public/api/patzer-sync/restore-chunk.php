@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
-$config = patzer_require_operation('S08');
-$pdo = $config['request_pdo'];
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
 patzer_require_fresh_generation($pdo, $config);
 // Exact-payloadJson chunks carry raw payload strings, so this endpoint bounds the request body
 // (rejected 413 before any decode) instead of reading an unlimited php://input.
@@ -50,7 +50,6 @@ $stmt = $pdo->prepare(
 
 $pdo->beginTransaction();
 try {
-    patzer_require_locked_fresh_generation($pdo, $config);
     foreach ($rows as $row) {
         $stmt->execute([
             ':restore_id' => $restoreId,
@@ -64,7 +63,7 @@ try {
     }
     $pdo->commit();
 } catch (Throwable $error) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
+    $pdo->rollBack();
     patzer_json(500, ['ok' => false, 'error' => 'Restore chunk failed.']);
 }
 

@@ -1,17 +1,20 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
-$config = patzer_require_operation(patzer_operation_for_request('book-auth.php'));
-$pdo = $config['request_pdo'];
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
 $secret = patzer_book_token_secret($config);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $userKey = $config['user_key'];
 
-if ($method === 'GET' || $method === 'HEAD') {
+if ($method === 'GET') {
     $row = patzer_book_auth_row($pdo, $userKey);
-    if ($row && patzer_book_auth_expired($row)) $row = null;
+    if ($row && patzer_book_auth_expired($row)) {
+        patzer_delete_book_auth($pdo, $userKey);
+        $row = null;
+    }
     patzer_json(200, [
         'ok' => true,
         'connected' => $row !== null,
@@ -20,31 +23,23 @@ if ($method === 'GET' || $method === 'HEAD') {
     ]);
 }
 
+if ($method !== 'POST') {
+    patzer_json(405, ['ok' => false, 'error' => 'Method not allowed.']);
+}
+
 $body = patzer_read_json_body();
 $action = $body['action'] ?? '';
 if (!is_string($action)) {
     patzer_json(400, ['ok' => false, 'error' => 'Book auth action is required.']);
 }
-if ($action !== 'save' && $action !== 'disconnect') {
-    patzer_json(400, ['ok' => false, 'error' => 'Unsupported book auth action.']);
-}
-
-// Optional fast rejection only. Each credential mutation repeats the authoritative generation
-// comparison while holding the meta row in the same transaction as the book-row write.
-patzer_require_fresh_generation($pdo, $config);
 
 if ($action === 'disconnect') {
-    try {
-        $pdo->beginTransaction();
-        patzer_require_locked_fresh_generation($pdo, $config);
-        $delete = $pdo->prepare('DELETE FROM patzer_book_auth WHERE user_key = ?');
-        $delete->execute([$userKey]);
-        $pdo->commit();
-    } catch (Throwable $error) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
-        patzer_json(500, ['ok' => false, 'error' => 'Could not disconnect Lichess book access.']);
-    }
+    patzer_delete_book_auth($pdo, $userKey);
     patzer_json(200, ['ok' => true, 'connected' => false]);
+}
+
+if ($action !== 'save') {
+    patzer_json(400, ['ok' => false, 'error' => 'Unsupported book auth action.']);
 }
 
 $username = $body['username'] ?? '';
@@ -65,35 +60,27 @@ if ($expiresAtRaw !== null) {
 
 $encrypted = patzer_encrypt_book_token($token, $secret);
 $now = patzer_now_ms();
-try {
-    $pdo->beginTransaction();
-    patzer_require_locked_fresh_generation($pdo, $config);
-    $stmt = $pdo->prepare(
-        'INSERT INTO patzer_book_auth
-           (user_key, lichess_username, token_ciphertext, token_iv, token_tag, token_expires_at_ms, updated_at_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE
-           lichess_username = VALUES(lichess_username),
-           token_ciphertext = VALUES(token_ciphertext),
-           token_iv = VALUES(token_iv),
-           token_tag = VALUES(token_tag),
-           token_expires_at_ms = VALUES(token_expires_at_ms),
-           updated_at_ms = VALUES(updated_at_ms)'
-    );
-    $stmt->execute([
-        $userKey,
-        $username,
-        $encrypted['ciphertext'],
-        $encrypted['iv'],
-        $encrypted['tag'],
-        $expiresAt,
-        $now,
-    ]);
-    $pdo->commit();
-} catch (Throwable $error) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
-    patzer_json(500, ['ok' => false, 'error' => 'Could not save Lichess book access.']);
-}
+$stmt = $pdo->prepare(
+    'INSERT INTO patzer_book_auth
+       (user_key, lichess_username, token_ciphertext, token_iv, token_tag, token_expires_at_ms, updated_at_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       lichess_username = VALUES(lichess_username),
+       token_ciphertext = VALUES(token_ciphertext),
+       token_iv = VALUES(token_iv),
+       token_tag = VALUES(token_tag),
+       token_expires_at_ms = VALUES(token_expires_at_ms),
+       updated_at_ms = VALUES(updated_at_ms)'
+);
+$stmt->execute([
+    $userKey,
+    $username,
+    $encrypted['ciphertext'],
+    $encrypted['iv'],
+    $encrypted['tag'],
+    $expiresAt,
+    $now,
+]);
 
 patzer_json(200, [
     'ok' => true,

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
 function patzer_explorer_db(): string {
     $db = $_GET['db'] ?? '';
@@ -83,8 +83,8 @@ function patzer_proxy_explorer(string $target, string $token): never {
     exit;
 }
 
-$config = patzer_require_operation('B04');
-$pdo = $config['request_pdo'];
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
 $secret = patzer_book_token_secret($config);
 $userKey = $config['user_key'];
 $row = patzer_book_auth_row($pdo, $userKey);
@@ -92,6 +92,7 @@ if (!$row) {
     patzer_json(401, ['ok' => false, 'error' => 'Lichess book access is not connected.']);
 }
 if (patzer_book_auth_expired($row)) {
+    patzer_delete_book_auth($pdo, $userKey);
     patzer_json(401, ['ok' => false, 'error' => 'Lichess book access has expired.']);
 }
 

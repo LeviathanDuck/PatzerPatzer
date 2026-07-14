@@ -1,3 +1,4 @@
-<FilesMatch "^(_bootstrap|_auth|_endpoint-contract|_session|config|config\.example|generated-manifest)\.php$">
+<FilesMatch "^(_bootstrap|config|config\.example)\.php$">
   Require all denied
 </FilesMatch>
+

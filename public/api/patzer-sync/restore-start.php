@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
-$config = patzer_require_operation('S07');
-$pdo = $config['request_pdo'];
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
 $meta = patzer_require_fresh_generation($pdo, $config);
 $body = patzer_read_json_body();
 
@@ -19,16 +19,8 @@ if (isset($body['userKey']) && is_string($body['userKey']) && $body['userKey'] !
 }
 
 $restoreId = bin2hex(random_bytes(16));
-$pdo->beginTransaction();
-try {
-    $meta = patzer_require_locked_fresh_generation($pdo, $config);
-    $stmt = $pdo->prepare('DELETE FROM patzer_sync_restore_items WHERE user_key = ? AND restore_id = ?');
-    $stmt->execute([$config['user_key'], $restoreId]);
-    $pdo->commit();
-} catch (Throwable $error) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
-    patzer_json(500, ['ok' => false, 'error' => 'Restore start failed.']);
-}
+$stmt = $pdo->prepare('DELETE FROM patzer_sync_restore_items WHERE user_key = ? AND restore_id = ?');
+$stmt->execute([$config['user_key'], $restoreId]);
 
 patzer_json(200, [
     'ok' => true,

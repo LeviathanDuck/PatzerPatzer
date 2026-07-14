@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
-$config = patzer_require_operation('S02');
-$pdo = $config['request_pdo'];
-$meta = patzer_require_fresh_generation_read($pdo, $config);
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
+$meta = patzer_require_fresh_generation($pdo, $config);
 $since = patzer_since();
 $cursor = patzer_pull_cursor();
 

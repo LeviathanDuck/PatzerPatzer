@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/_endpoint-contract.php';
+require __DIR__ . '/_bootstrap.php';
 
-$config = patzer_require_operation('S03');
-$pdo = $config['request_pdo'];
-$meta = patzer_sync_meta_read($pdo, $config['user_key']);
+$config = patzer_require_admin();
+$pdo = patzer_db($config);
+$meta = patzer_sync_meta($pdo, $config['user_key']);
 
 $stmt = $pdo->prepare(
     'SELECT `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
