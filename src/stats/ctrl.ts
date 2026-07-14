@@ -30,6 +30,9 @@ let _filteredCache: GameSummary[] | null = null;
 // Generation counter: bumped when external changes (e.g. batch analysis) invalidate cached data.
 let _dataGeneration = 0;
 let _loadedGeneration = -1;
+let _requestedGeneration = -1;
+let _loadRequestSequence = 0;
+let _activeLoadRequest = 0;
 
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 
@@ -120,9 +123,9 @@ export function initStatsPage(redraw: () => void): void {
   _redraw = redraw;
   // Skip IDB reload if summaries are already loaded and data hasn't changed.
   if (_summariesLoaded && _loadedGeneration === _dataGeneration) return;
-  _summariesLoaded  = false;
-  _summariesLoading = false;
-  loadSummaries();
+  _summariesLoaded = false;
+  _requestedGeneration = _dataGeneration;
+  if (!_summariesLoading) loadSummaries(_requestedGeneration);
 }
 
 /** Bump the generation counter so the next initStatsPage() reloads from IDB. */
@@ -130,25 +133,30 @@ export function invalidateSummariesCache(): void {
   _dataGeneration++;
 }
 
-function loadSummaries(): void {
-  if (_summariesLoading) return;
+function loadSummaries(generation: number): void {
   _summariesLoading = true;
+  const requestId = ++_loadRequestSequence;
+  _activeLoadRequest = requestId;
   void Promise.all([listGameSummaries(), loadGamesFromIdb()]).then(([summaries, stored]) => {
+    if (requestId !== _activeLoadRequest || generation !== _dataGeneration) return;
     _summaries        = summaries;
     _importedGames    = stored?.games ?? [];
     const missingSummaries = countMissingOrIncompleteSummaries(_importedGames, _summaries);
     if (missingSummaries > 0) recordStatsMissingSummary(missingSummaries);
     _summariesLoaded  = true;
-    _summariesLoading = false;
     _filteredCache    = null;
-    _loadedGeneration = _dataGeneration;
+    _loadedGeneration = generation;
     _redraw();
   }).catch((error) => {
+    if (requestId !== _activeLoadRequest || generation !== _dataGeneration) return;
     recordStatsLoadFail(error);
     _summariesLoaded = true;
-    _summariesLoading = false;
     _filteredCache   = null;
     _redraw();
+  }).finally(() => {
+    if (requestId !== _activeLoadRequest) return;
+    _summariesLoading = false;
+    if (_requestedGeneration !== generation) loadSummaries(_requestedGeneration);
   });
 }
 
