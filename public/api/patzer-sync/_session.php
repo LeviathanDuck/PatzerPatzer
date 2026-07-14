@@ -128,17 +128,28 @@ function patzer_session_cookie_name(array $config): string {
 }
 
 function patzer_session_source_fingerprint(array $config): string {
+    return patzer_session_source_fingerprint_details($config)['fingerprint'];
+}
+
+function patzer_session_source_fingerprint_details(array $config): array {
     $key = patzer_session_config_string($config, 'auth_source_fingerprint_key');
-    patzer_session_config_string($config, 'auth_source_fingerprint_key_id');
+    $keyId = patzer_session_config_string($config, 'auth_source_fingerprint_key_id');
     $address = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
-    return 'hmac-sha256:' . hash_hmac('sha256', "source\0" . $address, $key);
+    $keyTag = substr(hash('sha256', "source-fingerprint-key-id\0" . $keyId), 0, 12);
+    $digest = hash_hmac('sha256', "source-fingerprint\0" . PATZER_AUTH_LIFECYCLE_VERSION . "\0" . $keyId . "\0" . $address, $key);
+    return [
+        'fingerprint'=>'src-v1.' . $keyTag . '.' . $digest,
+        'sourceFingerprintVersion'=>'src-v1',
+        'sourceKeyTag'=>'sha256:' . $keyTag,
+    ];
 }
 
 function patzer_session_record_activation_attempt(PDO $pdo, array $config, array $rollout): void {
     $window = patzer_session_config_int($config, 'auth_activation_rate_window_seconds', 1, 86400);
     $sourceLimit = patzer_session_config_int($config, 'auth_activation_rate_source_limit', 1, 1000);
     $globalLimit = patzer_session_config_int($config, 'auth_activation_rate_global_limit', $sourceLimit, 100000);
-    $fingerprint = patzer_session_source_fingerprint($config);
+    $fingerprintDetails = patzer_session_source_fingerprint_details($config);
+    $fingerprint = $fingerprintDetails['fingerprint'];
     try {
         $pdo->beginTransaction();
         $row = $pdo->query("SELECT state,state_version FROM patzer_auth_rollout_state WHERE rollout_id='primary' FOR UPDATE")->fetch();
@@ -152,7 +163,11 @@ function patzer_session_record_activation_attempt(PDO $pdo, array $config, array
             header('Retry-After: ' . $window);
             patzer_json(429, ['ok'=>false,'error'=>'activation-rate-limited']);
         }
-        patzer_session_insert_audit($pdo, ['action'=>'session-activation-attempt','outcome'=>'stopped','fingerprint'=>$fingerprint,'metadata'=>['windowSeconds'=>$window]]);
+        patzer_session_insert_audit($pdo, ['action'=>'session-activation-attempt','outcome'=>'stopped','fingerprint'=>$fingerprint,'metadata'=>[
+            'windowSeconds'=>$window,
+            'sourceFingerprintVersion'=>$fingerprintDetails['sourceFingerprintVersion'],
+            'sourceKeyTag'=>$fingerprintDetails['sourceKeyTag'],
+        ]]);
         $pdo->commit();
     } catch (Throwable $error) {
         if ($pdo->inTransaction()) $pdo->rollBack();
@@ -276,6 +291,7 @@ function patzer_session_clear_cookie(array $config): bool {
     ]);
 }
 
+// Lifecycle writer lock order: rollout -> invite/session -> principal.
 function patzer_session_activate(array $config): never {
     patzer_session_require_exact_origin($config);
     $pdo = $config['request_pdo'];
@@ -295,7 +311,8 @@ function patzer_session_activate(array $config): never {
     $invitePepper = patzer_session_config_string($config, 'auth_invite_pepper');
     $inviteKeyId = patzer_session_config_string($config, 'auth_invite_key_id');
     $inviteHash = hash_hmac('sha256', $inviteSecret, $invitePepper);
-    $sourceFingerprint = patzer_session_source_fingerprint($config);
+    $sourceFingerprintDetails = patzer_session_source_fingerprint_details($config);
+    $sourceFingerprint = $sourceFingerprintDetails['fingerprint'];
     $sessionSecret = patzer_session_b64url(random_bytes(32));
     $sessionId = patzer_session_opaque('ses_');
     $contextId = patzer_session_opaque('ctx_');
@@ -347,7 +364,12 @@ function patzer_session_activate(array $config): never {
         $consume = $pdo->prepare("UPDATE patzer_auth_invites SET state='consumed',consumed_at=UTC_TIMESTAMP(6) WHERE invite_id=? AND state='issued' AND consumed_at IS NULL AND revoked_at IS NULL");
         $consume->execute([$invite['invite_id']]);
         if ($consume->rowCount() !== 1) throw new RuntimeException('consume');
-        patzer_session_insert_audit($pdo, ['eventId'=>$auditId,'action'=>'session-activated','outcome'=>'success','principalId'=>$invite['principal_id'],'authContextId'=>$contextId,'sessionId'=>$sessionId,'fingerprint'=>$sourceFingerprint,'priorState'=>'invite-issued','newState'=>'session-active','metadata'=>['inviteId'=>$invite['invite_id'],'capabilityVersion'=>(int)$invite['capability_version']]]);
+        patzer_session_insert_audit($pdo, ['eventId'=>$auditId,'action'=>'session-activated','outcome'=>'success','principalId'=>$invite['principal_id'],'authContextId'=>$contextId,'sessionId'=>$sessionId,'fingerprint'=>$sourceFingerprint,'priorState'=>'invite-issued','newState'=>'session-active','metadata'=>[
+            'inviteId'=>$invite['invite_id'],
+            'capabilityVersion'=>(int)$invite['capability_version'],
+            'sourceFingerprintVersion'=>$sourceFingerprintDetails['sourceFingerprintVersion'],
+            'sourceKeyTag'=>$sourceFingerprintDetails['sourceKeyTag'],
+        ]]);
         $insert = $pdo->prepare('INSERT INTO patzer_auth_sessions (session_id,principal_id,session_hash,hash_algorithm,hash_key_id,session_fingerprint,auth_context_id,capability_version,issued_at,expires_at,rotation_family_id,device_id,status,issue_audit_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $insert->execute([$sessionId,$invite['principal_id'],$sessionHash,'hmac-sha256-v1',patzer_session_config_string($config,'auth_session_key_id'),$sessionFingerprint,$contextId,$invite['capability_version'],$now->format('Y-m-d H:i:s.u'),$expiresAt->format('Y-m-d H:i:s.u'),$rotationId,$deviceId,'active',$auditId]);
         if ($insert->rowCount() !== 1) throw new RuntimeException('session');
@@ -396,6 +418,8 @@ function patzer_session_logout(array $config): never {
     }
     try {
         $pdo->beginTransaction();
+        $rollout = $pdo->query("SELECT state,state_version FROM patzer_auth_rollout_state WHERE rollout_id='primary' FOR UPDATE")->fetch();
+        if (!is_array($rollout) || $rollout['state'] !== $context['rolloutState'] || (int)$rollout['state_version'] !== (int)$context['rolloutVersion']) throw new RuntimeException('rollout-binding');
         $sessionStmt = $pdo->prepare('SELECT session_id,principal_id,status,capability_version FROM patzer_auth_sessions WHERE session_id=? FOR UPDATE');
         $sessionStmt->execute([$context['sessionId']]);
         $session = $sessionStmt->fetch();
@@ -403,9 +427,7 @@ function patzer_session_logout(array $config): never {
         $principal = $pdo->prepare('SELECT principal_id,capability_version,status FROM patzer_auth_principals WHERE principal_id=? FOR UPDATE');
         $principal->execute([$context['principalId']]);
         $principalRow = $principal->fetch();
-        $rollout = $pdo->query("SELECT state,state_version FROM patzer_auth_rollout_state WHERE rollout_id='primary' FOR UPDATE")->fetch();
-        if (!is_array($principalRow) || $principalRow['status'] !== 'active' || (int)$principalRow['capability_version'] !== (int)$context['capabilityVersion'] ||
-            !is_array($rollout) || $rollout['state'] !== $context['rolloutState'] || (int)$rollout['state_version'] !== (int)$context['rolloutVersion']) throw new RuntimeException('binding');
+        if (!is_array($principalRow) || $principalRow['status'] !== 'active' || (int)$principalRow['capability_version'] !== (int)$context['capabilityVersion']) throw new RuntimeException('binding');
         $update = $pdo->prepare("UPDATE patzer_auth_sessions SET status='logged-out',logout_at=UTC_TIMESTAMP(6) WHERE session_id=? AND status='active'");
         $update->execute([$context['sessionId']]);
         if ($update->rowCount() !== 1) throw new RuntimeException('logout');
