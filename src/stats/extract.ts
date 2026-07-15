@@ -2,6 +2,7 @@
 // Called after batch analysis completes and for backfill of previously analyzed games.
 
 import { classifyLoss, evalWinChances } from '../engine/winchances';
+import { parseFen } from 'chessops/fen';
 import { detectMissedMoments } from '../engine/tactics';
 import type { MissedMoment } from '../engine/tactics';
 import type { ImportedGame } from '../import/types';
@@ -11,6 +12,7 @@ import { mainlineNodeList } from '../tree/ops';
 import {
   getGameSummary, listGameSummaries, loadAnalysisFromIdb, saveGameSummary,
 } from '../idb/index';
+import { CURRENT_GAME_SUMMARY_EXTRACTION_VERSION } from './types';
 import type { GameSummary } from './types';
 
 // Structural subset of eval cache / StoredNodeEntry used here.
@@ -21,6 +23,21 @@ type EvalEntry = {
   best?:  string;
   label?: 'inaccuracy' | 'mistake' | 'blunder';
 };
+
+const MATERIAL_POINTS = { pawn: 1, knight: 3, bishop: 3, rook: 5, queen: 9, king: 0 } as const;
+
+function materialImbalance(fen: string, userColor: 'white' | 'black'): number | undefined {
+  const parsed = parseFen(fen);
+  if (parsed.isErr) return undefined;
+  let white = 0;
+  let black = 0;
+  for (const [, piece] of parsed.unwrap().board) {
+    if (piece.color === 'white') white += MATERIAL_POINTS[piece.role];
+    else black += MATERIAL_POINTS[piece.role];
+  }
+  const whitePov = white - black;
+  return userColor === 'white' ? whitePov : -whitePov;
+}
 
 /**
  * Extract a GameSummary from a completed analysis.
@@ -50,19 +67,18 @@ export function extractGameSummary(
   let worstLoss       = 0;
   let worstLossPly    = 0;
 
-  // Sustained win-chance tracking (3+ consecutive user moves)
-  let consecutiveAbove70 = 0;
   let hadWinningPosition = false;
-  let consecutiveBelow30 = 0;
   let hadLosingPosition  = false;
 
   // Per-move accuracy accumulator (mirrors evalView.ts computeAnalysisSummary)
   const accs: number[] = [];
 
   // Clock data
-  const clockValues: number[] = []; // centiseconds remaining at each user move
-  let prevClockCs: number | undefined;
-  let totalTimeCs = 0;
+  let previousUserClock = mainline[0]?.timeControl?.initial;
+  const increment = mainline[0]?.timeControl?.increment ?? 0;
+  let clockSampleCount = 0;
+  let moveTimeSampleCount = 0;
+  let totalMoveTimeCs = 0;
   let timeTroubleMoves = 0;
 
   let path = '';
@@ -75,10 +91,6 @@ export function extractGameSummary(
     const isUserMove  = isWhitePlayer ? isWhiteMove : !isWhiteMove;
 
     if (!isUserMove) {
-      // Reset streaks on opponent moves
-      consecutiveAbove70 = 0;
-      consecutiveBelow30 = 0;
-      prevClockCs = undefined;
       continue;
     }
 
@@ -86,6 +98,18 @@ export function extractGameSummary(
 
     const nodeEval   = getEval(path);
     const parentEval = getEval(parentPath);
+    const parentNode = mainline[i - 1];
+
+    // ── Win/loss position detection ─────────────────────────────────────
+    if (parentNode && parentEval) {
+      const parentWc = evalWinChances(parentEval);
+      const material = materialImbalance(parentNode.fen, userColor);
+      if (parentWc !== undefined && material !== undefined) {
+        const userWp = isWhitePlayer ? (parentWc + 1) / 2 : (-parentWc + 1) / 2;
+        if (userWp > 0.666 && material > 1) hadWinningPosition = true;
+        if (userWp < 0.333 && material < -1) hadLosingPosition = true;
+      }
+    }
 
     // ── Move classification ───────────────────────────────────────────────
     if (nodeEval && parentEval) {
@@ -117,33 +141,28 @@ export function extractGameSummary(
         const raw  = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff) + -3.166924740191411;
         accs.push(Math.max(0, Math.min(100, raw + 1)));
 
-        // ── Win/loss position detection ───────────────────────────────
-        // win probability from the user's perspective [0, 1]
-        const userWp = isWhitePlayer ? (nodeWc + 1) / 2 : (-nodeWc + 1) / 2;
-        if (userWp > 0.7) {
-          consecutiveAbove70++;
-          if (consecutiveAbove70 >= 3) hadWinningPosition = true;
-        } else {
-          consecutiveAbove70 = 0;
-        }
-        if (userWp < 0.3) {
-          consecutiveBelow30++;
-          if (consecutiveBelow30 >= 3) hadLosingPosition = true;
-        } else {
-          consecutiveBelow30 = 0;
-        }
       }
     }
 
     // ── Clock data ────────────────────────────────────────────────────────
-    if (node.clock !== undefined) {
-      const clockCs = node.clock; // centiseconds remaining
-      clockValues.push(clockCs);
-      if (prevClockCs !== undefined && prevClockCs > clockCs) {
-        totalTimeCs += prevClockCs - clockCs;
-      }
-      if (clockCs < 3000) timeTroubleMoves++;
-      prevClockCs = clockCs;
+    const currentClock = Number.isFinite(node.clock) && node.clock! >= 0 ? node.clock : undefined;
+    const explicitMoveTime = Number.isFinite(node.moveTime) && node.moveTime! >= 0 ? node.moveTime : undefined;
+    const derivedMoveTime = currentClock !== undefined && previousUserClock !== undefined
+      ? previousUserClock + increment - currentClock
+      : undefined;
+    const acceptedMoveTime = explicitMoveTime
+      ?? (derivedMoveTime !== undefined && Number.isFinite(derivedMoveTime) && derivedMoveTime >= 0
+        ? derivedMoveTime
+        : undefined);
+
+    if (acceptedMoveTime !== undefined) {
+      totalMoveTimeCs += acceptedMoveTime;
+      moveTimeSampleCount++;
+    }
+    if (currentClock !== undefined) {
+      clockSampleCount++;
+      if (currentClock < 3000) timeTroubleMoves++;
+      previousUserClock = currentClock;
     }
   }
 
@@ -173,8 +192,8 @@ export function extractGameSummary(
   const playerDrew = resultStr === '1/2-1/2';
 
   // ── Summary assembly ──────────────────────────────────────────────────
-  const hasClockData  = clockValues.length > 1;
-  const avgTimePerMoveCs = hasClockData ? totalTimeCs / clockValues.length : undefined;
+  const hasClockData  = clockSampleCount > 0;
+  const avgTimePerMoveCs = moveTimeSampleCount > 0 ? totalMoveTimeCs / moveTimeSampleCount : undefined;
   const avgTimePerMoveSecs = avgTimePerMoveCs !== undefined ? avgTimePerMoveCs / 100 : undefined;
 
   return {
@@ -204,6 +223,8 @@ export function extractGameSummary(
     survived:            hadLosingPosition && (playerWon || playerDrew),
     retroCandidateCount: missedMoments.length,
     hasClockData,
+    extractionVersion: CURRENT_GAME_SUMMARY_EXTRACTION_VERSION,
+    clockSampleCount,
     ...(avgTimePerMoveSecs !== undefined ? { avgTimePerMove: Math.round(avgTimePerMoveSecs * 10) / 10 } : {}),
     ...(hasClockData ? { timeTroubleMoves } : {}),
     analysisDepth:       depth,
