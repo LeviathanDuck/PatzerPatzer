@@ -1104,6 +1104,11 @@ function publishTreeSnapshot(options: {
   _openingTreeSnapshotKind = 'lazy';
   invalidateSampleCache();
   if (options.triggerEval) triggerTreeEvalForCurrentNode();
+  // A filter rebuild publishes its selected color/orientation immediately while
+  // retaining the usable prior path. Once the source-current final snapshot
+  // installs the rebuilt root, publish that new canonical path as a second,
+  // bounded notification so the URL cannot retain the superseded line.
+  if (options.snapshotMode === 'final' && options.resetPath) notifySessionStateChanged();
   recordOpeningTreeBuildEvent(options.buildContext, {
     phase: 'snapshot',
     phaseDetail: 'current-path-snapshot',
