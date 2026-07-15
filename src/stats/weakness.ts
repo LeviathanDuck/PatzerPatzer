@@ -11,7 +11,7 @@
  * rather than shown with unreliable values.
  */
 
-import type { GameSummary } from './types';
+import { isCurrentGameSummaryExtraction, type GameSummary } from './types';
 
 // ── Output types ──────────────────────────────────────────────────────────────
 
@@ -104,7 +104,8 @@ function detectTacticalBlindness(summaries: GameSummary[]): DiagnosedWeakness | 
  * Minimum: 5 games where hadWinningPosition was true.
  */
 function detectConversionFailure(summaries: GameSummary[]): DiagnosedWeakness | null {
-  const qualifying = summaries.filter(s => s.hadWinningPosition);
+  const current = summaries.filter(isCurrentGameSummaryExtraction);
+  const qualifying = current.filter(s => s.hadWinningPosition);
   if (qualifying.length < 5) return null;
   const convRate = rate(qualifying.filter(s => s.converted).length, qualifying.length);
   if (convRate >= 0.7) return null;
@@ -201,13 +202,17 @@ function detectColorAsymmetry(summaries: GameSummary[]): DiagnosedWeakness | nul
  * Minimum: 10 games with clock data.
  */
 function detectTimeTrouble(summaries: GameSummary[]): DiagnosedWeakness | null {
-  const withClock = summaries.filter(s => s.hasClockData && s.timeTroubleMoves !== undefined);
+  const current = summaries.filter(isCurrentGameSummaryExtraction);
+  const withClock = current.filter(s => s.hasClockData && s.timeTroubleMoves !== undefined);
   if (withClock.length < 10) return null;
   const totalBlunders       = withClock.reduce((a, s) => a + s.blunderCount, 0);
   const totalTimeTrouble    = withClock.reduce((a, s) => a + (s.timeTroubleMoves ?? 0), 0);
-  const totalMoves          = withClock.reduce((a, s) => a + s.totalMoves, 0);
+  const totalClockSamples   = withClock.reduce(
+    (sum, summary) => sum + (summary.clockSampleCount ?? 0),
+    0,
+  );
   if (totalBlunders === 0 || totalTimeTrouble === 0) return null;
-  const ttMoveFraction = rate(totalTimeTrouble, totalMoves);
+  const ttMoveFraction = rate(totalTimeTrouble, totalClockSamples);
   if (ttMoveFraction < 0.05) return null; // < 5% time-trouble moves, not a significant issue
   const severity  = severityFrom(ttMoveFraction, [0.20, 0.10]);
   const confidence: WeaknessConfidence = withClock.length >= 25 ? 'high' : withClock.length >= 15 ? 'medium' : 'low';

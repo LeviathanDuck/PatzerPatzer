@@ -14,7 +14,7 @@ import {
   recordStatsAggregateError,
   type StatsTimeFilter,
 } from './ctrl';
-import type { GameSummary } from './types';
+import { isCurrentGameSummaryExtraction, type GameSummary } from './types';
 import { diagnoseWeaknesses, type DiagnosedWeakness } from './weakness';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { writeStatsTimeFilterUrl } from './urlState';
@@ -556,9 +556,10 @@ function renderTacticalProfile(summaries: GameSummary[]): VNode {
 
 function renderConversionMetrics(summaries: GameSummary[]): VNode | null {
   const MIN_QUALIFYING = 5;
+  const current = summaries.filter(isCurrentGameSummaryExtraction);
 
-  const winningGames  = summaries.filter(s => s.hadWinningPosition);
-  const losingGames   = summaries.filter(s => s.hadLosingPosition);
+  const winningGames  = current.filter(s => s.hadWinningPosition);
+  const losingGames   = current.filter(s => s.hadLosingPosition);
 
   const hasConversion     = winningGames.length >= MIN_QUALIFYING;
   const hasResourcefulness = losingGames.length >= MIN_QUALIFYING;
@@ -610,7 +611,8 @@ function renderConversionMetrics(summaries: GameSummary[]): VNode | null {
 
 function renderClockProfile(summaries: GameSummary[]): VNode | null {
   const MIN_CLOCK_GAMES = 10;
-  const withClock = summaries.filter(s => s.hasClockData);
+  const current = summaries.filter(isCurrentGameSummaryExtraction);
+  const withClock = current.filter(s => s.hasClockData);
 
   // Hide entirely below threshold — no "need more games" message per spec
   if (withClock.length < MIN_CLOCK_GAMES) return null;
@@ -621,8 +623,8 @@ function renderClockProfile(summaries: GameSummary[]): VNode | null {
     : null;
 
   const totalTT = withClock.reduce((a, s) => a + (s.timeTroubleMoves ?? 0), 0);
-  const totalMoves = withClock.reduce((a, s) => a + s.totalMoves, 0);
-  const ttFraction = totalMoves > 0 ? totalTT / totalMoves : 0;
+  const sampledMoves = withClock.reduce((sum, summary) => sum + (summary.clockSampleCount ?? 0), 0);
+  const ttFraction = sampledMoves > 0 ? totalTT / sampledMoves : 0;
 
   // Blunder rate in time-trouble games vs non-time-trouble games
   const ttGames  = withClock.filter(s => (s.timeTroubleMoves ?? 0) > 0);
