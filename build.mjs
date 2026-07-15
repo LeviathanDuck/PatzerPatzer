@@ -2,6 +2,7 @@ import * as esbuild from 'esbuild';
 import * as sass from 'sass';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import { assertPublicEntrypointIntegrity } from './scripts/check-public-entrypoint-integrity.mjs';
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const version = pkg.version || '0.0.0';
@@ -27,6 +28,7 @@ const buildId = process.env.PATZER_BUILD_ID || shortCommit || builtAt.replace(/[
 const release = `patzer-pro@${version}+${buildId}`;
 const sourcemapRoot = 'dist/sourcemaps';
 
+assertPublicEntrypointIntegrity();
 fs.rmSync(sourcemapRoot, { recursive: true, force: true });
 fs.mkdirSync(`${sourcemapRoot}/js`, { recursive: true });
 fs.rmSync('public/js/main.js.map', { force: true });
@@ -172,3 +174,4 @@ if (fs.existsSync(indexHtmlPath)) {
     console.log(`  public/index.html (cache-bust already ?v=${buildId})`);
   }
 }
+assertPublicEntrypointIntegrity(indexHtmlPath);

@@ -18,6 +18,7 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs",
+    "test:public-entrypoint-integrity": "node scripts/check-public-entrypoint-integrity.mjs",
     "typecheck": "tsc --noEmit"
   },
   "type": "module",
