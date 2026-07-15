@@ -12,6 +12,7 @@
 
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
 import { makeFen, parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
@@ -26,11 +27,14 @@ import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
 import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
-import { bindBoardResizeHandle } from '../board/index';
 import {
   activeWorkspace,
   mountWorkspace,
   unmountWorkspace,
+  type WorkspaceBoardInputHandle,
+  type WorkspaceBoardInputModule,
+  type WorkspaceBoardPort,
+  type WorkspaceCursor,
   type WorkspaceInstance,
 } from '../analyse/workspaceCore';
 import {
@@ -2179,6 +2183,7 @@ export function getPreviewPuzzleId(): string | null { return _previewPuzzleId; }
 export function getPreviewRoundCtrl(): PuzzleRoundCtrl | null { return _previewRoundCtrl; }
 
 export function clearPreview(): void {
+  retirePuzzlePreviewWorkspace('preview-clear');
   _previewPuzzleId = null;
   _previewRoundCtrl = null;
 }
@@ -2201,36 +2206,6 @@ export async function selectPuzzleForPreview(id: string, redraw: () => void): Pr
   rc.mode = 'view'; // preview is view-only: no solve logic runs
   _previewRoundCtrl = rc;
   redraw();
-}
-
-/**
- * Mount a view-only preview board for the current preview puzzle.
- * Reuses the shared puzzleCg slot; shows start position with free exploration.
- * Adapted from mountPuzzleBoard, stripped of solve callbacks.
- */
-export function mountPreviewBoard(el: HTMLElement, _redraw: () => void): void {
-  retirePuzzleSolveWorkspace('preview-mount');
-  const rc = _previewRoundCtrl;
-  if (!rc) return;
-  const setup = parseFen(rc.treeNode.fen);
-  if (setup.isErr) return;
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return;
-  const dests = chessgroundDests(pos.value) as Map<Key, Key[]>;
-  const turn: 'white' | 'black' = pos.value.turn;
-  puzzleOrientation = rc.pov;
-  puzzleCg?.destroy();
-  puzzleCgAnimationScope = 'puzzle';
-  puzzleCg = makeChessground(el, {
-    orientation: puzzleOrientation,
-    fen: rc.treeNode.fen,
-    turnColor: turn,
-    animation: puzzleBoardAnimationConfig(),
-    movable: { free: false, color: 'both', dests, showDests: true },
-    draggable: { enabled: true, showGhost: true },
-    events: {},
-  });
-  bindBoardResizeHandle(el);
 }
 
 let state: PuzzlePageState = { view: 'library' };
@@ -2294,6 +2269,7 @@ export function validatePuzzleRoundRouteId(rawId: string): PuzzleRoundRouteValid
 
 function setPuzzleRoundRecoveryState(error: string, redraw: () => void): void {
   retirePuzzleSolveWorkspace('round-recovery');
+  retirePuzzlePreviewWorkspace('round-recovery');
   state = { view: 'round' };
   roundState = { definition: null, status: 'error', error };
   redraw();
@@ -2929,13 +2905,10 @@ export async function __testOpenPuzzleRoundWithHooks(
 }
 
 // --- Puzzle board ---
-// The interactive solve board uses the canonical shared workspace lifecycle. The remaining local
-// Chessground slot is legacy-only for the library preview and permanent static idle board; H04c
-// retires preview ownership separately.
+// Both interactive puzzle boards use the canonical shared workspace lifecycle. The only local
+// Chessground is the permanent decorative idle-board exception.
 
-let puzzleCg: CgApi | undefined;
-let puzzleOrientation: 'white' | 'black' = 'white';
-let puzzleCgAnimationScope: 'puzzle' | 'static' = 'static';
+let idlePuzzleCg: CgApi | undefined;
 
 export interface PuzzleSolveWorkspaceRecord {
   readonly generation: number;
@@ -3006,18 +2979,241 @@ export function flipPuzzleSolveBoard(): void {
   if (controller?.isLive()) controller.flip();
 }
 
-/** Preview-only legacy flip; never exposes the raw ground. */
+/** Preview-board flip through the guarded adapter port. */
 export function flipPuzzlePreviewBoard(): void {
-  if (!_previewRoundCtrl || !puzzleCg) return;
-  puzzleOrientation = puzzleOrientation === 'white' ? 'black' : 'white';
-  puzzleCg.set({ orientation: puzzleOrientation });
+  const controller = getPuzzlePreviewBoardController();
+  if (controller?.isLive()) controller.flip();
 }
 
-/** Destroy only the preview/idle legacy ground retained until H04c. */
-export function destroyPuzzleLegacyBoard(): void {
-  puzzleCg?.destroy();
-  puzzleCg = undefined;
-  puzzleCgAnimationScope = 'static';
+/** Destroy only the permanent decorative idle ground. */
+export function destroyPuzzleIdleBoard(): void {
+  idlePuzzleCg?.destroy();
+  idlePuzzleCg = undefined;
+}
+
+interface PuzzlePreviewBoardController {
+  readonly module: WorkspaceBoardInputModule;
+  getCursor(): WorkspaceCursor;
+  getOrientation(): 'white' | 'black';
+  isLive(): boolean;
+  syncFromRound(): void;
+  flip(): void;
+}
+
+export interface PuzzlePreviewWorkspaceRecord {
+  readonly generation: number;
+  readonly owner: 'preview';
+  readonly puzzleId: string;
+  readonly roundController: PuzzleRoundCtrl;
+  readonly instance: WorkspaceInstance;
+  readonly controller: PuzzlePreviewBoardController;
+}
+
+let _puzzlePreviewGeneration = 0;
+let _puzzlePreviewWorkspace: PuzzlePreviewWorkspaceRecord | null = null;
+
+function puzzlePreviewRecordIsCurrent(record: PuzzlePreviewWorkspaceRecord): boolean {
+  return _puzzlePreviewWorkspace === record
+    && record.generation === _puzzlePreviewGeneration
+    && record.roundController === _previewRoundCtrl
+    && record.puzzleId === _previewPuzzleId
+    && record.roundController.definition.id === record.puzzleId
+    && activeWorkspace() === record.instance;
+}
+
+function previewConfig(
+  position: PuzzleBoardPosition,
+  orientation: 'white' | 'black',
+): CgConfig {
+  return {
+    fen: position.fen,
+    orientation,
+    turnColor: position.turnColor,
+    lastMove: position.lastMove ?? [],
+    animation: puzzleBoardAnimationConfig(),
+    movable: {
+      free: false,
+      color: 'both',
+      dests: position.dests,
+      showDests: true,
+    },
+    draggable: { enabled: true, showGhost: true },
+  };
+}
+
+function createPuzzlePreviewBoardController(
+  rc: PuzzleRoundCtrl,
+  initialPosition: PuzzleBoardPosition,
+  isPreviewCurrent: () => boolean,
+): PuzzlePreviewBoardController {
+  let orientation: 'white' | 'black' = rc.pov;
+  let position = initialPosition;
+  let port: WorkspaceBoardPort | null = null;
+  let attachedHandle: WorkspaceBoardInputHandle | null = null;
+  let unsubscribeAnimation: (() => void) | null = null;
+
+  const livePort = (): WorkspaceBoardPort | null =>
+    port && port.isLive() && isPreviewCurrent() ? port : null;
+
+  const getCursor = (): WorkspaceCursor => ({
+    root: rc.treeRoot,
+    path: rc.treePath,
+    node: rc.treeNode,
+    nodeList: nodeListAt(rc.treeRoot, rc.treePath),
+    mainline: rc.treeMainline,
+  });
+
+  function syncFromRound(): void {
+    const currentPort = livePort();
+    if (!currentPort) return;
+    const next = puzzleBoardPositionForRound(rc);
+    if (!next) return;
+    position = next;
+    currentPort.set(previewConfig(position, orientation));
+  }
+
+  function flip(): void {
+    const currentPort = livePort();
+    if (!currentPort) return;
+    orientation = orientation === 'white' ? 'black' : 'white';
+    currentPort.set({ orientation });
+  }
+
+  const module: WorkspaceBoardInputModule = {
+    id: 'puzzle-preview',
+    mode: 'puzzle-preview-navigation',
+    allowResize: true,
+    configPolicy: {
+      kind: 'module-owned',
+      initial: () => previewConfig(position, orientation),
+      sync: () => previewConfig(position, orientation),
+    },
+    moveDispatch: {
+      kind: 'module-owned',
+      handleMove: () => {},
+    },
+    keyboardPolicy: {
+      kind: 'surface-owned',
+      handleKeydown: () => {},
+    },
+    attach(attachedPort: WorkspaceBoardPort): void {
+      port = attachedPort;
+      const workspace = activeWorkspace();
+      attachedHandle = workspace?.instanceId === attachedPort.instanceId
+        ? workspace.boardInputModule
+        : null;
+      unsubscribeAnimation = onBoardAnimationChange('puzzle', () => {
+        livePort()?.set({ animation: puzzleBoardAnimationConfig() });
+      });
+    },
+    detach(): void {
+      unsubscribeAnimation?.();
+      unsubscribeAnimation = null;
+      // Revoke the exact retained facade callback as well as the raw module state. Core's facade
+      // already stale-drops through isLive(); replacing this captured method makes a caller that
+      // retained and invokes the facade property itself after detach equally inert.
+      if (attachedHandle?.moveDispatch.kind === 'module-owned') {
+        attachedHandle.moveDispatch.handleMove = () => {};
+      }
+      attachedHandle = null;
+      port = null;
+    },
+  };
+
+  return {
+    module,
+    getCursor,
+    getOrientation: () => orientation,
+    isLive: () => livePort() !== null,
+    syncFromRound,
+    flip,
+  };
+}
+
+/** Exact live preview controller for the requested controller (or current preview when omitted). */
+export function getPuzzlePreviewBoardController(
+  rc: PuzzleRoundCtrl | undefined = undefined,
+): PuzzlePreviewBoardController | null {
+  const expected = rc ?? _previewRoundCtrl;
+  const record = _puzzlePreviewWorkspace;
+  return record
+    && expected
+    && record.roundController === expected
+    && puzzlePreviewRecordIsCurrent(record)
+    && record.controller.isLive()
+    ? record.controller
+    : null;
+}
+
+/** Prepare the exact preview workspace before renderBoard() evaluates its insert hook. */
+export function ensurePuzzlePreviewWorkspace(
+  rc: PuzzleRoundCtrl,
+  redraw: () => void,
+): PuzzlePreviewWorkspaceRecord | null {
+  const initialPosition = puzzleBoardPositionForRound(rc);
+  if (!initialPosition) return null;
+
+  const existing = _puzzlePreviewWorkspace;
+  if (
+    existing
+    && existing.generation === _puzzlePreviewGeneration
+    && existing.puzzleId === rc.definition.id
+    && existing.roundController === rc
+    && puzzlePreviewRecordIsCurrent(existing)
+  ) return existing;
+
+  destroyPuzzleIdleBoard();
+
+  const generation = ++_puzzlePreviewGeneration;
+  let record!: PuzzlePreviewWorkspaceRecord;
+  const controller = createPuzzlePreviewBoardController(
+    rc,
+    initialPosition,
+    () => Boolean(record && puzzlePreviewRecordIsCurrent(record)),
+  );
+  const instance = mountWorkspace({
+    id: 'puzzle-preview',
+    boardInputMode: 'puzzle-preview-navigation',
+    boardInputModule: controller.module,
+    getCursor: controller.getCursor,
+    getOrientation: controller.getOrientation,
+    redraw,
+    handleUserMove: () => {},
+  });
+  // Core has already made preview active and detached any outgoing solve workspace.
+  retirePuzzleSolveWorkspace('preview-mounted');
+  record = {
+    generation,
+    owner: 'preview',
+    puzzleId: rc.definition.id,
+    roundController: rc,
+    instance,
+    controller,
+  };
+  _puzzlePreviewWorkspace = record;
+  return record;
+}
+
+/** Exact captured teardown; stale preview A can never detach preview B or another surface. */
+export function destroyPuzzlePreviewWorkspace(
+  capturedRecord: PuzzlePreviewWorkspaceRecord,
+  capturedRc: PuzzleRoundCtrl,
+  reason: string,
+): void {
+  if (
+    _puzzlePreviewWorkspace === capturedRecord
+    && capturedRecord.roundController === capturedRc
+  ) {
+    _puzzlePreviewWorkspace = null;
+  }
+  unmountWorkspace(capturedRecord.instance, reason);
+}
+
+/** Retire the currently retained preview record before idle/reset/error transitions. */
+export function retirePuzzlePreviewWorkspace(reason: string): void {
+  const captured = _puzzlePreviewWorkspace;
+  if (!captured) return;
+  destroyPuzzlePreviewWorkspace(captured, captured.roundController, reason);
 }
 
 /** UCI promotion suffix char for a chosen role ('queen'→'q', 'knight'→'n', …). */
@@ -3098,7 +3294,7 @@ export function ensurePuzzleSolveWorkspace(
     && activeWorkspace() === existing.instance
   ) return existing;
 
-  destroyPuzzleLegacyBoard();
+  destroyPuzzleIdleBoard();
 
   const generation = ++_puzzleSolveGeneration;
   let record!: PuzzleSolveWorkspaceRecord;
@@ -3123,6 +3319,8 @@ export function ensurePuzzleSolveWorkspace(
     redraw,
     handleUserMove: () => {},
   });
+  // Core has already made solve active and detached any outgoing preview workspace.
+  retirePuzzlePreviewWorkspace('solve-mounted');
   record = {
     generation,
     puzzleId: definition.id,
@@ -3226,18 +3424,8 @@ export function syncPuzzleBoard(rcOverride?: PuzzleRoundCtrl): void {
   const position = puzzleBoardPositionForRound(rc);
   if (!position) return;
 
-  // Library preview remains on the explicitly out-of-scope legacy board.
   if (rc === _previewRoundCtrl) {
-    const cg = puzzleCg;
-    if (!cg) return;
-    const cfg: Record<string, unknown> = {
-      fen: position.fen,
-      animation: puzzleBoardAnimationConfig(),
-      turnColor: position.turnColor,
-      movable: { color: position.movableColor, dests: position.dests },
-    };
-    if (position.lastMove) cfg.lastMove = position.lastMove;
-    cg.set(cfg as Parameters<typeof cg.set>[0]);
+    getPuzzlePreviewBoardController(rc)?.syncFromRound();
     return;
   }
 
@@ -3424,13 +3612,13 @@ export function puzzleLast(redraw: () => void): void {
 /**
  * Mount an idle/decorative board for the library view.
  * Shows the standard starting position with no interaction.
- * Reuses the same puzzleCg slot so only one Chessground exists at a time.
+ * This is the permanent static exception; interactive preview/solve boards use the shared core.
  */
 export function mountIdleBoard(el: HTMLElement): void {
   retirePuzzleSolveWorkspace('idle-mount');
-  if (puzzleCg) { puzzleCg.destroy(); puzzleCg = undefined; }
-  puzzleCgAnimationScope = 'static';
-  puzzleCg = makeChessground(el, {
+  retirePuzzlePreviewWorkspace('idle-mount');
+  if (idlePuzzleCg) { idlePuzzleCg.destroy(); idlePuzzleCg = undefined; }
+  idlePuzzleCg = makeChessground(el, {
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     orientation: 'white',
     viewOnly: true,
@@ -3439,11 +3627,6 @@ export function mountIdleBoard(el: HTMLElement): void {
     drawable: { enabled: false },
   });
 }
-
-onBoardAnimationChange('puzzle', () => {
-  if (puzzleCgAnimationScope !== 'puzzle') return;
-  puzzleCg?.set({ animation: puzzleBoardAnimationConfig() });
-});
 
 // --- User metadata (favorites, notes, tags, folders) ---
 // Thin cache layer over PuzzleUserMeta IDB records.
@@ -4334,6 +4517,7 @@ export function clearActiveSession(): void {
 
 function resetPuzzleRoundRuntime(): void {
   retirePuzzleSolveWorkspace('round-runtime-reset');
+  retirePuzzlePreviewWorkspace('round-runtime-reset');
   activeRoundCtrl?.invalidatePendingAssistance();
   activeRoundCtrl = null;
   _previewPuzzleId = null;

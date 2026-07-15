@@ -16,7 +16,8 @@ import { renderToggleRow } from '../ui';
 import {
   getLibraryCounts, getPuzzleRoundState, getActiveRoundCtrl,
   ensurePuzzleSolveWorkspace, destroyPuzzleSolveWorkspace, retirePuzzleSolveWorkspace,
-  destroyPuzzleLegacyBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
+  ensurePuzzlePreviewWorkspace, destroyPuzzlePreviewWorkspace, retirePuzzlePreviewWorkspace,
+  destroyPuzzleIdleBoard, mountIdleBoard, nextPuzzle, retryPuzzle,
   getOrCreateMeta, savePuzzleMeta, toggleFavorite,
   isRetrySessionActive, getRetryCount, getRetryIndex, getRetryQueue,
   startRetrySession, nextRetryPuzzle, loadRetryCount,
@@ -35,7 +36,7 @@ import {
   retryFailedPuzzles,
   getAutoNext, setAutoNext,
   getResumePuzzleId, renderPuzzlePromotion, flipPuzzleSolveBoard, flipPuzzlePreviewBoard,
-  getPreviewPuzzleId, getPreviewRoundCtrl, selectPuzzleForPreview, clearPreview, mountPreviewBoard,
+  getPreviewPuzzleId, getPreviewRoundCtrl, selectPuzzleForPreview, clearPreview,
   type LibraryCounts, type PuzzleListFilters, type PuzzleListState,
   type ActiveSession,
 } from './ctrl';
@@ -282,7 +283,6 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
-  retirePuzzleSolveWorkspace('library-render');
   // Clear puzzle engine position override when back on library page.
   clearCevalPositionOverride('puzzle-post-solve');
   _lastPuzzleEngineFen = '';
@@ -290,6 +290,11 @@ export function renderPuzzleLibrary(redraw: () => void): VNode {
   const listState = getPuzzleListState();
   const previewRc = getPreviewRoundCtrl();
   const isPreview = !!previewRc;
+  const previewRecord = previewRc ? ensurePuzzlePreviewWorkspace(previewRc, redraw) : null;
+  if (!previewRecord) {
+    retirePuzzleSolveWorkspace(isPreview ? 'library-invalid-preview' : 'library-idle');
+    retirePuzzlePreviewWorkspace(isPreview ? 'library-invalid-preview' : 'library-idle');
+  }
 
   // Board-centered layout: sidebar on left, board always visible
   // When a preview is active: preview panel replaces sidebar on right side of board.
@@ -304,18 +309,25 @@ export function renderPuzzleLibrary(redraw: () => void): VNode {
       // Board area — idle board when no preview; preview board when puzzle selected
       h('div.puzzle__board.main-board', [
         isPreview
-          ? h('div.cg-wrap', {
-              key: `puzzle-preview-board-${getPreviewPuzzleId()}`,
+          ? previewRecord
+            ? h('div.puzzle__board-inner', {
+              key: `puzzle-preview-${previewRecord.generation}-${previewRecord.roundController.roundToken}`,
               hook: {
-                insert: vnode => { mountPreviewBoard(vnode.elm as HTMLElement, redraw); },
-                destroy: () => { destroyPuzzleLegacyBoard(); },
+                destroy: () => {
+                  destroyPuzzlePreviewWorkspace(
+                    previewRecord,
+                    previewRecord.roundController,
+                    'preview-vnode-destroy',
+                  );
+                },
               },
-            })
+            }, [renderBoard()])
+            : null
           : h('div.cg-wrap', {
               key: 'puzzle-idle-board',
               hook: {
                 insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
-                destroy: () => { destroyPuzzleLegacyBoard(); },
+                destroy: () => { destroyPuzzleIdleBoard(); },
               },
             }),
       ]),
@@ -2205,6 +2217,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   const retryCompletion = getRetryQueueCompletion();
   if (retryCompletion) {
     retirePuzzleSolveWorkspace('retry-completion-render');
+    retirePuzzlePreviewWorkspace('retry-completion-render');
     return renderRetryQueueCompletion(retryCompletion);
   }
 
@@ -2213,12 +2226,14 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   // No round state yet (should not normally happen if openPuzzleRound was called)
   if (!rs) {
     retirePuzzleSolveWorkspace('round-initializing-render');
+    retirePuzzlePreviewWorkspace('round-initializing-render');
     return h('div.puzzle-page', h('div.puzzle-round', 'Initializing\u2026'));
   }
 
   // Loading
   if (rs.status === 'loading') {
     retirePuzzleSolveWorkspace('round-loading-render');
+    retirePuzzlePreviewWorkspace('round-loading-render');
     return h('div.puzzle-page', h('div.puzzle-round', [
       h('span.puzzle-round__loading', 'Loading puzzle\u2026'),
     ]));
@@ -2227,6 +2242,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
   // Error
   if (rs.status === 'error' || !rs.definition) {
     retirePuzzleSolveWorkspace('round-error-render');
+    retirePuzzlePreviewWorkspace('round-error-render');
     return h('div.puzzle-page', h('div.puzzle-round', [
       h('div.puzzle-round__error', rs.error ?? 'Unknown error'),
       h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
