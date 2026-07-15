@@ -486,11 +486,12 @@ export function renderPromotionDialog(): VNode | null {
 // The exact Analysis initial + sync Chessground configuration, extracted VERBATIM from the former
 // inline renderBoard()/syncBoard() bodies so a reviewer can diff old-vs-new field for field. These
 // are the `analysis-default` config policy for both Analysis (no module) and Study (its module
-// declares analysis-default). Evaluation order and every field/value are preserved deliberately —
-// the listed pre-existing quirks (root-position lastMove omission rather than explicit clearing, the
-// `new Map()` allocation during premove capture, deep-merge/partial-config semantics) are NOT
-// "fixed" here. `events.move` / `movable.events.after` are intentionally ABSENT: the canonical
-// move-callback installer owns those (see installCanonicalCallbacks).
+// declares analysis-default). Evaluation order and every field/value are preserved deliberately.
+// The initial config may omit root `lastMove` because a new Chessground has no predecessor state;
+// the sync config must always own that key so deep-merge clears a previous highlight at root. The
+// `new Map()` allocation during premove capture remains deliberate. `events.move` /
+// `movable.events.after` are intentionally ABSENT: the canonical move-callback installer owns those
+// (see installCanonicalCallbacks).
 
 function analysisInitialConfig(node: TreeNode): CgConfig {
   // Evaluation order matches the pre-extraction inline body: dests, lastMove, premove snapshot, turn.
@@ -562,7 +563,7 @@ function analysisSyncConfig(node: TreeNode): CgConfig {
         unset: () => {},
       },
     },
-    ...(lastMove ? { lastMove } : {}),
+    lastMove: lastMove ?? [],
   };
 }
 
