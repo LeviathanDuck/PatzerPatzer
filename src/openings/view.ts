@@ -2796,7 +2796,7 @@ function scheduleOpeningsEngineEval(fen: string): void {
   });
 }
 
-function syncOpeningsBoard(_redraw: () => void): void {
+export function syncOpeningsBoard(_redraw: () => void): void {
   // Stop any running import animation so the board is cleanly handed back.
   if (!isFetching() && _animGame !== null) stopImportAnimation();
   // Any explicit tree navigation clears the transient off-tree analysis position.
