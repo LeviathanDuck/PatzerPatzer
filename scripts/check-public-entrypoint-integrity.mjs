@@ -2,6 +2,60 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_ENTRYPOINT = 'public/index.html';
+const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'textarea', 'title']);
+
+function tagEndOf(html, start) {
+  let quote = null;
+  for (let index = start + 1; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote !== null) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '>') {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function openingTagsOf(html) {
+  const tags = [];
+  let cursor = 0;
+
+  while (cursor < html.length) {
+    const start = html.indexOf('<', cursor);
+    if (start === -1) break;
+
+    if (html.startsWith('<!--', start)) {
+      const commentEnd = html.indexOf('-->', start + 4);
+      cursor = commentEnd === -1 ? html.length : commentEnd + 3;
+      continue;
+    }
+
+    const tagEnd = tagEndOf(html, start);
+    if (tagEnd === -1) break;
+
+    const tag = html.slice(start, tagEnd + 1);
+    const name = /^<\s*([a-z][\w:-]*)/i.exec(tag)?.[1].toLowerCase();
+    if (name === undefined) {
+      cursor = tagEnd + 1;
+      continue;
+    }
+
+    tags.push(tag);
+    cursor = tagEnd + 1;
+
+    if (RAW_TEXT_ELEMENTS.has(name)) {
+      const closingTag = new RegExp(`</\\s*${name}\\s*>`, 'gi');
+      closingTag.lastIndex = cursor;
+      const match = closingTag.exec(html);
+      cursor = match === null ? html.length : match.index + match[0].length;
+    }
+  }
+
+  return tags;
+}
 
 function attributesOf(tag) {
   const attributes = new Map();
@@ -22,9 +76,9 @@ function assetBuildId(value, assetPath) {
 
 export function inspectPublicEntrypointHtml(html) {
   const violations = [];
-  const tags = [...html.matchAll(/<[a-z][^>]*>/gi)].map(match => ({
-    name: /^<\s*([\w:-]+)/.exec(match[0])?.[1].toLowerCase(),
-    attributes: attributesOf(match[0]),
+  const tags = openingTagsOf(html).map(tag => ({
+    name: /^<\s*([\w:-]+)/.exec(tag)?.[1].toLowerCase(),
+    attributes: attributesOf(tag),
   }));
 
   const stylesheetIds = tags
@@ -147,12 +201,39 @@ function runFixtureMatrix() {
     fixtureHtml().replace('/js/main.js?v=fixture-123', '/js/main.js?v=fixture-456'),
     'does not match',
   );
+  const adversarialFixtures = [
+    [
+      'required tags only inside an HTML comment',
+      `<!--
+        <link rel="stylesheet" href="/css/main.css?v=fixture-123">
+        <div id="app"></div>
+        <script type="module" src="/js/main.js?v=fixture-123"></script>
+      -->`,
+    ],
+    [
+      'tag-shaped strings inside a real script body',
+      `<script type="module" src="/js/main.js?v=fixture-123">
+        const inert = '<link rel="stylesheet" href="/css/main.css?v=fixture-123"><div id="app"></div>';
+      </script>`,
+    ],
+  ];
+  const adversarialFailures = [];
+  for (const [name, html] of adversarialFixtures) {
+    try {
+      assertFixture(name, html, 'stylesheet cardinality');
+    } catch (error) {
+      adversarialFailures.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  if (adversarialFailures.length > 0) {
+    throw new Error(adversarialFailures.join('\n'));
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   try {
     runFixtureMatrix();
-    console.log('[public-entrypoint-integrity] fixture matrix passed (8 cases)');
+    console.log('[public-entrypoint-integrity] fixture matrix passed (10 cases)');
     const summary = assertPublicEntrypointIntegrity();
     console.log(
       `[public-entrypoint-integrity] public/index.html passed: stylesheet=${summary.stylesheetCount} appRoot=${summary.appRootCount} moduleScript=${summary.moduleScriptCount} buildId=${summary.stylesheetBuildId}`,
