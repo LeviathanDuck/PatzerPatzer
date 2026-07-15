@@ -934,9 +934,16 @@ export function bindBoardResizeHandle(wrap: HTMLElement): void {
 
 // Adapted from lichess-org/lila: ui/analyse/src/ground.ts render + makeConfig
 export function renderBoard(): VNode {
+  let ownedCg: CgApi | undefined;
   return h('div.cg-wrap', {
     key: 'board',
     hook: {
+      prepatch: (oldVnode, vnode) => {
+        const insertedOwnerDestroy = oldVnode.data?.hook?.destroy;
+        if (insertedOwnerDestroy && vnode.data?.hook) {
+          vnode.data.hook.destroy = insertedOwnerDestroy;
+        }
+      },
       insert: vnode => {
         performance.mark('board-render-start');
         // CCW-H03a-3 config-selection sequence (one workspace + one session snapshot per selection):
@@ -963,6 +970,7 @@ export function renderBoard(): VNode {
         const config = installCanonicalCallbacks(baseConfig, input, workspace ? workspace.instanceId : null);
         // 7) construct exactly one Chessground, 8) assign it to cgInstance.
         const capturedCg = makeChessground(vnode.elm as HTMLElement, config);
+        ownedCg = capturedCg;
         cgInstance = capturedCg;
         // 9) construct the guarded port against that exact API, 10) attach the module (if any).
         if (workspace && input) {
@@ -978,8 +986,11 @@ export function renderBoard(): VNode {
         performance.mark('board-render-end');
       },
       destroy: () => {
-        cgInstance?.destroy();
-        cgInstance = undefined;
+        const capturedCg = ownedCg;
+        if (!capturedCg) return;
+        capturedCg.destroy();
+        ownedCg = undefined;
+        if (cgInstance === capturedCg) cgInstance = undefined;
       },
     },
   });
