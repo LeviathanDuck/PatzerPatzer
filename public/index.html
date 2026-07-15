@@ -34,7 +34,7 @@
       let theme = saved === 'light' ? 'light' : 'dark';
       if (saved === 'system') {
         try {
-          if (window.matchMedia?.('(prefers-color-scheme: light)').matches) theme = 'light';
+          if (window.matchMedia?.('(prefers-color-scheme: light)')?.matches) theme = 'light';
         } catch {}
       }
       const root = document.documentElement;
