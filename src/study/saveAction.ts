@@ -3,7 +3,7 @@
 
 import { parsePgn } from 'chessops/pgn';
 import { Chess } from 'chessops/chess';
-import { parseFen } from 'chessops/fen';
+import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { saveStudy, saveStudyStrict, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
@@ -13,6 +13,8 @@ import type { MasterGame } from '../showcase/masterGames';
 import { deriveFens } from './practice/extractLine';
 import type { ResearchCollection } from '../openings/types';
 import { record, Severity } from '../diagnostics';
+import type { SaveFlowPuzzleCategory } from '../save/saveFlowCtrl';
+import type { PuzzleSaveProvenance } from '../puzzles/types';
 
 let _nextId = 0;
 function generateStudyId(): string {
@@ -511,6 +513,21 @@ function puzzleToPgn(fen: string, uciMoves: string[], title: string): string {
   return `${headers.join('\n')}\n\n${moves.join(' ')} *`;
 }
 
+/** Return the position where the solver actually takes control. */
+export function puzzleSolverStartFen(fen: string, triggerMove?: string): string {
+  if (!triggerMove) return fen;
+  const setup = parseFen(fen);
+  if (!setup.isOk) throw new Error('Cannot apply puzzle trigger to an invalid FEN');
+  const position = Chess.fromSetup(setup.value);
+  if (!position.isOk) throw new Error('Cannot apply puzzle trigger to an invalid position');
+  const move = parseUci(triggerMove);
+  if (!move || !position.value.isLegal(move)) {
+    throw new Error(`Illegal puzzle trigger move: ${triggerMove}`);
+  }
+  position.value.play(move);
+  return makeFen(position.value.toSetup());
+}
+
 /**
  * Build a PGN string from a MasterGame with proper headers.
  */
@@ -602,16 +619,31 @@ export async function seedMasterGamesToLibrary(): Promise<number> {
  * @param title - Optional title override; defaults to "Puzzle".
  * @returns The newly created StudyItem.
  */
+export interface PuzzleLibrarySaveMetadata {
+  sourcePuzzleId: string;
+  savedFrom: PuzzleSaveProvenance;
+  sourceGameId?: string;
+  primaryCategory?: SaveFlowPuzzleCategory;
+  saveNotes?: string;
+  uncategorized?: boolean;
+  tags?: string[];
+}
+
 export async function savePuzzleToLibrary(
   fen: string,
   solutionMoves: string[],
+  metadata: PuzzleLibrarySaveMetadata,
+  triggerMove?: string,
   title?: string,
 ): Promise<StudyItem> {
   const puzzleTitle = title ?? 'Puzzle';
-  const pgn = puzzleToPgn(fen, solutionMoves, puzzleTitle);
-  return saveCurrentToLibrary(pgn, {
+  const moves = triggerMove ? [triggerMove, ...solutionMoves] : solutionMoves;
+  const pgn = puzzleToPgn(fen, moves, puzzleTitle);
+  const completeMetadata: Partial<Omit<StudyItem, 'id' | 'pgn' | 'createdAt' | 'updatedAt'>> & PuzzleLibrarySaveMetadata = {
     source: 'puzzles',
     title:  puzzleTitle,
-    tags:   ['puzzle'],
-  });
+    ...metadata,
+    tags: Array.from(new Set(['puzzle', ...(metadata.tags ?? [])])),
+  };
+  return saveCurrentToLibrary(pgn, completeMetadata);
 }

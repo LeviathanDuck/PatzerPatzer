@@ -41,7 +41,7 @@ import {
   type ActiveSession,
 } from './ctrl';
 import type { PuzzleRoundCtrl } from './ctrl';
-import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta, PuzzleSaveProvenance, UserLibraryPuzzleDefinition } from './types';
+import type { PuzzleDefinition, PuzzleSourceKind, SolveResult, PuzzleMoveQuality, PuzzleUserMeta, UserLibraryPuzzleDefinition } from './types';
 import { parseFen, makeFen } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
@@ -52,10 +52,8 @@ import { syncPuzzleBoard, peekPuzzleContext } from './ctrl';
 import { mainlineNodeList, promoteAt, pathInit } from '../tree/ops';
 import { isMainlinePath } from '../analyse/pgnExport';
 import type { Role } from '@lichess-org/chessground/types';
-import { savePuzzleToLibrary } from '../study/saveAction';
-import { saveStudy } from '../study/studyDb';
-import type { StudyItem } from '../study/types';
-import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult, type SaveFlowPuzzleCategory } from '../save/saveFlowCtrl';
+import { puzzleSolverStartFen, savePuzzleToLibrary, type PuzzleLibrarySaveMetadata } from '../study/saveAction';
+import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
 import renderSaveFlowModal from '../save/saveFlowView';
 import { groupByAutomaticFacets, type GeneralLensGameSource } from '../save/generalLens';
 import { loadGameFacetSourceFromIdb } from '../idb';
@@ -969,6 +967,7 @@ function formatThemeName(theme: string): string {
 let _puzzleInfoExpanded = false;
 let _puzzleSaveLibFeedback: string | null = null;
 let _puzzleSaveLibTimer: ReturnType<typeof setTimeout> | null = null;
+let _puzzleSaveLibPending = false;
 
 
 
@@ -996,14 +995,6 @@ let _activePuzzleRoundSaveFlow: SaveFlowCtrl | null = null;
 
 
 
-interface PuzzleRoundSaveExtras {
-  sourcePuzzleId?: string;
-  primaryCategory?: SaveFlowPuzzleCategory;
-  saveNotes?: string;
-  uncategorized?: boolean;
-  savedFrom?: PuzzleSaveProvenance;
-}
-
 /** Save-flow modal context line for a round-screen puzzle save. */
 function puzzleRoundSaveContext(def: PuzzleDefinition, outcome: 'solved' | 'failed'): SaveFlowContext {
   const identity = def.sourceKind === 'imported-lichess'
@@ -1016,35 +1007,37 @@ function puzzleRoundSaveContext(def: PuzzleDefinition, outcome: 'solved' | 'fail
 }
 
 /**
- * Persists a resolved save-flow result. Keeps calling savePuzzleToLibrary() unchanged (same
- * PGN-building + StudyItem creation as before this task) so the destination store and its
- * base shape stay exactly as today, then layers the categorization + provenance fields onto
- * the created record via one additional saveStudy() write (already-exported from
- * src/study/studyDb.ts — not a study-file edit) before the "Saved!" confirmation fires.
+ * Persists one complete linked Study item through the strict save helper. The complete payload
+ * is assembled before persistence so a failed transaction cannot leave a bare predecessor.
  */
 function persistPuzzleRoundSaveFlowResult(
   def: PuzzleDefinition,
   result: SaveFlowResult,
   redraw: () => void,
 ): void {
+  if (_puzzleSaveLibPending) return;
+  _puzzleSaveLibPending = true;
+  _puzzleSaveLibFeedback = 'Saving…';
+  redraw();
+
   const sourceGameId = def.sourceKind === 'user-library' ? def.sourceGameId : undefined;
 
-  void savePuzzleToLibrary(def.startFen, def.solutionLine).then(item => {
-    const linked: StudyItem & PuzzleRoundSaveExtras = {
-      ...item,
+  void (async () => {
+    const solverStartFen = puzzleSolverStartFen(def.startFen, def.triggerMove);
+    const metadata: PuzzleLibrarySaveMetadata = {
       sourcePuzzleId: def.id,
-      savedFrom: { gameId: sourceGameId ?? null, fen: def.startFen, source: 'puzzle-round' },
+      savedFrom: { gameId: sourceGameId ?? null, fen: solverStartFen, source: 'puzzle-round' },
+      tags: result.tags,
     };
-    if (sourceGameId !== undefined) linked.sourceGameId = sourceGameId;
+    if (sourceGameId !== undefined) metadata.sourceGameId = sourceGameId;
     if (result.mode === 'quick') {
-      linked.uncategorized = true;
+      metadata.uncategorized = true;
     } else if (result.primaryCategory !== undefined) {
-      linked.primaryCategory = result.primaryCategory;
+      metadata.primaryCategory = result.primaryCategory;
     }
-    if (result.tags.length > 0) linked.tags = Array.from(new Set([...item.tags, ...result.tags]));
-    if (result.notes !== undefined) linked.saveNotes = result.notes;
-    return saveStudy(linked);
-  }).then(() => {
+    if (result.notes !== undefined) metadata.saveNotes = result.notes;
+    await savePuzzleToLibrary(def.startFen, def.solutionLine, metadata, def.triggerMove);
+  })().then(() => {
     _puzzleSaveLibFeedback = 'Saved to Library!';
     if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
     _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
@@ -1054,6 +1047,8 @@ function persistPuzzleRoundSaveFlowResult(
     if (_puzzleSaveLibTimer) clearTimeout(_puzzleSaveLibTimer);
     _puzzleSaveLibTimer = setTimeout(() => { _puzzleSaveLibFeedback = null; redraw(); }, 1800);
     redraw();
+  }).finally(() => {
+    _puzzleSaveLibPending = false;
   });
 }
 
