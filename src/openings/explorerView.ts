@@ -11,7 +11,6 @@
 
 
 
-
 import { h, type VNode } from 'snabbdom';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
@@ -49,19 +48,27 @@ import {
   type RepertoireExplorerSourceGroup,
 } from '../repertoire/explorerViewModel';
 import { isAccountRepertoireSource, repertoireAccountFilterSummary } from '../repertoire';
-import {
-  currentOpeningsBoardFen,
-  restoreOpeningsExplorerAutoShapes,
-  clearOpeningsAutoShapesHash,
-  playOpeningsExplorerMove,
-  syncOpeningsBoard,
-  _openingsCg,
-} from './view';
 import { syncArrowForced } from '../engine/ctrl';
 
 let _bookAuthNotice = '';
 let _repertoireExplorerNotice = '';
 let _expandedRepertoireAnnotationKey: string | null = null;
+
+export interface OpeningTreeExplorerHost {
+  board: () => CgApi | undefined;
+  getCurrentFen: () => string | null | undefined;
+  restoreAutoShapes: () => void;
+  clearAutoShapesHash: () => void;
+  playMove: (uci: string, redraw: () => void) => void;
+  syncBoard: (redraw: () => void) => void;
+}
+
+type ExplorerMoveInteractionHost = Pick<
+  OpeningTreeExplorerHost,
+  'board' | 'getCurrentFen' | 'restoreAutoShapes' | 'clearAutoShapesHash'
+>;
+
+type ExplorerDbTabsHost = Pick<OpeningTreeExplorerHost, 'restoreAutoShapes'>;
 
 type ExplorerMoveRowInteractionOptions = {
   fen: string;
@@ -297,23 +304,20 @@ function toggleRepertoireSourceFromExplorer(
 
 function repertoireMoveListHook(
   fen: string,
+  host: ExplorerMoveInteractionHost,
   onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
-  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
 ) {
   const bind = (vnode: import('snabbdom').VNode) => {
     const el = vnode.elm as ExplorerMoveRowsElement;
-    const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
     bindExplorerMoveRowInteractions(el, {
       fen,
       rowSelector: '.repertoire__move-row',
-      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
-      getCurrentFen,
-      restoreAutoShapes,
+      board: host.board,
+      getCurrentFen: host.getCurrentFen,
+      restoreAutoShapes: host.restoreAutoShapes,
       onMoveClick,
       ignoreClickSelector: '.repertoire__annotation-toggle',
-      onDirectAutoShapesSet: usesOpeningsBoard ? () => { clearOpeningsAutoShapesHash(); } : undefined,
+      onDirectAutoShapesSet: host.clearAutoShapesHash,
     });
   };
   return {
@@ -326,15 +330,13 @@ function renderRepertoireMoveRows(
   group: RepertoireExplorerSourceGroup,
   fen: string,
   redraw: () => void,
+  host: ExplorerMoveInteractionHost,
   onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen?: () => string | null | undefined,
-  restoreAutoShapes?: () => void,
 ): VNode | null {
   if (group.error) return h('div.repertoire__source-error.repertoire__source-error--inline', group.error);
   if (!group.entries.length) return null;
   return h('div.repertoire__move-list', {
-    hook: repertoireMoveListHook(fen, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
+    hook: repertoireMoveListHook(fen, host, onMoveClick),
   }, group.entries.map((entry, entryIndex) => {
     const nags = nagSymbols(entry.nags);
     const preview = firstCommentLine(entry.comments);
@@ -398,10 +400,8 @@ function renderRepertoireSourceGroup(
   group: RepertoireExplorerSourceGroup,
   fen: string,
   redraw: () => void,
+  host: ExplorerMoveInteractionHost,
   onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen?: () => string | null | undefined,
-  restoreAutoShapes?: () => void,
 ): VNode {
   const accountSource = isAccountRepertoireSource(group.source);
   const accountState = group.accountBuildState;
@@ -432,13 +432,13 @@ function renderRepertoireSourceGroup(
           'aria-label': group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
         },
         class: { active: group.source.enabled },
-        on: { click: () => toggleRepertoireSourceFromExplorer(group.source, redraw, restoreAutoShapes) },
+        on: { click: () => toggleRepertoireSourceFromExplorer(group.source, redraw, host.restoreAutoShapes) },
       }, group.source.enabled ? 'On' : 'Off'),
     ]),
     group.expectedReply
       ? h('div.repertoire__expected-reply', 'Expected replies from the opponent line')
       : null,
-    renderRepertoireMoveRows(group, fen, redraw, onMoveClick, cgBoard, getCurrentFen, restoreAutoShapes),
+    renderRepertoireMoveRows(group, fen, redraw, host, onMoveClick),
     accountMessage ? h('div.repertoire__account-empty', accountMessage) : null,
   ]);
 }
@@ -478,9 +478,7 @@ function renderRepertoireExplorerPanel<Path = unknown>(
     line?: RepertoireExplorerLinePosition<Path>[];
     onMoveClick?: (uci: string) => void;
     onJumpToPrior?: (path: Path) => void;
-    cgBoard?: CgApi;
-    getCurrentFen?: () => string | null | undefined;
-    restoreAutoShapes?: () => void;
+    interactionHost?: ExplorerMoveInteractionHost;
   } = {},
 ): VNode {
   if (!fen) return h('div.openings__explorer-empty', 'No position selected.');
@@ -502,6 +500,12 @@ function renderRepertoireExplorerPanel<Path = unknown>(
 
   ensureRepertoireAccountSourceBuilds(redraw);
   const model = buildRepertoireExplorerModel(repertoireSources(), fen, opts.line);
+  const interactionHost: ExplorerMoveInteractionHost = opts.interactionHost ?? {
+    board: () => undefined,
+    getCurrentFen: () => fen,
+    restoreAutoShapes: () => {},
+    clearAutoShapesHash: () => {},
+  };
   if (model.sources.length === 0) {
     return h('div.openings__explorer-box', [
       h('div.openings__explorer-message', [
@@ -535,10 +539,8 @@ function renderRepertoireExplorerPanel<Path = unknown>(
         group,
         fen,
         redraw,
+        interactionHost,
         opts.onMoveClick,
-        opts.cgBoard,
-        opts.getCurrentFen,
-        opts.restoreAutoShapes,
       )),
     ),
     !model.hasCurrentMatch && !model.hasPendingAccountBuild
@@ -743,12 +745,16 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
   ]);
 }
 
-export function renderExplorerDbTabs(node: OpeningTreeNode | null, redraw: () => void, restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes): VNode {
+export function renderExplorerDbTabs(
+  node: OpeningTreeNode | null,
+  redraw: () => void,
+  host: ExplorerDbTabsHost,
+): VNode {
   const db = explorerCtrl.config.db;
   const setDb = (d: ExplorerDb) => {
     explorerCtrl.setDb(d);
     if (node && d !== 'repertoire') explorerCtrl.setNode(node.fen, redraw);
-    restoreAutoShapes();
+    host.restoreAutoShapes();
     redraw();
   };
   return h('div.openings__explorer-tabs', [
@@ -880,21 +886,24 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
  * - Queue position message when player DB is indexing
  * - Error state with retry button
  */
-export function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => void): VNode {
+export function renderExplorerPanel(
+  node: OpeningTreeNode | null,
+  redraw: () => void,
+  host: OpeningTreeExplorerHost,
+): VNode {
   if (!node) return h('div.openings__explorer-empty', 'No position selected.');
   if (explorerCtrl.config.db === 'repertoire') {
     return renderRepertoireExplorerPanel(node.fen, redraw, {
       line: repertoireLineForOpenings(sessionPath()),
       onMoveClick: (uci: string) => {
-        playOpeningsExplorerMove(uci, redraw);
+        host.playMove(uci, redraw);
       },
       onJumpToPrior: (path: readonly string[]) => {
         navigateToPath([...path]);
-        syncOpeningsBoard(redraw);
+        host.syncBoard(redraw);
         redraw();
       },
-      getCurrentFen: currentOpeningsBoardFen,
-      restoreAutoShapes: restoreOpeningsExplorerAutoShapes,
+      interactionHost: host,
     });
   }
 
@@ -943,7 +952,7 @@ export function renderExplorerPanel(node: OpeningTreeNode | null, redraw: () => 
           data.opening
             ? h('div.openings__explorer-opening', data.opening.name)
             : null,
-          renderExplorerMovesTable(data, node.fen, redraw),
+          renderExplorerMovesTable(data, node.fen, redraw, host, uci => host.playMove(uci, redraw)),
           renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
           renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
         ])
@@ -1062,10 +1071,8 @@ function renderExplorerMovesTable(
   data: import('./explorer').OpeningData,
   fen: string,
   redraw: () => void,
+  host: ExplorerMoveInteractionHost,
   onMoveClick?: (uci: string) => void,
-  cgBoard?: CgApi,
-  getCurrentFen: () => string | null | undefined = currentOpeningsBoardFen,
-  restoreAutoShapes: () => void = restoreOpeningsExplorerAutoShapes,
 ): VNode {
   const sumTotal = (data.white ?? 0) + (data.draws ?? 0) + (data.black ?? 0) || 1;
 
@@ -1075,21 +1082,16 @@ function renderExplorerMovesTable(
     ? [...data.moves, { uci: '' as '', san: '\u03A3', white: data.white ?? 0, black: data.black ?? 0, draws: data.draws ?? 0 }]
     : [...data.moves];
 
-  const defaultMoveClick = (uci: string) => {
-    playOpeningsExplorerMove(uci, redraw);
-  };
-  const handleMoveClick = onMoveClick ?? defaultMoveClick;
-  const usesOpeningsBoard = restoreAutoShapes === restoreOpeningsExplorerAutoShapes;
   const bind = (vnode: import('snabbdom').VNode) => {
     const el = vnode.elm as ExplorerMoveRowsElement;
     bindExplorerMoveRowInteractions(el, {
       fen,
       rowSelector: 'tr',
-      board: () => cgBoard ?? (usesOpeningsBoard ? _openingsCg : undefined),
-      getCurrentFen,
-      restoreAutoShapes,
-      onMoveClick: handleMoveClick,
-      onDirectAutoShapesSet: usesOpeningsBoard ? () => { clearOpeningsAutoShapesHash(); } : undefined,
+      board: host.board,
+      getCurrentFen: host.getCurrentFen,
+      restoreAutoShapes: host.restoreAutoShapes,
+      onMoveClick,
+      onDirectAutoShapesSet: host.clearAutoShapesHash,
     });
   };
 
@@ -1144,7 +1146,7 @@ export function renderAnalysisExplorerSection(
   const isMasters = explorerCtrl.config.db === 'masters';
 
   return h('div.openings__explorer', [
-    renderExplorerDbTabs(null, redraw, restoreAnalysisExplorerAutoShapes),
+    renderExplorerDbTabs(null, redraw, { restoreAutoShapes: restoreAnalysisExplorerAutoShapes }),
     explorerCtrl.configOpen
       ? renderExplorerConfigPanel(redraw)
       : renderAnalysisExplorerPanel(fen, isMasters, cg, onMoveClick, redraw, line, onJumpToPath, getCurrentFen),
@@ -1170,17 +1172,18 @@ function renderAnalysisExplorerPanel(
       line?: RepertoireExplorerLinePosition<string>[];
       onMoveClick: (uci: string) => void;
       onJumpToPrior?: (path: string) => void;
-      cgBoard?: CgApi;
-      getCurrentFen: () => string | null | undefined;
-      restoreAutoShapes: () => void;
+      interactionHost: ExplorerMoveInteractionHost;
     } = {
       onMoveClick,
-      getCurrentFen,
-      restoreAutoShapes: restoreAnalysisExplorerAutoShapes,
+      interactionHost: {
+        board: () => cg,
+        getCurrentFen,
+        restoreAutoShapes: restoreAnalysisExplorerAutoShapes,
+        clearAutoShapesHash: () => {},
+      },
     };
     if (line) opts.line = line;
     if (onJumpToPath) opts.onJumpToPrior = onJumpToPath;
-    if (cg) opts.cgBoard = cg;
     return renderRepertoireExplorerPanel(fen, redraw, opts);
   }
 
@@ -1214,7 +1217,12 @@ function renderAnalysisExplorerPanel(
     const content = hasContent
       ? h('div.openings__explorer-data', [
           data.opening ? h('div.openings__explorer-opening', data.opening.name) : null,
-          renderExplorerMovesTable(data, fen, redraw, onMoveClick, cg, getCurrentFen, restoreAnalysisExplorerAutoShapes),
+          renderExplorerMovesTable(data, fen, redraw, {
+            board: () => cg,
+            getCurrentFen,
+            restoreAutoShapes: restoreAnalysisExplorerAutoShapes,
+            clearAutoShapesHash: () => {},
+          }, onMoveClick),
           renderExplorerGamesTable('Top games', data.topGames ?? [], isMasters),
           renderExplorerGamesTable('Recent games', data.recentGames ?? [], isMasters),
         ])

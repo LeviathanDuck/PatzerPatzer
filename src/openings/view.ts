@@ -106,13 +106,16 @@ import { buildRepertoireArrowShapes } from '../repertoire/arrowShapes';
 import {
   markNav, currentGenerationToken, isGenerationCurrent, onSettle, isRapid,
 } from './scheduler';
-import { renderExplorerDbTabs, renderExplorerConfigPanel, renderExplorerPanel } from './explorerView';
+import {
+  renderExplorerDbTabs,
+  renderExplorerConfigPanel,
+  renderExplorerPanel,
+  type OpeningTreeExplorerHost,
+} from './explorerView';
 import { opponentsEntryHref } from './routeOrchestration';
 import { enterAnalysisMode, renderAnalysisModeToggleButton } from '../board/analysisModeToggle';
 
-// Exported (read-only usage) so explorerView.ts can resolve the openings board for
-// explorer/repertoire move-row hover interactions without duplicating board-mount state.
-export let _openingsCg: CgApi | undefined;
+let _openingsCg: CgApi | undefined;
 let _lastOpeningsAutoShapesHash: string | null = null;
 
 
@@ -2793,9 +2796,7 @@ function scheduleOpeningsEngineEval(fen: string): void {
   });
 }
 
-// Exported so explorerView.ts's renderExplorerPanel can resync the openings board
-// after a repertoire "jump to deepest match" navigation.
-export function syncOpeningsBoard(_redraw: () => void): void {
+function syncOpeningsBoard(_redraw: () => void): void {
   // Stop any running import animation so the board is cleanly handed back.
   if (!isFetching() && _animGame !== null) stopImportAnimation();
   // Any explicit tree navigation clears the transient off-tree analysis position.
@@ -3511,30 +3512,22 @@ function renderMastersBookIcon(parentFen: string, uci: string): VNode | null {
   });
 }
 
-// Exported: explorerView.ts (repertoireMoveListHook, renderExplorerPanel, renderExplorerMovesTable)
-// uses this to resolve/default the current openings-board FEN for hover/click interactions.
-export function currentOpeningsBoardFen(): string | null {
+function currentOpeningsBoardFen(): string | null {
   return _offTreeFen ?? sessionNode()?.fen ?? null;
 }
 
-// Exported: explorerView.ts uses this as the default/explicit "restoreAutoShapes" callback for
-// the openings board (the Analysis board has its own restoreAnalysisExplorerAutoShapes).
-export function restoreOpeningsExplorerAutoShapes(): void {
+function restoreOpeningsExplorerAutoShapes(): void {
   _lastOpeningsAutoShapesHash = null;
   syncOpeningsAutoShapes(sessionNode());
 }
 
-// Exported so explorerView.ts's move-row hover handling can invalidate the auto-shapes
-// diff-guard after pushing a transient hover arrow directly to the board (bypassing the
-// normal syncOpeningsAutoShapes() push), mirroring what restoreOpeningsExplorerAutoShapes did
-// inline before the explorer/repertoire display layer moved to its own module.
-export function clearOpeningsAutoShapesHash(): void {
+// Move-row hover handling invalidates the auto-shapes diff guard after pushing a transient
+// arrow directly to the board, so leave can restore the canonical composite.
+function clearOpeningsAutoShapesHash(): void {
   _lastOpeningsAutoShapesHash = null;
 }
 
-// Exported: explorerView.ts's renderExplorerPanel/renderExplorerMovesTable call this directly
-// (Tree tool's own move-click handling); the Analysis board passes its own onMoveClick instead.
-export function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
+function playOpeningsExplorerMove(uci: string, redraw: () => void): void {
   const current = sessionNode();
   if (!current) return;
 
@@ -3962,8 +3955,16 @@ function extractLichessUrl(pgn: string): string {
 
 function renderExplorerToggle(node: OpeningTreeNode | null, redraw: () => void): VNode | null {
   if (!explorerCtrl.enabled) return null;
+  const host: OpeningTreeExplorerHost = {
+    board: () => _openingsCg,
+    getCurrentFen: currentOpeningsBoardFen,
+    restoreAutoShapes: restoreOpeningsExplorerAutoShapes,
+    clearAutoShapesHash: clearOpeningsAutoShapesHash,
+    playMove: playOpeningsExplorerMove,
+    syncBoard: syncOpeningsBoard,
+  };
   return h('div.openings__explorer', [
-    renderExplorerDbTabs(node, redraw),
-    explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw),
+    renderExplorerDbTabs(node, redraw, host),
+    explorerCtrl.configOpen ? renderExplorerConfigPanel(redraw) : renderExplorerPanel(node, redraw, host),
   ]);
 }
