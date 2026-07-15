@@ -2824,6 +2824,7 @@ export function syncOpeningsBoard(_redraw: () => void): void {
   if (fen === _lastBoardFen && ownsLastMove) return;
   _lastBoardFen = fen;
 
+  const userShapes = _openingsCg.state.drawable.shapes.slice();
   // Chessground's runtime config treats a present undefined lastMove as an explicit clear.
   _openingsCg.set({
     fen,
@@ -2831,6 +2832,7 @@ export function syncOpeningsBoard(_redraw: () => void): void {
     orientation: boardOrientation(),
     movable: { dests: destsForFen(fen), color: 'both' },
     lastMove,
+    drawable: { shapes: userShapes },
   } as CgConfig);
   syncOpeningsAutoShapes(node);
   // Update FEN override and schedule engine eval after settle.
