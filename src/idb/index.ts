@@ -2994,8 +2994,11 @@ export async function saveGameSummaryForBackfill(
   summary: GameSummary,
 ): Promise<GameSummaryBackfillSaveResult> {
   if (!summary.gameId) return 'failed';
+  const requestedAt = Date.now();
+  if (shouldDropDataManagementReviewWrite('game-summaries', summary.gameId, requestedAt)) return 'failed';
   try {
     const db = await openGameDb();
+    if (shouldDropDataManagementReviewWrite('game-summaries', summary.gameId, requestedAt)) return 'failed';
     const tx = db.transaction('game-summaries', 'readwrite');
     const store = tx.objectStore('game-summaries');
     const existing = await new Promise<GameSummary | undefined>((resolve, reject) => {
@@ -3003,6 +3006,10 @@ export async function saveGameSummaryForBackfill(
       req.onsuccess = () => resolve(req.result as GameSummary | undefined);
       req.onerror = () => reject(recordReqFailure(req, 'game-summaries', 'read', summary.gameId));
     });
+    if (shouldDropDataManagementReviewWrite('game-summaries', summary.gameId, requestedAt)) {
+      await txDone(tx);
+      return 'failed';
+    }
     const storedVersion = existing === undefined
       ? 0
       : Number.isFinite(existing.extractionVersion)
