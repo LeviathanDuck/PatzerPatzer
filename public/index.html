@@ -31,9 +31,12 @@
         const value = window.localStorage.getItem('patzer.appearance.v1');
         if (value === 'dark' || value === 'light' || value === 'system') saved = value;
       } catch {}
-      const theme = saved === 'light' ||
-        (saved === 'system' && window.matchMedia?.('(prefers-color-scheme: light)').matches)
-        ? 'light' : 'dark';
+      let theme = saved === 'light' ? 'light' : 'dark';
+      if (saved === 'system') {
+        try {
+          if (window.matchMedia?.('(prefers-color-scheme: light)').matches) theme = 'light';
+        } catch {}
+      }
       const root = document.documentElement;
       root.dataset.appearance = saved;
       root.dataset.theme = theme;

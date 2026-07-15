@@ -42,30 +42,40 @@ export interface BrowserAppearanceEnvironment {
   document?: BrowserDocument;
 }
 
-function createMediaQuery(win: BrowserWindow): AppearanceMediaQuery | null {
-  let mediaQuery: BrowserMediaQueryList;
-  try {
-    if (typeof win.matchMedia !== 'function') return null;
-    mediaQuery = win.matchMedia(LIGHT_QUERY);
-  } catch {
-    return null;
-  }
-
+function createLazyMediaQuery(win: BrowserWindow): AppearanceMediaQuery {
+  let initialized = false;
+  let mediaQuery: BrowserMediaQueryList | null = null;
   const listenerAdapters = new Map<(matches: boolean) => void, (event: { matches: boolean }) => void>();
+
+  const getMediaQuery = (): BrowserMediaQueryList | null => {
+    if (initialized) return mediaQuery;
+    initialized = true;
+    try {
+      if (typeof win.matchMedia === 'function') mediaQuery = win.matchMedia(LIGHT_QUERY);
+    } catch {
+      mediaQuery = null;
+    }
+    return mediaQuery;
+  };
+
   return {
-    get matches(): boolean { return mediaQuery.matches; },
+    get matches(): boolean { return getMediaQuery()?.matches ?? false; },
     addChangeListener(listener): void {
       if (listenerAdapters.has(listener)) return;
+      const query = getMediaQuery();
+      if (!query) return;
       const adapter = (event: { matches: boolean }) => listener(event.matches);
+      if (typeof query.addEventListener === 'function') query.addEventListener('change', adapter);
+      else if (typeof query.addListener === 'function') query.addListener(adapter);
+      else return;
       listenerAdapters.set(listener, adapter);
-      if (typeof mediaQuery.addEventListener === 'function') mediaQuery.addEventListener('change', adapter);
-      else mediaQuery.addListener?.(adapter);
     },
     removeChangeListener(listener): void {
       const adapter = listenerAdapters.get(listener);
       if (!adapter) return;
-      if (typeof mediaQuery.removeEventListener === 'function') mediaQuery.removeEventListener('change', adapter);
-      else mediaQuery.removeListener?.(adapter);
+      const query = getMediaQuery();
+      if (typeof query?.removeEventListener === 'function') query.removeEventListener('change', adapter);
+      else query?.removeListener?.(adapter);
       listenerAdapters.delete(listener);
     },
   };
@@ -83,7 +93,7 @@ export function createBrowserAppearanceController(
 
   return createAppearanceController({
     storage,
-    mediaQuery: createMediaQuery(win),
+    mediaQuery: createLazyMediaQuery(win),
     dom: {
       setRootPreference: preference => { doc.documentElement.dataset.appearance = preference; },
       setRootTheme: theme => { doc.documentElement.dataset.theme = theme; },
