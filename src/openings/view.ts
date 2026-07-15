@@ -2147,7 +2147,7 @@ function renderSessionPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
-        on: { click: () => { _openingsCg = undefined; clearCevalPositionOverride('openings-live'); closeSession(); redraw(); } },
+        on: { click: () => { clearCevalPositionOverride('openings-live'); closeSession(); redraw(); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opening Tree'),
       h('span.openings__session-meta', node
@@ -2565,10 +2565,17 @@ function openingsNodeLastMove(node: OpeningTreeNode | null): Key[] | undefined {
 
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
   const fen = node?.fen ?? STANDARD_START_FEN;
+  let ownedCg: CgApi | undefined;
 
   return h('div.cg-wrap.openings__board', {
     key: 'openings-board',
     hook: {
+      prepatch: (oldVnode, vnode) => {
+        const insertedOwnerDestroy = oldVnode.data?.hook?.destroy;
+        if (insertedOwnerDestroy && vnode.data?.hook) {
+          vnode.data.hook.destroy = insertedOwnerDestroy;
+        }
+      },
       insert: (vnode) => {
         const dests = destsForFen(fen);
         _lastBoardFen = fen;
@@ -2656,6 +2663,8 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
             },
           },
         } as CgConfig);
+        const capturedCg = _openingsCg;
+        ownedCg = capturedCg;
         bindBoardResizeHandle(vnode.elm as HTMLElement);
         // Reset the diff-guard so the first push after a remount always fires
         // (Chessground starts with no shapes after makeChessground).
@@ -2682,11 +2691,14 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         syncOpeningsAutoShapes(node);
       },
       destroy: () => {
-        _lastBoardFen = '';
-        _lastOpeningsAutoShapesHash = null;
-        if (_openingsCg) {
-          _openingsCg.destroy();
+        const capturedCg = ownedCg;
+        if (!capturedCg) return;
+        ownedCg = undefined;
+        capturedCg.destroy();
+        if (_openingsCg === capturedCg) {
           _openingsCg = undefined;
+          _lastBoardFen = '';
+          _lastOpeningsAutoShapesHash = null;
         }
       },
     },
