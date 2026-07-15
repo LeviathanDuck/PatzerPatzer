@@ -243,6 +243,14 @@ function presetSelect(ctrl: EditorCtrl, state: EditorState): VNode {
 
 
 let _activeEditorSaveFlow: SaveFlowCtrl | null = null;
+let _editorSaveFlowGeneration = 0;
+let _editorSaveFlowPending = false;
+
+function discardEditorSaveFlow(): void {
+  _editorSaveFlowGeneration++;
+  _editorSaveFlowPending = false;
+  _activeEditorSaveFlow = null;
+}
 
 function editorSaveFlowContext(): SaveFlowContext {
   return {
@@ -257,7 +265,19 @@ function editorSaveFlowContext(): SaveFlowContext {
  * (destination/purpose/notes/uncategorized) from the modal onto the same single
  * saveCurrentToLibrary() write before navigating to the created item.
  */
-function persistEditorSaveFlowResult(legalFen: string, result: SaveFlowResult, redraw: () => void): void {
+function persistEditorSaveFlowResult(
+  legalFen: string,
+  result: SaveFlowResult,
+  owner: SaveFlowCtrl,
+  generation: number,
+  redraw: () => void,
+): void {
+  if (
+    _editorSaveFlowPending
+    || _activeEditorSaveFlow !== owner
+    || _editorSaveFlowGeneration !== generation
+  ) return;
+
   const baseTags = ['editor'];
   const metadata: Parameters<typeof saveCurrentToLibrary>[1] = {
     source: 'manual',
@@ -273,31 +293,39 @@ function persistEditorSaveFlowResult(legalFen: string, result: SaveFlowResult, r
   if (result.notes !== undefined) metadata.notes = result.notes;
   if (result.tags.length > 0) metadata.tags = [...baseTags, ...result.tags];
 
+  _editorSaveFlowPending = true;
   saveCurrentToLibrary(buildFromPositionPgn(legalFen), metadata)
     .then(item => {
+      if (_activeEditorSaveFlow !== owner || _editorSaveFlowGeneration !== generation) return;
+      discardEditorSaveFlow();
       writeHashRoute(`#/study/${item.id}`);
     })
     .catch(error => {
+      if (_activeEditorSaveFlow !== owner || _editorSaveFlowGeneration !== generation) return;
+      _editorSaveFlowPending = false;
       console.warn('[editor] save to Study Library failed', error);
-      showToast('Could not save to Study Library');
+      showToast('Could not save to Study Library. Check storage and try again.');
       redraw();
     });
 }
 
 /** Opens the universal save-flow modal for the "to Study" action (P2-SAVE-1). */
 function openEditorSaveFlow(legalFen: string, redraw: () => void): void {
-  _activeEditorSaveFlow = new SaveFlowCtrl({
+  discardEditorSaveFlow();
+  const generation = _editorSaveFlowGeneration;
+  const flow = new SaveFlowCtrl({
     itemType: 'game',
     context: editorSaveFlowContext(),
     onResolve: result => {
-      _activeEditorSaveFlow = null;
-      persistEditorSaveFlowResult(legalFen, result, redraw);
+      persistEditorSaveFlowResult(legalFen, result, flow, generation, redraw);
     },
     onCancel: () => {
-      _activeEditorSaveFlow = null;
+      if (_activeEditorSaveFlow !== flow || _editorSaveFlowGeneration !== generation) return;
+      discardEditorSaveFlow();
       redraw();
     },
   }, redraw);
+  _activeEditorSaveFlow = flow;
   redraw();
 }
 
@@ -311,7 +339,7 @@ function openEditorSaveFlow(legalFen: string, redraw: () => void): void {
 
 
 export function resetEditorSaveFlow(): void {
-  _activeEditorSaveFlow = null;
+  discardEditorSaveFlow();
 }
 
 /**
