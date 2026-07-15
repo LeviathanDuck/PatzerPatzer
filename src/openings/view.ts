@@ -8,6 +8,7 @@ import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
+import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import { parseFen, makeFen } from 'chessops/fen';
@@ -2805,18 +2806,27 @@ export function syncOpeningsBoard(_redraw: () => void): void {
   const node = sessionNode();
   if (!_openingsCg || !node) return;
   const fen = node.fen;
+  const lastMove = node.uci
+    ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key]
+    : undefined;
+  const currentLastMove = _openingsCg.state.lastMove;
+  const ownsLastMove = lastMove === undefined
+    ? currentLastMove === undefined
+    : currentLastMove?.length === lastMove.length
+      && currentLastMove.every((key, index) => key === lastMove[index]);
   explorerCtrl.clearStaleHovering(fen);
-  // Skip if the FEN hasn't changed since the last sync.
-  if (fen === _lastBoardFen) return;
+  // A same-FEN board owner (for example import animation) may still replace lastMove.
+  if (fen === _lastBoardFen && ownsLastMove) return;
   _lastBoardFen = fen;
 
+  // Chessground's runtime config treats a present undefined lastMove as an explicit clear.
   _openingsCg.set({
     fen,
     animation: chessBoardAnimationConfig(),
     orientation: boardOrientation(),
     movable: { dests: destsForFen(fen), color: 'both' },
-    ...(node.uci ? { lastMove: [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key] } : {}),
-  });
+    lastMove,
+  } as CgConfig);
   syncOpeningsAutoShapes(node);
   // Update FEN override and schedule engine eval after settle.
   scheduleOpeningsEngineEval(fen);
