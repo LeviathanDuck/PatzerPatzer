@@ -166,6 +166,19 @@ export function candidateToDefinition(
 // ---------------------------------------------------------------------------
 
 /**
+ * Canonical persisted/session identity for an LFYM candidate.
+ *
+ * TreePath is only unique inside one game, so game-backed candidates must include
+ * their source game id. Legacy/null-game candidates retain the existing deterministic
+ * FEN + best-move fallback used by retroCandidateToDefinition.
+ */
+export function retroCandidateDefinitionId(candidate: RetroCandidate): string {
+  return candidate.gameId
+    ? `${candidate.gameId}_${candidate.path}`
+    : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
+}
+
+/**
  * Convert a RetroCandidate (from the Learn From Your Mistakes session) into a
  * canonical UserLibraryPuzzleDefinition.
  *
@@ -185,10 +198,7 @@ export function retroCandidateToDefinition(
     sourcePgn?: string;
   },
 ): UserLibraryPuzzleDefinition {
-  // Stable id: prefix with source game id when available, fall back to fen hash.
-  const idBase = candidate.gameId
-    ? `${candidate.gameId}_${candidate.path}`
-    : `user_${simpleHash(candidate.fenBefore + candidate.bestMove)}`;
+  const idBase = retroCandidateDefinitionId(candidate);
 
   // Solution line (Decision 8 / BUG-2026-07-10-034 — save-time truncation policy, LOCKED):
   //  - If the PV head disagrees with the strict best move, the line cannot be trusted as the

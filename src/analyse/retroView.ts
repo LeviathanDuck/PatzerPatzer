@@ -23,7 +23,7 @@ import { playUciMove } from '../board/index';
 import { setRetroVisibleEngineEnabled, resetRetroVisibleEngineUi } from '../ceval/view';
 import { syncArrow, evalCache } from '../engine/ctrl';
 import { evalWinChances } from '../engine/winchances';
-import { retroCandidateToDefinition } from '../puzzles/adapters';
+import { retroCandidateDefinitionId, retroCandidateToDefinition } from '../puzzles/adapters';
 import { savePuzzleDefinition, saveAttempt, summarizeBulkSaveResults } from '../puzzles/puzzleDb';
 import type { PuzzleAttempt, FailureReason, SolveResult } from '../puzzles/types';
 import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
@@ -479,11 +479,11 @@ function renderReasonNote(
 // --- Save to Library ---
 
 // Tracks which candidates have been saved during this page session to prevent duplicates.
-// Keyed by candidate path (unique per game position).
-const _savedPaths = new Set<string>();
+// TreePath repeats across games, so this uses the adapter's canonical persisted identity.
+const _savedDefinitionIds = new Set<string>();
 
-// Tracks paths that are currently showing the "Saved!" confirmation, to revert after timeout.
-const _savingConfirm = new Set<string>();
+// Tracks canonical definition ids currently showing "Saved!", to revert after timeout.
+const _savingConfirmDefinitionIds = new Set<string>();
 
 
 
@@ -545,7 +545,7 @@ function persistLfymSaveFlowResult(
   if (result.notes !== undefined) def.saveNotes = result.notes;
   def.savedFrom = {
     gameId: cand.gameId,
-    ply: cand.ply,
+    ply: Math.max(0, cand.ply - 1),
     fen: cand.fenBefore,
     source: 'lfym',
   };
@@ -557,10 +557,11 @@ function persistLfymSaveFlowResult(
       redraw();
       return;
     }
-    _savedPaths.add(cand.path);
-    _savingConfirm.add(cand.path);
+    const definitionId = retroCandidateDefinitionId(cand);
+    _savedDefinitionIds.add(definitionId);
+    _savingConfirmDefinitionIds.add(definitionId);
     redraw();
-    setTimeout(() => { _savingConfirm.delete(cand.path); redraw(); }, 2000);
+    setTimeout(() => { _savingConfirmDefinitionIds.delete(definitionId); redraw(); }, 2000);
     // Persist retro outcome as first-attempt record.
     if (outcome) {
       saveAttempt(retroOutcomeToAttempt(def.id, outcome)).catch(e =>
@@ -610,8 +611,9 @@ function renderSaveToLibrary(
   opponentName: string | undefined,
   redraw: () => void,
 ): VNode {
-  const alreadySaved = _savedPaths.has(cand.path);
-  const showingConfirm = _savingConfirm.has(cand.path);
+  const definitionId = retroCandidateDefinitionId(cand);
+  const alreadySaved = _savedDefinitionIds.has(definitionId);
+  const showingConfirm = _savingConfirmDefinitionIds.has(definitionId);
 
   if (alreadySaved && !showingConfirm) {
     return h('div.retro-save', h('span.retro-save__done', 'Saved'));
@@ -633,11 +635,44 @@ let _bulkSaveState: 'idle' | 'saving' | 'done' = 'idle';
 // _bulkSaveFailed = rejected saves. Drives the honest done-state UI below.
 let _bulkSaveCount = 0;
 let _bulkSaveFailed = 0;
+// Bulk lifecycle belongs to one RetroCtrl session and its canonical candidate identities.
+// The controller boundary resets same-game restarts/rebuilds; the canonical identity boundary
+// prevents equal TreePaths in different games from sharing Saving/Saved UI. The generation also
+// stale-drops completion/timer callbacks from a superseded session.
+let _bulkSaveOwner: RetroCtrl | null = null;
+let _bulkSaveOwnerIdentity = '';
+let _bulkSaveGeneration = 0;
+
+function bulkSaveOwnerIdentity(retro: RetroCtrl): string {
+  // `candidates` is canonical on production RetroCtrl. Fall back to the same canonical failed
+  // set for older structural test/controllers that predate the readonly field.
+  const candidates = retro.candidates ?? retro.getFailedCandidates();
+  return JSON.stringify(candidates.map(retroCandidateDefinitionId));
+}
+
+function bindBulkSaveLifecycle(retro: RetroCtrl): number {
+  const ownerIdentity = bulkSaveOwnerIdentity(retro);
+  if (_bulkSaveOwner !== retro || _bulkSaveOwnerIdentity !== ownerIdentity) {
+    _bulkSaveOwner = retro;
+    _bulkSaveOwnerIdentity = ownerIdentity;
+    _bulkSaveState = 'idle';
+    _bulkSaveCount = 0;
+    _bulkSaveFailed = 0;
+    _bulkSaveGeneration += 1;
+  }
+  return _bulkSaveGeneration;
+}
+
+function ownsBulkSaveLifecycle(retro: RetroCtrl, generation: number): boolean {
+  return _bulkSaveOwner === retro
+    && _bulkSaveOwnerIdentity === bulkSaveOwnerIdentity(retro)
+    && _bulkSaveGeneration === generation;
+}
 
 /**
  * Renders a "Save N failed to Library" button at session end.
  * Bulk-saves all candidates the user got wrong, viewed, or skipped.
- * Reuses _savedPaths to skip individually-saved candidates.
+ * Reuses canonical definition ids to skip individually-saved candidates.
  */
 /**
  * Map a retro outcome to a first-attempt PuzzleAttempt record.
@@ -687,9 +722,12 @@ function renderBulkSaveToLibrary(
   retro: RetroCtrl,
   redraw: () => void,
 ): VNode | null {
+  // Bind before inspecting module-level state so a newly-active session can never render the
+  // previous session's Saving/Saved result or have its own canonical unsaved set suppressed.
+  const bulkSaveGeneration = bindBulkSaveLifecycle(retro);
   const failed = retro.getFailedCandidates();
   // Filter out candidates that were already individually saved during the session.
-  const unsaved = failed.filter(c => !_savedPaths.has(c.path));
+  const unsaved = failed.filter(c => !_savedDefinitionIds.has(retroCandidateDefinitionId(c)));
 
   if (_bulkSaveState === 'done') {
 
@@ -740,7 +778,7 @@ function renderBulkSaveToLibrary(
             console.warn('[retro-bulk-save] definition save rejected', c.path, result.reason);
             return result;
           }
-          _savedPaths.add(c.path);
+          _savedDefinitionIds.add(retroCandidateDefinitionId(c));
           // Persist the retro outcome as a first-attempt record so retry/due logic knows
           // this puzzle was already encountered and what happened.
           if (outcome) {
@@ -752,6 +790,7 @@ function renderBulkSaveToLibrary(
         });
       });
       Promise.all(saves).then(results => {
+        if (!ownsBulkSaveLifecycle(retro, bulkSaveGeneration)) return;
         const summary = summarizeBulkSaveResults(results);
         _bulkSaveCount = summary.saved;
         _bulkSaveFailed = summary.failed;
@@ -759,6 +798,7 @@ function renderBulkSaveToLibrary(
         redraw();
         // Revert to quiet state after 3 seconds (re-offers the button for any failures).
         setTimeout(() => {
+          if (!ownsBulkSaveLifecycle(retro, bulkSaveGeneration)) return;
           _bulkSaveState = 'idle';
           redraw();
         }, 3000);
