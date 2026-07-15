@@ -2557,6 +2557,12 @@ function renderOpeningsMoveNavBar(
   });
 }
 
+function openingsNodeLastMove(node: OpeningTreeNode | null): Key[] | undefined {
+  return node?.uci
+    ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key]
+    : undefined;
+}
+
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
   const fen = node?.fen ?? STANDARD_START_FEN;
 
@@ -2570,6 +2576,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         if (engineEnabled) evalCurrentPosition();
         _openingsCg = makeChessground(vnode.elm as HTMLElement, {
           fen,
+          lastMove: openingsNodeLastMove(node),
           orientation: boardOrientation(),
           animation: chessBoardAnimationConfig(),
           viewOnly: false,
@@ -2648,7 +2655,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
               }
             },
           },
-        });
+        } as CgConfig);
         bindBoardResizeHandle(vnode.elm as HTMLElement);
         // Reset the diff-guard so the first push after a remount always fires
         // (Chessground starts with no shapes after makeChessground).
@@ -2806,9 +2813,7 @@ export function syncOpeningsBoard(_redraw: () => void): void {
   const node = sessionNode();
   if (!_openingsCg || !node) return;
   const fen = node.fen;
-  const lastMove = node.uci
-    ? [node.uci.slice(0, 2) as Key, node.uci.slice(2, 4) as Key]
-    : undefined;
+  const lastMove = openingsNodeLastMove(node);
   const currentLastMove = _openingsCg.state.lastMove;
   const ownsLastMove = lastMove === undefined
     ? currentLastMove === undefined
