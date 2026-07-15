@@ -13,7 +13,7 @@ import {
   getGameSummary, listGameSummaries, loadAnalysisFromIdb, saveGameSummary,
 } from '../idb/index';
 import { CURRENT_GAME_SUMMARY_EXTRACTION_VERSION } from './types';
-import type { GameSummary } from './types';
+import type { GameSummary, GameSummaryBackfillResult } from './types';
 
 // Structural subset of eval cache / StoredNodeEntry used here.
 type EvalEntry = {
@@ -247,50 +247,78 @@ function getUserColorFromGame(game: ImportedGame): 'white' | 'black' | null {
 }
 
 /**
- * Backfill missing GameSummary records for games that have stored analysis but no summary.
- * Runs on app startup; safe to call on every load since it skips games that already
- * have a summary.  Does not re-run engine analysis.
+ * Backfill missing or stale GameSummary records from stored analysis.
+ * Runs on app startup; safe to call on every load since it skips current and newer
+ * summaries. Does not re-run engine analysis.
  *
  * @param games  - all imported games from the game library
- * @returns number of summaries written
+ * @returns classified migration outcomes
  */
-export async function backfillGameSummaries(games: ImportedGame[]): Promise<number> {
-  if (games.length === 0) return 0;
+export async function backfillGameSummaries(
+  games: ImportedGame[],
+): Promise<GameSummaryBackfillResult> {
+  const result: GameSummaryBackfillResult = {
+    created: 0,
+    rebuilt: 0,
+    skippedCurrent: 0,
+    skippedNewer: 0,
+    unrebuildable: 0,
+  };
+  if (games.length === 0) return result;
 
-  // Determine which gameIds already have summaries.
   const existing = await listGameSummaries();
-  const existingIds = new Set(existing.map(s => s.gameId));
+  const existingById = new Map(existing.map(summary => [summary.gameId, summary]));
 
-  let count = 0;
   for (const game of games) {
-    if (existingIds.has(game.id)) continue; // already has a summary — skip
+    const existingSummary = existingById.get(game.id);
+    const version = existingSummary?.extractionVersion ?? 1;
+    if (version === CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      result.skippedCurrent++;
+      continue;
+    }
+    if (version > CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      result.skippedNewer++;
+      continue;
+    }
 
     const stored = await loadAnalysisFromIdb(game.id);
-    if (!stored || stored.status === 'idle') continue; // no analysis data — skip
-    if (stored.analysisVersion < 2) continue; // path-keyed format required
-
-    // Re-check: another concurrent tab may have written the summary by now.
-    const alreadyWritten = await getGameSummary(game.id);
-    if (alreadyWritten) { existingIds.add(game.id); continue; }
+    if (!stored || stored.status === 'idle' || stored.analysisVersion < 2) {
+      result.unrebuildable++;
+      continue;
+    }
 
     const userColor = getUserColorFromGame(game);
-    if (!userColor) continue; // cannot determine player side without username
+    if (!userColor) {
+      result.unrebuildable++;
+      continue;
+    }
 
     let mainline: TreeNode[];
     try {
       const root = pgnToTree(game.pgn);
       mainline = mainlineNodeList(root);
     } catch {
-      continue; // unparseable PGN — skip silently
+      result.unrebuildable++;
+      continue;
     }
 
     const getEval = (path: string) => stored.nodes[path];
     const moments = detectMissedMoments(mainline, new Map(Object.entries(stored.nodes)), userColor);
 
     const summary = extractGameSummary(game, mainline, getEval, userColor, moments, stored.analysisDepth);
+    const latest = await getGameSummary(game.id);
+    const latestVersion = latest?.extractionVersion ?? (latest ? 1 : 0);
+    if (latestVersion === CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      result.skippedCurrent++;
+      continue;
+    }
+    if (latestVersion > CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      result.skippedNewer++;
+      continue;
+    }
     await saveGameSummary(summary);
-    existingIds.add(game.id);
-    count++;
+    if (existingSummary) result.rebuilt++;
+    else result.created++;
   }
-  return count;
+  return result;
 }
