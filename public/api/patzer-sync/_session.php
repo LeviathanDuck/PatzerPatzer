@@ -67,9 +67,13 @@ function patzer_session_config_is_valid(array $config): bool {
     if (!is_array($expiryBounds) || array_is_list($expiryBounds) && $expiryBounds !== []) return false;
     foreach ($expiryBounds as $state => $bound) {
         if (!in_array($state, ['R4-disposable-auth-probe','R6-isolated-test','R8-controlled-beta'], true) || !is_string($bound)) return false;
-        try { $parsed = new DateTimeImmutable($bound, new DateTimeZone('UTC')); }
-        catch (Throwable $error) { return false; }
-        if ($parsed->format(DateTimeInterface::ATOM) !== $bound) return false;
+        if (preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|\+00:00)$/D', $bound) !== 1) return false;
+        $normalizedBound = substr($bound, -1) === 'Z' ? substr($bound, 0, -1) . '+00:00' : $bound;
+        $parsed = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i:sP', $normalizedBound, new DateTimeZone('UTC'));
+        $parseErrors = DateTimeImmutable::getLastErrors();
+        if ($parsed === false ||
+            is_array($parseErrors) && ((int)$parseErrors['warning_count'] !== 0 || (int)$parseErrors['error_count'] !== 0) ||
+            $parsed->format(DateTimeInterface::ATOM) !== $normalizedBound) return false;
     }
     return true;
 }
