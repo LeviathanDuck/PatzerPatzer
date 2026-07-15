@@ -7,6 +7,7 @@
   <meta name="description" content="Review, analyze, and improve your chess games with Patzer Pro." />
   <meta name="application-name" content="Patzer Pro" />
   <meta name="theme-color" content="#101212" />
+  <meta name="color-scheme" content="dark" />
   <meta property="og:site_name" content="Patzer Pro" />
   <meta property="og:title" content="Patzer Pro" />
   <meta property="og:description" content="Review, analyze, and improve your chess games with Patzer Pro." />
@@ -23,6 +24,25 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/images/patzer-pro-review-lens-logo-package/web/apple-touch-icon.png" />
   <link rel="manifest" href="/images/patzer-pro-review-lens-logo-package/web/site.webmanifest" />
   <link rel="prefetch" href="/stockfish-web/nn-4ca89e4b3abf.nnue" />
+  <script data-patzer-appearance-prepaint>
+    (() => {
+      let saved = 'dark';
+      try {
+        const value = window.localStorage.getItem('patzer.appearance.v1');
+        if (value === 'dark' || value === 'light' || value === 'system') saved = value;
+      } catch {}
+      const theme = saved === 'light' ||
+        (saved === 'system' && window.matchMedia?.('(prefers-color-scheme: light)').matches)
+        ? 'light' : 'dark';
+      const root = document.documentElement;
+      root.dataset.appearance = saved;
+      root.dataset.theme = theme;
+      root.style.colorScheme = theme;
+      document.querySelector('meta[name="theme-color"]')
+        ?.setAttribute('content', theme === 'light' ? '#f3efe6' : '#101212');
+      document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', theme);
+    })();
+  </script>
   <link rel="stylesheet" href="/css/main.css?v=15bc6773bb7c" />
 </head>
 <body>
