@@ -8,7 +8,10 @@ import type { PuzzleCandidate, TreeNode } from '../tree/types';
 import { classifyLoss, type MoveLabel } from '../engine/winchances';
 import type { RetroOutcome } from '../analyse/retroCtrl';
 import { parseQuestionnaireFromPgn } from '../analyse/questionnaire/model';
-import type { GameSummary } from '../stats/types';
+import {
+  CURRENT_GAME_SUMMARY_EXTRACTION_VERSION,
+  type GameSummary,
+} from '../stats/types';
 import { classifyOpening } from '../openings/eco';
 import type { RemoteSyncItem, RemoteSyncStoreName } from '../sync/remoteSync';
 import {
@@ -2975,6 +2978,73 @@ export async function loadReviewFailureRecords(): Promise<ReviewFailureRecord[]>
 }
 
 // --- Game summaries ---
+
+export type GameSummaryBackfillSaveResult =
+  | 'saved'
+  | 'skipped-current'
+  | 'skipped-newer'
+  | 'failed';
+
+/**
+ * Backfill-only summary persistence. The version read and conditional put share one readwrite
+ * transaction so a current or future summary cannot be downgraded between those operations.
+ * Normal review-completion writes continue to use saveGameSummary() unchanged below.
+ */
+export async function saveGameSummaryForBackfill(
+  summary: GameSummary,
+): Promise<GameSummaryBackfillSaveResult> {
+  if (!summary.gameId) return 'failed';
+  try {
+    const db = await openGameDb();
+    const tx = db.transaction('game-summaries', 'readwrite');
+    const store = tx.objectStore('game-summaries');
+    const existing = await new Promise<GameSummary | undefined>((resolve, reject) => {
+      const req = store.get(summary.gameId);
+      req.onsuccess = () => resolve(req.result as GameSummary | undefined);
+      req.onerror = () => reject(recordReqFailure(req, 'game-summaries', 'read', summary.gameId));
+    });
+    const storedVersion = existing === undefined
+      ? 0
+      : Number.isFinite(existing.extractionVersion)
+        ? existing.extractionVersion!
+        : 1;
+
+    if (storedVersion === CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      await txDone(tx);
+      return 'skipped-current';
+    }
+    if (storedVersion > CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+      await txDone(tx);
+      return 'skipped-newer';
+    }
+
+    store.put(summary, summary.gameId);
+    await txDone(tx);
+    const analyzedAt = Date.parse(summary.analyzedAt);
+    enqueueMainDbPutClearingDeletedAt(
+      'game-summaries',
+      summary.gameId,
+      summary,
+      Number.isNaN(analyzedAt) ? Date.now() : analyzedAt,
+    );
+    return 'saved';
+  } catch (e) {
+    console.warn('[idb] game-summary backfill save failed', e);
+    record({
+      kind: 'idb',
+      severity: Severity.Error,
+      sourceTag: 'idb',
+      message: 'IDB write failed: saveGameSummaryForBackfill on game-summaries',
+      metadata: {
+        storeName: 'game-summaries',
+        operation: 'write',
+        errorName: (e as { name?: string } | null | undefined)?.name ?? 'UnknownError',
+      },
+      redactionClass: 'safe',
+    });
+    return 'failed';
+  }
+}
 
 export async function saveGameSummary(summary: GameSummary): Promise<void> {
   if (!summary.gameId) return;

@@ -10,7 +10,7 @@ import type { TreeNode } from '../tree/types';
 import { pgnToTree } from '../tree/pgn';
 import { mainlineNodeList } from '../tree/ops';
 import {
-  getGameSummary, listGameSummaries, loadAnalysisFromIdb, saveGameSummary,
+  listGameSummaries, loadAnalysisFromIdb, saveGameSummaryForBackfill,
 } from '../idb/index';
 import { CURRENT_GAME_SUMMARY_EXTRACTION_VERSION } from './types';
 import type { GameSummary, GameSummaryBackfillResult } from './types';
@@ -163,6 +163,8 @@ export function extractGameSummary(
       clockSampleCount++;
       if (currentClock < 3000) timeTroubleMoves++;
       previousUserClock = currentClock;
+    } else {
+      previousUserClock = undefined;
     }
   }
 
@@ -282,7 +284,7 @@ export async function backfillGameSummaries(
     }
 
     const stored = await loadAnalysisFromIdb(game.id);
-    if (!stored || stored.status === 'idle' || stored.analysisVersion !== 2) {
+    if (!stored || stored.status !== 'complete' || stored.analysisVersion !== 2) {
       result.unrebuildable++;
       continue;
     }
@@ -302,21 +304,37 @@ export async function backfillGameSummaries(
       continue;
     }
 
+    const mainlineFenByPath = new Map<string, string>();
+    let mainlinePath = '';
+    for (let index = 0; index < mainline.length; index++) {
+      const node = mainline[index]!;
+      if (index > 0) mainlinePath += node.id;
+      mainlineFenByPath.set(mainlinePath, node.fen);
+    }
+    const storedNodesMatchMainline = Object.entries(stored.nodes).every(([key, entry]) =>
+      key === entry.path && mainlineFenByPath.get(key) === entry.fen);
+    if (!storedNodesMatchMainline) {
+      result.unrebuildable++;
+      continue;
+    }
+
     const getEval = (path: string) => stored.nodes[path];
     const moments = detectMissedMoments(mainline, new Map(Object.entries(stored.nodes)), userColor);
 
     const summary = extractGameSummary(game, mainline, getEval, userColor, moments, stored.analysisDepth);
-    const latest = await getGameSummary(game.id);
-    const latestVersion = latest?.extractionVersion ?? (latest ? 1 : 0);
-    if (latestVersion === CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+    const saveResult = await saveGameSummaryForBackfill(summary);
+    if (saveResult === 'skipped-current') {
       result.skippedCurrent++;
       continue;
     }
-    if (latestVersion > CURRENT_GAME_SUMMARY_EXTRACTION_VERSION) {
+    if (saveResult === 'skipped-newer') {
       result.skippedNewer++;
       continue;
     }
-    await saveGameSummary(summary);
+    if (saveResult === 'failed') {
+      result.unrebuildable++;
+      continue;
+    }
     if (existingSummary) result.rebuilt++;
     else result.created++;
   }
