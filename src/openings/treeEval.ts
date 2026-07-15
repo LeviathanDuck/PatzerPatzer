@@ -2,9 +2,11 @@ import {
   acquireTreeEvalLease,
   isBulkReviewActive,
   type TreeEvalEngineLease,
+  type TreeEvalProtocolMessage,
+  type TreeEvalSearchIdentity,
 } from '../engine/reviewQueue';
 import { evalWinChances } from '../engine/winchances';
-import { fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
+import { fenOnlyPositionContext, normalizeEngineFen, type EnginePositionContext } from '../engine/positionContext';
 import type { OpeningTreeNode } from './tree';
 
 export interface TreeEvalEntry {
@@ -33,6 +35,7 @@ interface TreeEvalRun {
   position: EnginePositionContext;
   depth: number;
   lease: TreeEvalEngineLease | null;
+  searchIdentity: TreeEvalSearchIdentity | null;
   latest: TreeEvalEntry | null;
   finished: boolean;
   commitOnFinish: boolean;
@@ -211,6 +214,7 @@ async function evaluateFenWithCacheMode(
       position: options.position,
       depth,
       lease: null,
+      searchIdentity: null,
       latest: null,
       finished: false,
       commitOnFinish: options.commitOnFinish,
@@ -222,7 +226,10 @@ async function evaluateFenWithCacheMode(
 
     void (async () => {
       const lease = await acquireTreeEvalLease({
-        onMessage: line => handleTreeEvalLine(run, line),
+        runToken: serial,
+        expectedFen: run.fen,
+        onSearchIssued: identity => { run.searchIdentity = identity; },
+        onMessage: message => handleTreeEvalLine(run, message),
         onPreempt: () => finishRun(run, null, false),
       });
       if (run.finished || activeRun !== run || serial !== runSerial) {
@@ -236,6 +243,9 @@ async function evaluateFenWithCacheMode(
       run.lease = lease;
       lease.setPositionContext(run.position);
       lease.go(depth, 1);
+      if (!run.searchIdentity || run.searchIdentity.fen !== run.fen) {
+        finishRun(run, null, true);
+      }
     })();
   });
 }
@@ -334,7 +344,7 @@ function waitForDeepeningDelay(sweepSerial: number): Promise<boolean> {
 }
 
 function normalizeFenKey(fen: string): string {
-  return fen.trim().replace(/\s+/g, ' ');
+  return normalizeEngineFen(fen) ?? fen.trim().replace(/\s+/g, ' ');
 }
 
 function toResult(entry: TreeEvalEntry): TreeEvalResult {
@@ -362,8 +372,22 @@ function finishRun(run: TreeEvalRun | null, result: TreeEvalEntry | null, stopEn
   }
 }
 
-function handleTreeEvalLine(run: TreeEvalRun, line: string): void {
+function treeEvalSearchIdentityMatches(
+  expected: TreeEvalSearchIdentity | null,
+  received: TreeEvalSearchIdentity,
+): boolean {
+  return expected !== null
+    && expected.searchToken === received.searchToken
+    && expected.leaseToken === received.leaseToken
+    && expected.runToken === received.runToken
+    && expected.fen === received.fen
+    && expected.contextKey === received.contextKey;
+}
+
+function handleTreeEvalLine(run: TreeEvalRun, message: TreeEvalProtocolMessage): void {
   if (run.finished || activeRun !== run) return;
+  if (!treeEvalSearchIdentityMatches(run.searchIdentity, message.search) || message.search.fen !== run.fen) return;
+  const line = message.line;
   const parts = line.trim().split(/\s+/);
   if (parts[0] === 'info') {
     const parsed = parseTreeEvalInfo(parts, run.fen);

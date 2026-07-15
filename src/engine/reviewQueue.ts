@@ -82,6 +82,7 @@ import {
   contextFromNodeList,
   engineFenEquals,
   engineFenHash,
+  normalizeEngineFen,
   replayEnginePositionContext,
   type EnginePositionContext,
   type EnginePositionReplayFailureReason,
@@ -170,7 +171,20 @@ let pendingReadyDispatch: ReviewDispatchIdentity | undefined;
 
 let reviewDispatchEpoch = 0;
 
-export type ReviewProtocolMessageHandler = (line: string) => void;
+export interface TreeEvalSearchIdentity {
+  readonly searchToken: number;
+  readonly leaseToken: number;
+  readonly runToken: number;
+  readonly fen: string;
+  readonly contextKey: string;
+}
+
+export interface TreeEvalProtocolMessage {
+  line: string;
+  search: TreeEvalSearchIdentity;
+}
+
+export type ReviewProtocolMessageHandler = (message: TreeEvalProtocolMessage) => void;
 
 export interface TreeEvalEngineLease {
   setPositionContext(context: EnginePositionContext): void;
@@ -181,14 +195,138 @@ export interface TreeEvalEngineLease {
 
 interface TreeEvalLeaseState {
   token: symbol;
+  leaseToken: number;
+  runToken: number;
+  expectedFen: string;
+  activeSearch: TreeEvalSearchIdentity | null;
+  onSearchIssued: (identity: TreeEvalSearchIdentity) => void;
   onMessage: ReviewProtocolMessageHandler;
   onPreempt: (reason: string) => void;
 }
 
 let treeEvalLease: TreeEvalLeaseState | null = null;
+let treeEvalLeaseToken = 0;
+let treeEvalLeaseRequestSerial = 0;
+const treeEvalSearchIdentities = new Map<number, TreeEvalSearchIdentity>();
+const treeEvalIdentityDropDiagnostics = new Set<number>();
+let treeEvalUnownedDropLoggedAt = 0;
 let treeEvalPreemptDrainActive = false;
 let treeEvalPreemptDrainTimer: ReturnType<typeof setTimeout> | null = null;
 const TREE_EVAL_PREEMPT_DRAIN_TIMEOUT_MS = 5_000;
+let treeEvalSuccessorDrainActive = false;
+let treeEvalSuccessorDrainTimer: ReturnType<typeof setTimeout> | null = null;
+const treeEvalSuccessorDrainWaiters = new Set<(drained: boolean) => void>();
+const TREE_EVAL_SUCCESSOR_DRAIN_TIMEOUT_MS = 4_000;
+
+function outstandingTreeEvalSearches(): number {
+  return reviewSearchOwner.pending.filter(descriptor => descriptor.kind === 'tree-eval').length;
+}
+
+function treeEvalContextKey(context: EnginePositionContext): string {
+  return [context.surface, context.source, context.path ?? '', context.reason ?? ''].join('|');
+}
+
+function treeEvalIdentityMatches(left: TreeEvalSearchIdentity | null, right: TreeEvalSearchIdentity | null): boolean {
+  return left !== null
+    && right !== null
+    && left.searchToken === right.searchToken
+    && left.leaseToken === right.leaseToken
+    && left.runToken === right.runToken
+    && left.fen === right.fen
+    && left.contextKey === right.contextKey;
+}
+
+function recordTreeEvalIdentityDrop(
+  reason: 'missing-descriptor' | 'missing-search-identity' | 'stale-search' | 'lease-mismatch',
+  descriptor: ReviewSearchDescriptor | null,
+  identity: TreeEvalSearchIdentity | null,
+): void {
+  const diagnosticToken = descriptor?.token ?? identity?.searchToken ?? null;
+  if (diagnosticToken !== null) {
+    if (treeEvalIdentityDropDiagnostics.has(diagnosticToken)) return;
+    treeEvalIdentityDropDiagnostics.add(diagnosticToken);
+  } else {
+    const now = Date.now();
+    if (now - treeEvalUnownedDropLoggedAt < 5_000) return;
+    treeEvalUnownedDropLoggedAt = now;
+  }
+  record({
+    kind: 'engine',
+    severity: Severity.Info,
+    source: 'engine.reviewQueue',
+    sourceTag: 'review-engine',
+    message: 'tree-eval-search-identity-drop',
+    metadata: {
+      role: reviewDiagnosticRole(),
+      reason,
+      searchToken: diagnosticToken,
+      searchedFenHash: engineFenHash(descriptor?.fen ?? identity?.fen ?? ''),
+      outstandingTreeEvalSearches: outstandingTreeEvalSearches(),
+      timestamp: Date.now(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+function clearTreeEvalSuccessorDrain(): void {
+  if (treeEvalSuccessorDrainTimer !== null) {
+    clearTimeout(treeEvalSuccessorDrainTimer);
+    treeEvalSuccessorDrainTimer = null;
+  }
+  treeEvalSuccessorDrainActive = false;
+}
+
+function finishTreeEvalSuccessorDrain(drained: boolean): void {
+  if (!treeEvalSuccessorDrainActive) return;
+  clearTreeEvalSuccessorDrain();
+  if (!drained) {
+    record({
+      kind: 'engine',
+      severity: Severity.Warn,
+      source: 'engine.reviewQueue',
+      sourceTag: 'review-engine',
+      message: 'tree-eval-successor-drain-timeout',
+      metadata: {
+        role: reviewDiagnosticRole(),
+        outstandingTreeEvalSearches: outstandingTreeEvalSearches(),
+        timeoutMs: TREE_EVAL_SUCCESSOR_DRAIN_TIMEOUT_MS,
+        timestamp: Date.now(),
+      },
+      redactionClass: 'safe',
+    });
+  }
+  for (const resolve of treeEvalSuccessorDrainWaiters) resolve(drained);
+  treeEvalSuccessorDrainWaiters.clear();
+}
+
+function beginTreeEvalSuccessorDrain(): boolean {
+  if (treeEvalSuccessorDrainActive || outstandingTreeEvalSearches() === 0) return false;
+  treeEvalSuccessorDrainActive = true;
+  treeEvalSuccessorDrainTimer = setTimeout(
+    () => finishTreeEvalSuccessorDrain(false),
+    TREE_EVAL_SUCCESSOR_DRAIN_TIMEOUT_MS,
+  );
+  return true;
+}
+
+function waitForTreeEvalSuccessorDrain(): Promise<boolean> {
+  if (outstandingTreeEvalSearches() === 0) return Promise.resolve(true);
+  beginTreeEvalSuccessorDrain();
+  return new Promise(resolve => treeEvalSuccessorDrainWaiters.add(resolve));
+}
+
+function maybeFinishTreeEvalSuccessorDrain(): void {
+  if (treeEvalSuccessorDrainActive && outstandingTreeEvalSearches() === 0) {
+    finishTreeEvalSuccessorDrain(true);
+  }
+}
+
+function abandonTreeEvalSuccessorDrain(): void {
+  if (!treeEvalSuccessorDrainActive && treeEvalSuccessorDrainWaiters.size === 0) return;
+  clearTreeEvalSuccessorDrain();
+  for (const resolve of treeEvalSuccessorDrainWaiters) resolve(false);
+  treeEvalSuccessorDrainWaiters.clear();
+}
 
 function clearTreeEvalPreemptDrain(): void {
   if (treeEvalPreemptDrainTimer !== null) {
@@ -468,24 +606,54 @@ function preemptTreeEvalLease(reason: string): boolean {
 }
 
 export async function acquireTreeEvalLease(options: {
+  runToken: number;
+  expectedFen: string;
+  onSearchIssued: (identity: TreeEvalSearchIdentity) => void;
   onMessage: ReviewProtocolMessageHandler;
   onPreempt: (reason: string) => void;
 }): Promise<TreeEvalEngineLease | null> {
-  if (reviewEngineFailed || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
+  const requestSerial = ++treeEvalLeaseRequestSerial;
+  const expectedFen = normalizeEngineFen(options.expectedFen);
+  if (!expectedFen || reviewEngineFailed || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
   if (!reviewEngineReady) {
     if (!reviewEngineInitStarted) void initReviewEngine('/stockfish-web');
     const ready = await waitForReviewEngineReady();
     if (!ready) return null;
   }
-  if (reviewEngineFailed || !reviewEngineReady || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
+  // Lichess does not frame successor work until the current work has emitted its terminal
+  // bestmove and swapWork() can safely advance. Tree-eval uses the shared reviewProtocol lease,
+  // so reproduce that ownership boundary explicitly: stop/mark the predecessor, wait only for
+  // its bounded owed reply, and coalesce every intermediate acquire to the latest request.
+  if (outstandingTreeEvalSearches() > 0) {
+    searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
+    if (beginTreeEvalSuccessorDrain()) reviewProtocol.stop();
+    const drained = await waitForTreeEvalSuccessorDrain();
+    if (!drained || requestSerial !== treeEvalLeaseRequestSerial) return null;
+  }
+  if (
+    requestSerial !== treeEvalLeaseRequestSerial
+    || outstandingTreeEvalSearches() > 0
+    || reviewEngineFailed
+    || !reviewEngineReady
+    || isBulkReviewActive()
+    || treeEvalLease
+    || treeEvalPreemptDrainActive
+  ) return null;
   const token = Symbol('tree-eval-lease');
+  const leaseToken = ++treeEvalLeaseToken;
   treeEvalLease = {
     token,
+    leaseToken,
+    runToken: options.runToken,
+    expectedFen,
+    activeSearch: null,
+    onSearchIssued: options.onSearchIssued,
     onMessage: options.onMessage,
     onPreempt: options.onPreempt,
   };
   const ownsLease = (): boolean => treeEvalLease?.token === token;
   let leaseContext: EnginePositionContext | null = null;
+  let stopIssued = false;
   return {
     setPositionContext(context: EnginePositionContext): void {
       if (!ownsLease()) return;
@@ -494,23 +662,64 @@ export async function acquireTreeEvalLease(options: {
     },
     go(depth: number, multiPv = 1, movetime?: number): void {
       if (!ownsLease()) return;
+      const normalizedContextFen = normalizeEngineFen(leaseContext?.currentFen ?? '');
+      if (!leaseContext || normalizedContextFen !== expectedFen || treeEvalLease?.activeSearch) {
+        record({
+          kind: 'engine',
+          severity: Severity.Warn,
+          source: 'engine.reviewQueue',
+          sourceTag: 'review-engine',
+          message: 'tree-eval-search-issue-rejected',
+          metadata: {
+            role: reviewDiagnosticRole(),
+            expectedFenHash: engineFenHash(expectedFen),
+            contextFenHash: engineFenHash(leaseContext?.currentFen ?? ''),
+            hasActiveSearch: Boolean(treeEvalLease?.activeSearch),
+            timestamp: Date.now(),
+          },
+          redactionClass: 'safe',
+        });
+        options.onPreempt('tree-eval-search-identity-invalid');
+        return;
+      }
       // Tree-eval searches share reviewProtocol, so they must register with the search-owner
       // FIFO too — otherwise a residual tree-eval bestmove could be consumed as a review result.
-      searchOwnerRegisterGo(reviewSearchOwner, {
+      const descriptor = searchOwnerRegisterGo(reviewSearchOwner, {
         kind: 'tree-eval',
-        fen:  leaseContext?.currentFen ?? '',
+        fen: expectedFen,
       });
+      const identity: TreeEvalSearchIdentity = Object.freeze({
+        searchToken: descriptor.token,
+        leaseToken,
+        runToken: options.runToken,
+        fen: expectedFen,
+        contextKey: treeEvalContextKey(leaseContext),
+      });
+      if (treeEvalLease?.token !== token) return;
+      treeEvalLease.activeSearch = identity;
+      treeEvalSearchIdentities.set(descriptor.token, identity);
+      treeEvalLease.onSearchIssued(identity);
       reviewProtocol.go(depth, multiPv, movetime);
     },
     stop(): void {
       if (!ownsLease()) return;
       searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
-      reviewProtocol.stop();
+      if (!stopIssued) {
+        stopIssued = true;
+        reviewProtocol.stop();
+      }
     },
     release(): void {
       if (!ownsLease()) return;
       searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
       treeEvalLease = null;
+      if (outstandingTreeEvalSearches() > 0) {
+        const startedDrain = beginTreeEvalSuccessorDrain();
+        if (startedDrain && !stopIssued) {
+          stopIssued = true;
+          reviewProtocol.stop();
+        }
+      }
     },
   };
 }
@@ -2847,6 +3056,27 @@ function recordReviewSearchOwnerReset(reason: 'barrier-timeout' | 'engine-error'
   });
 }
 
+function resetReviewSearchOwnerAndTreeEvalState(): number {
+  const droppedTreeEvalTokens = reviewSearchOwner.pending
+    .filter(descriptor => descriptor.kind === 'tree-eval')
+    .map(descriptor => descriptor.token);
+  const dropped = searchOwnerReset(reviewSearchOwner);
+  for (const token of droppedTreeEvalTokens) {
+    treeEvalSearchIdentities.delete(token);
+    treeEvalIdentityDropDiagnostics.delete(token);
+  }
+  if (droppedTreeEvalTokens.length > 0) {
+    if (treeEvalLease?.activeSearch
+      && droppedTreeEvalTokens.includes(treeEvalLease.activeSearch.searchToken)) {
+      treeEvalLease.activeSearch = null;
+    }
+    // Owner reset is already a fail-closed terminal boundary for the dropped descriptors.
+    // Retire successor waiters without misreporting this separate path as a drain timeout.
+    abandonTreeEvalSuccessorDrain();
+  }
+  return dropped;
+}
+
 function clearDispatchBarrier(): void {
   if (reviewDispatchBarrierTimer !== null) {
     clearTimeout(reviewDispatchBarrierTimer);
@@ -2861,7 +3091,7 @@ function beginDispatchBarrier(): void {
   reviewDispatchBarrierTimer = setTimeout(() => {
     reviewDispatchBarrierTimer = null;
     reviewDispatchBarrierWaiting = false;
-    const dropped = searchOwnerReset(reviewSearchOwner);
+    const dropped = resetReviewSearchOwnerAndTreeEvalState();
     recordReviewSearchOwnerReset('barrier-timeout', dropped);
     if (!queuePaused && reviewItemQueue[reviewItemIndex]) awaitReadyThenDispatch();
   }, REVIEW_DISPATCH_BARRIER_TIMEOUT_MS);
@@ -3377,16 +3607,27 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     // Single consumption point for the search-owner FIFO: every bestmove pops the oldest
     // outstanding search descriptor, regardless of how the line is routed below. Attribution
     // decisions downstream use the consumed descriptor, never the currently-framed search.
+    const command = line.trim().split(/\s+/)[0];
+    const headSearch = searchOwnerHead(reviewSearchOwner);
     let consumedSearch: ReviewSearchDescriptor | null = null;
-    if (line.trim().split(/\s+/)[0] === 'bestmove') {
+    if (command === 'bestmove') {
       consumedSearch = searchOwnerConsumeBestmove(reviewSearchOwner);
       maybeFinishDispatchBarrier();
     }
-    if (treeEvalLease && !isBulkReviewActive()) {
-      treeEvalLease.onMessage(line);
-      return;
+    const routedTreeDescriptor = command === 'bestmove' ? consumedSearch : headSearch;
+    const routedTreeIdentity = routedTreeDescriptor?.kind === 'tree-eval'
+      ? (treeEvalSearchIdentities.get(routedTreeDescriptor.token) ?? null)
+      : null;
+    const treeLineHandled = routeTreeEvalLine(line, routedTreeDescriptor, routedTreeIdentity);
+    if (command === 'bestmove' && routedTreeDescriptor?.kind === 'tree-eval') {
+      treeEvalSearchIdentities.delete(routedTreeDescriptor.token);
+      treeEvalIdentityDropDiagnostics.delete(routedTreeDescriptor.token);
+      maybeFinishTreeEvalSuccessorDrain();
     }
     if (handleTreeEvalPreemptDrainLine(line)) return;
+    if (treeLineHandled) {
+      return;
+    }
     if (treeEvalLease && isBulkReviewActive()) {
       preemptTreeEvalLease('bulk-review-active');
       return;
@@ -3402,7 +3643,7 @@ export async function initReviewEngine(baseUrl: string): Promise<void> {
     reviewEngineReady  = false;
     resolveReviewEngineReadyWaiters(false);
     preemptTreeEvalLease('review-engine-error');
-    const dropped = searchOwnerReset(reviewSearchOwner);
+    const dropped = resetReviewSearchOwnerAndTreeEvalState();
     if (dropped > 0) recordReviewSearchOwnerReset('engine-error', dropped);
     clearDispatchBarrier();
     _failAnalyzingEntries();
@@ -3457,6 +3698,35 @@ function _failAnalyzingEntries(): void {
 
 
   reconcileReviewStaleWatch();
+}
+
+function routeTreeEvalLine(
+  line: string,
+  descriptor: ReviewSearchDescriptor | null,
+  identity: TreeEvalSearchIdentity | null,
+): boolean {
+  if (descriptor?.kind !== 'tree-eval') {
+    if (treeEvalLease && !isBulkReviewActive()) {
+      recordTreeEvalIdentityDrop('missing-descriptor', descriptor, identity);
+      return true;
+    }
+    return false;
+  }
+  const leaseSearch = treeEvalLease?.activeSearch ?? null;
+  if (!identity) {
+    recordTreeEvalIdentityDrop('missing-search-identity', descriptor, identity);
+    return true;
+  }
+  if (descriptor.stale) {
+    recordTreeEvalIdentityDrop('stale-search', descriptor, identity);
+    return true;
+  }
+  if (!treeEvalLease || isBulkReviewActive() || !treeEvalIdentityMatches(identity, leaseSearch)) {
+    recordTreeEvalIdentityDrop('lease-mismatch', descriptor, identity);
+    return true;
+  }
+  treeEvalLease.onMessage({ line, search: identity });
+  return true;
 }
 
 /** True when the review engine failed to initialise. */
