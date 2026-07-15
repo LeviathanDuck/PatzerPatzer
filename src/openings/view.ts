@@ -80,6 +80,7 @@ import {
   showEngineArrows, setShowEngineArrows,
   arrowAllLines, setArrowAllLines,
   showArrowLabels, setShowArrowLabels,
+  cancelForegroundSearchForOwner,
   stopProtocol,
   syncArrowForced,
 } from '../engine/ctrl';
@@ -117,6 +118,7 @@ import { opponentsEntryHref } from './routeOrchestration';
 import { enterAnalysisMode, renderAnalysisModeToggleButton } from '../board/analysisModeToggle';
 
 let _openingsCg: CgApi | undefined;
+let _destroyOpeningsBoardOwner: (() => void) | null = null;
 let _lastOpeningsAutoShapesHash: string | null = null;
 
 
@@ -2147,7 +2149,7 @@ function renderSessionPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
-        on: { click: () => { clearCevalPositionOverride('openings-live'); closeSession(); redraw(); } },
+        on: { click: () => { closeOpeningTreeSession(redraw); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opening Tree'),
       h('span.openings__session-meta', node
@@ -2165,6 +2167,20 @@ function renderSessionPage(redraw: () => void): VNode {
     ]),
     renderActiveOpeningsSaveFlowModal(),
   ]);
+}
+
+function closeOpeningTreeSession(redraw: () => void): void {
+  // Supersede every pending settle callback before releasing any surface owner.
+  markNav();
+  // The immutable foreground identity prevents this close from stopping Analysis, Study, Puzzle,
+  // LFYM, play, or any other shared-protocol owner.
+  cancelForegroundSearchForOwner('openings-live');
+  // F7's captured owner is destroyed and released while its surface/session identity still exists.
+  _destroyOpeningsBoardOwner?.();
+  clearCevalPositionOverride('openings-live');
+  // Review/tree-eval lease release remains independently owned by closeSession().
+  closeSession();
+  redraw();
 }
 
 /**
@@ -2566,6 +2582,7 @@ function openingsNodeLastMove(node: OpeningTreeNode | null): Key[] | undefined {
 function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): VNode {
   const fen = node?.fen ?? STANDARD_START_FEN;
   let ownedCg: CgApi | undefined;
+  let destroyOwnedCg: (() => void) | null = null;
 
   return h('div.cg-wrap.openings__board', {
     key: 'openings-board',
@@ -2665,6 +2682,21 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         } as CgConfig);
         const capturedCg = _openingsCg;
         ownedCg = capturedCg;
+        destroyOwnedCg = () => {
+          const owner = ownedCg;
+          if (!owner) return;
+          ownedCg = undefined;
+          owner.destroy();
+          if (_openingsCg === owner) {
+            _openingsCg = undefined;
+            _lastBoardFen = '';
+            _lastOpeningsAutoShapesHash = null;
+          }
+          if (_destroyOpeningsBoardOwner === destroyOwnedCg) {
+            _destroyOpeningsBoardOwner = null;
+          }
+        };
+        _destroyOpeningsBoardOwner = destroyOwnedCg;
         bindBoardResizeHandle(vnode.elm as HTMLElement);
         // Reset the diff-guard so the first push after a remount always fires
         // (Chessground starts with no shapes after makeChessground).
@@ -2691,15 +2723,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
         syncOpeningsAutoShapes(node);
       },
       destroy: () => {
-        const capturedCg = ownedCg;
-        if (!capturedCg) return;
-        ownedCg = undefined;
-        capturedCg.destroy();
-        if (_openingsCg === capturedCg) {
-          _openingsCg = undefined;
-          _lastBoardFen = '';
-          _lastOpeningsAutoShapesHash = null;
-        }
+        destroyOwnedCg?.();
       },
     },
   });

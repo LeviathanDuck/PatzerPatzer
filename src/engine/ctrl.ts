@@ -108,6 +108,10 @@ const SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS = 15_000;
 
 
 let silentEvalCancelStopFailureLogAt = 0;
+// Bounded diagnostic throttle for an owner-aware foreground cancellation whose protocol stop
+// throws synchronously. Kept separate from the LFYM silent-eval diagnostic because the two
+// cancellation paths have independent owners and recovery semantics.
+let foregroundCancelStopFailureLogAt = 0;
 
 export function isSilentEvalActive(): boolean {
   return silentEvalActive;
@@ -601,6 +605,61 @@ export function sharedProtocolBusyState(): SharedProtocolBusyState {
 
 export function isSharedProtocolBusy(): boolean {
   return sharedProtocolBusyState().busy;
+}
+
+/**
+ * Cancel exactly the active foreground search owned by `owner`.
+ *
+ * Surface teardown must not stop whichever shared-protocol user happens to be current. The
+ * immutable foreground identity is the authority: a different owner (or no identity) is a strict
+ * no-op. An accepted cancellation invalidates result/UI promotion identity and drops any queued
+ * successor before issuing an exactly-once credited stop. The credit is published before stop so
+ * a synchronous bestmove can drain re-entrantly; nothing is written after a successful stop.
+ */
+export function cancelForegroundSearchForOwner(owner: SharedProtocolBusyOwner): boolean {
+  if (activeForegroundSearchIdentity?.owner !== owner) return false;
+
+  const searchOutstanding = engineSearchActive;
+  // Only pendingEval proves that the global credit belongs to this exact interrupted foreground
+  // search. A nonzero global count may instead belong to another drain already in flight.
+  const alreadyStopping = pendingEval && pendingStopCount > 0;
+
+  invalidateForegroundSearchIdentity();
+  pendingEval = false;
+  cancelLiveEngineUiRefresh();
+
+  if (!searchOutstanding || alreadyStopping) return true;
+
+  pendingStopCount++;
+  const creditsBeforeStop = pendingStopCount;
+  try {
+    protocol.stop();
+  } catch (error) {
+    // If stop synchronously delivered bestmove before throwing, the drain gate already consumed
+    // this credit. Roll back only an undrained credit and never let engine health block P0 close.
+    if (pendingStopCount === creditsBeforeStop) pendingStopCount--;
+    // A protocol implementation may become idle before its send throws. Keep controller search
+    // state aligned so reopen cannot queue behind a bestmove the idle protocol will never emit.
+    if (!protocol.isAnalyzing()) engineSearchActive = false;
+    const now = Date.now();
+    if (now - foregroundCancelStopFailureLogAt >= SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS) {
+      foregroundCancelStopFailureLogAt = now;
+      record({
+        kind: 'engine',
+        severity: Severity.Warn,
+        source: 'engine.ctrl',
+        sourceTag: 'engine',
+        message: 'foreground-owner-cancel-stop-failed',
+        metadata: {
+          eventType: 'foreground-owner-cancel-stop-failed',
+          owner,
+          errorName: error instanceof Error ? error.name : 'UnknownError',
+        },
+        redactionClass: 'safe',
+      });
+    }
+  }
+  return true;
 }
 /**
  * Returns 0–1 representing how far the current search has progressed.
