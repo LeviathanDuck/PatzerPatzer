@@ -16,32 +16,34 @@ if ($expectedItems < 0 || $expectedTombstones < 0 || !preg_match('/^[a-f0-9]{64}
     patzer_json(400, ['ok' => false, 'error' => 'Restore commit is missing expected counts or hash.']);
 }
 
-$read = $pdo->prepare(
-    'SELECT `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
-     FROM patzer_sync_restore_items
-     WHERE restore_id = ? AND user_key = ?
-     ORDER BY `store` ASC, item_key ASC'
-);
-$read->execute([$restoreId, $config['user_key']]);
-$rows = $read->fetchAll();
-$actualItems = count($rows);
-$actualTombstones = 0;
-foreach ($rows as $row) {
-    if ($row['deleted_at_ms'] !== null) $actualTombstones++;
-}
-$actualHash = patzer_restore_hash_for_rows($rows);
-if ($actualItems !== $expectedItems || $actualTombstones !== $expectedTombstones || $actualHash !== $expectedHash) {
-    patzer_json(400, [
-        'ok' => false,
-        'error' => 'Restore staged data does not match the selected backup.',
-        'actualItems' => $actualItems,
-        'actualTombstones' => $actualTombstones,
-    ]);
-}
-
 $pdo->beginTransaction();
 try {
     patzer_require_locked_fresh_generation($pdo, $config);
+    $read = $pdo->prepare(
+        'SELECT `store`, item_key, payload_json, updated_at_ms, deleted_at_ms
+         FROM patzer_sync_restore_items
+         WHERE restore_id = ? AND user_key = ?
+         ORDER BY `store` ASC, item_key ASC
+         FOR UPDATE'
+    );
+    $read->execute([$restoreId, $config['user_key']]);
+    $rows = $read->fetchAll();
+    $actualItems = count($rows);
+    $actualTombstones = 0;
+    foreach ($rows as $row) {
+        if ($row['deleted_at_ms'] !== null) $actualTombstones++;
+    }
+    $actualHash = patzer_restore_hash_for_rows($rows);
+    if ($actualItems !== $expectedItems || $actualTombstones !== $expectedTombstones || $actualHash !== $expectedHash) {
+        $pdo->rollBack();
+        patzer_json(400, [
+            'ok' => false,
+            'error' => 'Restore staged data does not match the selected backup.',
+            'actualItems' => $actualItems,
+            'actualTombstones' => $actualTombstones,
+        ]);
+    }
+
     $deleteLive = $pdo->prepare('DELETE FROM patzer_sync_items WHERE user_key = ?');
     $deleteLive->execute([$config['user_key']]);
 
