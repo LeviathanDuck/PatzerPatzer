@@ -282,7 +282,7 @@ export async function backfillGameSummaries(
     }
 
     const stored = await loadAnalysisFromIdb(game.id);
-    if (!stored || stored.status === 'idle' || stored.analysisVersion < 2) {
+    if (!stored || stored.status === 'idle' || stored.analysisVersion !== 2) {
       result.unrebuildable++;
       continue;
     }
