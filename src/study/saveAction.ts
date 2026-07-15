@@ -6,7 +6,7 @@ import { Chess } from 'chessops/chess';
 import { parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
-import { saveStudy, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
+import { saveStudy, saveStudyStrict, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
 import type { OrpSourceProvenance, StudyItem, StudySource, TrainableSequence } from './types';
 import { MASTER_GAMES } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
@@ -94,7 +94,7 @@ export async function saveCurrentToLibrary(
     updatedAt: now,
   };
 
-  await saveStudy(item);
+  await saveStudyStrict(item);
   return item;
 }
 

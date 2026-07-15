@@ -177,14 +177,30 @@ function openDb(): Promise<IDBDatabase> {
 
 export async function saveStudy(item: StudyItem): Promise<void> {
   try {
-    const db = await openDb();
-    const tx = db.transaction('studies', 'readwrite');
-    tx.objectStore('studies').put(item);
-    await txDone(tx);
-    enqueueStudyPut('studies', item.id, item, item.updatedAt);
+    await saveStudyStrict(item);
   } catch (e) {
     console.warn('[studyDb] saveStudy failed', e);
   }
+}
+
+/**
+ * Persist a StudyItem or reject. User-initiated save flows use this seam so a
+ * generated item cannot be presented as saved before its IndexedDB transaction
+ * commits. `saveStudy` above deliberately remains the named best-effort wrapper
+ * for legacy/background callers that have not yet adopted fail-closed handling.
+ */
+export async function saveStudyStrict(item: StudyItem): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction('studies', 'readwrite');
+  const transactionDone = txDone(tx, 'put');
+  const request = tx.objectStore('studies').put(item);
+  const requestDone = new Promise<void>((resolve, reject) => {
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+
+  await Promise.all([requestDone, transactionDone]);
+  enqueueStudyPut('studies', item.id, item, item.updatedAt);
 }
 
 export async function getStudy(id: string): Promise<StudyItem | undefined> {
