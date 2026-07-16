@@ -85,6 +85,14 @@ export interface SrsScheduleRecordBase {
   readonly enrolledAt: number;
   /** Last completed scored attempt (UTC epoch ms), or null before the first completion. */
   readonly lastCompletedAt: number | null;
+  /** The idempotency key of the last attempt applied to this row (`SrsAttemptRecord.attemptId`), or
+   *  null before the first applied completion. This is the pure kernel's in-record duplicate signal:
+   *  replaying the SAME `attemptId` is a non-mutating no-op regardless of its completion timestamp,
+   *  while a DISTINCT attempt at the same millisecond still applies. Completion time is scheduling
+   *  data, never identity. The atomic persistence boundary (B4b, insert-existing-attemptId cannot
+   *  re-advance) remains the ultimate idempotency boundary; this field lets the pure kernel honor the
+   *  key it is handed without persistence. */
+  readonly lastAttemptId: string | null;
   /** Last mutation timestamp (UTC epoch ms). */
   readonly updatedAt: number;
 }

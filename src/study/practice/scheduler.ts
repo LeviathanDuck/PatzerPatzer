@@ -85,6 +85,19 @@ export function validateLadderConfig(config: SrsLadderConfig): LadderConfigValid
   ) {
     return { ok: false, reason: 'graduation.afterConsecutiveClean must be a positive integer' };
   }
+  // Reject a config that supplies BOTH graduation thresholds with CONFLICTING values, rather than
+  // relying on silent precedence. When both are present they must agree (the optional puzzle adapter
+  // pairs them at the same value); a mismatch is a configuration bug the validator surfaces up front.
+  if (
+    config.graduation !== undefined &&
+    config.requiredConsecutiveClean !== undefined &&
+    config.graduation.afterConsecutiveClean !== config.requiredConsecutiveClean
+  ) {
+    return {
+      ok: false,
+      reason: 'graduation.afterConsecutiveClean and requiredConsecutiveClean must agree when both are set',
+    };
+  }
   // Sole brand constructor: the opaque `unique symbol` brand has no runtime footprint, so branding is
   // a phantom assertion here rather than a property write. `as unknown as` is confined to this single
   // validator seam — everywhere else the branded type is unforgeable.
@@ -134,6 +147,7 @@ function graduationThreshold(config: SrsValidatedLadderConfig): number | null {
 function buildActiveNext(
   current: SrsScheduleRecord,
   config: SrsValidatedLadderConfig,
+  attemptId: string,
   completedAt: number,
   stepIndex: number,
   cleanStreak: number,
@@ -155,6 +169,8 @@ function buildActiveNext(
     dueAt,
     enrolledAt: current.enrolledAt,
     lastCompletedAt: completedAt,
+    // Retain the applied attempt's idempotency key so a replay of the SAME attemptId is a duplicate.
+    lastAttemptId: attemptId,
     updatedAt: completedAt,
   };
 }
@@ -162,6 +178,7 @@ function buildActiveNext(
 function buildGraduatedNext(
   current: SrsScheduleRecord,
   config: SrsValidatedLadderConfig,
+  attemptId: string,
   completedAt: number,
   stepIndex: number,
   cleanStreak: number,
@@ -179,6 +196,7 @@ function buildGraduatedNext(
     dueAt: null,
     enrolledAt: current.enrolledAt,
     lastCompletedAt: completedAt,
+    lastAttemptId: attemptId,
     updatedAt: completedAt,
   };
 }
@@ -188,8 +206,8 @@ function buildGraduatedNext(
  * result, and a validated ladder config, returns exactly one outcome:
  *
  *   - `applied`   — the only mutating outcome; carries the next schedule record.
- *   - `duplicate` — this completion is already reflected on the row (idempotent no-op).
- *   - `stale`     — a new attempt frozen against a superseded schedule/target revision.
+ *   - `duplicate` — this exact attempt (by `attemptId`) was already applied to the row (idempotent no-op).
+ *   - `stale`     — a new attempt frozen against a superseded schedule snapshot/target revision.
  *   - `inactive`  — the target is graduated/suspended/archived and no longer scheduled.
  *   - `invalid`   — malformed input (non-finite clock, wrong target, out-of-range record, etc.).
  *
@@ -220,11 +238,14 @@ export const transitionSchedule: SrsTransitionFn = (current, completed, config) 
   if (completed.scheduled.scheduleRevision > current.scheduleRevision) {
     return { outcome: 'invalid', reason: 'attempt snapshot revision is ahead of the record' };
   }
-  // 5. Idempotent duplicate: this completion is already reflected on the row (non-mutating). The
-  //    atomic persistence boundary (B4b) enforces true attemptId idempotency; the pure kernel uses
-  //    the completion instant already recorded on the row as its in-record duplicate signal.
-  if (current.lastCompletedAt !== null && current.lastCompletedAt === completed.completedAt) {
-    return { outcome: 'duplicate', reason: 'completion already recorded on this schedule row' };
+  // 5. Idempotent duplicate keyed on the ATTEMPT IDENTITY, not the completion timestamp. Replaying
+  //    the same `attemptId` already applied to this row is a non-mutating no-op whatever its
+  //    completedAt; a DISTINCT attempt at the same millisecond is a legitimate new completion and
+  //    must NOT be discarded. Completion time is scheduling data, never identity. The atomic
+  //    persistence boundary (B4b, insert-existing-attemptId) remains the ultimate idempotency
+  //    boundary; the pure kernel honors the key it is handed via the row's `lastAttemptId`.
+  if (current.lastAttemptId !== null && current.lastAttemptId === completed.attemptId) {
+    return { outcome: 'duplicate', reason: 'attempt already applied to this schedule row' };
   }
   // 6. Only active targets are scheduled; graduated/suspended/archived rows never re-advance.
   if (current.status !== 'active') {
@@ -234,9 +255,18 @@ export const transitionSchedule: SrsTransitionFn = (current, completed, config) 
   if (completed.targetRevision !== current.targetRevision) {
     return { outcome: 'stale', reason: 'attempt targetRevision is superseded' };
   }
-  // 8. A new attempt frozen against an older schedule revision is stale (distinct from duplicate).
-  if (completed.scheduled.scheduleRevision < current.scheduleRevision) {
-    return { outcome: 'stale', reason: 'attempt scheduleRevision is behind the record' };
+  // 8. The frozen scheduled snapshot must match the CURRENT active record EXACTLY — scheduleRevision,
+  //    configVersion, stepIndex, and dueAt. A behind revision, a superseded config version, a stale
+  //    ladder step, or a mismatched due instant all mean the attempt was frozen against a schedule
+  //    state that has since moved on: the completion is stale, not applicable. (`current` is narrowed
+  //    to active by step 6, so `current.dueAt` is a concrete number matching the snapshot's shape.)
+  if (
+    completed.scheduled.scheduleRevision !== current.scheduleRevision ||
+    completed.scheduled.configVersion !== current.configVersion ||
+    completed.scheduled.stepIndex !== current.stepIndex ||
+    completed.scheduled.dueAt !== current.dueAt
+  ) {
+    return { outcome: 'stale', reason: 'attempt scheduled snapshot does not match the current record' };
   }
 
   // --- Apply. Assistance is a failed training result (P2-ORP-10), even if firstAttemptResult reads
@@ -247,17 +277,17 @@ export const transitionSchedule: SrsTransitionFn = (current, completed, config) 
   if (!isClean) {
     const step = config.resetStep;
     const dueAt = completedAt + config.intervalsMs[step]!;
-    return { outcome: 'applied', next: buildActiveNext(current, config, completedAt, step, 0, dueAt) };
+    return { outcome: 'applied', next: buildActiveNext(current, config, completed.attemptId, completedAt, step, 0, dueAt) };
   }
 
   const cleanStreak = current.cleanStreak + 1;
   const step = Math.min(current.stepIndex + config.advanceBy, lastStep);
   const threshold = graduationThreshold(config);
   if (threshold !== null && cleanStreak >= threshold) {
-    return { outcome: 'applied', next: buildGraduatedNext(current, config, completedAt, step, cleanStreak) };
+    return { outcome: 'applied', next: buildGraduatedNext(current, config, completed.attemptId, completedAt, step, cleanStreak) };
   }
   const dueAt = completedAt + config.intervalsMs[step]!;
-  return { outcome: 'applied', next: buildActiveNext(current, config, completedAt, step, cleanStreak, dueAt) };
+  return { outcome: 'applied', next: buildActiveNext(current, config, completed.attemptId, completedAt, step, cleanStreak, dueAt) };
 };
 
 // ===========================================================================
