@@ -690,11 +690,12 @@ export type SrsPersistenceFailureCode =
   /** A validated object carries an own key outside its declared contract — smuggled chess material
    *  (`fen`/`pgn`/…) or an own `__proto__` payload. Persisted rows are closed records: undeclared own
    *  keys are rejected, never silently preserved. */
-  | 'unknown-key'
-  /** The persisted plan passed local shape validation but the sealed B3 `revalidateTraversalPlan`
-   *  (composed at this boundary against a live map derived from the plan's own frozen snapshots) still
-   *  reported one or more invalid entries — the plan is not accepted unless B3 revalidation is clean. */
-  | 'plan-revalidation-failed';
+  | 'unknown-key';
+
+
+
+
+
 
 /**
  * A typed persistence-boundary failure. `path` is a dotted locator into the offending row (e.g.
