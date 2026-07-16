@@ -434,28 +434,78 @@ export function revalidateTraversalPlan(
   return { invalidEntries };
 }
 
+/** Numeric fields of a frozen schedule snapshot that MUST be finite for the snapshot to be usable. */
+const FROZEN_SCHEDULE_NUMERIC_FIELDS = [
+  'targetRevision',
+  'scheduleRevision',
+  'configVersion',
+  'stepIndex',
+  'dueAt',
+  'capturedAt',
+] as const;
+
+
+
+
+
+
+
+
+
+function validateFrozenScheduleShape(frozen: SrsFrozenScheduleSnapshot): string | null {
+  const snap = frozen as unknown as Record<string, unknown> | null | undefined;
+  if (!snap || typeof snap !== 'object') return 'missing frozen schedule snapshot';
+  for (const field of FROZEN_SCHEDULE_NUMERIC_FIELDS) {
+    if (!Number.isFinite(snap[field])) return `non-finite ${field}`;
+  }
+  return null;
+}
+
+
+
+
+
+
+
+function validateDisplaySnapshotShape(display: SrsDisplaySnapshot): string | null {
+  const snap = display as unknown as Record<string, unknown> | null | undefined;
+  if (!snap || typeof snap !== 'object') return 'missing frozen source snapshot';
+  return null;
+}
+
 function revalidateScheduledEntry(
   entry: SrsTraversalPlanEntry,
   currentById: ReadonlyMap<string, SrsScheduleRecord>,
   currentSourceById?: ReadonlyMap<string, SrsSourceVersion>,
 ): string | null {
+
+
+
+
+  const scheduleShapeReason = validateFrozenScheduleShape(entry.frozenSchedule);
+  if (scheduleShapeReason) return scheduleShapeReason;
+  const displayShapeReason = validateDisplaySnapshotShape(entry.frozenSource);
+  if (displayShapeReason) return displayShapeReason;
+  // Validate BOTH persisted source snapshots' discriminant + finite revision unconditionally (before
+  // any live-map short-circuit): the schedule-side source and the separate display-side source.
+  const frozenScheduleSourceReason = revalidateSource(entry.targetId, entry.frozenSchedule.source, currentSourceById);
+  if (frozenScheduleSourceReason) return frozenScheduleSourceReason;
+  const frozenDisplaySourceReason = revalidateSource(entry.targetId, entry.frozenSource.source, currentSourceById);
+  if (frozenDisplaySourceReason) return frozenDisplaySourceReason;
+
+  const f = entry.frozenSchedule;
   const current = currentById.get(entry.targetId);
   if (!current) return 'schedule row no longer present';
   if (current.status !== 'active') return `target is now ${current.status}`;
-  const f = entry.frozenSchedule;
-  // Fail closed on a non-finite due instant on either side.
-  if (!Number.isFinite(f.dueAt) || !Number.isFinite(current.dueAt)) return 'non-finite dueAt';
+  // Fail closed on a non-finite live due instant (the frozen side was checked unconditionally above).
+  if (!Number.isFinite(current.dueAt)) return 'non-finite dueAt';
   if (current.targetRevision !== f.targetRevision) return 'targetRevision superseded (decision replaced)';
   if (current.scheduleRevision !== f.scheduleRevision) return 'scheduleRevision advanced';
   if (current.configId !== f.configId) return 'configId changed';
   if (current.configVersion !== f.configVersion) return 'configVersion changed';
   if (current.stepIndex !== f.stepIndex) return 'stepIndex changed';
   if (current.dueAt !== f.dueAt) return 'dueAt changed';
-
-
-  const scheduleSourceReason = revalidateSource(entry.targetId, f.source, currentSourceById);
-  if (scheduleSourceReason) return scheduleSourceReason;
-  return revalidateSource(entry.targetId, entry.frozenSource.source, currentSourceById);
+  return null;
 }
 
 function revalidateSource(
@@ -467,6 +517,13 @@ function revalidateSource(
 
 
 
+  const snap = frozen as unknown as { kind?: unknown; sourceRevision?: unknown } | null | undefined;
+  if (!snap || typeof snap !== 'object') return 'missing source snapshot';
+  // 2. Closed discriminant set: `kind` must be exactly `linked` or `unlinked`. Any other value (e.g. a
+  //    forged `{kind:'forged'}`) fails closed and is NEVER treated as "effectively unlinked".
+  if (snap.kind !== 'linked' && snap.kind !== 'unlinked') return 'unknown source discriminant';
+  // 3. Finite check on the only numeric source field — a `linked` revision must be finite (NaN OR
+  //    ±Infinity both invalid), even when no live source map is supplied.
   if (frozen.kind === 'linked' && !Number.isFinite(frozen.sourceRevision)) {
     return 'non-finite linked sourceRevision';
   }
