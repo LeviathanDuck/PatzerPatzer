@@ -1,15 +1,20 @@
 import { h, type VNode } from 'snabbdom';
+import type { ControlHelpController, ControlHelpMode } from './controlHelpPreferences';
+
+export type ControlHelpTier = 'essential' | 'more-help';
 
 export interface ControlExplainer {
   label: string;
   description?: string;
+  tier?: ControlHelpTier;
 }
 
 const LABEL_ATTR = 'data-control-explainer-label';
 const DESCRIPTION_ATTR = 'data-control-explainer-description';
+const TIER_ATTR = 'data-control-help-tier';
 const TRIGGER_SELECTOR = `[${LABEL_ATTR}]`;
 const TOOLTIP_ID = 'pp-control-explainer';
-const HOVER_DELAY_MS = 400;
+const FALLBACK_HOVER_DELAY_MS = 650;
 const VIEWPORT_MARGIN_PX = 8;
 const TARGET_GAP_PX = 8;
 
@@ -19,7 +24,17 @@ function normalizedExplainer(explainer: ControlExplainer): ControlExplainer {
   const label = explainer.label.trim();
   if (!label) throw new TypeError('A control explainer label must not be blank.');
   const description = explainer.description?.trim();
-  return description ? { label, description } : { label };
+  const tier = explainer.tier ?? 'essential';
+  if (tier !== 'essential' && tier !== 'more-help') {
+    throw new TypeError('A control explainer tier must be essential or more-help.');
+  }
+  return description ? { label, description, tier } : { label, tier };
+}
+
+export function controlNameAttrs(label: string): Record<string, string> {
+  const normalized = label.trim();
+  if (!normalized) throw new TypeError('A control accessible name must not be blank.');
+  return { 'aria-label': normalized };
 }
 
 export function controlExplainerAttrs(explainer: ControlExplainer): Record<string, string> {
@@ -27,13 +42,16 @@ export function controlExplainerAttrs(explainer: ControlExplainer): Record<strin
   return {
     [LABEL_ATTR]: normalized.label,
     ...(normalized.description ? { [DESCRIPTION_ATTR]: normalized.description } : {}),
+    [TIER_ATTR]: normalized.tier!,
   };
 }
 
 export function iconControlExplainerAttrs(explainer: ControlExplainer): Record<string, string> {
   const normalized = normalizedExplainer(explainer);
   return {
-    ...controlExplainerAttrs(normalized),
+    [LABEL_ATTR]: normalized.label,
+    ...(normalized.description ? { [DESCRIPTION_ATTR]: normalized.description } : {}),
+    [TIER_ATTR]: 'essential',
     'aria-label': normalized.label,
   };
 }
@@ -188,6 +206,18 @@ export function renderDisabledControlExplainer(explainer: ControlExplainer, cont
   return wrapper;
 }
 
+function targetTier(target: HTMLElement): ControlHelpTier | null {
+  const tier = target.getAttribute(TIER_ATTR)?.trim();
+  if (!tier) return 'essential'; // Compatibility while existing controls migrate to explicit tiers.
+  return tier === 'essential' || tier === 'more-help' ? tier : null;
+}
+
+function tierVisible(mode: ControlHelpMode, tier: ControlHelpTier): boolean {
+  if (mode === 'off') return false;
+  if (tier === 'essential') return true;
+  return mode === 'more-help';
+}
+
 function explainerTarget(candidate: EventTarget | null): HTMLElement | null {
   return candidate instanceof Element ? candidate.closest<HTMLElement>(TRIGGER_SELECTOR) : null;
 }
@@ -221,7 +251,7 @@ function clamp(value: number, minimum: number, maximum: number): number {
  * first removes the earlier controller, so duplicate document listeners and tooltip nodes cannot
  * accumulate.
  */
-export function initControlExplainers(): () => void {
+export function initControlExplainers(helpController?: Pick<ControlHelpController, 'getState' | 'subscribe'>): () => void {
   installedCleanup?.();
 
   const tooltip = document.createElement('div');
@@ -246,6 +276,13 @@ export function initControlExplainers(): () => void {
   let inputModality: 'keyboard' | 'mouse' | 'touch' = 'keyboard';
   let hoverTimer: ReturnType<typeof setTimeout> | null = null;
   let hoverGeneration = 0;
+
+  const currentMode = (): ControlHelpMode => helpController?.getState().mode ?? 'essential';
+  const currentHoverDelay = (): number => helpController?.getState().hoverDelayMs ?? FALLBACK_HOVER_DELAY_MS;
+  const eligible = (target: HTMLElement): boolean => {
+    const tier = targetTier(target);
+    return tier !== null && tierVisible(currentMode(), tier);
+  };
 
   const cancelPending = (): void => {
     hoverGeneration += 1;
@@ -296,7 +333,10 @@ export function initControlExplainers(): () => void {
   };
 
   const show = (target: HTMLElement, source: 'focus' | 'pointer'): void => {
-    if (!target.isConnected) return;
+    if (!target.isConnected || !eligible(target)) {
+      if (activeTarget === target) hide();
+      return;
+    }
     cancelPending();
     if (activeTarget && activeTarget !== target) removeDescribedBy(activeTarget);
     activeTarget = target;
@@ -325,7 +365,7 @@ export function initControlExplainers(): () => void {
       if (generation !== hoverGeneration || pendingTarget !== target || hoveredTarget !== target) return;
       pendingTarget = null;
       show(target, 'pointer');
-    }, HOVER_DELAY_MS);
+    }, currentHoverDelay());
   };
 
   const onPointerDown = (event: PointerEvent): void => {
@@ -346,6 +386,10 @@ export function initControlExplainers(): () => void {
     }
     const target = explainerTarget(event.target);
     if (!target) return;
+    if (!eligible(target)) {
+      if (activeTarget === target) hide();
+      return;
+    }
     if (containsEventTarget(target, event.relatedTarget)) return;
     hoveredTarget = target;
     if (activeTarget === target && !tooltip.hidden) {
@@ -378,6 +422,11 @@ export function initControlExplainers(): () => void {
   const onFocusIn = (event: FocusEvent): void => {
     const target = explainerTarget(event.target);
     if (!target) return;
+    if (!eligible(target)) {
+      focusedTarget = null;
+      if (activeTarget === target) hide();
+      return;
+    }
     if (inputModality !== 'keyboard') {
       // Pointer-origin focus must not retain a tooltip after the pointer leaves. Mouse hover owns
       // its own delayed/persistent lifetime; touch focus remains entirely suppressed.
@@ -406,6 +455,14 @@ export function initControlExplainers(): () => void {
   };
 
   const onViewportChange = (): void => positionTooltip();
+  const unsubscribeHelp = helpController?.subscribe(() => {
+    cancelPending();
+    if (activeTarget && !eligible(activeTarget)) hide();
+    else if (activeTarget) {
+      updateCopy();
+      positionTooltip();
+    }
+  }) ?? (() => {});
 
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('pointerover', onPointerOver);
@@ -434,7 +491,7 @@ export function initControlExplainers(): () => void {
     });
   observer?.observe(document.body, {
     attributes: true,
-    attributeFilter: [LABEL_ATTR, DESCRIPTION_ATTR],
+    attributeFilter: [LABEL_ATTR, DESCRIPTION_ATTR, TIER_ATTR],
     childList: true,
     subtree: true,
   });
@@ -445,6 +502,7 @@ export function initControlExplainers(): () => void {
     cleaned = true;
     cancelPending();
     if (activeTarget) removeDescribedBy(activeTarget);
+    unsubscribeHelp();
     observer?.disconnect();
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerover', onPointerOver);
