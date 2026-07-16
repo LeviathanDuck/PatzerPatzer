@@ -2378,6 +2378,11 @@ let _saveLibFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 
 
+let _saveLibFeedbackGeneration = 0;
+
+
+
+
 
 
 
@@ -2464,10 +2469,11 @@ function persistOpeningsSaveFlowResult(
     // Runs even when superseded — persistence finishes for the submitted line; only UI stale-drops.
     return saveStudyStrict(item).then(() => {
       if (!isCurrent()) return;
+
+
+
       resetOpeningsSaveFlow();
-      _saveLibFeedback = 'Saved to Library!';
-      if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-      _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+      showSaveLibFeedback('Saved to Library!', redraw);
       redraw();
     }, () => {
       // Enrichment rejected: the base line is durable but its Study details are not. Report the
@@ -2536,6 +2542,33 @@ export function resetOpeningsSaveFlow(): void {
   _openingsSaveFlowGeneration++;
   _openingsSaveFlowPending = false;
   _activeOpeningsSaveFlow = null;
+
+
+
+
+  _saveLibFeedback = null;
+  if (_saveLibFeedbackTimer) { clearTimeout(_saveLibFeedbackTimer); _saveLibFeedbackTimer = null; }
+}
+
+
+
+
+
+
+
+
+
+function showSaveLibFeedback(message: string, redraw: () => void): void {
+  _saveLibFeedback = message;
+  _saveLibFeedbackGeneration = _openingsSaveFlowGeneration;
+  const feedbackGeneration = _saveLibFeedbackGeneration;
+  if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
+  _saveLibFeedbackTimer = setTimeout(() => {
+    _saveLibFeedbackTimer = null;
+    if (_openingsSaveFlowGeneration !== feedbackGeneration) return;
+    _saveLibFeedback = null;
+    redraw();
+  }, 1800);
 }
 
 /**
@@ -2565,9 +2598,7 @@ function handleSaveToLibrary(path: readonly string[], redraw: () => void): void 
   // Guard: canonical helper requires at least 3 half-moves to produce a drillable sequence.
   // Show a specific message rather than silently doing nothing.
   if (path.length < 3) {
-    _saveLibFeedback = 'Line too short to practice';
-    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+    showSaveLibFeedback('Line too short to practice', redraw);
     redraw();
     return;
   }
@@ -2639,9 +2670,12 @@ function renderOpeningsMoveList(
     h('div.analyse__moves.areplay', [
       renderMoveList(root, currentPath, () => undefined, navigate, null, false),
     ]),
-    _saveLibFeedback ? h('div.openings__save-line-row', [
-      h('span.openings__save-feedback', _saveLibFeedback),
-    ]) : null,
+
+
+    (_saveLibFeedback && _saveLibFeedbackGeneration === _openingsSaveFlowGeneration)
+      ? h('div.openings__save-line-row', [
+        h('span.openings__save-feedback', _saveLibFeedback),
+      ]) : null,
   ]);
 }
 
