@@ -2052,7 +2052,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
       h('div.study-page__header', [
         h('h1', 'Study Library'),
         h('button.study-btn', {
-          on: { click: () => { endDrill(); redraw(); } },
+          on: { click: () => { endDrill('library-back', 'dismiss'); redraw(); } },
         }, '← Back to Library'),
       ]),
       renderDrillView(redraw),

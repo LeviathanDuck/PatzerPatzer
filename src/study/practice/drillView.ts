@@ -86,7 +86,9 @@ let _showSummary      = false;
 // --- Public interface ---
 
 export function isDrillActive(): boolean {
-  return _session !== null;
+  // Summary is still Drill-owned presentation. Treat it as active ownership so the app-wide
+  // route-exit signal dismisses a visible summary even after End Session cleared `_session`.
+  return _session !== null || _showSummary;
 }
 
 /**
@@ -156,10 +158,20 @@ function captureSummary(): void {
   _showSummary      = true;
 }
 
+export type DrillSummaryDisposition = 'retain' | 'dismiss';
+
 /** Tear down the drill: unmount the workspace, cancel timers, and restore Study if this was an
- *  embedded launch still owning the active workspace. */
-export function endDrill(reason: string = 'drill-end'): void {
-  if (!_showSummary) captureSummary();
+ *  embedded launch still owning the active workspace. `route-exit` always dismisses Drill
+ *  presentation; explicit End/Escape retain the summary until a Back action dismisses it. */
+export function endDrill(
+  reason: string = 'drill-end',
+  summaryDisposition: DrillSummaryDisposition = reason === 'route-exit' ? 'dismiss' : 'retain',
+): void {
+  if (summaryDisposition === 'retain') {
+    if (!_showSummary) captureSummary();
+  } else {
+    _showSummary = false;
+  }
   // Bump the run generation before any teardown so every in-flight timer stale-drops, then cancel
   // the tracked handles.
   _drillRunGeneration++;
@@ -174,8 +186,13 @@ export function endDrill(reason: string = 'drill-end'): void {
   const wasActive = instance ? unmountWorkspace(instance, reason) : false;
   _adapter  = null;
   _session  = null;
-  // Restore Study only after a still-active embedded drill was actually unmounted.
-  if (wasActive && restore) restore();
+  // Restore Study only after a still-active embedded drill was actually unmounted. Retained
+  // summary may launch Practice Again; preserve its one-shot restore only in that case so the
+  // restarted embedded drill can restore Study on its eventual final dismissal.
+  if (wasActive && restore) {
+    restore();
+    if (summaryDisposition === 'retain') _restoreCallback = restore;
+  }
 }
 
 export function isDrillSummary(): boolean {
@@ -698,7 +715,7 @@ export function renderDrillSummary(redraw: () => void): VNode {
         }},
       }, 'Practice Again'),
       h('button.drill-btn.drill-btn--back', {
-        on: { click: () => { endDrill(); redraw(); } },
+        on: { click: () => { endDrill('summary-back', 'dismiss'); redraw(); } },
       }, 'Back to Library'),
     ]),
   ]);

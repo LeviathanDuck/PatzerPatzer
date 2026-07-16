@@ -1530,7 +1530,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
     return h('div.study-detail', [
       h('div.study-detail__header', [
         h('button.study-back', {
-          on: { click: () => { endDrill(); _showColorPicker = false; redraw(); } },
+          on: { click: () => { endDrill('study-back', 'dismiss'); _showColorPicker = false; redraw(); } },
         }, '← Library'),
         h('h1.study-detail__title', study.title),
       ]),
