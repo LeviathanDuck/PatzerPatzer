@@ -58,12 +58,18 @@ const SETTINGS_KEYS = new Set([
   'explorer.mode',
   'analyse.explorer.player.name',
   'explorer.player.name.previous',
+  'patzer.controlHelp.mode',
+  'patzer.controlHelp.hoverDelayMs',
+  'patzer.controlHelp.teachingCadence',
+  'patzer.controlHelp.learningGeneration',
 ]);
 
 const SETTINGS_PREFIXES = [
   'boardFilter.',
   'analyse.explorer.since-2.',
   'analyse.explorer.until-2.',
+  'patzer.controlHelp.learned.',
+  'patzer.controlHelp.snoozed.',
 ];
 
 let observerInstalled = false;
