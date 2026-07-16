@@ -7,6 +7,7 @@
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
 import { controlExplainerAttrs, iconControlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
+import { showToast } from '../ui/toast';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Config as CgConfig } from '@lichess-org/chessground/config';
@@ -100,7 +101,7 @@ import {
   type EnginePositionContext,
 } from '../engine/positionContext';
 import { saveOrpLineToLibrary } from '../study/saveAction';
-import { saveStudy } from '../study/studyDb';
+import { saveStudyStrict } from '../study/studyDb';
 import type { StudyItem } from '../study/types';
 import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
 import renderSaveFlowModal from '../save/saveFlowView';
@@ -2384,7 +2385,17 @@ let _saveLibFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 
 
+
+
+
+
+
+
+
+
 let _activeOpeningsSaveFlow: SaveFlowCtrl | null = null;
+let _openingsSaveFlowGeneration = 0;
+let _openingsSaveFlowPending = false;
 
 
 
@@ -2402,18 +2413,39 @@ function persistOpeningsSaveFlowResult(
   trainAs: 'white' | 'black',
   collection: ResearchCollection | null,
   result: SaveFlowResult,
+  owner: SaveFlowCtrl,
+  generation: number,
   redraw: () => void,
 ): void {
+  // Reject duplicate same-tick submits, stale owners, and stale generations BEFORE any await, so
+  // two synchronous clicks on Save become exactly one persistence attempt (Analysis/Editor guard
+  // shape). The pending flag is set synchronously below, before the first promise is created.
+  if (
+    _openingsSaveFlowPending
+    || _activeOpeningsSaveFlow !== owner
+    || _openingsSaveFlowGeneration !== generation
+  ) return;
+
+  // A completion may only mutate UI (feedback/toast/redraw/modal discard) while THIS flow still
+  // owns the surface. A source/path replacement (F5 → resetOpeningsSaveFlow) bumps the generation;
+  // the captured persistence can still finish, but its callbacks must not touch the replacement
+  // line's UI.
+  const isCurrent = (): boolean =>
+    _activeOpeningsSaveFlow === owner && _openingsSaveFlowGeneration === generation;
+
+  _openingsSaveFlowPending = true;
+
   // Opening name and ECO are not yet available from OpeningTreeNode —
   // ECO lookup is a future task. Pass undefined for both fields.
   void saveOrpLineToLibrary([...path], sans, trainAs, collection).then(saved => {
     if (!saved) {
-      // null result here means deriveFens rejected the UCI (the too-short guard already
-      // fired above, so this branch is an invalid-moves failure, not a length issue).
-      _saveLibFeedback = 'Save failed — invalid moves';
-      if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-      _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
-      redraw();
+      // null result means deriveFens rejected the UCI (invalid moves). The primary stage failed;
+      // there is nothing durable to finish. Keep the modal + inputs mounted and stay retryable.
+      if (isCurrent()) {
+        _openingsSaveFlowPending = false;
+        showToast('Could not save this line. Check storage and try again.');
+        redraw();
+      }
       return undefined;
     }
 
@@ -2427,17 +2459,31 @@ function persistOpeningsSaveFlowResult(
     if (result.notes !== undefined) item.notes = result.notes;
     if (result.tags.length > 0) item.tags = Array.from(new Set([...item.tags, ...result.tags]));
 
-    return saveStudy(item).then(() => {
+    // Strict enrichment write: rejects on request/transaction failure and resolves only after the
+    // transaction commits, so Saved is never shown while the categorization metadata is missing.
+    // Runs even when superseded — persistence finishes for the submitted line; only UI stale-drops.
+    return saveStudyStrict(item).then(() => {
+      if (!isCurrent()) return;
+      resetOpeningsSaveFlow();
       _saveLibFeedback = 'Saved to Library!';
       if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
       _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
       redraw();
+    }, () => {
+      // Enrichment rejected: the base line is durable but its Study details are not. Report the
+      // honest partial state, keep the modal + inputs, stay retryable. No rollback-delete.
+      if (!isCurrent()) return;
+      _openingsSaveFlowPending = false;
+      showToast('Line saved, but its Study details were not saved. Retry to finish.');
+      redraw();
     });
-  }).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : '';
-    _saveLibFeedback = msg ? `Save failed — ${msg}` : 'Save failed';
-    if (_saveLibFeedbackTimer) clearTimeout(_saveLibFeedbackTimer);
-    _saveLibFeedbackTimer = setTimeout(() => { _saveLibFeedback = null; redraw(); }, 1800);
+  }).catch(() => {
+    // Primary strict-write rejection (saveOrpLineToLibrary threw, e.g. the readback found no row).
+    // Bounded message only — never surface raw Error.message. Keep the modal + inputs, stay
+    // retryable. No Saved state.
+    if (!isCurrent()) return;
+    _openingsSaveFlowPending = false;
+    showToast('Could not save this line. Check storage and try again.');
     redraw();
   });
 }
@@ -2450,18 +2496,25 @@ function openOpeningsSaveFlow(
   collection: ResearchCollection | null,
   redraw: () => void,
 ): void {
-  _activeOpeningsSaveFlow = new SaveFlowCtrl({
+  // Fresh generation for this modal instance; a stale in-flight write from a previous line can no
+  // longer mutate this modal's UI. Do NOT clear _activeOpeningsSaveFlow on resolve — the modal
+  // stays mounted while the write is pending and after a failure so its own Save / Quick save
+  // controls are the retry path.
+  resetOpeningsSaveFlow();
+  const generation = _openingsSaveFlowGeneration;
+  const flow = new SaveFlowCtrl({
     itemType: 'game',
     context: openingsSaveFlowContext(sans),
     onResolve: result => {
-      _activeOpeningsSaveFlow = null;
-      persistOpeningsSaveFlowResult(path, sans, trainAs, collection, result, redraw);
+      persistOpeningsSaveFlowResult(path, sans, trainAs, collection, result, flow, generation, redraw);
     },
     onCancel: () => {
-      _activeOpeningsSaveFlow = null;
+      if (_activeOpeningsSaveFlow !== flow || _openingsSaveFlowGeneration !== generation) return;
+      resetOpeningsSaveFlow();
       redraw();
     },
   }, redraw);
+  _activeOpeningsSaveFlow = flow;
   redraw();
 }
 
@@ -2477,6 +2530,11 @@ function openOpeningsSaveFlow(
 
 
 export function resetOpeningsSaveFlow(): void {
+
+
+
+  _openingsSaveFlowGeneration++;
+  _openingsSaveFlowPending = false;
   _activeOpeningsSaveFlow = null;
 }
 
