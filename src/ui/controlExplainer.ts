@@ -38,19 +38,131 @@ export function iconControlExplainerAttrs(explainer: ControlExplainer): Record<s
   };
 }
 
+type SemanticVNode = {
+  vnode: VNode;
+  role: string;
+};
+
+function vnodeTagName(vnode: VNode): string {
+  return vnode.sel?.match(/^[^.#]+/)?.[0]?.toLowerCase() ?? '';
+}
+
+function vnodeAttr(vnode: VNode, name: string): unknown {
+  return vnode.data?.attrs?.[name];
+}
+
+function vnodeProp(vnode: VNode, name: string): unknown {
+  return vnode.data?.props?.[name];
+}
+
+function inputRole(vnode: VNode): string {
+  const type = String(vnodeAttr(vnode, 'type') ?? vnodeProp(vnode, 'type') ?? 'text').toLowerCase();
+  if (type === 'checkbox') return 'checkbox';
+  if (type === 'radio') return 'radio';
+  if (type === 'range') return 'slider';
+  if (type === 'number') return 'spinbutton';
+  if (type === 'search') return 'searchbox';
+  if (['button', 'submit', 'reset', 'image', 'file'].includes(type)) return 'button';
+  return 'textbox';
+}
+
+function implicitRole(vnode: VNode): string | null {
+  const tag = vnodeTagName(vnode);
+  if (tag === 'button') return 'button';
+  if (tag === 'input') return inputRole(vnode);
+  if (tag === 'textarea') return 'textbox';
+  if (tag === 'select') {
+    const multiple = vnodeAttr(vnode, 'multiple') !== undefined || Boolean(vnodeProp(vnode, 'multiple'));
+    const size = Number(vnodeAttr(vnode, 'size') ?? vnodeProp(vnode, 'size') ?? 0);
+    return multiple || size > 1 ? 'listbox' : 'combobox';
+  }
+  if (tag === 'a' && vnodeAttr(vnode, 'href') !== undefined) return 'link';
+  return null;
+}
+
+function semanticVNode(vnode: VNode): SemanticVNode | null {
+  const explicitRole = String(vnodeAttr(vnode, 'role') ?? '').trim();
+  if (explicitRole) return { vnode, role: explicitRole };
+  const role = implicitRole(vnode);
+  if (role) return { vnode, role };
+  for (const child of vnode.children ?? []) {
+    if (typeof child === 'string' || child == null) continue;
+    const semantic = semanticVNode(child);
+    if (semantic) return semantic;
+  }
+  return null;
+}
+
+function stringState(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return value === true ? 'true' : String(value);
+}
+
+function copiedAriaState(vnode: VNode, role: string): Record<string, string> {
+  const roleStateAttrs: Record<string, readonly string[]> = {
+    button: ['aria-expanded', 'aria-haspopup', 'aria-pressed'],
+    checkbox: ['aria-checked', 'aria-readonly'],
+    combobox: ['aria-autocomplete', 'aria-expanded', 'aria-haspopup', 'aria-invalid', 'aria-readonly', 'aria-required'],
+    listbox: ['aria-multiselectable', 'aria-orientation', 'aria-required'],
+    menuitemcheckbox: ['aria-checked'],
+    menuitemradio: ['aria-checked'],
+    option: ['aria-checked', 'aria-selected'],
+    radio: ['aria-checked', 'aria-readonly'],
+    slider: ['aria-orientation', 'aria-readonly', 'aria-valuemax', 'aria-valuemin', 'aria-valuenow', 'aria-valuetext'],
+    spinbutton: ['aria-readonly', 'aria-required', 'aria-valuemax', 'aria-valuemin', 'aria-valuenow', 'aria-valuetext'],
+    searchbox: ['aria-autocomplete', 'aria-invalid', 'aria-placeholder', 'aria-readonly', 'aria-required'],
+    switch: ['aria-checked', 'aria-readonly'],
+    tab: ['aria-selected'],
+    textbox: ['aria-autocomplete', 'aria-invalid', 'aria-multiline', 'aria-placeholder', 'aria-readonly', 'aria-required'],
+  };
+  const state: Record<string, string> = {};
+  for (const name of roleStateAttrs[role] ?? []) {
+    const value = stringState(vnodeAttr(vnode, name));
+    if (value !== undefined) state[name] = value;
+  }
+
+  if (['checkbox', 'radio', 'switch'].includes(role) && state['aria-checked'] === undefined) {
+    const checked = vnodeProp(vnode, 'checked') ?? vnodeAttr(vnode, 'checked');
+    if (checked !== undefined) state['aria-checked'] = checked === false ? 'false' : 'true';
+  }
+  if (['slider', 'spinbutton'].includes(role)) {
+    for (const [ariaName, nativeName] of [
+      ['aria-valuemin', 'min'],
+      ['aria-valuemax', 'max'],
+      ['aria-valuenow', 'value'],
+    ] as const) {
+      if (state[ariaName] !== undefined) continue;
+      const value = stringState(vnodeProp(vnode, nativeName) ?? vnodeAttr(vnode, nativeName));
+      if (value !== undefined) state[ariaName] = value;
+    }
+  }
+  if (role === 'textbox' || role === 'searchbox') {
+    const readonly = vnodeProp(vnode, 'readOnly') ?? vnodeAttr(vnode, 'readonly');
+    if (readonly !== undefined && state['aria-readonly'] === undefined) state['aria-readonly'] = readonly === false ? 'false' : 'true';
+    const placeholder = stringState(vnodeProp(vnode, 'placeholder') ?? vnodeAttr(vnode, 'placeholder'));
+    if (placeholder && state['aria-placeholder'] === undefined) state['aria-placeholder'] = placeholder;
+    if (vnodeTagName(vnode) === 'textarea' && state['aria-multiline'] === undefined) state['aria-multiline'] = 'true';
+  }
+  return state;
+}
+
 export function renderDisabledControlExplainer(explainer: ControlExplainer, control: VNode): VNode {
   const normalized = normalizedExplainer(explainer);
   if (!normalized.description) {
     throw new TypeError('A disabled control explainer must include the reason it is unavailable.');
   }
 
-  return h(
+  const semantic = semanticVNode(control);
+  const role = semantic?.role ?? 'button';
+  const state = semantic ? copiedAriaState(semantic.vnode, role) : {};
+
+  const wrapper = h(
     'span.control-explainer-disabled',
     {
       attrs: {
         ...controlExplainerAttrs(normalized),
         tabindex: '0',
-        role: 'button',
+        role,
         'aria-disabled': 'true',
         'aria-label': normalized.label,
       },
@@ -63,6 +175,8 @@ export function renderDisabledControlExplainer(explainer: ControlExplainer, cont
       ),
     ],
   );
+  Object.assign(wrapper.data!.attrs!, state);
+  return wrapper;
 }
 
 function explainerTarget(candidate: EventTarget | null): HTMLElement | null {
