@@ -3,10 +3,8 @@ import {
   protocol,
   engineEnabled,
   engineReady,
-  engineMode,
-  playStrengthConfig,
   enterPlayMode,
-  clearPendingPlayDispatch,
+  replacePendingPlayDispatchWithAnalysisResume,
   setPlayMoveCallback,
   setPlayMoveRequestPending,
   incrementPendingStopCount,
@@ -42,12 +40,9 @@ export function requestPlayMove(req: PlayMoveRequest): void {
     protocol.setPositionContext(req.position);
     protocol.goPlay(req.strength.maxDepth);
   };
-  // Switch to play mode at the requested strength if not already there.
-  if (engineMode !== 'play' || playStrengthConfig?.level !== req.strength.level) {
-    enterPlayMode(req.strength, dispatch);
-  } else {
-    dispatch();
-  }
+  // Every request enters through the readiness owner. Mutable mode/strength cannot prove that a
+  // predecessor search has drained, and a rapid same-strength restart must remain latest-wins.
+  enterPlayMode(req.strength, dispatch);
 }
 
 // Pending timer handle — cleared by cancelPlayMove() so stale callbacks never fire.
@@ -85,7 +80,7 @@ export function cancelPlayMove(): void {
   if (_pendingTimer !== null) { clearTimeout(_pendingTimer); _pendingTimer = null; }
   setPlayMoveRequestPending(false);
   setPlayMoveCallback(null);
-  clearPendingPlayDispatch();
+  replacePendingPlayDispatchWithAnalysisResume();
   if (protocol.isAnalyzing()) {
     incrementPendingStopCount();
     protocol.stop();

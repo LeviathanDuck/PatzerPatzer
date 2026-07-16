@@ -655,10 +655,77 @@ export function setPlayMoveCallback(cb: ((uci: string) => void) | null): void { 
 
 
 let _pendingPlayDispatch: (() => void) | null = null;
+let _pendingAnalysisResume = false;
 
 /** Drops any queued play-mode dispatch without running it (used by cancelPlayMove()). */
 export function clearPendingPlayDispatch(): void {
   _pendingPlayDispatch = null;
+}
+
+/**
+ * Cancelling a Practice request before its dispatch must not strand the shared foreground engine
+ * after the predecessor drain. Replace only an actually queued Practice destination with one
+ * current-FEN Analysis resume; delayed/idle cancellation remains a no-op.
+ */
+export function replacePendingPlayDispatchWithAnalysisResume(): void {
+  if (_pendingPlayDispatch === null) return;
+  _pendingPlayDispatch = null;
+  _pendingAnalysisResume = true;
+}
+
+function resumeAnalysisModeNow(): void {
+  engineMode = 'analysis';
+  playStrengthConfig = null;
+  // This destination is the latest Analysis request. Consume any older pendingEval token before
+  // evalCurrentPosition(), including the cached-hit path that returns without clearing it.
+  pendingEval = false;
+  protocol.setAnalysisMode();
+  if (engineEnabled && engineReady) evalCurrentPosition();
+}
+
+/** Dispatches the exclusive latest Practice-or-Analysis destination after every stop drains. */
+function dispatchPendingForegroundDestination(): boolean {
+  if (pendingStopCount > 0) return false;
+  if (_pendingPlayDispatch) {
+    const dispatch = _pendingPlayDispatch;
+    _pendingPlayDispatch = null;
+    _pendingAnalysisResume = false;
+    dispatch();
+    return true;
+  }
+  if (_pendingAnalysisResume) {
+    _pendingAnalysisResume = false;
+    resumeAnalysisModeNow();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Stops one currently-running foreground search and records its exact owed bestmove before the
+ * stop send. This is used at the point where a new stop is actually issued, so consecutive owners
+ * retain one drain credit per predecessor instead of collapsing them into a guessed count later.
+ */
+function stopForegroundSearchWithDrainCredit(): boolean {
+  if (!protocol.isAnalyzing()) return false;
+  pendingStopCount++;
+  protocol.stop();
+  return true;
+}
+
+/**
+ * Own the exact shared-foreground predecessor set before dispatching a queued destination. An
+ * actively analyzing protocol is a distinct current search and must receive its own stop credit
+ * even when older stopped searches are still draining. When the protocol is already idle, an
+ * existing credit proves that predecessor was already accounted; otherwise the controller-active
+ * fallback recovers one externally stopped predecessor without sending a duplicate stop.
+ */
+function ensureForegroundPredecessorDrainCredit(): void {
+  if (stopForegroundSearchWithDrainCredit()) return;
+  if (pendingStopCount > 0) return;
+  const predecessorOutstanding = engineSearchActive;
+  if (!predecessorOutstanding) return;
+  pendingStopCount++;
 }
 
 /**
@@ -670,17 +737,18 @@ export function clearPendingPlayDispatch(): void {
 export function enterPlayMode(config: EngineStrengthConfig, dispatch: () => void): void {
   playStrengthConfig = config;
   if (pendingStopCount > 0 || protocol.isAnalyzing() || engineSearchActive) {
-    if (protocol.isAnalyzing()) {
-      pendingStopCount++;
-      protocol.stop();
-    }
+    // Install the successor before stop(): Stockfish may emit the predecessor bestmove
+    // synchronously from the stop send, and that drain must see the destination to dispatch.
+    _pendingAnalysisResume = false;
     _pendingPlayDispatch = () => {
       engineMode = 'play';
       protocol.setPlayStrength(config);
       dispatch();
     };
+    ensureForegroundPredecessorDrainCredit();
     return;
   }
+  _pendingAnalysisResume = false;
   engineMode = 'play';
   protocol.setPlayStrength(config);
   dispatch();
@@ -702,12 +770,18 @@ export function setPlayStrengthLevel(level: number): void {
  * Return engine to analysis mode and resume evaluating the current position.
  */
 export function exitPlayMode(): void {
-  engineMode = 'analysis';
-  playStrengthConfig = null;
-  protocol.setAnalysisMode();
-  if (engineEnabled && engineReady) {
-    evalCurrentPosition();
+  const analysisResumeMustWait = pendingStopCount > 0 || protocol.isAnalyzing() || engineSearchActive;
+  if (analysisResumeMustWait) {
+    _pendingPlayDispatch = null;
+    _pendingAnalysisResume = true;
+    // Normal Practice teardown already owns a credit via cancelPlayMove(). Keep exitPlayMode safe
+    // for any direct active-search caller too, with destination-before-stop re-entrancy ordering.
+    ensureForegroundPredecessorDrainCredit();
+    return;
   }
+  _pendingPlayDispatch = null;
+  _pendingAnalysisResume = false;
+  resumeAnalysisModeNow();
 }
 
 // --- Arrow rendering ---
@@ -855,6 +929,11 @@ function scheduleLiveEngineUiRefresh(includeRetroCheck = false): void {
 function parseEngineLine(line: string): void {
   const parts = line.trim().split(/\s+/);
 
+  // Lichess keeps info inert once current work is stop-requested. Patzer's credited drain is the
+  // equivalent owner boundary: until every predecessor bestmove arrives, no info line can belong
+  // to the queued Practice-or-Analysis destination, regardless of mutable engineMode.
+  if (parts[0] === 'info' && pendingStopCount > 0) return;
+
 
 
 
@@ -873,10 +952,8 @@ function parseEngineLine(line: string): void {
     currentEvalIdentity = null;
     pendingLines = [];
     engineSearchActive = false;
-    if (pendingStopCount === 0 && _pendingPlayDispatch) {
-      const dispatch = _pendingPlayDispatch;
-      _pendingPlayDispatch = null;
-      dispatch();
+    if (pendingStopCount === 0 && dispatchPendingForegroundDestination()) {
+      // The exclusive foreground destination owns the now-idle protocol.
     } else if (pendingEval) {
       evalCurrentPosition();
     }
@@ -1142,13 +1219,19 @@ export function flipFenColor(fen: string): string {
 export function evalThreatPosition(): void {
   if (!engineEnabled || !engineReady || isSilentEvalActive()) return;
   if (engineMode === 'play') return;
+  if (pendingStopCount > 0 && (_pendingPlayDispatch !== null || _pendingAnalysisResume)) {
+    ensureForegroundPredecessorDrainCredit();
+    pendingEval = true;
+    _redraw();
+    return;
+  }
   cancelLiveEngineUiRefresh();
   threatEval   = {};
   evalIsThreat = true;
   // Threat is not an override: scoreShouldNegateForWhitePov() short-circuits on evalIsThreat and
   // threat output never promotes, but reset the descriptor so no prior override state lingers.
   _activeSearchDescriptor = { isOverride: false, blackToMove: false, hasCacheTarget: true };
-  protocol.stop();
+  stopForegroundSearchWithDrainCredit();
   const context = fenOnlyPositionContext(
     flipFenColor(_getCtrl().node.fen),
     'analysis-threat',
@@ -1165,7 +1248,7 @@ export function toggleThreatMode(): void {
   if (threatMode) {
     evalThreatPosition();
   } else {
-    if (evalIsThreat) { protocol.stop(); evalIsThreat = false; }
+    if (evalIsThreat) { stopForegroundSearchWithDrainCredit(); evalIsThreat = false; }
     threatEval = {};
     syncArrow();
     _redraw();
@@ -1178,7 +1261,7 @@ export function evalCurrentPosition(): void {
   if (isSilentEvalActive()) return;
   if (!engineEnabled || !engineReady) return;
   if (engineMode === 'play') return;
-  if (evalIsThreat) { pendingStopCount++; protocol.stop(); evalIsThreat = false; }
+  if (evalIsThreat) { stopForegroundSearchWithDrainCredit(); evalIsThreat = false; }
   threatEval = {};
 
   // Override mode: non-analysis-board contexts (openings page, puzzle page) set a
@@ -1191,8 +1274,8 @@ export function evalCurrentPosition(): void {
     pendingLines = [];
     syncArrow();
     armArrowSuppressWindow();
-    if (engineSearchActive) {
-      if (!pendingEval) { pendingStopCount++; protocol.stop(); }
+    if (pendingStopCount > 0 || engineSearchActive) {
+      ensureForegroundPredecessorDrainCredit();
       pendingEval = true;
       _redraw();
       return;
@@ -1264,7 +1347,7 @@ export function evalCurrentPosition(): void {
   syncArrow();
   armArrowSuppressWindow();
 
-  if (engineSearchActive) {
+  if (pendingStopCount > 0 || engineSearchActive) {
     // Stop the old search immediately so the new position starts evaluating sooner.
     // But if a reevaluation is already pending, don't queue additional stale-bestmove
     // discards for the same interrupted search. Rapid navigation can call
@@ -1274,10 +1357,7 @@ export function evalCurrentPosition(): void {
     // live analysis appears to stall.
     // Mirrors the Lichess ceval pattern of swapping to the latest queued work rather
     // than repeatedly stacking stop bookkeeping for the same in-flight search.
-    if (!pendingEval) {
-      pendingStopCount++;
-      protocol.stop();
-    }
+    ensureForegroundPredecessorDrainCredit();
     pendingEval = true;
     _redraw();
     return;
@@ -1628,4 +1708,6 @@ export function __resetEngineDrainStateForTests(): void {
   currentEvalIdentity  = null;
   pendingLines         = [];
   pendingLivePromotion = null;
+  _pendingPlayDispatch = null;
+  _pendingAnalysisResume = false;
 }
