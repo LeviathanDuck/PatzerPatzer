@@ -2,6 +2,8 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import type { AppearanceController } from '../appearance';
+import { renderAppearanceSettings } from '../appearance/view';
 import { renderToggleRow } from '../ui';
 import {
   controlExplainerAttrs,
@@ -612,6 +614,7 @@ export interface HeaderDeps {
   gameSourceUrl:       (game: ImportedGame) => string | undefined;
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
+  appearance:          AppearanceController;
   redraw:              () => void;
 }
 
@@ -2806,6 +2809,8 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         }),
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
       }, 'Export PGN (Plain)'),
+
+      renderAppearanceSettings(deps.appearance),
 
       h('div.global-menu__item.global-menu__item--toggle',
         renderToggleRow('board-wheel-nav', 'Board Wheel Navigation', boardWheelNavEnabled, (v) => { setBoardWheelNavEnabled(v); redraw(); }),
