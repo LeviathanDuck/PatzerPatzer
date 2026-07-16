@@ -4,6 +4,7 @@
 import { h, type VNode } from 'snabbdom';
 import { LEARNABLE_REASONS, type PuzzleCandidate, type TreeNode } from '../tree/types';
 import { LOSS_THRESHOLDS } from '../engine/winchances';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
 // Minimum win-chance loss to qualify as a puzzle candidate.
 // Matches the blunder threshold — we only want clear mistakes. Sourced from the
@@ -146,10 +147,18 @@ export function renderFindPuzzlesButton(deps: PuzzleRenderDeps): VNode {
   const btnLabel = canExtract
     ? `Find Puzzles (${puzzleCandidates.length})`
     : deps.batchAnalyzing ? 'Find Puzzles (analyzing…)' : 'Find Puzzles (engine off)';
-  return h('button', {
-    attrs: { disabled: !canExtract, title: 'Scan completed analysis for blunder-level puzzle candidates' },
+  const reason = deps.batchAnalyzing
+    ? 'Wait for the current batch analysis to finish.'
+    : 'Enable the engine before finding puzzle candidates.';
+  const explainer = {
+    label: 'Find puzzle candidates',
+    description: canExtract ? 'Scan completed analysis for blunder-level puzzle candidates.' : reason,
+  };
+  const control = h('button', {
+    attrs: { disabled: !canExtract, ...controlExplainerAttrs(explainer) },
     on: { click: () => { extractPuzzleCandidates(deps.mainline, deps.getEval, deps.gameId); deps.redraw(); } },
   }, btnLabel);
+  return canExtract ? control : renderDisabledControlExplainer(explainer, control);
 }
 
 export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode | null {
@@ -169,21 +178,33 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode | null {
     return h('li', { attrs: { style: 'display:flex;align-items:center' } }, [
       h('button.game-list__row', {
         class: { active: isActive },
-        attrs: { style: 'flex:1' },
+        attrs: { style: 'flex:1', ...controlExplainerAttrs({
+          label: `Open candidate ${heading}`,
+          description: `Move to the position before ${heading}.`,
+        }) },
         on: { click: () => deps.navigate(c.path) },
       }, [
         h('span', { attrs: { style: 'font-weight:600;margin-right:8px' } }, heading),
         h('span', { attrs: { style: 'color:#f88;margin-right:8px' } }, lossText),
         h('span', { attrs: { style: 'color:#888;font-size:0.8rem' } }, `best: ${deps.uciToSan(c.fen, c.bestMove)}`),
       ]),
-      h('button', {
+      isSaved ? renderDisabledControlExplainer({
+        label: 'Save puzzle candidate',
+        description: 'This puzzle candidate is already saved.',
+      }, h('button', {
         attrs: {
           style: 'flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer',
-          disabled: isSaved,
-          title: isSaved ? 'Already saved' : 'Save this puzzle',
+          disabled: true,
+          ...controlExplainerAttrs({ label: 'Save puzzle candidate', description: 'This puzzle candidate is already saved.' }),
         },
         on: { click: () => { deps.savePuzzle(c, deps.redraw); } },
-      }, isSaved ? '✓ Saved' : 'Save'),
+      }, '✓ Saved')) : h('button', {
+        attrs: {
+          style: 'flex-shrink:0;padding:2px 8px;font-size:0.75rem;margin-left:4px;cursor:pointer',
+          ...controlExplainerAttrs({ label: 'Save puzzle candidate', description: 'Save this candidate to the puzzle library.' }),
+        },
+        on: { click: () => { deps.savePuzzle(c, deps.redraw); } },
+      }, 'Save'),
     ]);
   });
 
@@ -198,15 +219,25 @@ export function renderPuzzleCandidates(deps: PuzzleRenderDeps): VNode | null {
     const prev = prevMistake(currentPath);
     const next = nextMistake(currentPath);
     navRow = h('div.pgn-import__row', { attrs: { style: 'margin-bottom:4px' } }, [
-      h('button', {
-        attrs: { disabled: !prev },
+      prev ? h('button', {
+        attrs: { ...controlExplainerAttrs({ label: 'Previous puzzle candidate', description: 'Move to the previous puzzle candidate.' }) },
         on: { click: () => { if (prev) deps.navigate(prev.path); } },
-      }, '← Prev'),
+      }, '← Prev') : renderDisabledControlExplainer({
+        label: 'Previous puzzle candidate',
+        description: 'You are at the first puzzle candidate.',
+      }, h('button', { attrs: { disabled: true, ...controlExplainerAttrs({
+        label: 'Previous puzzle candidate', description: 'You are at the first puzzle candidate.',
+      }) } }, '← Prev')),
       h('span', { attrs: { style: 'margin:0 8px;font-size:0.85rem;color:#aaa' } }, posLabel),
-      h('button', {
-        attrs: { disabled: !next },
+      next ? h('button', {
+        attrs: { ...controlExplainerAttrs({ label: 'Next puzzle candidate', description: 'Move to the next puzzle candidate.' }) },
         on: { click: () => { if (next) deps.navigate(next.path); } },
-      }, 'Next →'),
+      }, 'Next →') : renderDisabledControlExplainer({
+        label: 'Next puzzle candidate',
+        description: 'You are at the last puzzle candidate.',
+      }, h('button', { attrs: { disabled: true, ...controlExplainerAttrs({
+        label: 'Next puzzle candidate', description: 'You are at the last puzzle candidate.',
+      }) } }, 'Next →')),
     ]);
   }
 

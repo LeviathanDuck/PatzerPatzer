@@ -6,6 +6,7 @@
  */
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
+import { controlExplainerAttrs, iconControlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
 import type { Api as CgApi } from '@lichess-org/chessground/api';
 import type { Key } from '@lichess-org/chessground/types';
@@ -443,7 +444,7 @@ function renderLibraryLoadError(): VNode {
     h('p', 'Couldn’t load your saved research — a storage error occurred.'),
     h('p', 'Your research is not lost. Reload to try again.'),
     h('button.openings__new-btn', {
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Reload Opening Tree', description: 'Reload the page and retry saved-research storage.' }) },
       on: { click: () => { window.location.reload(); } },
     }, 'Reload'),
   ]);
@@ -472,6 +473,7 @@ function renderLibraryPage(redraw: () => void): VNode {
       h('h1.openings__title', 'Opening Tree'),
       step === 'idle'
         ? h('button.openings__new-btn', {
+            attrs: controlExplainerAttrs({ label: 'New opening research', description: 'Start a new account or PGN opening research import.' }),
             on: { click: () => { setImportStep('details'); redraw(); } },
           }, 'New Research')
         : null,
@@ -718,22 +720,28 @@ function renderPreLoadSyncArea(account: ChessAccount, redraw: () => void): VNode
   // Wider-safety-fetch warning, mirroring the header sync menu.
   const filterKey = importSyncFilterKey(importFilters.rated, importFilters.speeds);
   const filterMismatch = newest !== null && account.syncFilterKey !== filterKey;
+  const syncBusy = _accountSyncRunningId !== null;
+  const syncExplainer = {
+    label: 'Sync account games',
+    description: syncBusy ? 'Another account sync is already running.' : 'Fetch new and missing games for this account.',
+  };
+  const syncControl = h('button.openings__preload-sync-btn', {
+    attrs: { type: 'button', disabled: syncBusy, ...controlExplainerAttrs(syncExplainer) },
+    on: { click: (e: Event) => { e.stopPropagation(); void startAccountSync(account, redraw); } },
+  }, running ? 'Syncing…' : 'Sync');
 
   return h('div.openings__preload-sync', [
     h('div.openings__preload-sync-row', [
       h('span.openings__preload-sync-date', `Last synced ${formatLongSyncDate(account.lastSyncedAt)}`),
       h('button.openings__preload-sync-refresh', {
-        attrs: { type: 'button', title: 'Check for new games' },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Check for new games', description: 'Refresh the count of games available to sync.' }) },
         on: { click: (e: Event) => { e.stopPropagation(); resetAccountPeek(account.id); redraw(); } },
       }, '⟳'),
       running ? h('button.openings__preload-sync-btn', {
-        attrs: { type: 'button', title: 'Stop after the current batch; games fetched so far are kept' },
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel account sync', description: 'Stop after the current batch and keep games fetched so far.' }) },
         on: { click: (e: Event) => { e.stopPropagation(); _accountSyncAbort?.abort(); } },
       }, 'Cancel') : null,
-      h('button.openings__preload-sync-btn', {
-        attrs: { type: 'button', disabled: _accountSyncRunningId !== null },
-        on: { click: (e: Event) => { e.stopPropagation(); void startAccountSync(account, redraw); } },
-      }, running ? 'Syncing…' : 'Sync'),
+      syncBusy ? renderDisabledControlExplainer(syncExplainer, syncControl) : syncControl,
     ]),
     coverage ? h('div.openings__preload-sync-peek', coverage) : null,
     hasGap && !running
@@ -769,19 +777,19 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
   const periodBtn = (value: string | null, label: string): VNode =>
     h('button.openings__preload-period', {
       class: { active: range === value },
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `${label} period`, description: 'Use this period for the opening tree.' }) },
       on: { click: (e: Event) => { e.stopPropagation(); presetSessionDateRange(value); redraw(); } },
     }, label);
 
   return h('div.openings__preload-panel', {
-    on: { click: (e: Event) => e.stopPropagation() },
+    hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', e => e.stopPropagation()) },
   }, [
     h('div.openings__preload-section', [
       h('div.openings__preload-label', 'Time control'),
       h('div.openings__preload-row', SPEED_OPTIONS.map(({ value, label, icon }) =>
         h('button.openings__preload-speed', {
           class: { active: speeds.size === 0 || speeds.has(value) },
-          attrs: { type: 'button', 'data-icon': icon },
+          attrs: { type: 'button', 'data-icon': icon, ...controlExplainerAttrs({ label: `${label} games`, description: 'Include or exclude this time control.' }) },
           on: { click: (e: Event) => { e.stopPropagation(); toggleSpeed(value); } },
         }, label),
       )),
@@ -797,13 +805,13 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
       range === 'custom' ? h('div.openings__preload-custom-range', [
         h('span.openings__preload-custom-label', 'From'),
         h('input.openings__preload-date-input', {
-          attrs: { type: 'date' },
+          attrs: { type: 'date', name: 'opening-preload-from', ...controlExplainerAttrs({ label: 'Opening tree start date', description: 'Include games played on or after this date.' }) },
           props: { value: sessionCustomFrom() },
           on: { change: (e: Event) => { presetSessionCustomFrom((e.target as HTMLInputElement).value); redraw(); } },
         }),
         h('span.openings__preload-custom-label', 'To'),
         h('input.openings__preload-date-input', {
-          attrs: { type: 'date' },
+          attrs: { type: 'date', name: 'opening-preload-to', ...controlExplainerAttrs({ label: 'Opening tree end date', description: 'Include games played on or before this date.' }) },
           props: { value: sessionCustomTo() },
           on: { change: (e: Event) => { presetSessionCustomTo((e.target as HTMLInputElement).value); redraw(); } },
         }),
@@ -811,7 +819,7 @@ function renderPreLoadFilterPanel(onBuild: () => void | Promise<void>, redraw: (
     ]),
     account ? renderPreLoadSyncArea(account, redraw) : null,
     h('button.openings__preload-build', {
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Build opening tree', description: 'Build the tree from games matching these filters.' }) },
       on: { click: (e: Event) => { e.stopPropagation(); void onBuild(); } },
     }, 'Build tree'),
   ]);
@@ -1043,20 +1051,36 @@ function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode
   const isEditingTag = _editingAccountTagId === account.id;
   const busy = _accountActionRunningId === account.id;
 
-  const sectionBtn = (value: AccountSection, label: string): VNode => h('button.openings__account-menu-section-btn', {
-    class: { active: currentSection === value },
-    attrs: { type: 'button', disabled: busy, title: `Move to ${label}`, 'aria-label': `Move ${account.displayName} to ${label}` },
-    on: { click: (e: Event) => { e.stopPropagation(); void setAccountSection(account, value, redraw); } },
-  }, label);
+  const sectionBtn = (value: AccountSection, label: string): VNode => {
+    const explainer = { label: `Move ${account.displayName} to ${label}`, description: busy ? 'Wait for the current account update to finish.' : `Move this account to the ${label} section.` };
+    const control = h('button.openings__account-menu-section-btn', {
+      class: { active: currentSection === value },
+      attrs: { type: 'button', disabled: busy, ...controlExplainerAttrs(explainer) },
+      on: { click: (e: Event) => { e.stopPropagation(); void setAccountSection(account, value, redraw); } },
+    }, label);
+    return busy ? renderDisabledControlExplainer(explainer, control) : control;
+  };
 
-  const categoryBtn = (value: AccountCategory, label: string): VNode => h('button.openings__account-menu-section-btn', {
-    class: { active: account.category === value },
-    attrs: { type: 'button', disabled: busy, title: `Set category to ${label}`, 'aria-label': `Set ${account.displayName} category to ${label}` },
-    on: { click: (e: Event) => { e.stopPropagation(); void setAccountCategory(account, value, redraw); } },
-  }, label);
+  const categoryBtn = (value: AccountCategory, label: string): VNode => {
+    const explainer = { label: `Set ${account.displayName} category to ${label}`, description: busy ? 'Wait for the current account update to finish.' : `Classify this account as ${label}.` };
+    const control = h('button.openings__account-menu-section-btn', {
+      class: { active: account.category === value },
+      attrs: { type: 'button', disabled: busy, ...controlExplainerAttrs(explainer) },
+      on: { click: (e: Event) => { e.stopPropagation(); void setAccountCategory(account, value, redraw); } },
+    }, label);
+    return busy ? renderDisabledControlExplainer(explainer, control) : control;
+  };
+  const deleteExplainer = {
+    label: `Delete ${account.displayName} from the library`,
+    description: busy ? 'Wait for the current account update to finish.' : 'Delete this account and its imported games from the library.',
+  };
+  const deleteControl = h('button.openings__account-menu-delete', {
+    attrs: { type: 'button', disabled: busy, ...controlExplainerAttrs(deleteExplainer) },
+    on: { click: (e: Event) => { e.stopPropagation(); void deleteAccountFromLibrary(account, redraw); } },
+  }, busy ? 'Deleting…' : 'Delete from library');
 
   return h('div.openings__account-menu', {
-    on: { click: (e: Event) => e.stopPropagation() },
+    hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', e => e.stopPropagation()) },
   }, [
     h('div.openings__account-menu-row', [
       h('div.openings__account-menu-label', 'Category'),
@@ -1080,13 +1104,13 @@ function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode
         ...tags.map(tag => h('span.study-tag', { key: tag }, [
           tag,
           h('button.study-tag__remove', {
-            attrs: { type: 'button', title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
+            attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove tag ${tag}`, description: 'Remove this tag from the account.' }) },
             on: { click: (e: Event) => { e.stopPropagation(); void removeAccountTag(account, tag, redraw); } },
           }, '×'),
         ])),
         isEditingTag
           ? h('input.study-tag__input', {
-              attrs: { placeholder: 'Add tag…' },
+              attrs: { name: 'account-tag', placeholder: 'Add tag…', ...controlExplainerAttrs({ label: 'New account tag', description: 'Type a tag and press Enter to add it.' }) },
               props: { value: _editingAccountTagValue },
               hook: { insert: (vnode) => (vnode.elm as HTMLInputElement).focus() },
               on: {
@@ -1106,7 +1130,7 @@ function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode
               },
             })
           : h('button.study-tag__add', {
-              attrs: { type: 'button', title: 'Add tag', 'aria-label': `Add a tag to ${account.displayName}` },
+              attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Add a tag to ${account.displayName}`, description: 'Open the account tag input.' }) },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 _editingAccountTagId = account.id;
@@ -1123,15 +1147,7 @@ function renderAccountEditMenu(account: ChessAccount, redraw: () => void): VNode
     ]),
     h('div.openings__account-menu-divider'),
     _accountActionError ? h('p.openings__account-menu-error', _accountActionError) : null,
-    h('button.openings__account-menu-delete', {
-      attrs: {
-        type: 'button',
-        disabled: busy,
-        title: `Delete ${account.displayName} from the library`,
-        'aria-label': `Delete ${account.displayName} from the library`,
-      },
-      on: { click: (e: Event) => { e.stopPropagation(); void deleteAccountFromLibrary(account, redraw); } },
-    }, busy ? 'Deleting…' : 'Delete from library'),
+    busy ? renderDisabledControlExplainer(deleteExplainer, deleteControl) : deleteControl,
   ]);
 }
 
@@ -1156,43 +1172,12 @@ function renderAccountCard(
   const dragOver = reorderMode && _dragOverTarget?.section === section && _dragOverTarget.anchorId === account.id
     ? (_dragOverTarget.before ? 'top' : 'bottom')
     : null;
-  return h('div.openings__collection-row', {
-    key,
-    class: {
-      'openings__collection-row--dragging': reorderMode && _draggingAccountId === account.id,
-      'openings__collection-row--drag-over-top': dragOver === 'top',
-      'openings__collection-row--drag-over-bottom': dragOver === 'bottom',
-    },
-    attrs: reorderMode ? { draggable: 'true' } : {},
-    on: reorderMode ? {
-      dragstart: (e: DragEvent) => {
-        e.stopPropagation();
-        _draggingAccountId = account.id;
-        e.dataTransfer?.setData('text/plain', account.id);
-        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-      },
-      dragend: () => { _draggingAccountId = null; _dragOverTarget = null; redraw(); },
-      dragover: (e: DragEvent) => {
-        if (!_draggingAccountId || _draggingAccountId === account.id) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const before = (e.clientY - rect.top) < rect.height / 2;
-        if (_dragOverTarget?.section !== section || _dragOverTarget.anchorId !== account.id || _dragOverTarget.before !== before) {
-          _dragOverTarget = { section, anchorId: account.id, before };
-          redraw();
-        }
-      },
-      drop: (e: DragEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const before = _dragOverTarget?.anchorId === account.id ? _dragOverTarget.before : true;
-        void handleAccountDrop(section, account.id, before, redraw);
-      },
-    } : {
-      click: () => { _expandedCardKey = expanded ? null : key; _expandedMenuKey = null; redraw(); },
-    },
-  }, [
+  const rowClass = {
+    'openings__collection-row--dragging': reorderMode && _draggingAccountId === account.id,
+    'openings__collection-row--drag-over-top': dragOver === 'top',
+    'openings__collection-row--drag-over-bottom': dragOver === 'bottom',
+  };
+  const children = [
     h('div.openings__card-top', [
       h('span.openings__collection-name', account.displayName),
       h('div.openings__account-actions', [
@@ -1203,8 +1188,7 @@ function renderAccountCard(
           class: { active: menuOpen },
           attrs: {
             type: 'button',
-            title: `Edit account: ${account.displayName}`,
-            'aria-label': `Edit account: ${account.displayName}`,
+            ...iconControlExplainerAttrs({ label: `Edit account: ${account.displayName}`, description: 'Open account category, section, tag, and delete actions.' }),
             'aria-expanded': String(menuOpen),
           },
           on: { click: (e: Event) => {
@@ -1223,8 +1207,7 @@ function renderAccountCard(
           class: { active: expanded },
           attrs: {
             type: 'button',
-            title: `Open filters for ${account.displayName}`,
-            'aria-label': `Open filters for ${account.displayName}`,
+            ...iconControlExplainerAttrs({ label: `Open filters for ${account.displayName}`, description: 'Show or hide tree filters for this account.' }),
           },
           on: { click: (event: Event) => {
             event.stopPropagation();
@@ -1242,7 +1225,7 @@ function renderAccountCard(
           href: accountProfileUrl(account),
           target: '_blank',
           rel: 'noopener noreferrer',
-          title: `Open ${account.displayName} on ${platformLabel(account.platform)}`,
+          ...controlExplainerAttrs({ label: `Open ${account.displayName} on ${platformLabel(account.platform)}`, description: 'Open the account profile in a new tab.' }),
         },
         on: { click: (e: Event) => e.stopPropagation() },
       }, `${platformLabel(account.platform)} ↗`),
@@ -1268,7 +1251,50 @@ function renderAccountCard(
           });
         }, redraw, account)
       : null,
-  ]);
+  ];
+  if (!reorderMode) {
+    const toggle = (): void => { _expandedCardKey = expanded ? null : key; _expandedMenuKey = null; redraw(); };
+    return h('div.openings__collection-row', {
+      key,
+      class: rowClass,
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Open ${account.displayName} research filters`, description: 'Show or hide tree filters for this account.' }) },
+      on: {
+        click: toggle,
+        keydown: (event: KeyboardEvent) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); toggle(); } },
+      },
+    }, children);
+  }
+  return h('div.openings__collection-row', {
+    key,
+    class: rowClass,
+    attrs: { draggable: 'true' },
+    on: {
+      dragstart: (e: DragEvent) => {
+        e.stopPropagation();
+        _draggingAccountId = account.id;
+        e.dataTransfer?.setData('text/plain', account.id);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      },
+      dragend: () => { _draggingAccountId = null; _dragOverTarget = null; redraw(); },
+      dragover: (e: DragEvent) => {
+        if (!_draggingAccountId || _draggingAccountId === account.id) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        if (_dragOverTarget?.section !== section || _dragOverTarget.anchorId !== account.id || _dragOverTarget.before !== before) {
+          _dragOverTarget = { section, anchorId: account.id, before };
+          redraw();
+        }
+      },
+      drop: (e: DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const before = _dragOverTarget?.anchorId === account.id ? _dragOverTarget.before : true;
+        void handleAccountDrop(section, account.id, before, redraw);
+      },
+    },
+  }, children);
 }
 
 const ACCOUNT_SECTION_DEFS: ReadonlyArray<{ section: AccountSection; title: string; emptyText: string; collapsible: boolean }> = [
@@ -1326,9 +1352,13 @@ function renderAccountSectionBlock(
       attrs: {
         role: 'button',
         tabindex: '0',
-        title: collapsed ? 'Expand Archive' : 'Collapse Archive',
         'aria-expanded': String(!collapsed),
-        'aria-label': collapsed ? 'Expand Archive section' : 'Collapse Archive section',
+        ...controlExplainerAttrs({
+          label: collapsed ? 'Expand Archive section' : 'Collapse Archive section',
+          description: collapsed
+            ? 'Show the accounts stored in the Archive section.'
+            : 'Hide the accounts stored in the Archive section.',
+        }),
       },
       on: {
         click: toggleCollapse,
@@ -1356,7 +1386,9 @@ function renderAccountsSection(accounts: readonly ChessAccount[], redraw: () => 
         : 'Imported accounts — click to research from the shared game library.'),
       h('button.openings__reorder-toggle', {
         class: { active: reorderMode },
-        attrs: { type: 'button', title: reorderMode ? 'Done reordering' : 'Reorder accounts', 'aria-pressed': String(reorderMode) },
+        attrs: { type: 'button', 'aria-pressed': String(reorderMode), ...controlExplainerAttrs({
+          label: reorderMode ? 'Done reordering accounts' : 'Reorder accounts', description: 'Toggle drag-and-drop account reordering.',
+        }) },
         on: { click: () => {
           _accountReorderMode = !_accountReorderMode;
           _draggingAccountId = null;
@@ -1379,6 +1411,7 @@ function renderEmptyState(redraw: () => void): VNode {
     h('p', 'Research your opponents\u2019 openings by importing their games.'),
     h('p.openings__hint', 'Accounts imported anywhere in Patzer Pro appear here automatically.'),
     h('button.openings__start-btn', {
+      attrs: controlExplainerAttrs({ label: 'Start new opening research', description: 'Open the import workflow for a new opening tree.' }),
       on: { click: () => { setImportStep('details'); redraw(); } },
     }, 'Start New Research'),
   ]);
@@ -1541,7 +1574,15 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
 
   return h('div.openings__collection-row', {
     key: c.id,
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+      label: `Open ${c.name}`, description: 'Show or hide filters for this saved opening research collection.',
+    }) },
     on: { click: () => {
+      _expandedCardKey = _expandedCardKey === c.id ? null : c.id;
+      redraw();
+    }, keydown: (event: KeyboardEvent) => {
+      if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+      event.preventDefault();
       _expandedCardKey = _expandedCardKey === c.id ? null : c.id;
       redraw();
     } },
@@ -1550,7 +1591,7 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
       h('span.openings__collection-name', c.name),
       h('div.openings__collection-actions', [
         h('button.openings__col-rename', {
-          attrs: { title: 'Rename collection', 'aria-label': 'Rename collection' },
+          attrs: iconControlExplainerAttrs({ label: 'Rename collection', description: 'Change the name of this saved collection.' }),
           on: { click: (e: Event) => {
             e.stopPropagation();
             const name = prompt('Rename collection:', c.name);
@@ -1558,7 +1599,7 @@ function renderCollectionCard(c: ResearchCollection, redraw: () => void): VNode 
           } },
         }, '\u270E'),
         h('button.openings__col-delete', {
-          attrs: { title: 'Delete collection', 'aria-label': 'Delete collection' },
+          attrs: iconControlExplainerAttrs({ label: 'Delete collection', description: 'Permanently delete this saved collection.' }),
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (confirm(`Delete "${c.name}"? This cannot be undone.`)) {
@@ -1632,6 +1673,7 @@ function renderImportWorkflow(redraw: () => void): VNode {
     h('div.openings__import-header', [
       h('span', 'New Opening Tree'),
       h('button.header__panel-btn.--ghost', {
+        attrs: controlExplainerAttrs({ label: 'Cancel opening import', description: 'Close this import workflow without importing games.' }),
         on: { click: () => { resetImport(); redraw(); } },
       }, 'Cancel'),
     ]),
@@ -1679,6 +1721,7 @@ function renderDetailsStep(redraw: () => void): VNode {
     h('div.header__panel-row', sources.map(s =>
       h('button.header__pill', {
         class: { active: src === s.value },
+        attrs: controlExplainerAttrs({ label: `${s.label} import source`, description: 'Use this source for the new opening research.' }),
         on: { click: () => { setImportSource(s.value); redraw(); } },
       }, s.label),
     )),
@@ -1692,12 +1735,14 @@ function renderDetailsStep(redraw: () => void): VNode {
       h('input.header__text-input', {
         attrs: {
           type: 'text',
+          name: 'opening-import-username',
           placeholder: `${src === 'lichess' ? 'Lichess' : 'Chess.com'} username`,
           autocomplete: 'off',
           'data-lpignore': 'true',
           'data-1p-ignore': 'true',
           'data-bwignore': 'true',
           'data-form-type': 'other',
+          ...controlExplainerAttrs({ label: 'Import username', description: `Enter the ${src === 'lichess' ? 'Lichess' : 'Chess.com'} username to import.` }),
         },
         props: { value: importUsername() },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLInputElement).value); scheduleImportRedraw(redraw); } },
@@ -1706,7 +1751,9 @@ function renderDetailsStep(redraw: () => void): VNode {
     ]) : h('div.header__panel-section', [
       h('div.header__panel-label', 'Paste PGN or upload file'),
       h('textarea.header__pgn-input', {
-        attrs: { placeholder: 'Paste PGN text here\u2026', rows: '6' },
+        attrs: { name: 'opening-import-pgn', placeholder: 'Paste PGN text here\u2026', rows: '6', ...controlExplainerAttrs({
+          label: 'Opening research PGN', description: 'Paste PGN text to build the opening tree.',
+        }) },
         on: { input: (e: Event) => { setImportUsername((e.target as HTMLTextAreaElement).value); scheduleImportRedraw(redraw); } },
       }),
       h('div.header__pgn-file-upload', {
@@ -1724,7 +1771,7 @@ function renderDetailsStep(redraw: () => void): VNode {
         },
       }, [
         h('input', {
-          attrs: { type: 'file', accept: '.pgn' },
+          attrs: { type: 'file', accept: '.pgn', name: 'opening-import-file', 'data-ui-explainer-exempt': 'hidden-implementation-input' },
           on: {
             change: (e: Event) => {
               const file = (e.target as HTMLInputElement).files?.[0];
@@ -1746,6 +1793,7 @@ function renderDetailsStep(redraw: () => void): VNode {
     h('div.header__panel-row', (['white', 'black'] as const).map(c =>
       h('button.header__pill', {
         class: { active: color === c },
+        attrs: controlExplainerAttrs({ label: `${c} perspective`, description: `Build the tree from ${c}'s perspective.` }),
         on: { click: () => { setImportColor(c); redraw(); } },
       }, c.charAt(0).toUpperCase() + c.slice(1)),
     )),
@@ -1763,6 +1811,7 @@ function renderDetailsStep(redraw: () => void): VNode {
       ] as const).map(({ value, label }) =>
         h('button.header__pill', {
           class: { active: importCategory() === value },
+          attrs: controlExplainerAttrs({ label: `${label} account category`, description: 'Classify the imported account in the library.' }),
           on: { click: () => { setImportCategory(value); redraw(); } },
         }, label),
       )),
@@ -1777,12 +1826,13 @@ function renderDetailsStep(redraw: () => void): VNode {
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: speeds.size === 0 },
+          attrs: controlExplainerAttrs({ label: 'All time controls', description: 'Include every time control in the import.' }),
           on: { click: () => { setImportSpeeds(new Set()); redraw(); } },
         }, 'All'),
         ...SPEED_OPTIONS.map(({ value, label, icon }) =>
           h('button.header__pill', {
             class: { active: speeds.has(value) },
-            attrs: { 'data-icon': icon },
+            attrs: { 'data-icon': icon, ...controlExplainerAttrs({ label: `${label} games`, description: 'Include or exclude this time control from the import.' }) },
             on: { click: () => {
               const s = new Set(speeds);
               s.has(value) ? s.delete(value) : s.add(value);
@@ -1802,6 +1852,7 @@ function renderDetailsStep(redraw: () => void): VNode {
         ...DATE_RANGE_OPTIONS.map(({ value, label }) =>
           h('button.header__pill', {
             class: { active: dateRange === value },
+            attrs: controlExplainerAttrs({ label: `${label} import period`, description: 'Use this date period for imported games.' }),
             on: { click: () => { setImportDateRange(value as ImportDateRange); redraw(); } },
           }, label),
         ),
@@ -1809,13 +1860,13 @@ function renderDetailsStep(redraw: () => void): VNode {
       dateRange === 'custom' ? h('div.header__panel-row.--mt', [
         h('span', 'From'),
         h('input.header__date-input', {
-          attrs: { type: 'date' },
+          attrs: { type: 'date', name: 'opening-import-from', ...controlExplainerAttrs({ label: 'Import start date', description: 'Include games played on or after this date.' }) },
           props: { value: importCustomFrom() },
           on: { change: (e: Event) => { setImportCustomFrom((e.target as HTMLInputElement).value); redraw(); } },
         }),
         h('span', 'To'),
         h('input.header__date-input', {
-          attrs: { type: 'date' },
+          attrs: { type: 'date', name: 'opening-import-to', ...controlExplainerAttrs({ label: 'Import end date', description: 'Include games played on or before this date.' }) },
           props: { value: importCustomTo() },
           on: { change: (e: Event) => { setImportCustomTo((e.target as HTMLInputElement).value); redraw(); } },
         }),
@@ -1827,7 +1878,7 @@ function renderDetailsStep(redraw: () => void): VNode {
     sections.push(h('div.header__panel-section', [
       h('label.header__panel-check', [
         h('input', {
-          attrs: { type: 'checkbox' },
+          attrs: { type: 'checkbox', name: 'opening-import-rated', ...controlExplainerAttrs({ label: 'Rated games only', description: 'Include only rated games in the import.' }) },
           props: { checked: importRated() },
           on: { change: (e: Event) => { setImportRated((e.target as HTMLInputElement).checked); redraw(); } },
         }),
@@ -1840,7 +1891,7 @@ function renderDetailsStep(redraw: () => void): VNode {
     sections.push(h('div.header__panel-section', [
       h('div.header__panel-label', 'Max games'),
       h('input.header__text-input.header__text-input--short', {
-        attrs: { type: 'number', min: '1', max: '200' },
+        attrs: { type: 'number', name: 'opening-import-max-games', min: '1', max: '200', ...controlExplainerAttrs({ label: 'Maximum games', description: 'Limit how many games this import may fetch.' }) },
         props: { value: importMaxGames() },
         on: { change: (e: Event) => { setImportMaxGames(parseInt((e.target as HTMLInputElement).value, 10) || 50); redraw(); } },
       }),
@@ -1848,13 +1899,21 @@ function renderDetailsStep(redraw: () => void): VNode {
   }
 
   // --- Error + actions ---
+  const importDisabled = src !== 'pgn' && importUsername().trim() === '';
+  const importExplainer = {
+    label: 'Import games',
+    description: importDisabled
+      ? 'Enter an account username before importing games.'
+      : 'Import matching games and build opening research.',
+  };
+  const importControl = h('button.openings__import-btn', {
+    attrs: { disabled: importDisabled, ...controlExplainerAttrs(importExplainer) },
+    on: { click: () => { void executeResearchImport(redraw); } },
+  }, 'Import Games');
   sections.push(h('div.header__panel-divider'));
   sections.push(h('div.header__panel-section', [
     err ? h('div.header__panel-error', err) : null,
-    h('button.openings__import-btn', {
-      attrs: { disabled: src !== 'pgn' && importUsername().trim() === '' },
-      on: { click: () => { void executeResearchImport(redraw); } },
-    }, 'Import Games'),
+    importDisabled ? renderDisabledControlExplainer(importExplainer, importControl) : importControl,
   ]));
 
   return h('div.openings__step', sections);
@@ -1875,7 +1934,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
+      attrs: iconControlExplainerAttrs({ label: 'Close Opening Tree menu' }),
       on:    { click: close },
     }, '×'),
 
@@ -1883,7 +1942,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
     h('div.action-menu__tools', [
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
-        attrs: { 'data-icon': ICON_FLIP, title: 'Flip board' },
+        attrs: { 'data-icon': ICON_FLIP, ...controlExplainerAttrs({ label: 'Flip board', description: 'Reverse the Opening Tree board orientation.' }) },
         on: { click: () => {
           flipBoard();
           if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
@@ -1891,14 +1950,14 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
         } },
       }, 'Flip board'),
       path.length >= 1 ? h('button', {
-        attrs: { 'data-icon': ICON_BOOK, title: 'Save this line to the Study Library' },
+        attrs: { 'data-icon': ICON_BOOK, ...controlExplainerAttrs({ label: 'Save line to Study Library', description: 'Save the current opening line to the Study Library.' }) },
         on: { click: () => {
           handleSaveToLibrary(path, redraw);
           close();
         } },
       }, 'Save to Library') : null,
       h('button', {
-        attrs: { title: 'Report an issue with the Opening Tree page' },
+        attrs: controlExplainerAttrs({ label: 'Report Opening Tree issue', description: 'Open a diagnostic report for this page.' }),
         on: { click: () => { reportOpeningsIssue(); close(); } },
       }, 'Report issue'),
     ]),
@@ -1906,7 +1965,7 @@ function renderOpeningsActionMenu(redraw: () => void): VNode | null {
     h('h2', 'Display'),
     h('div.action-menu__display', [
       renderToggleRow('op-engine-arrows', 'Engine arrows', showEngineArrows, (v) => { setShowEngineArrows(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
-      renderToggleRow('op-engine-line-arrows', 'Engine line arrows', arrowAllLines, (v) => { setArrowAllLines(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }, !showEngineArrows),
+      renderToggleRow('op-engine-line-arrows', 'Engine line arrows', arrowAllLines, (v) => { setArrowAllLines(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }, !showEngineArrows, 'Enable Engine arrows first.'),
       renderToggleRow('op-arrow-labels', 'Arrow labels', showArrowLabels, (v) => { setShowArrowLabels(v); syncOpeningsAutoShapes(sessionNode()); redraw(); }),
 
       renderToggleRow('op-tree-arrows', 'Tree arrows', showTreeArrows(), (_v) => { toggleTreeArrows(); _lastOpeningsAutoShapesHash = null; syncOpeningsAutoShapes(sessionNode()); redraw(); }),
@@ -2035,8 +2094,7 @@ function renderOpeningTreeSplitHandle(redraw: () => void): VNode {
       role:              'separator',
       tabindex:          '0',
       'aria-orientation': 'vertical',
-      'aria-label':       'Resize data columns',
-      title:              'Resize data columns',
+      ...iconControlExplainerAttrs({ label: 'Resize data columns', description: 'Drag or use arrow keys to resize the tree and engine columns.' }),
     },
     on: {
       pointerdown: (event: PointerEvent) => beginOpeningTreeColumnResize(event, redraw),
@@ -2051,8 +2109,7 @@ function renderOpeningTreeSwapButton(redraw: () => void): VNode {
   return h('button.openings__swap-columns-btn', {
     attrs: {
       type:         'button',
-      title:        'Swap data columns',
-      'aria-label': 'Swap data columns',
+      ...iconControlExplainerAttrs({ label: 'Swap data columns', description: 'Exchange the tree and engine column positions.' }),
     },
     on: { click: () => toggleOpeningTreeColumnOrder(redraw) },
   }, [
@@ -2146,6 +2203,7 @@ function renderSessionPage(redraw: () => void): VNode {
     renderRouteRecoveryBanner(),
     h('div.openings__session-header', [
       h('button.openings__back-lib-btn', {
+        attrs: controlExplainerAttrs({ label: 'Back to Opening Tree library', description: 'Close this tree and return to saved research.' }),
         on: { click: () => { _openingsCg = undefined; clearCevalPositionOverride('openings-live'); closeSession(); redraw(); } },
       }, '\u2190 Library'),
       h('h2.openings__session-title', collection?.name ?? 'Opening Tree'),
@@ -2250,7 +2308,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
   return h('div.openings__color-toggle', [
     h('button', {
       class: { active: filter === 'white', 'white-btn': true },
-      attrs: { title: 'Show games as White' },
+      attrs: controlExplainerAttrs({ label: 'Show games as White', description: 'Use games where the selected player had White.' }),
       on: { click: () => {
         if (filter === 'white') return;
         _lastBoardFen = '';
@@ -2264,7 +2322,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
     ]),
     h('button', {
       class: { active: filter === 'black', 'black-btn': true },
-      attrs: { title: 'Show games as Black' },
+      attrs: controlExplainerAttrs({ label: 'Show games as Black', description: 'Use games where the selected player had Black.' }),
       on: { click: () => {
         if (filter === 'black') return;
         _lastBoardFen = '';
@@ -2280,7 +2338,7 @@ function renderColorToggle(playerName: string, redraw: () => void): VNode {
     // Adapted from lichess-org/lila: ui/analyse/src/view/actionMenu.ts
     //   attrs: { 'data-icon': licon.ChasingArrows, title: 'Hotkey: f' }
     h('button.openings__color-flip', {
-      attrs: { 'data-icon': '\ue020', title: 'Flip board (f)', 'aria-label': 'Flip board' },
+      attrs: { 'data-icon': '\ue020', ...iconControlExplainerAttrs({ label: 'Flip board', description: 'Reverse the Opening Tree board orientation.' }) },
       on: { click: () => {
         flipBoard();
         if (_openingsCg) _openingsCg.set({ orientation: boardOrientation() });
@@ -2561,6 +2619,7 @@ function renderOpeningsBoard(node: OpeningTreeNode | null, redraw: () => void): 
 
   return h('div.cg-wrap.openings__board', {
     key: 'openings-board',
+    attrs: { 'data-ui-explainer-exempt': 'chessboard-play-surface' },
     hook: {
       insert: (vnode) => {
         const dests = destsForFen(fen);
@@ -2944,6 +3003,7 @@ function renderMobileCapNotice(redraw: () => void): VNode | null {
     h('span.openings__mobile-cap-label',
       `Showing ${shown.toLocaleString()} of ${total.toLocaleString()} games (mobile).`),
     h('button.openings__mobile-cap-btn', {
+      attrs: controlExplainerAttrs({ label: 'Load all games', description: 'Load games omitted by the mobile tree cap.' }),
       on: { click: () => { loadFullMobileTree(redraw); } },
     }, 'Load all games'),
   ]);
@@ -3002,6 +3062,7 @@ function renderFetchBar(redraw: () => void): VNode {
     h('div.openings__tree-build-footer', [
       h('span.openings__tree-build-label', label),
       h('button.openings__cancel-import-btn', {
+        attrs: controlExplainerAttrs({ label: 'Cancel tree build', description: 'Stop the current import and tree-build operation.' }),
         on: { click: () => { cancelImport(); stopImportAnimation(); redraw(); } },
       }, 'Cancel'),
     ]),
@@ -3011,25 +3072,27 @@ function renderFetchBar(redraw: () => void): VNode {
 function renderMoveNav(path: readonly string[], redraw: () => void): VNode {
   const node = sessionNode();
   const canForward = node !== null && node.children.length > 0;
+  const navButton = (label: string, glyph: string, reason: string | null, onClick: () => void): VNode => {
+    const explainer = { label, description: reason ?? `Navigate: ${label}.` };
+    const control = h('button.openings__nav-btn', {
+      attrs: { disabled: Boolean(reason), ...iconControlExplainerAttrs(explainer) },
+      on: { click: onClick },
+    }, glyph);
+    return reason ? renderDisabledControlExplainer(explainer, control) : control;
+  };
   return h('div.openings__nav', [
-    h('button.openings__nav-btn', {
-      attrs: { disabled: path.length === 0, title: 'Go to start', 'aria-label': 'Go to start' },
-      on: { click: () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); } },
-    }, '\u23EE'),
-    h('button.openings__nav-btn', {
-      attrs: { disabled: path.length === 0, title: 'Back one move', 'aria-label': 'Back one move' },
-      on: { click: () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); } },
-    }, '\u25C0'),
-    h('button.openings__nav-btn', {
-      attrs: { disabled: !canForward, title: 'Most popular continuation', 'aria-label': 'Most popular continuation' },
-      on: { click: () => {
+    navButton('Go to start', '\u23EE', path.length === 0 ? 'You are already at the start position.' : null,
+      () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); }),
+    navButton('Back one move', '\u25C0', path.length === 0 ? 'There is no previous move from the start position.' : null,
+      () => { navigateBack(); syncOpeningsBoard(redraw); redraw(); }),
+    navButton('Most popular continuation', '\u25B6', !canForward ? 'This position has no continuation in the opening tree.' : null,
+      () => {
         if (node && node.children.length > 0) {
           navigateToMove(node.children[0]!.uci);
           syncOpeningsBoard(redraw);
           redraw();
         }
-      } },
-    }, '\u25B6'),
+      }),
     h('span.openings__nav-depth', `Move ${Math.ceil(path.length / 2)}`),
   ]);
 }
@@ -3055,14 +3118,22 @@ function renderMovePath(path: readonly string[], redraw: () => void): VNode {
 
   return h('div.openings__path', [
     h('span.openings__path-start', {
-      on: { click: () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Opening line start', description: 'Return to the start position.' }) },
+      on: {
+        click: () => { navigateToRoot(); syncOpeningsBoard(redraw); redraw(); },
+        keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); navigateToRoot(); syncOpeningsBoard(redraw); redraw(); } },
+      },
     }, 'Start'),
     ...labels.map((l, i) => {
       const moveNum = Math.floor(i / 2) + 1;
       const isWhite = i % 2 === 0;
       const prefix = isWhite ? `${moveNum}. ` : (i === 0 ? '1... ' : '');
       return h('span.openings__path-move', {
-        on: { click: () => { navigateToPath(l.pathTo); syncOpeningsBoard(redraw); redraw(); } },
+        attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Go to ${prefix}${l.san}`, description: 'Navigate to this move in the current opening line.' }) },
+        on: {
+          click: () => { navigateToPath(l.pathTo); syncOpeningsBoard(redraw); redraw(); },
+          keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); navigateToPath(l.pathTo); syncOpeningsBoard(redraw); redraw(); } },
+        },
       }, `${prefix}${l.san}`);
     }),
   ]);
@@ -3145,7 +3216,7 @@ function renderSpeedFilter(redraw: () => void): VNode {
       const isActive = filter.size === 0 || filter.has(value);
       return h('button.openings__speed-chip', {
         class: { active: isActive, 'no-games': count === 0 },
-        attrs: { title: `${label}: ${count} game${count !== 1 ? 's' : ''}` },
+        attrs: controlExplainerAttrs({ label: `${label}: ${count} game${count !== 1 ? 's' : ''}`, description: 'Include or exclude this time control from the tree.' }),
         on: { click: () => toggle(value) },
       }, [
         h('span.openings__speed-icon', { attrs: { 'data-icon': icon } }),
@@ -3211,12 +3282,13 @@ function renderDateRangeFilter(redraw: () => void): VNode {
   return h('div.openings__date-range-row', [
     // Backdrop to dismiss popup on click-outside.
     _dateRangePopupOpen ? h('div.openings__date-popup-backdrop', {
-      on: { click: closePopup },
+      hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', closePopup) },
     }) : null,
     h('div.openings__date-range-btn-wrap', [
       // Main trigger button.
       h('button.openings__date-range-btn', {
         class: { active: !!activeRange },
+        attrs: controlExplainerAttrs({ label: 'Opening tree date range', description: 'Show or hide date-range choices for the current tree.' }),
         on: { click: () => { _dateRangePopupOpen = !_dateRangePopupOpen; redraw(); } },
       }, activeRange === 'custom'
         ? [customRangeBtnLabel()]
@@ -3226,7 +3298,7 @@ function renderDateRangeFilter(redraw: () => void): VNode {
       ),
       // Inline × to clear active range.
       activeRange ? h('button.openings__date-range-clear', {
-        attrs: { title: 'Clear date filter' },
+        attrs: iconControlExplainerAttrs({ label: 'Clear date filter', description: 'Return the tree to all available dates.' }),
         on: { click: () => { setSessionDateRange(null, redraw); _dateRangePopupOpen = false; redraw(); } },
       }, '\u00d7') : null,
 
@@ -3234,6 +3306,7 @@ function renderDateRangeFilter(redraw: () => void): VNode {
         ...SESSION_DATE_RANGE_OPTIONS.map(opt =>
           h('button.openings__date-range-option', {
             class: { active: activeRange === opt.value },
+            attrs: controlExplainerAttrs({ label: `${opt.label} date range`, description: 'Filter the tree to this relative date period.' }),
             on: { click: () => { setSessionDateRange(opt.value, redraw); _dateRangePopupOpen = false; redraw(); } },
           }, [
             h('span', opt.label),
@@ -3243,13 +3316,14 @@ function renderDateRangeFilter(redraw: () => void): VNode {
         // Custom absolute range option — keeps popup open so user can fill in dates.
         h('button.openings__date-range-option', {
           class: { active: activeRange === 'custom' },
+          attrs: controlExplainerAttrs({ label: 'Custom date range', description: 'Set explicit start and end dates for the tree.' }),
           on: { click: () => { setSessionDateRange('custom', redraw); redraw(); } },
         }, h('span', 'Custom range')),
         activeRange === 'custom' ? h('div.openings__date-range-custom', [
           h('div.openings__date-range-custom-row', [
             h('label.openings__date-range-custom-label', 'From'),
             h('input.openings__date-range-custom-input', {
-              attrs: { type: 'date' },
+              attrs: { type: 'date', name: 'opening-tree-custom-from', ...controlExplainerAttrs({ label: 'Custom range start', description: 'Include games played on or after this date.' }) },
               props: { value: sessionCustomFrom() },
               on: { change: (e: Event) => { setSessionCustomFrom((e.target as HTMLInputElement).value, redraw); } },
             }),
@@ -3257,7 +3331,7 @@ function renderDateRangeFilter(redraw: () => void): VNode {
           h('div.openings__date-range-custom-row', [
             h('label.openings__date-range-custom-label', 'To'),
             h('input.openings__date-range-custom-input', {
-              attrs: { type: 'date' },
+              attrs: { type: 'date', name: 'opening-tree-custom-to', ...controlExplainerAttrs({ label: 'Custom range end', description: 'Include games played on or before this date.' }) },
               props: { value: sessionCustomTo() },
               on: { change: (e: Event) => { setSessionCustomTo((e.target as HTMLInputElement).value, redraw); } },
             }),
@@ -3291,7 +3365,7 @@ function renderFilterBadge(redraw: () => void): VNode | null {
     badges.push(h('span.openings__filter-badge', [
       speedLabels,
       h('button.openings__filter-badge-clear', {
-        attrs: { title: 'Clear speed filter' },
+        attrs: iconControlExplainerAttrs({ label: 'Clear speed filter', description: 'Include every time control again.' }),
         on: { click: () => { setSpeedFilter(new Set(), redraw); redraw(); } },
       }, '\u00d7'),
     ]));
@@ -3312,7 +3386,7 @@ function renderFilterBadge(redraw: () => void): VNode | null {
     badges.push(h('span.openings__filter-badge', [
       rangeLabel,
       h('button.openings__filter-badge-clear', {
-        attrs: { title: 'Clear date filter' },
+        attrs: iconControlExplainerAttrs({ label: 'Clear date filter', description: 'Return the tree to all available dates.' }),
         on: { click: () => { setSessionDateRange(null, redraw); redraw(); } },
       }, '\u00d7'),
     ]));
@@ -3335,6 +3409,7 @@ function renderDeviationPanel(redraw: () => void): VNode {
       loading
         ? h('span.openings__deviation-progress', `Scanning ${progress}/${total}...`)
         : h('button.openings__deviation-scan-btn', {
+            attrs: controlExplainerAttrs({ label: results.length > 0 ? 'Rescan theory deviations' : 'Scan for theory deviations', description: 'Compare tree moves with the current theory model.' }),
             on: { click: () => startDeviationScan(redraw) },
           }, results.length > 0 ? 'Rescan' : 'Scan for deviations'),
     ]),
@@ -3342,7 +3417,11 @@ function renderDeviationPanel(redraw: () => void): VNode {
     results.length > 0 ? h('div.openings__deviation-list',
       results.slice(0, 8).map(d =>
         h('div.openings__deviation-row', {
-          on: { click: () => { navigateToPath(d.path.slice(0, -1)); syncOpeningsBoard(redraw); redraw(); } },
+          attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Open deviation ${d.opponentMove}`, description: 'Navigate to the position before this theory deviation.' }) },
+          on: {
+            click: () => { navigateToPath(d.path.slice(0, -1)); syncOpeningsBoard(redraw); redraw(); },
+            keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); navigateToPath(d.path.slice(0, -1)); syncOpeningsBoard(redraw); redraw(); } },
+          },
         }, [
           h('span.openings__deviation-moves', d.sans.slice(0, 4).join(' ')),
           h('span.openings__deviation-detail', [
@@ -3396,7 +3475,9 @@ function renderTreeEvalControls(redraw: () => void): VNode {
       h('input', {
         attrs: {
           type: 'checkbox',
+          name: 'opening-tree-eval',
           checked: enabled,
+          ...controlExplainerAttrs({ label: 'Tree eval', description: enabled ? 'Turn off engine evaluation across the opening tree.' : 'Turn on engine evaluation across the opening tree.' }),
         },
         on: {
           change: (event: Event) => {
@@ -3430,17 +3511,22 @@ function renderTreeEvalControls(redraw: () => void): VNode {
     ]),
     h('div.openings__tree-eval-levels', {
       class: { 'openings__tree-eval-levels--disabled': !enabled },
-    }, TREE_EVAL_THOROUGHNESS_OPTIONS.map(option =>
-      h('button.openings__tree-eval-level', {
+    }, TREE_EVAL_THOROUGHNESS_OPTIONS.map(option => {
+      const explainer = {
+        label: `${option.label} tree eval thoroughness`,
+        description: enabled ? 'Set how deeply Tree eval analyzes positions.' : 'Enable Tree eval first.',
+      };
+      const control = h('button.openings__tree-eval-level', {
         class: { active: thoroughness === option.value },
         attrs: {
           type: 'button',
           disabled: !enabled,
-          title: `${option.label} tree eval thoroughness`,
+          ...controlExplainerAttrs(explainer),
         },
         on: { click: () => setTreeEvalThoroughness(option.value, redraw) },
-      }, option.label),
-    )),
+      }, option.label);
+      return enabled ? control : renderDisabledControlExplainer(explainer, control);
+    })),
   ]);
 }
 
@@ -3461,7 +3547,11 @@ function renderMoveRow(child: OpeningTreeNode, parentFen: string, redraw: () => 
   return h('div.openings__move-row', {
     key: child.uci,
     class: { 'openings__move-row--deviation': !!deviation },
-    on: { click: () => { navigateToMove(child.uci); syncOpeningsBoard(redraw); redraw(); } },
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Play ${child.san}`, description: 'Navigate to this opening-tree move.' }) },
+    on: {
+      click: () => { navigateToMove(child.uci); syncOpeningsBoard(redraw); redraw(); },
+      keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); navigateToMove(child.uci); syncOpeningsBoard(redraw); redraw(); } },
+    },
   }, [
     h('div.openings__move-line', [
       h('span.openings__move-san', [
@@ -3681,7 +3771,7 @@ function renderSampleGamesControls(redraw: () => void): VNode {
   return h('div.openings__sample-controls', [
     h('button.openings__speed-chip.openings__sample-control-chip', {
       class: { active: sort === 'recent' },
-      attrs: { type: 'button', title: 'Sort example games' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Sort example games', description: `Switch from ${sort === 'recent' ? 'most recent' : 'highest rating'} ordering.` }) },
       on: { click: () => {
         _sampleRenderLimit = SAMPLE_INITIAL_BATCH;
         setSampleGamesSortMode(sort === 'recent' ? 'rating' : 'recent', redraw);
@@ -3692,7 +3782,7 @@ function renderSampleGamesControls(redraw: () => void): VNode {
     ]),
     h('button.openings__speed-chip.openings__sample-control-chip', {
       class: { active: filter !== 'all' },
-      attrs: { type: 'button', title: 'Filter example games by result' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Filter example games by result', description: `Change the result filter from ${filterLabel} to ${nextFilter}.` }) },
       on: { click: () => {
         _sampleRenderLimit = SAMPLE_INITIAL_BATCH;
         setSampleGamesResultFilter(nextFilter, redraw);
@@ -3823,7 +3913,7 @@ function renderSampleGameRow(game: SampleGameMatch, redraw: () => void): VNode {
       : null,
     h('div.openings__sample-actions', [
       h('button.openings__sample-copy', {
-        attrs: { title: 'Analyze this game' },
+        attrs: controlExplainerAttrs({ label: 'Analyze this sample game', description: 'Open this game on a new Analysis Board.' }),
         on: { click: (e: Event) => {
           e.stopPropagation();
           if (analyzeUrl) window.open(analyzeUrl, '_blank');
@@ -3845,7 +3935,7 @@ function renderSampleSourceLink(game: SampleGameMatch, gameUrl: string, redraw: 
         href: gameUrl,
         target: '_blank',
         rel: 'noopener',
-        title: `View on ${label}`,
+        ...controlExplainerAttrs({ label: `View on ${label}`, description: 'Open this sample game on its source platform in a new tab.' }),
       },
       on: {
         click: (event: Event) => event.stopPropagation(),

@@ -29,6 +29,7 @@ import type { Clock, TreeNode, TreePath } from '../tree/types';
 import { chessBoardAnimationConfig, onBoardAnimationChange } from './animation';
 import { REPERTOIRE_ALT_ARROW_BRUSH, REPERTOIRE_ARROW_BRUSH } from './arrowBrushes';
 import { capturePremoveInput, currentPremoveCaptureSnapshot } from './premoves';
+import { iconControlExplainerAttrs } from '../ui/controlExplainer';
 
 // --- Injected deps ---
 
@@ -469,13 +470,16 @@ export function renderPromotionDialog(): VNode | null {
 
   // Wrap in .cg-wrap so Chessground's piece background-image CSS rules cascade in
   return h('div.cg-wrap.promotion-wrap', {
-    on: { click: () => { pendingPromotion = null; syncBoard(); _redraw(); } },
+    hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', () => { pendingPromotion = null; syncBoard(); _redraw(); }) },
   }, [
     h('div#promotion-choice.' + vertical, {}, PROMOTION_ROLES.map((role, i) => {
       const top = (color === orientation ? i : 7 - i) * 12.5;
       return h('square', {
-        attrs: { style: `top:${top}%;left:${left}%` },
-        on: { click: (e: Event) => { e.stopPropagation(); completePromotion(role); } },
+        attrs: { style: `top:${top}%;left:${left}%`, role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: `Promote to ${role}`, description: `Complete the move by promoting the pawn to a ${role}.` }) },
+        on: {
+          click: (e: Event) => { e.stopPropagation(); completePromotion(role); },
+          keydown: (e: KeyboardEvent) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); e.stopPropagation(); completePromotion(role); } },
+        },
       }, [h(`piece.${role}.${color}`)]);
     })),
   ]);

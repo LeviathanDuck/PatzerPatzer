@@ -43,25 +43,25 @@ function selectedToClass(s: Selected): string {
 }
 
 function paletteToolLabel(selected: Selected): string {
-  if (selected === 'pointer') return 'Pointer tool';
-  if (selected === 'trash') return 'Trash tool';
+  if (selected === 'pointer') return 'Move pieces';
+  if (selected === 'trash') return 'Remove pieces';
   return `Place ${selected[0]} ${selected[1]}`;
 }
 
 function paletteToolDescription(selected: Selected, isSelected: boolean): string {
   if (selected === 'pointer') {
     return isSelected
-      ? 'Currently selected. Move pieces without adding or removing them.'
+      ? 'Move pieces without adding or removing them; this tool is selected.'
       : 'Select the pointer tool to move pieces without adding or removing them.';
   }
   if (selected === 'trash') {
     return isSelected
-      ? 'Currently selected. Remove pieces from the board.'
+      ? 'Remove pieces from the board; this tool is selected.'
       : 'Select the trash tool to remove pieces from the board.';
   }
   const piece = `${selected[0]} ${selected[1]}`;
   return isSelected
-    ? `Currently selected. Add a ${piece} to the board.`
+    ? `Add a ${piece} to the board; this piece tool is selected.`
     : `Select the ${piece} to add it to the board.`;
 }
 
@@ -162,24 +162,48 @@ function sparePieces(ctrl: EditorCtrl, color: Color, position: 'top' | 'bottom')
 // Mirrors lichess-org/lila ui/editor/src/view.ts `controls()`, minus the variant
 // select and Chess960 position-ID input (standard chess only, locked decision).
 
-const CASTLING_EXPLAINERS: Record<CastlingToggle, ControlExplainer> = {
+const CASTLING_EXPLAINERS: Record<CastlingToggle, ControlExplainer & {
+  color: Color;
+  kingSquare: string;
+  rookSquare: string;
+}> = {
   K: {
     label: 'White kingside castling',
     description: 'Place the white king on e1 and a white rook on h1 to enable this castling right.',
+    color: 'white', kingSquare: 'e1', rookSquare: 'h1',
   },
   Q: {
     label: 'White queenside castling',
     description: 'Place the white king on e1 and a white rook on a1 to enable this castling right.',
+    color: 'white', kingSquare: 'e1', rookSquare: 'a1',
   },
   k: {
     label: 'Black kingside castling',
     description: 'Place the black king on e8 and a black rook on h8 to enable this castling right.',
+    color: 'black', kingSquare: 'e8', rookSquare: 'h8',
   },
   q: {
     label: 'Black queenside castling',
     description: 'Place the black king on e8 and a black rook on a8 to enable this castling right.',
+    color: 'black', kingSquare: 'e8', rookSquare: 'a8',
   },
 };
+
+function disabledCastlingDescription(ctrl: EditorCtrl, id: CastlingToggle): string {
+  const config = CASTLING_EXPLAINERS[id];
+  const board = parseFen(ctrl.chessground?.getFen() || ctrl.initialFen).unwrap(
+    setup => setup.board,
+    () => undefined,
+  );
+  const hasPiece = (square: string, role: Role): boolean => {
+    const piece = board?.get(parseSquare(square)!);
+    return piece?.color === config.color && piece.role === role;
+  };
+  const missing: string[] = [];
+  if (!hasPiece(config.kingSquare, 'king')) missing.push(`${config.color} king on ${config.kingSquare}`);
+  if (!hasPiece(config.rookSquare, 'rook')) missing.push(`${config.color} rook on ${config.rookSquare}`);
+  return `Place the ${missing.join(' and a ')} to enable this castling right.`;
+}
 
 function castleCheckBox(ctrl: EditorCtrl, id: CastlingToggle, label: string, reversed: boolean): VNode {
   const enabled = ctrl.enabledCastlingToggles[id];
@@ -191,7 +215,7 @@ function castleCheckBox(ctrl: EditorCtrl, id: CastlingToggle, label: string, rev
           ? 'This castling right is currently enabled.'
           : 'Enable this castling right for the position.',
       }
-    : CASTLING_EXPLAINERS[id];
+    : { label: CASTLING_EXPLAINERS[id].label, description: disabledCastlingDescription(ctrl, id) };
   const input = h('input', {
     class: { 'not-allowed': !enabled },
     attrs: { type: 'checkbox', ...controlExplainerAttrs(explainer) },

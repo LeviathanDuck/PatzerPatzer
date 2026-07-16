@@ -60,6 +60,16 @@ import { loadGameFacetSourceFromIdb } from '../idb';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { writeHashRoute } from '../router';
 import { renderBoard } from '../board';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+  type ControlExplainer,
+} from '../ui/controlExplainer';
+
+function maybeDisabledPuzzleControl(explainer: ControlExplainer, control: VNode, disabled: boolean): VNode {
+  return disabled ? renderDisabledControlExplainer(explainer, control) : control;
+}
 
 // ---------------------------------------------------------------------------
 // Puzzle player strips
@@ -185,6 +195,15 @@ function sourceCard(
   redraw: () => void,
 ): VNode {
   const loaded = count !== undefined;
+  const unavailable = !loaded || count === 0;
+  const explainer = {
+    label: `Browse ${title}`,
+    description: !loaded ? 'Puzzle counts are still loading.' : count === 0 ? `There are no ${title.toLowerCase()} to browse.` : description,
+  };
+  const browseControl = h('button.puzzle-library__card-action', {
+    attrs: { disabled: unavailable, ...controlExplainerAttrs(explainer) },
+    on: { click: () => openPuzzleList(sourceKind, redraw) },
+  }, 'Browse');
   return h('div.puzzle-library__card', [
     h('div.puzzle-library__card-header', [
       h('h3.puzzle-library__card-title', title),
@@ -194,18 +213,7 @@ function sourceCard(
       ),
     ]),
     h('p.puzzle-library__card-desc', description),
-    h(
-      'button.puzzle-library__card-action',
-      {
-        attrs: { disabled: !loaded || count === 0 },
-        on: {
-          click: () => {
-            openPuzzleList(sourceKind, redraw);
-          },
-        },
-      },
-      'Browse',
-    ),
+    maybeDisabledPuzzleControl(explainer, browseControl, unavailable),
   ]);
 }
 
@@ -235,11 +243,13 @@ function renderLibrarySidebar(redraw: () => void): VNode {
           ]),
           h('div.puzzle-library__resume-actions', [
             h('button.puzzle-library__resume-btn', {
+              attrs: controlExplainerAttrs({ label: 'Resume puzzle session', description: 'Return to the in-progress puzzle session.' }),
               on: { click: () => {
                 writePuzzleRoundRoute(resumeId, 'explicit-durable-selection');
               }},
             }, 'Resume Session'),
             h('button.puzzle-library__resume-end', {
+              attrs: controlExplainerAttrs({ label: 'Discard puzzle session', description: 'End and remove the saved in-progress session.' }),
               on: { click: () => { clearActiveSession(); redraw(); }},
             }, 'Discard'),
           ]),
@@ -259,10 +269,10 @@ function renderLibrarySidebar(redraw: () => void): VNode {
         h('span.puzzle-library__count',
           dCount !== undefined ? `${dCount}` : '\u2026'),
       ]),
-      h('button.button.puzzle-library__action', {
-        attrs: { disabled: dCount === undefined || dCount === 0 },
+      maybeDisabledPuzzleControl({ label: 'Review due puzzles', description: dCount === undefined ? 'Due-review counts are still loading.' : dCount === 0 ? 'No puzzles are due for review.' : 'Start a session of puzzles due for spaced-repetition review.' }, h('button.button.puzzle-library__action', {
+        attrs: { disabled: dCount === undefined || dCount === 0, ...controlExplainerAttrs({ label: 'Review due puzzles', description: dCount === undefined ? 'Due-review counts are still loading.' : dCount === 0 ? 'No puzzles are due for review.' : 'Start a session of puzzles due for spaced-repetition review.' }) },
         on: { click: () => { startDueSession(redraw); } },
-      }, 'Review Due'),
+      }, 'Review Due'), dCount === undefined || dCount === 0),
     ]),
 
     // Retry Failed
@@ -272,10 +282,10 @@ function renderLibrarySidebar(redraw: () => void): VNode {
         h('span.puzzle-library__count',
           rCount !== undefined ? `${rCount}` : '\u2026'),
       ]),
-      h('button.button.puzzle-library__action', {
-        attrs: { disabled: rCount === undefined || rCount === 0 },
+      maybeDisabledPuzzleControl({ label: 'Retry failed puzzles', description: rCount === undefined ? 'Retry counts are still loading.' : rCount === 0 ? 'There are no failed puzzles to retry.' : 'Start a session of failed puzzles.' }, h('button.button.puzzle-library__action', {
+        attrs: { disabled: rCount === undefined || rCount === 0, ...controlExplainerAttrs({ label: 'Retry failed puzzles', description: rCount === undefined ? 'Retry counts are still loading.' : rCount === 0 ? 'There are no failed puzzles to retry.' : 'Start a session of failed puzzles.' }) },
         on: { click: () => { startRetrySession(redraw); } },
-      }, 'Start Retry'),
+      }, 'Start Retry'), rCount === undefined || rCount === 0),
     ]),
   ]);
 }
@@ -323,6 +333,7 @@ export function renderPuzzleLibrary(redraw: () => void): VNode {
             : null
           : h('div.cg-wrap', {
               key: 'puzzle-idle-board',
+              attrs: { 'data-ui-explainer-exempt': 'chessboard-play-surface' },
               hook: {
                 insert: vnode => { mountIdleBoard(vnode.elm as HTMLElement); },
                 destroy: () => { destroyPuzzleIdleBoard(); },
@@ -359,10 +370,12 @@ function renderPuzzleListFilterBar(
       h('input.puzzle-list__filter-input', {
         attrs: {
           type: 'number',
+          name: 'puzzle-rating-min',
           placeholder: 'Min',
           min: 0,
           max: 4000,
           step: 50,
+          ...controlExplainerAttrs({ label: 'Minimum puzzle rating', description: 'Filter out puzzles rated below this value.' }),
         },
         props: { value: filters.ratingMin ?? '' },
         on: {
@@ -382,10 +395,12 @@ function renderPuzzleListFilterBar(
       h('input.puzzle-list__filter-input', {
         attrs: {
           type: 'number',
+          name: 'puzzle-rating-max',
           placeholder: 'Max',
           min: 0,
           max: 4000,
           step: 50,
+          ...controlExplainerAttrs({ label: 'Maximum puzzle rating', description: 'Filter out puzzles rated above this value.' }),
         },
         props: { value: filters.ratingMax ?? '' },
         on: {
@@ -406,6 +421,7 @@ function renderPuzzleListFilterBar(
       );
       children.push(
         h('select.puzzle-list__filter-select', {
+          attrs: { name: 'puzzle-theme', ...controlExplainerAttrs({ label: 'Puzzle theme', description: 'Filter the puzzle list by theme.' }) },
           on: {
             change: (e: Event) => {
               const val = (e.target as HTMLSelectElement).value;
@@ -463,8 +479,14 @@ function renderPuzzleListRow(
 
   return h('div.puzzle-list__row', {
     class: { 'puzzle-list__row--selected': getPreviewPuzzleId() === def.id },
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Preview puzzle ${displayId}`, description: 'Load this puzzle into the library preview board.' }) },
     on: {
       click: () => {
+        void selectPuzzleForPreview(def.id, redraw);
+      },
+      keydown: (event: KeyboardEvent) => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+        event.preventDefault();
         void selectPuzzleForPreview(def.id, redraw);
       },
     },
@@ -563,6 +585,7 @@ function renderInlineBrowsePane(
   return h('aside.puzzle__side.puzzle-library__sidebar.puzzle-list', [
     h('div.puzzle-list__header', [
       h('a.puzzle-list__back', {
+        attrs: controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Close this puzzle list.' }),
         on: { click: () => closePuzzleList(redraw) },
       }, '\u2190 Back'),
       h('h2.puzzle-list__title', sourceLabel(ls.source)),
@@ -581,6 +604,7 @@ function renderInlineBrowsePane(
           renderGeneralBucket(generalVisible, redraw),
           hasMore
             ? h('button.button.puzzle-list__load-more', {
+                attrs: controlExplainerAttrs({ label: 'Load more puzzles', description: 'Add the next batch of matching puzzles to this list.' }),
                 on: { click: () => loadMorePuzzles(redraw) },
               }, `Load More (${ls.visible.length} of ${ls.filtered.length})`)
             : null,
@@ -689,30 +713,41 @@ function renderPuzzleContextMenu(rc: PuzzleRoundCtrl, redraw: () => void): VNode
   })() : undefined;
   const title = node?.san ?? path;
   const onMainline = isMainlinePath(rc.treeRoot, path);
+  const menuAction = (label: string, description: string, action: () => void): VNode => h('a', {
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label, description }) },
+    on: {
+      click: action,
+      keydown: (event: KeyboardEvent) => {
+        if ((event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+        event.preventDefault();
+        action();
+      },
+    },
+  }, label);
   return h('div#move-ctx-menu.visible', {
     on: { contextmenu: (e: Event) => e.preventDefault() },
   }, [
     h('p.title', title),
-    h('a', { on: { click: () => {
+    menuAction('Delete from here', 'Delete this move and every following move in the variation.', () => {
       const p = _puzzleContextMenuPath!;
       closePuzzleContextMenu();
       puzzleDeleteVariation(rc, p, redraw);
-    }}}, 'Delete from here'),
-    !onMainline ? h('a', { on: { click: () => {
+    }),
+    !onMainline ? menuAction('Promote variation', 'Move this variation ahead of sibling variations.', () => {
       promoteAt(rc.treeRoot, path, false);
       rc.treeMainline = mainlineNodeList(rc.treeRoot);
       closePuzzleContextMenu();
       syncPuzzleBoard();
       redraw();
-    }}}, 'Promote variation') : null,
-    !onMainline ? h('a', { on: { click: () => {
+    }) : null,
+    !onMainline ? menuAction('Make main line', 'Promote this variation to the puzzle main line.', () => {
       promoteAt(rc.treeRoot, path, true);
       rc.treeMainline = mainlineNodeList(rc.treeRoot);
       if (rc.treePath.startsWith(path)) rc.setTreePath(path);
       closePuzzleContextMenu();
       syncPuzzleBoard();
       redraw();
-    }}}, 'Make main line') : null,
+    }) : null,
   ]);
 }
 
@@ -721,10 +756,35 @@ function renderImportedSessionBuilder(
   redraw: () => void,
 ): VNode {
   const totalSelected = _selectedThemes.size + _selectedOpenings.size;
+  const sessionStartExplainer: ControlExplainer = {
+    label: 'Start puzzle session',
+    description: _sessionStarting
+      ? 'The puzzle session is loading.'
+      : 'Start a session with the selected puzzle filters.',
+  };
+  const sessionStartControl = h('button.button.puzzle-session__start', {
+    attrs: { disabled: _sessionStarting, ...controlExplainerAttrs(sessionStartExplainer) },
+    on: { click: () => {
+      _sessionStarting = true;
+      clearImportedSessionError();
+      redraw();
+      startImportedSession(
+        [..._selectedThemes],
+        [..._selectedOpenings],
+        _sessionRatingMin,
+        _sessionRatingMax,
+        redraw,
+      ).finally(() => {
+        _sessionStarting = false;
+        redraw();
+      });
+    }},
+  }, _sessionStarting ? 'Loading\u2026' : 'Start Puzzles');
 
   return h('aside.puzzle__side.puzzle-library__sidebar.puzzle-list.puzzle-session', [
     h('div.puzzle-list__header', [
       h('a.puzzle-list__back', {
+        attrs: controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Close the imported puzzle session builder.' }),
         on: { click: () => {
           _selectedThemes = new Set();
           _selectedOpenings = new Set();
@@ -744,7 +804,7 @@ function renderImportedSessionBuilder(
         h('span.puzzle-session__range-label', 'Min'),
         h('input.puzzle-session__range', {
           key: 'rating-min-slider',
-          attrs: { type: 'range', min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          attrs: { type: 'range', name: 'puzzle-session-rating-min-slider', min: 0, max: 3200, step: 50, value: _sessionRatingMin, ...controlExplainerAttrs({ label: 'Minimum session rating', description: 'Set the lowest puzzle rating in this session.' }) },
           props: { value: _sessionRatingMin },
           on: { input: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
@@ -755,7 +815,7 @@ function renderImportedSessionBuilder(
         }),
         h('input.puzzle-session__range-val', {
           key: 'rating-min-num',
-          attrs: { type: 'number', min: 0, max: 3200, step: 50, value: _sessionRatingMin },
+          attrs: { type: 'number', name: 'puzzle-session-rating-min', min: 0, max: 3200, step: 50, value: _sessionRatingMin, ...controlExplainerAttrs({ label: 'Minimum session rating', description: 'Set the lowest puzzle rating in this session.' }) },
           props: { value: _sessionRatingMin },
           on: { change: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
@@ -770,7 +830,7 @@ function renderImportedSessionBuilder(
         h('span.puzzle-session__range-label', 'Max'),
         h('input.puzzle-session__range', {
           key: 'rating-max-slider',
-          attrs: { type: 'range', min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          attrs: { type: 'range', name: 'puzzle-session-rating-max-slider', min: 0, max: 3200, step: 50, value: _sessionRatingMax, ...controlExplainerAttrs({ label: 'Maximum session rating', description: 'Set the highest puzzle rating in this session.' }) },
           props: { value: _sessionRatingMax },
           on: { input: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
@@ -781,7 +841,7 @@ function renderImportedSessionBuilder(
         }),
         h('input.puzzle-session__range-val', {
           key: 'rating-max-num',
-          attrs: { type: 'number', min: 0, max: 3200, step: 50, value: _sessionRatingMax },
+          attrs: { type: 'number', name: 'puzzle-session-rating-max', min: 0, max: 3200, step: 50, value: _sessionRatingMax, ...controlExplainerAttrs({ label: 'Maximum session rating', description: 'Set the highest puzzle rating in this session.' }) },
           props: { value: _sessionRatingMax },
           on: { change: (e: Event) => {
             const v = parseInt((e.target as HTMLInputElement).value, 10);
@@ -798,24 +858,7 @@ function renderImportedSessionBuilder(
     h('div.puzzle-session__start-bar', [
       h('span.puzzle-session__selection-hint',
         totalSelected > 0 ? `${totalSelected} selected` : 'All puzzles'),
-      h('button.button.puzzle-session__start', {
-        attrs: { disabled: _sessionStarting },
-        on: { click: () => {
-          _sessionStarting = true;
-          clearImportedSessionError();
-          redraw();
-          startImportedSession(
-            [..._selectedThemes],
-            [..._selectedOpenings],
-            _sessionRatingMin,
-            _sessionRatingMax,
-            redraw,
-          ).finally(() => {
-            _sessionStarting = false;
-            redraw();
-          });
-        }},
-      }, _sessionStarting ? 'Loading\u2026' : 'Start Puzzles'),
+      maybeDisabledPuzzleControl(sessionStartExplainer, sessionStartControl, _sessionStarting),
     ]),
 
     // Error message
@@ -827,10 +870,12 @@ function renderImportedSessionBuilder(
     h('div.puzzle-session__tabs', [
       h('button.puzzle-session__tab', {
         class: { active: _sessionTab === 'themes' },
+        attrs: controlExplainerAttrs({ label: 'Puzzle themes', description: 'Choose session puzzles by tactical theme.' }),
         on: { click: () => { _sessionTab = 'themes'; redraw(); }},
       }, `Themes${_selectedThemes.size > 0 ? ` (${_selectedThemes.size})` : ''}`),
       h('button.puzzle-session__tab', {
         class: { active: _sessionTab === 'openings' },
+        attrs: controlExplainerAttrs({ label: 'Puzzle openings', description: 'Choose session puzzles by opening family.' }),
         on: { click: () => { _sessionTab = 'openings'; redraw(); }},
       }, `Openings${_selectedOpenings.size > 0 ? ` (${_selectedOpenings.size})` : ''}`),
     ]),
@@ -853,12 +898,19 @@ function renderThemeList(ls: PuzzleListState, redraw: () => void): VNode {
         ...visibleThemes.map(theme =>
           h('div.puzzle-session__theme-row', {
             class: { active: _selectedThemes.has(theme) },
+            attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `${_selectedThemes.has(theme) ? 'Remove' : 'Add'} ${formatThemeName(theme)}`, description: 'Toggle this theme in the puzzle session.' }) },
             on: { click: () => {
               const s = new Set(_selectedThemes);
               if (s.has(theme)) s.delete(theme); else s.add(theme);
               _selectedThemes = s;
               writeImportedSessionRoute();
               redraw();
+            }, keydown: (event: KeyboardEvent) => {
+              if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+              event.preventDefault();
+              const s = new Set(_selectedThemes);
+              if (s.has(theme)) s.delete(theme); else s.add(theme);
+              _selectedThemes = s; writeImportedSessionRoute(); redraw();
             }},
           }, [
             h('span.puzzle-session__checkbox', _selectedThemes.has(theme) ? '\u2611' : '\u2610'),
@@ -893,7 +945,7 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
     // Search bar
     h('div.puzzle-session__search', [
       h('input.puzzle-session__search-input', {
-        attrs: { type: 'text', placeholder: 'Search openings\u2026' },
+        attrs: { type: 'text', name: 'puzzle-opening-search', placeholder: 'Search openings\u2026', ...controlExplainerAttrs({ label: 'Search puzzle openings', description: 'Filter opening families and variations by name.' }) },
         props: { value: _openingSearch },
         on: { input: (e: Event) => {
           _openingSearch = (e.target as HTMLInputElement).value;
@@ -910,6 +962,7 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
       return h('div.puzzle-session__category', [
         h('div.puzzle-session__category-label.puzzle-session__category-label--clickable', {
           class: { active: allSelected, partial: someSelected },
+          attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Toggle ${formatOpeningName(family)} family`, description: 'Select or clear every visible opening in this family.' }) },
           on: { click: () => {
             const s = new Set(_selectedOpenings);
             if (allSelected) {
@@ -920,6 +973,12 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
             _selectedOpenings = s;
             writeImportedSessionRoute();
             redraw();
+          }, keydown: (event: KeyboardEvent) => {
+            if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+            event.preventDefault();
+            const s = new Set(_selectedOpenings);
+            if (allSelected) for (const o of openings) s.delete(o); else for (const o of openings) s.add(o);
+            _selectedOpenings = s; writeImportedSessionRoute(); redraw();
           }},
         }, [
           h('span.puzzle-session__checkbox',
@@ -929,12 +988,19 @@ function renderOpeningList(ls: PuzzleListState, redraw: () => void): VNode {
         ...openings.map(opening =>
           h('div.puzzle-session__theme-row', {
             class: { active: _selectedOpenings.has(opening) },
+            attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `${_selectedOpenings.has(opening) ? 'Remove' : 'Add'} ${formatOpeningName(opening)}`, description: 'Toggle this opening in the puzzle session.' }) },
             on: { click: () => {
               const s = new Set(_selectedOpenings);
               if (s.has(opening)) s.delete(opening); else s.add(opening);
               _selectedOpenings = s;
               writeImportedSessionRoute();
               redraw();
+            }, keydown: (event: KeyboardEvent) => {
+              if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+              event.preventDefault();
+              const s = new Set(_selectedOpenings);
+              if (s.has(opening)) s.delete(opening); else s.add(opening);
+              _selectedOpenings = s; writeImportedSessionRoute(); redraw();
             }},
           }, [
             h('span.puzzle-session__checkbox', _selectedOpenings.has(opening) ? '\u2611' : '\u2610'),
@@ -1099,7 +1165,8 @@ function renderPuzzleInfo(def: PuzzleDefinition, redraw: () => void): VNode {
   if (!_puzzleInfoExpanded) {
     return h('div.puzzle-info', [
       h('div.puzzle-info__summary', {
-        on: { click: () => { _puzzleInfoExpanded = true; redraw(); }},
+        attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Show puzzle information', description: 'Expand puzzle source, rating, moves, and FEN details.' }) },
+        on: { click: () => { _puzzleInfoExpanded = true; redraw(); }, keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); _puzzleInfoExpanded = true; redraw(); } } },
       }, [
         rating ? h('span.puzzle-info__rating', `Rating ${rating}`) : null,
         h('span.puzzle-info__expand', '\u25BC'),
@@ -1125,7 +1192,8 @@ function renderPuzzleInfo(def: PuzzleDefinition, redraw: () => void): VNode {
 
   return h('div.puzzle-info', [
     h('div.puzzle-info__summary', {
-      on: { click: () => { _puzzleInfoExpanded = false; redraw(); }},
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Hide puzzle information', description: 'Collapse the puzzle details table.' }) },
+      on: { click: () => { _puzzleInfoExpanded = false; redraw(); }, keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); _puzzleInfoExpanded = false; redraw(); } } },
     }, [
       rating ? h('span.puzzle-info__rating', `Rating ${rating}`) : null,
       h('span.puzzle-info__expand', '\u25B2'),
@@ -1162,7 +1230,7 @@ function renderAssistanceWarning(rc: PuzzleRoundCtrl, redraw: () => void): VNode
         'Using hints or solutions affects your rated score. How would you like to proceed?'),
       h('label.puzzle__assistance-warning__remember', [
         h('input', {
-          attrs: { type: 'checkbox', checked: rc.rememberAssistanceChoice },
+          attrs: { type: 'checkbox', name: 'remember-puzzle-assistance', checked: rc.rememberAssistanceChoice, ...controlExplainerAttrs({ label: 'Remember assistance choice', description: 'Reuse this assistance decision for the current session.' }) },
           on: { change: (e: Event) => {
             rc.rememberAssistanceChoice = (e.target as HTMLInputElement).checked;
           }},
@@ -1171,12 +1239,15 @@ function renderAssistanceWarning(rc: PuzzleRoundCtrl, redraw: () => void): VNode
       ]),
       h('div.puzzle__assistance-warning__buttons', [
         h('button.button.button-red', {
+          attrs: controlExplainerAttrs({ label: 'Cancel assistance', description: 'Keep the puzzle rated and do not use assistance.' }),
           on: { click: () => { rc.dismissAssistanceWarning(); redraw(); } },
         }, 'Cancel'),
         h('button.button', {
+          attrs: controlExplainerAttrs({ label: 'Switch to practice', description: 'Make this puzzle casual before using assistance.' }),
           on: { click: () => { rc.chooseAssistanceSwitchToCasual(); redraw(); } },
         }, 'Switch to practice'),
         h('button.button.button-red', {
+          attrs: controlExplainerAttrs({ label: 'Stay rated and lose points', description: 'Use assistance while immediately failing this rated puzzle.' }),
           on: { click: () => { rc.chooseStayRatedAndProceed(); redraw(); } },
         }, 'Stay rated (lose points)'),
       ]),
@@ -1252,10 +1323,12 @@ function renderPlayingFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
 function renderViewSolutionButtons(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
   return h('div.puzzle__feedback__actions', [
     h('button.button.button-empty.puzzle__hint', {
+      attrs: controlExplainerAttrs({ label: rc.usedHint ? 'Hint used' : 'Get a hint', description: 'Reveal assistance for the next puzzle move.' }),
       on: { click: () => { rc.useHint(redraw); redraw(); } },
     }, rc.usedHint ? 'Hint used' : 'Get a hint'),
     rc.canViewSolution
       ? h('button.button.button-empty.puzzle__reveal', {
+          attrs: controlExplainerAttrs({ label: 'View the solution', description: 'Reveal the puzzle solution and mark the attempt assisted.' }),
           on: { click: () => { rc.viewSolution(redraw); redraw(); } },
         }, 'View the solution')
       : null,
@@ -1269,7 +1342,7 @@ function renderAnalysisToggle(rc: PuzzleRoundCtrl, redraw: () => void): VNode | 
   if (!rc.gamePgn && !rc.gameTree) return null;
   return h('button.puzzle__analyse', {
     class: { active: rc.analysisMode },
-    attrs: { title: rc.analysisMode ? 'Back to puzzle' : 'Analyse full game' },
+    attrs: iconControlExplainerAttrs({ label: rc.analysisMode ? 'Back to puzzle' : 'Analyze full game', description: 'Toggle between the puzzle tree and full source-game analysis.' }),
     on: { click: () => { rc.toggleAnalysisMode(redraw); } },
   }, [
     h('svg.puzzle__analyse-icon', {
@@ -1380,6 +1453,14 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
         ? 'assisted-solve'
         : rc.failureReasons.length > 0 ? 'recovered-solve' : 'clean-solve')
     : 'failed';
+  const engineLinesExplainer = {
+    label: 'Show engine lines',
+    description: rc.puzzleEngineEnabled ? 'Engine lines are already active.' : 'Enable engine lines for this solved puzzle.',
+  };
+  const engineLinesControl = h('button.button.button-empty.puzzle__engine-lines', {
+    attrs: { disabled: rc.puzzleEngineEnabled, ...controlExplainerAttrs(engineLinesExplainer) },
+    on: { click: () => { rc.showEngineLines(redraw); } },
+  }, rc.puzzleEngineEnabled ? 'Engine active' : 'Engine Lines');
 
   return h('div.puzzle__feedback.after.solved', [
     h('div.puzzle__feedback__result', [
@@ -1394,18 +1475,16 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
       ]),
     ]),
     h('div.puzzle__feedback__actions', [
-      h('button.button.button-empty.puzzle__engine-lines', {
-        attrs: { disabled: rc.puzzleEngineEnabled },
-        on: { click: () => { rc.showEngineLines(redraw); } },
-      }, rc.puzzleEngineEnabled ? 'Engine active' : 'Engine Lines'),
+      maybeDisabledPuzzleControl(engineLinesExplainer, engineLinesControl, rc.puzzleEngineEnabled),
       h('button.button.button-empty.puzzle__engine-arrows', {
+        attrs: controlExplainerAttrs({ label: 'Show engine arrows', description: 'Display the engine move arrows for this puzzle position.' }),
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
       renderAnalysisToggle(rc, redraw),
       _puzzleSaveLibFeedback
         ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
         : h('button.button.button-empty.puzzle__save-lib', {
-            attrs: { title: 'Save this puzzle to the Study Library' },
+            attrs: controlExplainerAttrs({ label: 'Save puzzle to Study Library', description: 'Open the save flow for this solved puzzle.' }),
             on: { click: () => { openPuzzleRoundSaveFlow(rc.definition, 'solved', redraw); } },
           }, '\uD83D\uDCDA Save to Library'),
     ]),
@@ -1421,6 +1500,14 @@ function renderSolvedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
  */
 function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
   const skipped = rc.failureReasons.includes('skip-pressed');
+  const engineLinesExplainer = {
+    label: 'Show engine lines',
+    description: rc.puzzleEngineEnabled ? 'Engine lines are already active.' : 'Enable engine lines for this failed puzzle.',
+  };
+  const engineLinesControl = h('button.button.button-empty.puzzle__engine-lines', {
+    attrs: { disabled: rc.puzzleEngineEnabled, ...controlExplainerAttrs(engineLinesExplainer) },
+    on: { click: () => { rc.showEngineLines(redraw); } },
+  }, rc.puzzleEngineEnabled ? 'Engine active' : 'Engine Lines');
 
   // Show the expected correct move in SAN
   const expectedUci = rc.solutionLine[rc.progressPly];
@@ -1458,27 +1545,27 @@ function renderFailedFeedback(rc: PuzzleRoundCtrl, redraw: () => void): VNode {
     h('div.puzzle__feedback__actions', [
       !rc.revealedSolution
         ? h('button.button.button-empty.puzzle__reveal', {
+            attrs: controlExplainerAttrs({ label: 'Show solution', description: 'Reveal the correct continuation for this failed puzzle.' }),
             on: { click: () => { rc.revealSolution(redraw); redraw(); } },
           }, 'Show Solution')
         : null,
-      h('button.button.button-empty.puzzle__engine-lines', {
-        attrs: { disabled: rc.puzzleEngineEnabled },
-        on: { click: () => { rc.showEngineLines(redraw); } },
-      }, rc.puzzleEngineEnabled ? 'Engine active' : 'Engine Lines'),
+      maybeDisabledPuzzleControl(engineLinesExplainer, engineLinesControl, rc.puzzleEngineEnabled),
       h('button.button.button-empty.puzzle__engine-arrows', {
+        attrs: controlExplainerAttrs({ label: 'Show engine arrows', description: 'Display the engine move arrows for this puzzle position.' }),
         on: { click: () => { rc.showEngineArrows(redraw); } },
       }, 'Engine Arrows'),
       renderAnalysisToggle(rc, redraw),
       _puzzleSaveLibFeedback
         ? h('span.puzzle__save-lib-feedback', _puzzleSaveLibFeedback)
         : h('button.button.button-empty.puzzle__save-lib', {
-            attrs: { title: 'Save this puzzle to the Study Library' },
+            attrs: controlExplainerAttrs({ label: 'Save puzzle to Study Library', description: 'Open the save flow for this failed puzzle.' }),
             on: { click: () => { openPuzzleRoundSaveFlow(rc.definition, 'failed', redraw); } },
           }, '\uD83D\uDCDA Save to Library'),
     ]),
     renderMoveQualitySummary(rc.moveQualities, rc.definition),
     h('div.puzzle__feedback__nav', [
       h('button.button.puzzle__retry', {
+        attrs: controlExplainerAttrs({ label: 'Try puzzle again', description: 'Reset this puzzle and start another attempt.' }),
         on: { click: () => { retryPuzzle(redraw); } },
       }, 'Try Again'),
       ...renderNextNavChildren(redraw),
@@ -1512,6 +1599,7 @@ function renderNextNavChildren(redraw: () => void): VNode[] {
 
   children.push(
     h('button.button.button-empty.puzzle__next', {
+      attrs: controlExplainerAttrs({ label: inRetry ? (idx + 1 >= total ? `Finish ${label} Session` : `Next ${label} Puzzle`) : 'Next Puzzle', description: 'Advance to the next puzzle in the active flow.' }),
       on: { click: () => { nextFn(redraw); } },
     }, inRetry
       ? (idx + 1 >= total ? `Finish ${label} Session` : `Next ${label} Puzzle`)
@@ -1520,7 +1608,7 @@ function renderNextNavChildren(redraw: () => void): VNode[] {
   );
 
   children.push(
-    h('a.puzzle__back-link', { attrs: { href: '#/puzzles' } }, 'Back to Library'),
+    h('a.puzzle__back-link', { attrs: { href: '#/puzzles', ...controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Leave this round and return to the library.' }) } }, 'Back to Library'),
   );
 
   return children;
@@ -1543,8 +1631,10 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
       h('button.puzzle-meta__fav-btn', {
         class: { 'puzzle-meta__fav-btn--active': meta.favorite },
         attrs: {
-          title: meta.favorite ? 'Remove from favorites' : 'Add to favorites',
-          'aria-label': meta.favorite ? 'Remove from favorites' : 'Add to favorites',
+          ...iconControlExplainerAttrs({
+            label: meta.favorite ? 'Remove from favorites' : 'Add to favorites',
+            description: 'Toggle this puzzle in your favorites.',
+          }),
         },
         on: { click: () => { toggleFavorite(puzzleId, redraw); } },
       }, meta.favorite ? '\u2665' : '\u2661'), // filled heart / empty heart
@@ -1557,8 +1647,10 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
       h('textarea.puzzle-meta__notes', {
         attrs: {
           id: `puzzle-notes-${puzzleId}`,
+          name: 'puzzle-notes',
           rows: 3,
           placeholder: 'Add notes about this puzzle\u2026',
+          ...controlExplainerAttrs({ label: 'Puzzle notes', description: 'Save private notes for this puzzle when focus leaves the field.' }),
         },
         props: { value: meta.notes ?? '' },
         on: {
@@ -1580,7 +1672,9 @@ function renderMetaPanel(puzzleId: string, redraw: () => void): VNode {
         attrs: {
           id: `puzzle-tags-${puzzleId}`,
           type: 'text',
+          name: 'puzzle-tags',
           placeholder: 'tag1, tag2, tag3',
+          ...controlExplainerAttrs({ label: 'Puzzle tags', description: 'Enter comma-separated tags for this puzzle.' }),
         },
         props: { value: (meta.tags ?? []).join(', ') },
         on: {
@@ -1608,7 +1702,7 @@ function renderFoldersEditor(meta: PuzzleUserMeta, redraw: () => void): VNode {
           h('span.puzzle-meta__folder-pill', [
             folder,
             h('button.puzzle-meta__folder-remove', {
-              attrs: { title: `Remove from "${folder}"` },
+              attrs: iconControlExplainerAttrs({ label: `Remove from ${folder}`, description: 'Remove this puzzle from the collection.' }),
               on: {
                 click: () => {
                   meta.folders = meta.folders.filter(f => f !== folder);
@@ -1624,7 +1718,9 @@ function renderFoldersEditor(meta: PuzzleUserMeta, redraw: () => void): VNode {
     h('input.puzzle-meta__folder-input', {
       attrs: {
         type: 'text',
+        name: 'puzzle-folder',
         placeholder: 'Add to collection\u2026',
+        ...controlExplainerAttrs({ label: 'Add puzzle to collection', description: 'Type a collection name and press Enter.' }),
       },
       props: { value: '' },
       on: {
@@ -1705,7 +1801,7 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
+      attrs: iconControlExplainerAttrs({ label: 'Close puzzle menu' }),
       on:    { click: close },
     }, '×'),
 
@@ -1713,7 +1809,7 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
     h('div.action-menu__tools', [
       // Flip board
       h('button', {
-        attrs: { 'data-icon': PUZZLE_ICON_FLIP, title: 'Flip board' },
+        attrs: { 'data-icon': PUZZLE_ICON_FLIP, ...controlExplainerAttrs({ label: 'Flip board', description: 'Reverse the puzzle board orientation.' }) },
         on: { click: () => {
           flipPuzzleSolveBoard();
           close();
@@ -1721,7 +1817,7 @@ function renderPuzzleRoundActionMenu(rc: PuzzleRoundCtrl, redraw: () => void): V
       }, 'Flip board'),
 
       h('button', {
-        attrs: { title: 'Report an issue with the Puzzles page' },
+        attrs: controlExplainerAttrs({ label: 'Report Puzzles issue', description: 'Open a diagnostic report for the Puzzles page.' }),
         on: { click: () => {
           reportPuzzlesIssue();
           close();
@@ -1806,14 +1902,14 @@ function renderLibraryPreviewActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
+      attrs: iconControlExplainerAttrs({ label: 'Close preview menu' }),
       on:    { click: close },
     }, '×'),
 
     h('h2', 'Tools'),
     h('div.action-menu__tools', [
       h('button', {
-        attrs: { 'data-icon': LIBRARY_ICON_FLIP, title: 'Flip board' },
+        attrs: { 'data-icon': LIBRARY_ICON_FLIP, ...controlExplainerAttrs({ label: 'Flip preview board', description: 'Reverse the puzzle preview board orientation.' }) },
         on: { click: () => {
           flipPuzzlePreviewBoard();
           close();
@@ -1848,10 +1944,11 @@ function renderLibraryPreviewPanel(redraw: () => void): VNode | null {
     h('div.puzzle-library__preview-header', [
       h('h2', `Puzzle ${rc.definition.id}`),
       h('button.button.button-green.puzzle-library__preview-play', {
+        attrs: controlExplainerAttrs({ label: 'Play this puzzle', description: 'Start a puzzle round with this previewed puzzle.' }),
         on: { click: () => void selectPuzzleFromList(rc.definition.id, redraw) },
       }, 'Play this puzzle'),
       h('button.puzzle-library__preview-close', {
-        attrs: { title: 'Close preview', 'aria-label': 'Close preview' },
+        attrs: iconControlExplainerAttrs({ label: 'Close puzzle preview' }),
         on: { click: () => { clearPreview(); redraw(); } },
       }, '×'),
     ]),
@@ -1933,13 +2030,13 @@ function renderPuzzleMoveList(_def: PuzzleDefinition, rc: PuzzleRoundCtrl | null
   children.push(renderPuzzleContextMenu(rc, redraw));
 
   return h('div.analyse__moves.areplay', {
-    on: { click: (e: MouseEvent) => {
+    hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('#move-ctx-menu') && _puzzleContextMenuPath) {
         closePuzzleContextMenu();
         redraw();
       }
-    }},
+    }) },
   }, children);
 }
 
@@ -2067,12 +2164,12 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
           failed > 0
             ? h('button.session-info__retry', {
                 on: { click: () => { retryFailedPuzzles(redraw); }},
-                attrs: { title: 'Retry failed and assisted puzzles' },
+                attrs: controlExplainerAttrs({ label: 'Retry failed and assisted puzzles', description: 'Start another pass through unsuccessful session puzzles.' }),
               }, `Retry (${failed + assisted})`)
             : null,
           h('button.session-info__end', {
             on: { click: () => { clearActiveSession(); writeHashRoute('#/puzzles'); }},
-            attrs: { title: 'End session' },
+            attrs: controlExplainerAttrs({ label: 'End puzzle session', description: 'Clear this session and return to the Puzzle Library.' }),
           }, 'End'),
         ]),
       ]),
@@ -2089,10 +2186,11 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
         h('span', 'Auto-next'),
         h('div.toggle-switch', {
           class: { 'toggle-switch--on': getAutoNext() },
+          attrs: { role: 'switch', tabindex: '0', 'aria-checked': String(getAutoNext()), ...iconControlExplainerAttrs({ label: 'Auto-next puzzles', description: 'Advance automatically after each completed puzzle.' }) },
           on: { click: () => {
             setAutoNext(!getAutoNext());
             redraw();
-          }},
+          }, keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); setAutoNext(!getAutoNext()); redraw(); } } },
         }, [
           h('div.toggle-switch__knob'),
         ]),
@@ -2106,7 +2204,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
         session.history.map((entry, i) => {
           const isCurrent = entry.puzzleId === getPuzzleRoundState()?.definition?.id;
           const isCompleted = entry.result !== 'in-progress';
-          return h('div.session-history__cell', {
+          const data = {
             class: {
               'session-history__cell--clean': entry.result === 'clean',
               'session-history__cell--assisted': entry.result === 'assisted',
@@ -2114,13 +2212,16 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
               'session-history__cell--active': entry.result === 'in-progress',
               'session-history__cell--current': isCurrent,
             },
-            attrs: { title: `#${i + 1}: ${entry.result}` },
-            on: isCompleted && !isCurrent ? {
-              click: () => {
-                writePuzzleRoundRoute(entry.puzzleId, 'explicit-durable-selection');
-              },
-            } : {},
-            style: isCompleted && !isCurrent ? { cursor: 'pointer' } : {},
+          };
+          if (!isCompleted || isCurrent) return h('div.session-history__cell', data);
+          return h('div.session-history__cell', {
+            ...data,
+            attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: `Review puzzle ${i + 1}`, description: `Open this ${entry.result} puzzle from session history.` }) },
+            on: {
+              click: () => writePuzzleRoundRoute(entry.puzzleId, 'explicit-durable-selection'),
+              keydown: (event: KeyboardEvent) => { if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) { event.preventDefault(); writePuzzleRoundRoute(entry.puzzleId, 'explicit-durable-selection'); } },
+            },
+            style: { cursor: 'pointer' },
           });
         }),
       ),
@@ -2130,6 +2231,7 @@ function renderSessionSidebar(session: ActiveSession, def: PuzzleDefinition, red
       // Otherwise all session puzzles are done — advance to the next unplayed one.
       isReviewingPastPuzzle(session)
         ? h('button.session-history__continue', {
+            attrs: controlExplainerAttrs({ label: 'Continue puzzle session', description: 'Return to the in-progress puzzle or advance to the next one.' }),
             on: { click: () => {
               const currentId = getPuzzleRoundState()?.definition?.id;
               const inProgress = session.history.find(e => e.result === 'in-progress');
@@ -2171,7 +2273,7 @@ function renderRetryQueueProgress(redraw: () => void): VNode {
       h('div.session-info__actions', [
         h('button.session-info__end', {
           on: { click: () => { endRetryQueueSession(); writeHashRoute('#/puzzles'); } },
-          attrs: { title: 'End session' },
+          attrs: controlExplainerAttrs({ label: `End ${label}`, description: 'Stop this queue and return to the Puzzle Library.' }),
         }, 'End'),
       ]),
     ]),
@@ -2201,6 +2303,7 @@ function renderRetryQueueCompletion(completion: RetryQueueCompletion): VNode {
       ]),
       h('div.puzzle__feedback__actions', [
         h('button.button.puzzle__next', {
+          attrs: controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Dismiss this completed queue and return to the library.' }),
           on: { click: () => { dismissRetryQueueCompletion(); writeHashRoute('#/puzzles'); } },
         }, 'Back to Library'),
       ]),
@@ -2240,7 +2343,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
     retirePuzzlePreviewWorkspace('round-error-render');
     return h('div.puzzle-page', h('div.puzzle-round', [
       h('div.puzzle-round__error', rs.error ?? 'Unknown error'),
-      h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
+      h('a.puzzle-round__back', { attrs: { href: '#/puzzles', ...controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Leave this puzzle error and return to the library.' }) } }, '\u2190 Back to Library'),
     ]));
   }
 
@@ -2260,7 +2363,7 @@ export function renderPuzzleRound(redraw: () => void): VNode {
         ? renderSessionSidebar(session, def, redraw)
         : h('aside.puzzle__session-sidebar', [
             inRetryQueue ? renderRetryQueueProgress(redraw) : h('div.puzzle-round__header', [
-              h('a.puzzle-round__back', { attrs: { href: '#/puzzles' } }, '\u2190 Back to Library'),
+              h('a.puzzle-round__back', { attrs: { href: '#/puzzles', ...controlExplainerAttrs({ label: 'Back to Puzzle Library', description: 'Leave this puzzle round and return to the library.' }) } }, '\u2190 Back to Library'),
               h('h2.puzzle-round__title', `Puzzle ${def.id}`),
             ]),
             renderPuzzleInfo(def, redraw),

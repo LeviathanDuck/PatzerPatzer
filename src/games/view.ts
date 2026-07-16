@@ -69,6 +69,11 @@ import {
   type RichRowSecondaryAction,
   type RichRowTagInputs,
 } from './richRow';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
@@ -1145,20 +1150,25 @@ function renderAccountLensSelect(deps: GamesViewDeps): VNode {
       class: { active: accountFilterMenuOpen },
       attrs: {
         type: 'button',
-        title: 'Choose whose games to show',
+        ...controlExplainerAttrs({
+          label: 'Choose game accounts',
+          description: `${accountFilterButtonLabel(deps.accounts)} is the current account lens.`,
+        }),
         'aria-haspopup': 'true',
         'aria-expanded': String(accountFilterMenuOpen),
       },
       on: { click: () => { accountFilterMenuOpen = !accountFilterMenuOpen; deps.redraw(); } },
     }, accountFilterButtonLabel(deps.accounts)),
     accountFilterMenuOpen ? h('button.games-view__account-backdrop', {
-      attrs: { type: 'button', 'aria-label': 'Close account filter' },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close account filter' }) },
       on: { click: () => { accountFilterMenuOpen = false; deps.redraw(); } },
     }) : null,
     accountFilterMenuOpen ? h('div.games-view__account-menu', [
       h('button.games-view__account-option', {
         class: { active: accountFilterState.mode === 'all' },
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Show all accounts', description: 'Include games from every configured account.',
+        }) },
         on: { click: () => applyAccountFilterState({ mode: 'all' }, deps) },
       }, [
         h('span.games-view__account-check', accountFilterState.mode === 'all' ? '✓' : ''),
@@ -1166,7 +1176,9 @@ function renderAccountLensSelect(deps: GamesViewDeps): VNode {
       ]),
       h('button.games-view__account-option', {
         class: { active: accountFilterState.mode === 'custom' && custom.includeMine },
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Toggle my accounts', description: 'Include or exclude games owned by your accounts.',
+        }) },
         on: { click: () => applyAccountFilterState({
           mode: 'custom',
           includeMine: !custom.includeMine,
@@ -1180,7 +1192,9 @@ function renderAccountLensSelect(deps: GamesViewDeps): VNode {
       ...deps.accounts.map(account =>
         h('button.games-view__account-option', {
           class: { active: accountFilterState.mode === 'custom' && selectedIds.has(account.id) },
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: `Toggle ${account.displayName}`, description: `Include or exclude games imported for ${accountLabel(account)}.`,
+          }) },
           on: { click: () => toggleAccount(account.id) },
         }, [
           h('span.games-view__account-check', accountFilterState.mode === 'custom' && selectedIds.has(account.id) ? '✓' : ''),
@@ -1296,7 +1310,10 @@ function renderSortPill(field: GamesSortField, deps: GamesViewDeps): VNode {
   const arrow  = active ? (gamesSortDir === 'desc' ? ' ↓' : ' ↑') : '';
   return h('button.games-view__pill', {
     class: { active },
-    attrs: { type: 'button', title: `Sort by ${SORT_FIELD_LABEL[field]}` },
+    attrs: { type: 'button', ...controlExplainerAttrs({
+      label: `Sort by ${SORT_FIELD_LABEL[field]}`,
+      description: active ? `Games are sorted ${gamesSortDir === 'desc' ? 'descending' : 'ascending'} by this field.` : 'Sort games by this field.',
+    }) },
     on:    { click: () => toggleGamesSort(field, deps) },
   }, SORT_FIELD_LABEL[field] + arrow);
 }
@@ -1307,10 +1324,25 @@ function renderGamesChip(label: string, onRemove: () => void): VNode {
   return h('span.games-view__chip', [
     h('span.games-view__chip-label', label),
     h('button.games-view__chip-remove', {
-      attrs: { type: 'button', title: `Remove filter: ${label}`, 'aria-label': `Remove filter: ${label}` },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove filter: ${label}` }) },
       on: { click: onRemove },
     }, '✕'),
   ]);
+}
+
+function renderGamesPageButton(
+  label: string,
+  visibleText: string,
+  description: string,
+  disabledReason: string | null,
+  onClick: () => void,
+): VNode {
+  const explainer = { label, description: disabledReason ?? description };
+  const control = h('button.games-view__page-btn', {
+    attrs: { type: 'button', disabled: Boolean(disabledReason), ...controlExplainerAttrs(explainer) },
+    on: { click: onClick },
+  }, visibleText);
+  return disabledReason ? renderDisabledControlExplainer(explainer, control) : control;
 }
 
 const SPEED_ICONS: Record<string, string> = {
@@ -1334,7 +1366,7 @@ const SPEED_ICONS: Record<string, string> = {
 function handleGameRowClick(
   game: ImportedGame,
   visibleGames: ImportedGame[],
-  e: MouseEvent,
+  e: MouseEvent | KeyboardEvent,
   deps: GamesViewDeps,
   onPlainClick: () => void,
 ): void {
@@ -1449,18 +1481,24 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       h('div.game-list__density-toggle', [
         h('button.games-view__density-btn', {
           class: { active: gameListDensity === 'rich' },
-          attrs: { type: 'button', title: 'Rich row view (when wide enough)', 'aria-pressed': String(gameListDensity === 'rich') },
+          attrs: { type: 'button', 'aria-pressed': String(gameListDensity === 'rich'), ...controlExplainerAttrs({
+            label: 'Rich row view', description: 'Show rich game cards when the panel is wide enough.',
+          }) },
           on: { click: () => { if (gameListDensity !== 'rich') { setGameListDensity('rich'); deps.redraw(); } } },
         }, '▤'),
         h('button.games-view__density-btn', {
           class: { active: gameListDensity === 'compact' },
-          attrs: { type: 'button', title: 'Compact row view', 'aria-pressed': String(gameListDensity === 'compact') },
+          attrs: { type: 'button', 'aria-pressed': String(gameListDensity === 'compact'), ...controlExplainerAttrs({
+            label: 'Compact row view', description: 'Show games as compact rows.',
+          }) },
           on: { click: () => { if (gameListDensity !== 'compact') { setGameListDensity('compact'); deps.redraw(); } } },
         }, '☰'),
       ]),
     ]),
     h('input.games-view__search', {
-      attrs: { type: 'search', placeholder: 'Search opponent/opening...', value: gameListSearch },
+      attrs: { type: 'search', name: 'game-list-search', placeholder: 'Search opponent/opening...', value: gameListSearch, ...controlExplainerAttrs({
+        label: 'Search games', description: 'Filter games by opponent or opening.',
+      }) },
       on: { input: (e: Event) => { gameListSearch = (e.target as HTMLInputElement).value; resetGameListPage(); deps.redraw(); } },
     }),
 
@@ -1471,7 +1509,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         class: { active: gameListFilterReview === 'reviewed' },
         attrs: {
           type: 'button',
-          title: 'Show analyzed games',
+          ...controlExplainerAttrs({ label: 'Analyzed games', description: 'Toggle games with completed engine analysis.' }),
           'aria-pressed': String(gameListFilterReview === 'reviewed'),
         },
         on: { click: () => toggleReview('reviewed') },
@@ -1480,7 +1518,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         class: { active: gameListFilterReview === 'not-reviewed' },
         attrs: {
           type: 'button',
-          title: 'Show games without a completed analysis',
+          ...controlExplainerAttrs({ label: 'Not analyzed games', description: 'Toggle games without completed engine analysis.' }),
           'aria-pressed': String(gameListFilterReview === 'not-reviewed'),
         },
         on: { click: () => toggleReview('not-reviewed') },
@@ -1488,6 +1526,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       ...(['win', 'loss', 'draw'] as const).map(r =>
         h('button.games-view__pill', {
           class: { active: gameListFilterResults.has(r) },
+          attrs: controlExplainerAttrs({ label: `${r} games`, description: `Toggle games recorded as a ${r}.` }),
           on: { click: () => toggleResult(r) },
         }, r.charAt(0).toUpperCase() + r.slice(1)),
       ),
@@ -1495,14 +1534,17 @@ export function renderGameList(deps: GamesViewDeps): VNode {
         class: { active: gameListMorePillsOpen },
         attrs: {
           type: 'button',
-          title: gameListMorePillsOpen ? 'Hide more filters' : 'Show color/time-control filters',
+          ...controlExplainerAttrs({
+            label: gameListMorePillsOpen ? 'Hide more filters' : 'Show more filters',
+            description: 'Show or hide color and time-control filters.',
+          }),
           'aria-expanded': String(gameListMorePillsOpen),
         },
         on: { click: () => { gameListMorePillsOpen = !gameListMorePillsOpen; deps.redraw(); } },
       }, gameListMorePillsOpen ? 'More ▴' : 'More ▾'),
       anyFilter
         ? h('button.games-view__clear', {
-            attrs: { title: 'Clear filters', 'aria-label': 'Clear filters' },
+            attrs: iconControlExplainerAttrs({ label: 'Clear filters', description: 'Remove every active game-list filter.' }),
             on: { click: clearAll },
           }, '×')
         : null,
@@ -1510,7 +1552,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       // On desktop, ctrl/cmd+click still works alongside this button.
       h('button.games-view__select-toggle', {
         class: { active: selectModeActive },
-        attrs: { title: selectModeActive ? 'Exit select mode' : 'Select games for bulk analysis' },
+        attrs: controlExplainerAttrs({
+          label: selectModeActive ? 'Exit game selection' : 'Select games',
+          description: 'Toggle game selection for bulk analysis.',
+        }),
         on: { click: () => {
           selectModeActive = !selectModeActive;
           if (!selectModeActive) selectedGameIds = new Set();
@@ -1526,7 +1571,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               selectModeActive = false;
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: `Analyze ${listSelectedCount} selected games sequentially` },
+            attrs: controlExplainerAttrs({
+              label: `Analyze ${listSelectedCount} selected games`, description: 'Queue the selected games for sequential engine analysis.',
+            }),
           }, `Analyze ${listSelectedCount}`)
         : null,
       pageGames.length > 1
@@ -1535,7 +1582,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
               const { batchGames, sourceContext } = fixedVisibleListReviewRunStart(pageGames, 'date', 'desc');
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: 'Analyze the games on this page sequentially' },
+            attrs: controlExplainerAttrs({
+              label: 'Analyze all games on this page', description: 'Queue the visible page for sequential engine analysis.',
+            }),
           }, 'Analyze All')
         : null,
     ]),
@@ -1545,7 +1594,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           class: { active: gameListFilterColor === color },
           attrs: {
             type: 'button',
-            title: `Show games where this account played ${color}`,
+            ...controlExplainerAttrs({ label: `${color} games`, description: `Toggle games where the selected account played ${color}.` }),
             'aria-pressed': String(gameListFilterColor === color),
           },
           on: { click: () => toggleColor(color) },
@@ -1554,7 +1603,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
       ...(['bullet', 'blitz', 'rapid'] as const).map(tc =>
         h('button.games-view__pill', {
           class: { active: gameListFilterSpeeds.has(tc) },
-          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '' },
+          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '', ...controlExplainerAttrs({
+            label: `${tc} games`, description: `Toggle ${tc} games.`,
+          }) },
           on: { click: () => toggleSpeed(tc) },
         }, tc.charAt(0).toUpperCase() + tc.slice(1)),
       ),
@@ -1566,7 +1617,7 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           class: { active: gameListPageSize === size },
           attrs: {
             type: 'button',
-            title: `Show ${size} games`,
+            ...controlExplainerAttrs({ label: `Show ${size} games`, description: `Set the page size to ${size} games.` }),
             'aria-pressed': String(gameListPageSize === size),
           },
           on: { click: () => { setGameListPageSize(size); deps.redraw(); } },
@@ -1589,15 +1640,13 @@ export function renderGameList(deps: GamesViewDeps): VNode {
   // underboard is wide enough; otherwise the ▤ preference still shows compact v2 rows.
   const effectiveDensity: UnderboardDensity = gameListDensity === 'rich' && gameListWideEnough ? 'rich' : 'compact';
   const paginationBar = totalPages > 1 ? h('div.game-list__pagination', [
-    h('button.games-view__page-btn', {
-      attrs: { type: 'button', disabled: gameListPage === 0 },
-      on: { click: () => { gameListPage--; deps.redraw(); } },
-    }, 'Prev'),
+    renderGamesPageButton('Previous games page', 'Prev', 'Show the previous page of games.',
+      gameListPage === 0 ? 'You are on the first games page.' : null,
+      () => { gameListPage--; deps.redraw(); }),
     h('span.games-view__page-info', `Page ${gameListPage + 1} of ${totalPages}`),
-    h('button.games-view__page-btn', {
-      attrs: { type: 'button', disabled: gameListPage >= totalPages - 1 },
-      on: { click: () => { gameListPage++; deps.redraw(); } },
-    }, 'Next'),
+    renderGamesPageButton('Next games page', 'Next', 'Show the next page of games.',
+      gameListPage >= totalPages - 1 ? 'You are on the last games page.' : null,
+      () => { gameListPage++; deps.redraw(); }),
   ]) : null;
 
   return h('div.game-list', {
@@ -1660,7 +1709,9 @@ export function renderGameList(deps: GamesViewDeps): VNode {
           const secondaryActions = richRowSecondaryActions(deps, game, visible, state);
 
           const srcLink = srcUrl ? h('a.game-ext-link', {
-            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', ...iconControlExplainerAttrs({
+              label: 'View source game', description: 'Open this game on its source platform in a new tab.',
+            }) },
             on: { click: (e: Event) => e.stopPropagation() },
           }) : null;
 
@@ -1695,6 +1746,10 @@ export function renderGameList(deps: GamesViewDeps): VNode {
                 selected:  selectedGameIds.has(game.id),
                 analyzing: state.kind === 'running',
               },
+              attrs: controlExplainerAttrs({
+                label: `Open ${game.white || 'White'} versus ${game.black || 'Black'}`,
+                description: 'Open this game on the Analysis Board.',
+              }),
               on: { click: (e: MouseEvent) => handleGameRowClick(game, visible, e, deps, () => selectAnalysisGame(game, deps)) },
             }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, accuracy, {
               tags: richRowTags(deps, game),
@@ -1916,6 +1971,10 @@ function renderGamesCompactFeed(
             active:   game.id === deps.selectedGameId,
             selected: selectedGameIds.has(game.id),
           },
+          attrs: controlExplainerAttrs({
+            label: `Open ${game.white || 'White'} versus ${game.black || 'Black'}`,
+            description: 'Open this game on the Analysis Board.',
+          }),
           on: { click: (e: MouseEvent) => handleGameRowClick(game, games, e, deps, () => selectAnalysisGame(game, deps)) },
         }, deps.renderCompactGameRow(game, isAnalyzed, hasMissedTactic, richRowAccuracy(deps, game, isAnalyzed))),
         h('div.grr__review-group', [
@@ -1923,7 +1982,9 @@ function renderGamesCompactFeed(
           renderSecondaryActions(secondaryActions),
         ]),
         srcUrl ? h('a.game-ext-link', {
-          attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+          attrs: { href: srcUrl, target: '_blank', rel: 'noopener', ...iconControlExplainerAttrs({
+            label: 'View source game', description: 'Open this game on its source platform in a new tab.',
+          }) },
           on: { click: (e: Event) => e.stopPropagation() },
         }) : null,
       ]);
@@ -1964,7 +2025,10 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     h('div.games-view__filter-group', [
       h('button.games-view__advanced-toggle', {
         class: { active: gamesAdvancedPanelOpen },
-        attrs: { type: 'button', 'aria-expanded': String(gamesAdvancedPanelOpen) },
+        attrs: { type: 'button', 'aria-expanded': String(gamesAdvancedPanelOpen), ...controlExplainerAttrs({
+          label: gamesAdvancedPanelOpen ? 'Hide advanced search' : 'Show advanced search',
+          description: 'Show or hide opponent, opening, rating, date, and sort controls.',
+        }) },
         on: { click: () => { gamesAdvancedPanelOpen = !gamesAdvancedPanelOpen; redraw(); } },
       }, gamesAdvancedPanelOpen ? 'Advanced search ▴' : 'Advanced search ▾'),
     ]),
@@ -1976,7 +2040,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('div.games-view__density-toggle', [
         h('button.games-view__density-btn', {
           class: { active: gamesDensity === 'full' },
-          attrs: { type: 'button', title: 'Rich row view', 'aria-pressed': String(gamesDensity === 'full') },
+          attrs: { type: 'button', 'aria-pressed': String(gamesDensity === 'full'), ...controlExplainerAttrs({
+            label: 'Rich row view', description: 'Show games as rich cards.',
+          }) },
           on: { click: () => {
             if (gamesDensity === 'full') return;
             gamesDensity = 'full';
@@ -1986,7 +2052,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         }, '▤'),
         h('button.games-view__density-btn', {
           class: { active: gamesDensity === 'compact' },
-          attrs: { type: 'button', title: 'Compact row view', 'aria-pressed': String(gamesDensity === 'compact') },
+          attrs: { type: 'button', 'aria-pressed': String(gamesDensity === 'compact'), ...controlExplainerAttrs({
+            label: 'Compact row view', description: 'Show games as compact rows.',
+          }) },
           on: { click: () => {
             if (gamesDensity === 'compact') return;
             gamesDensity = 'compact';
@@ -1997,10 +2065,15 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       ]),
       h('span.games-view__summary', `${games.length} of ${lensTotal} game${lensTotal === 1 ? '' : 's'}`),
       h('button.games-view__clear', {
-        attrs: { type: 'button', title: 'Report an issue with the Games page' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Report Games issue', description: 'Open a diagnostic report for the Games page.',
+        }) },
         on: { click: reportGamesIssue },
       }, 'Report issue'),
-      gamesFilterActive() ? h('button.games-view__clear', { on: { click: () => clearGamesFilters(deps) } }, 'Clear filters') : null,
+      gamesFilterActive() ? h('button.games-view__clear', {
+        attrs: controlExplainerAttrs({ label: 'Clear filters', description: 'Remove every active Games filter.' }),
+        on: { click: () => clearGamesFilters(deps) },
+      }, 'Clear filters') : null,
       selectedGameIds.size > 1
         ? h('button.games-view__review-all-btn', {
             on: { click: () => {
@@ -2009,7 +2082,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               selectedGameIds = new Set();
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: `Analyze ${selectedGameIds.size} selected games sequentially` },
+            attrs: controlExplainerAttrs({
+              label: `Analyze ${selectedGameIds.size} selected games`, description: 'Queue the selected games for sequential engine analysis.',
+            }),
           }, `Analyze Selected (${selectedGameIds.size})`)
         : null,
       pageGames.length > 1
@@ -2018,7 +2093,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
               const { batchGames, sourceContext } = visibleListReviewRunStart(pageGames);
               deps.reviewAllGames(batchGames, sourceContext);
             }},
-            attrs: { title: 'Analyze the games on this page sequentially' },
+            attrs: controlExplainerAttrs({
+              label: 'Analyze all games on this page', description: 'Queue the visible page for sequential engine analysis.',
+            }),
           }, 'Analyze All')
         : null,
     ]),
@@ -2033,7 +2110,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       ...(['win', 'loss', 'draw'] as GamesResultFilter[]).map(r =>
         h('button.games-view__pill.--quick', {
           class: { active: gamesFilterResults.has(r) },
-          attrs: { type: 'button', 'aria-pressed': String(gamesFilterResults.has(r)) },
+          attrs: { type: 'button', 'aria-pressed': String(gamesFilterResults.has(r)), ...controlExplainerAttrs({
+            label: `${r} games`, description: `Toggle games recorded as a ${r}.`,
+          }) },
           on: { click: () => {
             const s = new Set(gamesFilterResults);
             s.has(r) ? s.delete(r) : s.add(r);
@@ -2051,7 +2130,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       ...(['bullet', 'blitz', 'rapid'] as string[]).map(tc =>
         h('button.games-view__pill.--quick', {
           class: { active: gamesFilterSpeeds.has(tc) },
-          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '', type: 'button', 'aria-pressed': String(gamesFilterSpeeds.has(tc)) },
+          attrs: { 'data-icon': SPEED_ICONS[tc] ?? '', type: 'button', 'aria-pressed': String(gamesFilterSpeeds.has(tc)), ...controlExplainerAttrs({
+            label: `${tc} games`, description: `Toggle ${tc} games.`,
+          }) },
           on: { click: () => {
             const s = new Set(gamesFilterSpeeds);
             s.has(tc) ? s.delete(tc) : s.add(tc);
@@ -2068,7 +2149,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       h('span.games-view__filter-label', 'Color'),
       h('button.games-view__pill.--quick', {
         class: { active: gamesFilterColor === 'white' },
-        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'white') },
+        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'white'), ...controlExplainerAttrs({
+          label: 'White games', description: 'Toggle games where the selected account played White.',
+        }) },
         on: { click: () => {
           gamesFilterColor = gamesFilterColor === 'white' ? '' : 'white';
           gamesPage = 0;
@@ -2078,7 +2161,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       }, 'White'),
       h('button.games-view__pill.--quick', {
         class: { active: gamesFilterColor === 'black' },
-        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'black') },
+        attrs: { type: 'button', 'aria-pressed': String(gamesFilterColor === 'black'), ...controlExplainerAttrs({
+          label: 'Black games', description: 'Toggle games where the selected account played Black.',
+        }) },
         on: { click: () => {
           gamesFilterColor = gamesFilterColor === 'black' ? '' : 'black';
           gamesPage = 0;
@@ -2094,7 +2179,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         class: { active: gamesFilterReviewIssues === 'failed-skipped' },
         attrs: {
           type: 'button',
-          title: 'Show games with failed or skipped analysis state',
+          ...controlExplainerAttrs({
+            label: 'Failed or skipped analysis', description: 'Toggle games whose analysis failed or was skipped.',
+          }),
           'aria-pressed': String(gamesFilterReviewIssues === 'failed-skipped'),
         },
         on: { click: () => {
@@ -2111,7 +2198,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
       ...(['!', '!!', '!!!', 'M?!'] as string[]).map(sev =>
         h('button.games-view__pill.--quick', {
           class: { active: gamesFilterTactics.has(sev) },
-          attrs: { type: 'button', 'aria-pressed': String(gamesFilterTactics.has(sev)) },
+          attrs: { type: 'button', 'aria-pressed': String(gamesFilterTactics.has(sev)), ...controlExplainerAttrs({
+            label: `${sev} missed tactics`, description: `Toggle games with ${sev} missed-tactic severity.`,
+          }) },
           on: { click: () => {
             const s = new Set(gamesFilterTactics);
             s.has(sev) ? s.delete(sev) : s.add(sev);
@@ -2189,7 +2278,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         h('label.games-view__advanced-field', [
           h('span.games-view__filter-label', 'Opponent'),
           h('input.games-view__search', {
-            attrs: { type: 'search', placeholder: 'Name…', value: gamesFilterOpponent },
+            attrs: { type: 'search', name: 'games-opponent', placeholder: 'Name…', value: gamesFilterOpponent, ...controlExplainerAttrs({
+              label: 'Opponent name', description: 'Filter games by opponent name.',
+            }) },
             on: { input: (e: Event) => {
               gamesFilterOpponent = (e.target as HTMLInputElement).value;
               gamesPage = 0;
@@ -2201,7 +2292,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         h('label.games-view__advanced-field', [
           h('span.games-view__filter-label', 'Opening'),
           h('input.games-view__search', {
-            attrs: { type: 'search', placeholder: 'Name...', value: gamesFilterOpening },
+            attrs: { type: 'search', name: 'games-opening', placeholder: 'Name...', value: gamesFilterOpening, ...controlExplainerAttrs({
+              label: 'Opening name', description: 'Filter games by opening name.',
+            }) },
             on: { input: (e: Event) => {
               gamesFilterOpening = (e.target as HTMLInputElement).value;
               gamesPage = 0;
@@ -2215,7 +2308,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
           h('input.games-view__search.--num', {
             attrs: {
               type: 'number', min: '0', max: '4000', placeholder: 'Min',
+              name: 'games-opponent-rating-min',
               value: gamesFilterRatingMin === null ? '' : String(gamesFilterRatingMin),
+              ...controlExplainerAttrs({ label: 'Minimum opponent rating', description: 'Set the lowest opponent rating to include.' }),
             },
             on: { input: (e: Event) => {
               const raw = (e.target as HTMLInputElement).value.trim();
@@ -2232,7 +2327,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
           h('input.games-view__search.--num', {
             attrs: {
               type: 'number', min: '0', max: '4000', placeholder: 'Max',
+              name: 'games-opponent-rating-max',
               value: gamesFilterRatingMax === null ? '' : String(gamesFilterRatingMax),
+              ...controlExplainerAttrs({ label: 'Maximum opponent rating', description: 'Set the highest opponent rating to include.' }),
             },
             on: { input: (e: Event) => {
               const raw = (e.target as HTMLInputElement).value.trim();
@@ -2252,7 +2349,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         h('label.games-view__advanced-field', [
           h('span.games-view__filter-label', 'Played since'),
           h('input.games-view__search', {
-            attrs: { type: 'date', value: gamesFilterDateFrom },
+            attrs: { type: 'date', name: 'games-played-since', value: gamesFilterDateFrom, ...controlExplainerAttrs({
+              label: 'Played since', description: 'Include games played on or after this date.',
+            }) },
             on: { input: (e: Event) => {
               gamesFilterDateFrom = (e.target as HTMLInputElement).value;
               gamesPage = 0;
@@ -2264,7 +2363,9 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
         h('label.games-view__advanced-field', [
           h('span.games-view__filter-label', 'Played until'),
           h('input.games-view__search', {
-            attrs: { type: 'date', value: gamesFilterDateTo },
+            attrs: { type: 'date', name: 'games-played-until', value: gamesFilterDateTo, ...controlExplainerAttrs({
+              label: 'Played until', description: 'Include games played on or before this date.',
+            }) },
             on: { input: (e: Event) => {
               gamesFilterDateTo = (e.target as HTMLInputElement).value;
               gamesPage = 0;
@@ -2283,10 +2384,14 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
     ]),
     h('div.games-view__advanced-actions', [
       gamesFilterActive()
-        ? h('button.games-view__clear', { attrs: { type: 'button' }, on: { click: () => clearGamesFilters(deps) } }, 'Clear filters')
+        ? h('button.games-view__clear', { attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Clear filters', description: 'Remove every active Games filter.',
+          }) }, on: { click: () => clearGamesFilters(deps) } }, 'Clear filters')
         : null,
       h('button.games-view__advanced-apply', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Apply advanced filters', description: 'Keep the live filter values and close advanced search.',
+        }) },
         on: { click: () => { gamesAdvancedPanelOpen = false; redraw(); } },
       }, 'Apply'),
     ]),
@@ -2318,15 +2423,13 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
   }
 
   const paginationBar = totalPages > 1 ? h('div.games-view__pagination', [
-    h('button.games-view__page-btn', {
-      attrs: { disabled: gamesPage === 0 },
-      on: { click: () => { gamesPage--; writeCurrentGamesRouteState(deps); redraw(); } },
-    }, '← Prev'),
+    renderGamesPageButton('Previous games page', '← Prev', 'Show the previous page of games.',
+      gamesPage === 0 ? 'You are on the first games page.' : null,
+      () => { gamesPage--; writeCurrentGamesRouteState(deps); redraw(); }),
     h('span.games-view__page-info', `Page ${gamesPage + 1} of ${totalPages}`),
-    h('button.games-view__page-btn', {
-      attrs: { disabled: gamesPage >= totalPages - 1 },
-      on: { click: () => { gamesPage++; writeCurrentGamesRouteState(deps); redraw(); } },
-    }, 'Next →'),
+    renderGamesPageButton('Next games page', 'Next →', 'Show the next page of games.',
+      gamesPage >= totalPages - 1 ? 'You are on the last games page.' : null,
+      () => { gamesPage++; writeCurrentGamesRouteState(deps); redraw(); }),
   ]) : null;
   const tableQueueSummaryCandidate = getQueueSummary();
   const tableQueueSummary = tableQueueSummaryCandidate.running

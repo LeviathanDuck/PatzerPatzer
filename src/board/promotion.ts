@@ -27,6 +27,7 @@ import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseSquare } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
+import { iconControlExplainerAttrs } from '../ui/controlExplainer';
 
 /** Access the live Chessground instance for the owning surface, or undefined when unmounted. */
 export type WithGround = <A>(f: (g: CgApi) => A) => A | undefined;
@@ -258,7 +259,7 @@ export class PromotionCtrl {
 
     return h(
       'div.cg-wrap.promotion-wrap',
-      { on: { click: () => this.cancel() } },
+      { hook: { insert: vnode => (vnode.elm as HTMLElement).addEventListener('click', () => this.cancel()) } },
       [
         h(
           'div#promotion-choice.' + vertical,
@@ -268,9 +269,15 @@ export class PromotionCtrl {
             return h(
               'square',
               {
-                attrs: { style: `top:${top}%;left:${left}%` },
+                attrs: { style: `top:${top}%;left:${left}%`, role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: `Promote to ${role}`, description: `Complete the move by promoting the pawn to a ${role}.` }) },
                 on: {
                   click: (e: Event) => {
+                    e.stopPropagation();
+                    this.finish(role);
+                  },
+                  keydown: (e: KeyboardEvent) => {
+                    if ((e.key !== 'Enter' && e.key !== ' ') || e.repeat) return;
+                    e.preventDefault();
                     e.stopPropagation();
                     this.finish(role);
                   },
