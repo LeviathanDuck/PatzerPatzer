@@ -3,10 +3,238 @@
 
 
 
-import type { PositionProgress } from '../types';
 
-// Spaced repetition intervals indexed by mastery level 0–6.
-// Fixed-interval spaced repetition ladder.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import type { PositionProgress } from '../types';
+import type {
+  SrsActiveScheduleRecord,
+  SrsInactiveScheduleRecord,
+  SrsLadderConfig,
+  SrsScheduleRecord,
+  SrsTransitionFn,
+  SrsValidatedLadderConfig,
+} from './srsTypes';
+
+// ===========================================================================
+// V2 pure transition kernel
+// ===========================================================================
+
+/** Result of validating a raw ladder configuration. Only the `ok` branch yields the branded type. */
+export type LadderConfigValidation =
+  | { readonly ok: true; readonly config: SrsValidatedLadderConfig }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Validate a raw ladder configuration and, on success, brand it as `SrsValidatedLadderConfig`.
+ * This is the ONLY producer of the branded type — the transition kernel accepts nothing else, which
+ * expresses the "validate before scheduling" contract in the type system.
+ *
+ * A well-formed ladder has: a non-empty, strictly-increasing sequence of finite positive intervals;
+ * an in-range integer `resetStep`; a positive-integer `advanceBy`; and, when present, positive-integer
+ * `requiredConsecutiveClean` and `graduation.afterConsecutiveClean` values.
+ */
+export function validateLadderConfig(config: SrsLadderConfig): LadderConfigValidation {
+  const intervals = config.intervalsMs;
+  if (!Array.isArray(intervals) || intervals.length === 0) {
+    return { ok: false, reason: 'intervalsMs must contain at least one interval' };
+  }
+  let previous = 0;
+  for (let i = 0; i < intervals.length; i += 1) {
+    const ms = intervals[i]!;
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return { ok: false, reason: `intervalsMs[${i}] must be a finite positive duration` };
+    }
+    if (ms <= previous) {
+      return { ok: false, reason: `intervalsMs must be strictly increasing (index ${i})` };
+    }
+    previous = ms;
+  }
+  if (!Number.isInteger(config.resetStep) || config.resetStep < 0 || config.resetStep >= intervals.length) {
+    return { ok: false, reason: 'resetStep must be an in-range ladder index' };
+  }
+  if (!Number.isInteger(config.advanceBy) || config.advanceBy < 1) {
+    return { ok: false, reason: 'advanceBy must be a positive integer' };
+  }
+  if (
+    config.requiredConsecutiveClean !== undefined &&
+    (!Number.isInteger(config.requiredConsecutiveClean) || config.requiredConsecutiveClean < 1)
+  ) {
+    return { ok: false, reason: 'requiredConsecutiveClean, when set, must be a positive integer' };
+  }
+  if (
+    config.graduation !== undefined &&
+    (!Number.isInteger(config.graduation.afterConsecutiveClean) || config.graduation.afterConsecutiveClean < 1)
+  ) {
+    return { ok: false, reason: 'graduation.afterConsecutiveClean must be a positive integer' };
+  }
+  return { ok: true, config: { ...config, __srsValidated: true } };
+}
+
+/**
+ * The consecutive-clean count that graduates a target, or null when the config never graduates from
+ * the ladder (ORP repeats the ceiling step forever). An explicit `graduation` policy is authoritative;
+ * `requiredConsecutiveClean` supplies the threshold when no explicit policy is present (the optional
+ * puzzle adapter pairs both at the same value).
+ */
+function graduationThreshold(config: SrsValidatedLadderConfig): number | null {
+  if (config.graduation !== undefined) return config.graduation.afterConsecutiveClean;
+  if (config.requiredConsecutiveClean !== undefined) return config.requiredConsecutiveClean;
+  return null;
+}
+
+function buildActiveNext(
+  current: SrsScheduleRecord,
+  config: SrsValidatedLadderConfig,
+  completedAt: number,
+  stepIndex: number,
+  cleanStreak: number,
+  dueAt: number,
+): SrsActiveScheduleRecord {
+  return {
+    targetId: current.targetId,
+    lessonId: current.lessonId,
+    targetRevision: current.targetRevision,
+    status: 'active',
+    // Monotonic CAS token: every applied transition advances it so a replayed/older-snapshot attempt
+    // is detectably stale on the next pass.
+    scheduleRevision: current.scheduleRevision + 1,
+    // Prospective config: the config in force AT this scheduling event is stamped onto the row.
+    configId: config.configId,
+    configVersion: config.configVersion,
+    stepIndex,
+    cleanStreak,
+    dueAt,
+    enrolledAt: current.enrolledAt,
+    lastCompletedAt: completedAt,
+    updatedAt: completedAt,
+  };
+}
+
+function buildGraduatedNext(
+  current: SrsScheduleRecord,
+  config: SrsValidatedLadderConfig,
+  completedAt: number,
+  stepIndex: number,
+  cleanStreak: number,
+): SrsInactiveScheduleRecord {
+  return {
+    targetId: current.targetId,
+    lessonId: current.lessonId,
+    targetRevision: current.targetRevision,
+    status: 'graduated',
+    scheduleRevision: current.scheduleRevision + 1,
+    configId: config.configId,
+    configVersion: config.configVersion,
+    stepIndex,
+    cleanStreak,
+    dueAt: null,
+    enrolledAt: current.enrolledAt,
+    lastCompletedAt: completedAt,
+    updatedAt: completedAt,
+  };
+}
+
+/**
+ * Pure spaced-repetition transition. Given the current schedule row, a completed scored-target
+ * result, and a validated ladder config, returns exactly one outcome:
+ *
+ *   - `applied`   — the only mutating outcome; carries the next schedule record.
+ *   - `duplicate` — this completion is already reflected on the row (idempotent no-op).
+ *   - `stale`     — a new attempt frozen against a superseded schedule/target revision.
+ *   - `inactive`  — the target is graduated/suspended/archived and no longer scheduled.
+ *   - `invalid`   — malformed input (non-finite clock, wrong target, out-of-range record, etc.).
+ *
+ * Rules (memo §2, binding): the injected `completedAt` is the ONLY clock; a clean result increments
+ * the streak and advances `advanceBy` capped at the ceiling, scheduling from `completedAt`, graduating
+ * only when the config's threshold is met; a failed OR assisted result (P2-ORP-10) resets the streak
+ * and the step to `resetStep`, scheduling that interval from `completedAt`. Config changes are
+ * prospective — `dueAt` moves only here, at a scheduling event, never on mere load.
+ */
+export const transitionSchedule: SrsTransitionFn = (current, completed, config) => {
+  // 1. Completion time is the only clock; reject a non-finite instant outright.
+  if (!Number.isFinite(completed.completedAt)) {
+    return { outcome: 'invalid', reason: 'completedAt must be a finite epoch-ms instant' };
+  }
+  // 2. Target identity must match — a result for a different target is a caller bug.
+  if (completed.targetId !== current.targetId) {
+    return { outcome: 'invalid', reason: 'attempt targetId does not match the schedule record' };
+  }
+  // 3. Ladder/record structural sanity (config is branded-validated; guard the record too).
+  const lastStep = config.intervalsMs.length - 1;
+  if (lastStep < 0) {
+    return { outcome: 'invalid', reason: 'validated config unexpectedly has no ladder steps' };
+  }
+  if (!Number.isInteger(current.stepIndex) || current.stepIndex < 0 || current.stepIndex > lastStep) {
+    return { outcome: 'invalid', reason: 'record stepIndex is outside the ladder range' };
+  }
+  // 4. A snapshot claiming a revision ahead of the record is impossible under monotonic CAS.
+  if (completed.scheduled.scheduleRevision > current.scheduleRevision) {
+    return { outcome: 'invalid', reason: 'attempt snapshot revision is ahead of the record' };
+  }
+  // 5. Idempotent duplicate: this completion is already reflected on the row (non-mutating). The
+  //    atomic persistence boundary (B4b) enforces true attemptId idempotency; the pure kernel uses
+  //    the completion instant already recorded on the row as its in-record duplicate signal.
+  if (current.lastCompletedAt !== null && current.lastCompletedAt === completed.completedAt) {
+    return { outcome: 'duplicate', reason: 'completion already recorded on this schedule row' };
+  }
+  // 6. Only active targets are scheduled; graduated/suspended/archived rows never re-advance.
+  if (current.status !== 'active') {
+    return { outcome: 'inactive', reason: `target is ${current.status}` };
+  }
+  // 7. Superseded target/source revision (append-only replaced-decision history advanced) — stale.
+  if (completed.targetRevision !== current.targetRevision) {
+    return { outcome: 'stale', reason: 'attempt targetRevision is superseded' };
+  }
+  // 8. A new attempt frozen against an older schedule revision is stale (distinct from duplicate).
+  if (completed.scheduled.scheduleRevision < current.scheduleRevision) {
+    return { outcome: 'stale', reason: 'attempt scheduleRevision is behind the record' };
+  }
+
+  // --- Apply. Assistance is a failed training result (P2-ORP-10), even if firstAttemptResult reads
+  //     clean, so the kernel grades assisted attempts as failures at its boundary. ---
+  const completedAt = completed.completedAt;
+  const isClean = completed.firstAttemptResult === 'clean' && completed.assistanceTypes.length === 0;
+
+  if (!isClean) {
+    const step = config.resetStep;
+    const dueAt = completedAt + config.intervalsMs[step]!;
+    return { outcome: 'applied', next: buildActiveNext(current, config, completedAt, step, 0, dueAt) };
+  }
+
+  const cleanStreak = current.cleanStreak + 1;
+  const step = Math.min(current.stepIndex + config.advanceBy, lastStep);
+  const threshold = graduationThreshold(config);
+  if (threshold !== null && cleanStreak >= threshold) {
+    return { outcome: 'applied', next: buildGraduatedNext(current, config, completedAt, step, cleanStreak) };
+  }
+  const dueAt = completedAt + config.intervalsMs[step]!;
+  return { outcome: 'applied', next: buildActiveNext(current, config, completedAt, step, cleanStreak, dueAt) };
+};
+
+// ===========================================================================
+// Deprecated MVP compatibility layer — retained only for existing callers this slice.
+// Do not build new work on these; use the V2 kernel above.
+// Adapted from lichess-org/lila: modules/practice/src/main/PracticeStudyApi.scala scheduling model.
+// ===========================================================================
+
+/**
+ * @deprecated MVP fixed-interval ladder (level 0–6). Superseded by the parameterized
+ * `SrsLadderConfig.intervalsMs` consumed by `transitionSchedule`. Retained for existing drill callers.
+ */
 export const INTERVALS_MS: number[] = [
   0,                    // level 0 — not yet learned (show again immediately)
   24 * 60 * 60 * 1000,  // level 1 — 1 day
@@ -17,19 +245,18 @@ export const INTERVALS_MS: number[] = [
   90 * 24 * 60 * 60 * 1000, // level 6 — 3 months (max)
 ];
 
+/** @deprecated MVP ceiling level. See `transitionSchedule` / `SrsLadderConfig` for the V2 model. */
 export const MAX_LEVEL = INTERVALS_MS.length - 1; // 6
 
 /**
- * Compute the next scheduling state after an attempt.
- * Correct → level up (capped at MAX_LEVEL).
- * Incorrect → level down to max(1, level - 1) so positions never fully reset.
- *
- * Returns { newLevel, nextDueAt } — caller writes back to PositionProgress.
+ * @deprecated MVP scheduling step. Correct → level up (capped at MAX_LEVEL); incorrect → level down to
+ * max(1, level - 1). Superseded by `transitionSchedule` (reset-to-`resetStep` on failure, no decrement).
+ * `now` is required (no wall-clock default) so this module reads no clock; callers already pass it.
  */
 export function scheduleNext(
   currentLevel: number,
   correct: boolean,
-  now: number = Date.now(),
+  now: number,
 ): { newLevel: number; nextDueAt: number } {
   const newLevel = correct
     ? Math.min(currentLevel + 1, MAX_LEVEL)
@@ -39,17 +266,16 @@ export function scheduleNext(
 }
 
 /**
- * Returns true if the position is due for review now.
- * Level 0 positions (unlearned) are always due.
+ * @deprecated MVP due check. Level 0 positions are always due; otherwise due when `nextDueAt <= now`.
+ * `now` is required (no wall-clock default). The V2 due contract lives in the B3 session builder.
  */
-export function isDue(progress: PositionProgress, now: number = Date.now()): boolean {
+export function isDue(progress: PositionProgress, now: number): boolean {
   return progress.level === 0 || progress.nextDueAt <= now;
 }
 
 /**
- * Normalize a FEN into a stable position key:
- *   board + active color + castling + en-passant
- * (strips halfmove clock and fullmove number)
+ * @deprecated MVP normalized-FEN position key (board + active color + castling + en-passant). The V2
+ * scheduling unit is a durable decision UUID, NOT chess material (P2-ORP-12); this key is not identity.
  * Adapted from lichess-org/lila: modules/analyse/src/main/Analysis.scala positionKey
  */
 export function positionKey(fen: string): string {
