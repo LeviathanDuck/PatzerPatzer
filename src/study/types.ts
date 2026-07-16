@@ -152,6 +152,7 @@ export type {
   SrsInactiveScheduleRecord,
   SrsScheduleRecord,
   SrsScheduledSnapshot,
+  SrsSourceVersion,
   SrsDisplaySnapshot,
   SrsAttemptRecord,
   SrsCompletedTargetResult,

@@ -133,32 +133,57 @@ export interface SrsScheduledSnapshot {
   readonly dueAt: number;
 }
 
-/**
- * Discriminated source-material versioning captured on a frozen snapshot (finding B1F1-MEDIUM).
- *
- * The Hardened Contract splits source linkage into exactly two states: a `linked` source preserves
- * "verified source identity and snapshot lineage" and is revalidated by a staged three-way snapshot
- * comparison (§4.4 Import scope and linkage, §4.5 Linked update protocol), so it always carries a
- * snapshot revision; a `manual` (unlinked) source has no upstream version at all ("Manual PGN imports
- * are unlinked unless they contain a recognized source URL/identity", §4.4).
- *
- * A discriminated union — not a bare `sourceRevision?: number` and not a `number | null` — was chosen
- * because it is the shape that matches those semantics exactly and closes the review hole:
- *   - a `linked` snapshot CANNOT omit its revision (the variant requires `sourceRevision`), so a
- *     linked plan whose revision was accidentally dropped is a compile error; and
- *   - a `manual` snapshot is an explicit, self-documenting unversioned state rather than an absent
- *     field, so an intentionally unversioned source stays expressible.
- * Because the field carrying this union is required, a complete plan can no longer omit source
- * versioning silently (the review's omitted-both-revisions probe now fails to compile). A required-
- * nullable `number | null` would also make omission a compile error, but it conflates "manual, no
- * version" with "linked, revision unknown" — the union keeps those distinct, matching the contract's
- * two-state linkage model.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export type SrsSourceVersion =
   /** Linked to an upstream source: always carries the snapshot revision revalidation compares. */
   | { readonly kind: 'linked'; readonly sourceRevision: number }
-  /** Intentionally unversioned manual/unlinked source: no upstream revision exists. */
-  | { readonly kind: 'manual' };
+  /**
+   * Unlinked source: no upstream revision exists. Covers every no-revision linkage state the contract
+   * permits — manual PGN import (§4.4), snapshot import (§4.4), and post-import Unlink from source
+   * (§14.4). `origin` is an optional provenance note recording HOW the material became unlinked; it is
+   * never a linkage discriminant and never by itself implies a revision.
+   */
+  | {
+      readonly kind: 'unlinked';
+      readonly origin?: 'manual' | 'snapshot-import' | 'unlinked-from-source';
+    };
 
 /**
  * Compact immutable display/source snapshot — sufficient to explain archived history after the
@@ -171,7 +196,7 @@ export interface SrsDisplaySnapshot {
   /** Source/lesson label captured at attempt time. */
   readonly sourceLabel?: string;
   /** Discriminated source versioning captured at attempt time (required — finding B1F1-MEDIUM). A
-   *  `linked` source carries its snapshot revision; a `manual` source is explicitly unversioned. */
+   *  `linked` source carries its snapshot revision; an `unlinked` source is explicitly unversioned. */
   readonly source: SrsSourceVersion;
 }
 
@@ -390,9 +415,9 @@ export interface SrsFrozenScheduleSnapshot {
   readonly dueAt: number;
   /** Discriminated source-material versioning captured at freeze time (required — finding
    *  B1F1-MEDIUM). A `linked` source carries the snapshot revision revalidation compares against the
-   *  live source after Study edits; a `manual` source is explicitly unversioned. Being required (not
+   *  live source after Study edits; an `unlinked` source is explicitly unversioned. Being required (not
    *  an optional `sourceRevision?`) is what makes an omitted revision on a persisted plan a compile
-   *  error, while the `manual` variant keeps an intentionally unversioned source expressible. */
+   *  error, while the `unlinked` variant keeps an intentionally unversioned source expressible. */
   readonly source: SrsSourceVersion;
   /** When this snapshot was frozen, UTC epoch ms. */
   readonly capturedAt: number;
