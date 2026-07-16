@@ -119,7 +119,10 @@ export interface SrsScheduledSnapshot {
   readonly scheduleRevision: number;
   readonly configVersion: number;
   readonly stepIndex: number;
-  readonly dueAt: number | null;
+  /** Active-only invariant: an attempt is only ever scored against an active due/early target
+   *  (only `status === 'active'` rows are surfaced for recall), so the frozen scheduled due instant
+   *  is always concrete — never null. This mirrors `SrsActiveScheduleRecord.dueAt` structurally. */
+  readonly dueAt: number;
 }
 
 /**
@@ -207,7 +210,11 @@ export interface SrsLadderConfig {
   readonly resetStep: number;
   /** Steps advanced per clean result (typically 1). */
   readonly advanceBy: number;
-  /** Consecutive clean results required before a clean result advances (undefined = advance every clean). */
+  /** Graduation-threshold fallback: the consecutive-clean count that graduates the target when no
+   *  explicit `graduation` policy is set. An explicit `graduation.afterConsecutiveClean` always wins
+   *  (see `graduationThreshold` in ./scheduler); the optional puzzle adapter pairs both at the same
+   *  value. Undefined = this field never graduates the target. It does NOT gate ladder advancement —
+   *  a clean result always advances by `advanceBy`. */
   readonly requiredConsecutiveClean?: number;
   /** Optional terminal graduation behavior. */
   readonly graduation?: SrsGraduationPolicy;
@@ -216,11 +223,30 @@ export interface SrsLadderConfig {
 }
 
 /**
- * A ladder configuration proven well-formed by B2's validator (ordered positive intervals, in-range
- * reset step, etc.). The brand expresses the "validate before scheduling" contract without any
- * runtime here; only the validator produces this type.
+ * Opaque validation brand. The symbol is deliberately NOT exported, so no other module — including
+ * tests — can name this key to fabricate a "validated" config with a property literal. The SOLE
+ * constructor of `SrsValidatedLadderConfig` is `validateLadderConfig` in `./scheduler` (memo §2
+ * assigns pure configuration validation to that file), which stamps this phantom brand via an
+ * internal assertion. The brand is compile-time only: it has no runtime footprint.
  */
-export type SrsValidatedLadderConfig = SrsLadderConfig & { readonly __srsValidated: true };
+declare const srsValidatedBrand: unique symbol;
+
+/**
+ * A ladder configuration proven well-formed by B2's validator (ordered positive intervals, in-range
+ * reset step, etc.). The opaque `unique symbol` brand expresses the "validate before scheduling"
+ * contract in the type system: the branded type is unforgeable because the brand key is unnameable
+ * outside this module, so the only way to obtain a value is through `validateLadderConfig`.
+ */
+export type SrsValidatedLadderConfig = SrsLadderConfig & { readonly [srsValidatedBrand]: true };
+
+/**
+ * Compile-time exact-shape guard. `SrsExact<Shape, V>` accepts a value assignable to `Shape` but
+ * rejects any object carrying keys beyond `Shape` (e.g. chess material like `fen`/`pgn` smuggled onto
+ * a persisted SRS row). Excess-property checks only fire on fresh object literals; this closes the
+ * widened-object hole where a variable of a wider type assigns to a contract with zero diagnostics.
+ * Used by the persistence-facing closed-record guards in `./scheduler`.
+ */
+export type SrsExact<Shape, V extends Shape> = V & { readonly [K in Exclude<keyof V, keyof Shape>]: never };
 
 // --- Contract 4: Transition result union ----------------------------------
 
@@ -298,16 +324,37 @@ export interface SrsPresentationGroupRef {
 /**
  * Frozen schedule snapshot persisted with a due candidate and a session/traversal plan. Revalidated
  * after Study changes; it is a point-in-time copy, never a live view of the schedule row.
+ *
+ * Revalidation-capable (finding B1-2): it carries `targetRevision` and a compact `sourceRevision` so
+ * a persisted plan can be compared against the live record/source after Study edits — a divergence
+ * means the decision was replaced (P2-ORP-17) or the source material changed, and the entry is stale.
+ *
+ * Active-only invariant (finding B1-3): the snapshot is only ever frozen for an active due candidate.
+ * The due query is `status === 'active' && dueAt <= now`; explicit early reviews are still active with
+ * a future `dueAt`. There is therefore no legitimate `{ status: 'active', dueAt: null }` snapshot, and
+ * non-active statuses are never surfaced as due — so the frozen state is pinned to active with a
+ * concrete due instant. (Divergence from the live record shape, where non-active rows may be null, is
+ * intentional: the record models all lifecycle states; a frozen due candidate models exactly one.)
  */
 export interface SrsFrozenScheduleSnapshot {
   readonly targetId: string;
   readonly lessonId: string;
+  /** Source/identity revision the snapshot was frozen against (mirrors the live record's
+   *  `targetRevision`). Revalidation compares this to the current record's revision to detect a
+   *  replaced decision (P2-ORP-17). */
+  readonly targetRevision: number;
   readonly scheduleRevision: number;
   readonly configId: string;
   readonly configVersion: number;
   readonly stepIndex: number;
-  readonly dueAt: number | null;
-  readonly status: SrsScheduleStatus;
+  /** Pinned to `'active'`: only active targets are surfaced as due candidates (see the type doc). */
+  readonly status: 'active';
+  /** Next due instant, UTC epoch ms. Non-null because the snapshot is active-only. */
+  readonly dueAt: number;
+  /** Compact source-material revision captured at freeze time, when the source is versioned. Lets a
+   *  plan be revalidated against the live source revision after Study edits. Optional: not every
+   *  source (e.g. manual) carries a revision. */
+  readonly sourceRevision?: number;
   /** When this snapshot was frozen, UTC epoch ms. */
   readonly capturedAt: number;
 }
@@ -347,12 +394,21 @@ export interface SrsDueTarget {
   readonly priority: SrsDuePriorityInputs;
 }
 
-/** One planned target within a traversal — identity, review kind, and its frozen schedule snapshot. */
+/**
+ * One planned target within a traversal — identity, review kind, and BOTH frozen snapshots the memo
+ * requires ("Session plans persist their source/schedule snapshots and are revalidated after Study
+ * changes"): the schedule-side snapshot (revisions + active due state) and a separate source-side
+ * snapshot (compact source label/lineage/revision). Persisting both lets an interrupted plan be
+ * revalidated against the live schedule row AND the live source material after Study edits.
+ */
 export interface SrsTraversalPlanEntry {
   readonly targetId: string;
   readonly lessonId: string;
   readonly reviewKind: SrsReviewKind;
+  /** Frozen schedule-side snapshot (schedule/target revisions + active due state at plan time). */
   readonly frozenSchedule: SrsFrozenScheduleSnapshot;
+  /** Frozen source-side snapshot (compact source label/lineage/revision at plan time). */
+  readonly frozenSource: SrsDisplaySnapshot;
 }
 
 /**
@@ -366,167 +422,9 @@ export interface SrsTraversalPlan {
   readonly entries: readonly SrsTraversalPlanEntry[];
 }
 
-// ===========================================================================
-// Compile-time contract fixtures (type-level RED/GREEN + negative proofs).
-//
-// These fixtures live in this file to hold slice B1 to its two-file budget (no separate __tests__
-// fixture, matching the repo's absence of any .typecheck.ts / @ts-expect-error convention). They are
-// type-only: this module is re-exported from src/study/types.ts with `export type`, so it is erased
-// at build time and never bundled. The positive fixtures prove each required contract is inhabitable;
-// the @ts-expect-error negatives prove the records reject chess-material fields — each directive must
-// suppress a real excess-property error or tsc fails with "Unused '@ts-expect-error' directive".
-// ===========================================================================
-
-// Positive fixtures — a fully-populated value of each required contract must be assignable.
-const _scheduleActiveFixture: SrsScheduleRecord = {
-  targetId: 'tgt-uuid-1',
-  lessonId: 'lesson-1',
-  targetRevision: 1,
-  status: 'active',
-  scheduleRevision: 1,
-  configId: 'orp-default',
-  configVersion: 1,
-  stepIndex: 0,
-  cleanStreak: 0,
-  dueAt: 1_700_000_000_000,
-  enrolledAt: 1_699_000_000_000,
-  lastCompletedAt: null,
-  updatedAt: 1_699_000_000_000,
-};
-
-const _scheduleGraduatedFixture: SrsScheduleRecord = {
-  targetId: 'tgt-uuid-2',
-  lessonId: 'lesson-1',
-  targetRevision: 1,
-  status: 'graduated',
-  scheduleRevision: 4,
-  configId: 'puzzle-default',
-  configVersion: 1,
-  stepIndex: 2,
-  cleanStreak: 3,
-  dueAt: null,
-  enrolledAt: 1_699_000_000_000,
-  lastCompletedAt: 1_699_500_000_000,
-  updatedAt: 1_699_500_000_000,
-};
-
-const _attemptFixture: SrsAttemptRecord = {
-  attemptId: 'att-uuid-1',
-  targetId: 'tgt-uuid-1',
-  lessonId: 'lesson-1',
-  targetRevision: 1,
-  sessionId: 'sess-1',
-  traversalId: 'trav-1',
-  mode: 'orp-due',
-  scheduled: { scheduleRevision: 1, configVersion: 1, stepIndex: 0, dueAt: 1_700_000_000_000 },
-  completedAt: 1_700_000_100_000,
-  reviewKind: 'due',
-  firstAttemptResult: 'clean',
-  assistanceTypes: [],
-  failedMoveKeys: [],
-  snapshot: { label: 'Najdorf mainline continuation', sourceLabel: 'My Sicilian repertoire', sourceRevision: 1 },
-};
-
-const _completedResultFixture: SrsCompletedTargetResult = _attemptFixture;
-
-const _ladderFixture: SrsLadderConfig = {
-  configId: 'orp-default',
-  configVersion: 1,
-  intervalsMs: [14_400_000, 86_400_000, 259_200_000, 604_800_000, 1_209_600_000, 2_592_000_000, 7_776_000_000, 15_552_000_000],
-  resetStep: 0,
-  advanceBy: 1,
-  presentationGroups: [
-    { id: 'acquisition', label: 'Acquisition', stepIndexes: [0, 1, 2, 3, 4] },
-    { id: 'maintenance', label: 'Maintenance', stepIndexes: [5, 6, 7] },
-  ],
-};
-
-const _puzzleLadderFixture: SrsLadderConfig = {
-  configId: 'puzzle-default',
-  configVersion: 1,
-  intervalsMs: [604_800_000, 1_209_600_000, 2_419_200_000],
-  resetStep: 0,
-  advanceBy: 1,
-  requiredConsecutiveClean: 3,
-  graduation: { afterConsecutiveClean: 3 },
-};
-
-const _validatedLadderFixture: SrsValidatedLadderConfig = { ..._ladderFixture, __srsValidated: true };
-
-const _transitionApplied: SrsTransitionResult = { outcome: 'applied', next: _scheduleActiveFixture };
-const _transitionDuplicate: SrsTransitionResult = { outcome: 'duplicate' };
-const _transitionStale: SrsTransitionResult = { outcome: 'stale', reason: 'schedule revision advanced' };
-const _transitionInactive: SrsTransitionResult = { outcome: 'inactive' };
-const _transitionInvalid: SrsTransitionResult = { outcome: 'invalid', reason: 'non-finite completedAt' };
-
-const _transitionFn: SrsTransitionFn = (_current, _completed, _config) => ({ outcome: 'invalid', reason: 'fixture only' });
-
-const _dueQueryFixture: SrsDueQuery = {
-  now: 1_700_000_000_000,
-  scopeLessonIds: ['lesson-1'],
-  limit: 50,
-};
-
-const _dueTargetFixture: SrsDueTarget = {
-  targetId: 'tgt-uuid-1',
-  lessonId: 'lesson-1',
-  frozenSchedule: {
-    targetId: 'tgt-uuid-1',
-    lessonId: 'lesson-1',
-    scheduleRevision: 1,
-    configId: 'orp-default',
-    configVersion: 1,
-    stepIndex: 3,
-    dueAt: 1_699_900_000_000,
-    status: 'active',
-    capturedAt: 1_700_000_000_000,
-  },
-  overdueMs: 100_000_000,
-  stepIndex: 3,
-  group: { id: 'acquisition', label: 'Acquisition' },
-  priority: {
-    overdueMs: 100_000_000,
-    dueNow: true,
-    recentFailureCount: 0,
-    recentResetCount: 0,
-  },
-};
-
-const _traversalPlanFixture: SrsTraversalPlan = {
-  sessionId: 'sess-1',
-  traversalId: 'trav-1',
-  createdAt: 1_700_000_000_000,
-  entries: [
-    {
-      targetId: 'tgt-uuid-1',
-      lessonId: 'lesson-1',
-      reviewKind: 'due',
-      frozenSchedule: {
-        targetId: 'tgt-uuid-1',
-        lessonId: 'lesson-1',
-        scheduleRevision: 1,
-        configId: 'orp-default',
-        configVersion: 1,
-        stepIndex: 3,
-        dueAt: 1_699_900_000_000,
-        status: 'active',
-        capturedAt: 1_700_000_000_000,
-      },
-    },
-  ],
-};
-
-// Negative fixtures — the records must REJECT chess-material fields (identity is a domain UUID,
-// not chess material; P2-ORP-12). Each @ts-expect-error must suppress a real excess-property error.
-// @ts-expect-error — SrsScheduleRecord must not accept a FEN field.
-const _scheduleRejectsFen: SrsScheduleRecord = { ..._scheduleActiveFixture, fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' };
-// @ts-expect-error — SrsScheduleRecord must not accept an expected-move field.
-const _scheduleRejectsMove: SrsScheduleRecord = { ..._scheduleActiveFixture, expectedMove: 'Nf3' };
-// @ts-expect-error — the immutable attempt record must not embed PGN material.
-const _attemptRejectsPgn: SrsAttemptRecord = { ..._attemptFixture, pgn: '1. e4 c5 2. Nf3' };
-
-void _scheduleGraduatedFixture; void _completedResultFixture; void _puzzleLadderFixture;
-void _validatedLadderFixture; void _transitionApplied; void _transitionDuplicate;
-void _transitionStale; void _transitionInactive; void _transitionInvalid; void _transitionFn;
-void _dueQueryFixture; void _dueTargetFixture; void _traversalPlanFixture;
-void _scheduleRejectsFen; void _scheduleRejectsMove; void _attemptRejectsPgn;
+// Contracts ONLY — this module now contains no runtime values (finding B1-5). The compile-time
+// contract fixtures (positive inhabitability, negative chess-material rejection, the opaque-brand
+// forgery proof, the widened-`fen` boundary proof, and the active-implies-`dueAt` snapshot proof)
+// live in the co-located typecheck-and-run test file `./__tests__/scheduler.test.ts`, so a future
+// runtime import of this file executes zero fixture initialization. Every type above is erased at
+// build time (`src/study/types.ts` re-exports them with `export type`).

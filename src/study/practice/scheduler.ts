@@ -22,6 +22,8 @@
 import type { PositionProgress } from '../types';
 import type {
   SrsActiveScheduleRecord,
+  SrsAttemptRecord,
+  SrsExact,
   SrsInactiveScheduleRecord,
   SrsLadderConfig,
   SrsScheduleRecord,
@@ -40,8 +42,10 @@ export type LadderConfigValidation =
 
 /**
  * Validate a raw ladder configuration and, on success, brand it as `SrsValidatedLadderConfig`.
- * This is the ONLY producer of the branded type — the transition kernel accepts nothing else, which
- * expresses the "validate before scheduling" contract in the type system.
+ * This is the ONLY producer of the branded type — the brand is an opaque `unique symbol` whose key is
+ * unnameable outside `srsTypes.ts`, so this function's internal assertion is the sole way to construct
+ * the type. Callers cannot forge a validated config with a property literal. The transition kernel
+ * accepts nothing else, which expresses the "validate before scheduling" contract in the type system.
  *
  * A well-formed ladder has: a non-empty, strictly-increasing sequence of finite positive intervals;
  * an in-range integer `resetStep`; a positive-integer `advanceBy`; and, when present, positive-integer
@@ -81,7 +85,38 @@ export function validateLadderConfig(config: SrsLadderConfig): LadderConfigValid
   ) {
     return { ok: false, reason: 'graduation.afterConsecutiveClean must be a positive integer' };
   }
-  return { ok: true, config: { ...config, __srsValidated: true } };
+  // Sole brand constructor: the opaque `unique symbol` brand has no runtime footprint, so branding is
+  // a phantom assertion here rather than a property write. `as unknown as` is confined to this single
+  // validator seam — everywhere else the branded type is unforgeable.
+  return { ok: true, config: config as unknown as SrsValidatedLadderConfig };
+}
+
+// ===========================================================================
+// Persistence-facing closed-record guards (finding B1-4)
+// ===========================================================================
+//
+// Excess-property checks fire only on fresh object literals, so a variable of a wider type can
+// smuggle chess material (e.g. `fen`/`pgn`) into a persisted SRS row with zero diagnostics. These
+// guards close that hole at the boundary between the pure kernel and the atomic persistence layer
+// (B4): every SRS row and attempt written to durable storage funnels through them, and `SrsExact`
+// makes any object carrying keys beyond the exact contract a compile error. At runtime they are the
+// identity function.
+
+/** Compile-time closed-record guard for a schedule row at the persistence boundary. Rejects any
+ *  widened object carrying keys beyond `SrsScheduleRecord` (P2-ORP-12 forbids chess material as SRS
+ *  state). */
+export function asPersistableScheduleRecord<V extends SrsScheduleRecord>(
+  record: SrsExact<SrsScheduleRecord, V>,
+): SrsScheduleRecord {
+  return record;
+}
+
+/** Compile-time closed-record guard for an attempt row at the persistence boundary. Rejects any
+ *  widened object carrying keys beyond `SrsAttemptRecord` (no PGN/FEN material on attempts). */
+export function asPersistableAttemptRecord<V extends SrsAttemptRecord>(
+  attempt: SrsExact<SrsAttemptRecord, V>,
+): SrsAttemptRecord {
+  return attempt;
 }
 
 /**
