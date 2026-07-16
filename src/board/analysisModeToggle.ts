@@ -17,6 +17,7 @@
 import { h, type VNode } from 'snabbdom';
 import { INITIAL_FEN } from 'chessops/fen';
 import type { OpponentsTreeUrlState } from '../openings/urlState';
+import { iconControlExplainerAttrs } from '../ui/controlExplainer';
 
 /** Surfaces that can hand off into an ad-hoc Analysis-mode board. */
 export type AnalysisModeSurfaceId = 'opening-tree' | 'puzzle-round' | 'orp-drill';
@@ -172,10 +173,19 @@ const ANALYSIS_MODE_MARK_SVG =
  * markup lives in exactly one place.
  */
 export function renderAnalysisModeToggleButton(active: boolean, onClick: () => void): VNode {
-  const title = active ? 'Exit Analysis mode' : 'Enter Analysis mode';
+  const label = active ? 'Exit Analysis mode' : 'Enter Analysis mode';
   return h('button.fbt.analysis-mode-toggle', {
     class: { active },
-    attrs: { type: 'button', title, 'aria-label': title, 'aria-pressed': String(active) },
+    attrs: {
+      type: 'button',
+      ...iconControlExplainerAttrs({
+        label,
+        description: active
+          ? 'Return to the board mode you were using before Analysis mode.'
+          : 'Open the current line on the Analysis Board with engine tools.',
+      }),
+      'aria-pressed': String(active),
+    },
     on: { click: onClick },
   }, [
     h('span.grr__review-mark', {

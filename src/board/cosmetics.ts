@@ -14,6 +14,11 @@ import {
 } from './animation';
 import { resetBoardSoundRuntimeForDataManagement } from './sound';
 import { renderToggleRow } from '../ui';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 
 // --- Board wheel navigation ---
 const BOARD_WHEEL_NAV_KEY = 'boardWheelNavEnabled';
@@ -253,10 +258,22 @@ export function renderFilterSlider(
   fmt?: (v: number) => string,
 ): VNode {
   const value = boardFilters[prop] ?? FILTER_DEFAULTS[prop] ?? min;
+  const inputId = `board-setting-${prop}`;
   return h('div.board-settings__slider-row', [
-    h('label', label),
+    h('label', { attrs: { for: inputId } }, label),
     h('input', {
-      attrs: { type: 'range', min, max, step, value },
+      attrs: {
+        id: inputId,
+        type: 'range',
+        min,
+        max,
+        step,
+        value,
+        ...controlExplainerAttrs({
+          label,
+          description: `Adjust the board ${label.toLowerCase()}.`,
+        }),
+      },
       on: {
         input: (e: Event) => {
           setFilter(prop, parseInt((e.target as HTMLInputElement).value, 10));
@@ -280,7 +297,15 @@ function renderAnimationSegmentedControl(
       BOARD_ANIMATION_CHOICES.map(choice =>
         h('button.board-settings__segmented-option', {
           class: { active: value === choice.key },
-          attrs: { type: 'button', title: `${choice.label} (${choice.durationMs}ms)` },
+          attrs: {
+            type: 'button',
+            'aria-label': `${label}: ${choice.label}`,
+            'aria-pressed': String(value === choice.key),
+            ...controlExplainerAttrs({
+              label: `${label}: ${choice.label}`,
+              description: `Use ${choice.durationMs} ms animations on ${label.toLowerCase()}.`,
+            }),
+          },
           on: { click: () => { setValue(choice.key); redraw(); } },
         }, choice.label),
       ),
@@ -298,6 +323,10 @@ export function renderBoardSettings(redraw: () => void): VNode {
     renderFilterSlider('board-contrast',   'Contrast',   40, 200, 2, redraw),
     renderFilterSlider('board-hue',        'Hue',         0, 100, 1, redraw, v => `±${Math.round(v * 3.6)}°`),
     filtersAtDefault() ? null : h('button.board-settings__reset', {
+      attrs: controlExplainerAttrs({
+        label: 'Reset board appearance',
+        description: 'Restore board brightness, contrast, and hue to their default values.',
+      }),
       on: { click: () => { resetFilters(); redraw(); } },
     }, 'Reset'),
 
@@ -311,7 +340,16 @@ export function renderBoardSettings(redraw: () => void): VNode {
       BOARD_THEMES_FEATURED.map(name =>
         h('button.board-settings__theme-tile', {
           class: { active: boardTheme === name },
-          attrs: { title: name },
+          attrs: {
+            type: 'button',
+            'aria-pressed': String(boardTheme === name),
+            ...iconControlExplainerAttrs({
+              label: `Board theme: ${name}`,
+              description: boardTheme === name
+                ? 'This board theme is currently selected.'
+                : 'Use this board theme on every chessboard.',
+            }),
+          },
           on: { click: () => { applyBoardTheme(name); redraw(); } },
         }, [
           h('span', { attrs: { style: `background-image: url(${boardThumbnailUrl(name)})` } }),
@@ -325,7 +363,16 @@ export function renderBoardSettings(redraw: () => void): VNode {
       PIECE_SETS_FEATURED.map(name =>
         h('button.board-settings__piece-tile', {
           class: { active: pieceSet === name },
-          attrs: { title: name },
+          attrs: {
+            type: 'button',
+            'aria-pressed': String(pieceSet === name),
+            ...iconControlExplainerAttrs({
+              label: `Piece set: ${name}`,
+              description: pieceSet === name
+                ? 'This piece set is currently selected.'
+                : 'Use this piece set on every chessboard.',
+            }),
+          },
           on: { click: () => { applyPieceSet(name); redraw(); } },
         }, [
           h('piece', { attrs: { style: `background-image: url(${piecePreviewUrl(name)})` } }),
@@ -343,19 +390,39 @@ export function renderBoardSettings(redraw: () => void): VNode {
       ),
     ),
     h('div.board-settings__slider-row', [
-      h('label', 'Preview size'),
-      h('input', {
-        attrs: {
-          type: 'range', min: GAMES_LIST_PREVIEW_SIZE_MIN, max: GAMES_LIST_PREVIEW_SIZE_MAX, step: 1,
-          value: gamesListBoardPreviewSize, disabled: !gamesListBoardPreviewEnabled,
-        },
-        on: {
-          input: (e: Event) => {
-            setGamesListBoardPreviewSize(parseInt((e.target as HTMLInputElement).value, 10));
-            redraw();
-          },
-        },
-      }),
+      h('label', { attrs: { for: 'games-list-preview-size' } }, 'Preview size'),
+      gamesListBoardPreviewEnabled
+        ? h('input#games-list-preview-size', {
+            attrs: {
+              type: 'range', min: GAMES_LIST_PREVIEW_SIZE_MIN, max: GAMES_LIST_PREVIEW_SIZE_MAX, step: 1,
+              value: gamesListBoardPreviewSize,
+              ...controlExplainerAttrs({
+                label: 'Preview size',
+                description: 'Adjust the board preview size in the Games list.',
+              }),
+            },
+            on: {
+              input: (e: Event) => {
+                setGamesListBoardPreviewSize(parseInt((e.target as HTMLInputElement).value, 10));
+                redraw();
+              },
+            },
+          })
+        : renderDisabledControlExplainer({
+            label: 'Preview size',
+            description: 'Games-list board preview must be enabled first.',
+          }, h('input#games-list-preview-size', {
+            attrs: {
+              type: 'range', min: GAMES_LIST_PREVIEW_SIZE_MIN, max: GAMES_LIST_PREVIEW_SIZE_MAX, step: 1,
+              value: gamesListBoardPreviewSize, disabled: true,
+            },
+            on: {
+              input: (e: Event) => {
+                setGamesListBoardPreviewSize(parseInt((e.target as HTMLInputElement).value, 10));
+                redraw();
+              },
+            },
+          })),
       h('span.board-settings__slider-val', `${gamesListBoardPreviewSize}px`),
     ]),
   ]);
