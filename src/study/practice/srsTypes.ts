@@ -475,15 +475,60 @@ export interface SrsTraversalPlanEntry {
   readonly frozenSource: SrsDisplaySnapshot;
 }
 
-/**
- * A frozen traversal plan for a session. Persists its source/schedule snapshots so it can be
- * revalidated after Study changes; interrupted sessions become Partial and resumable.
- */
+
+
+
+
+
+
+
+
+
+
+export interface SrsContextEntry {
+  readonly targetId: string;
+  readonly lessonId: string;
+  readonly frozenSource: SrsDisplaySnapshot;
+  readonly scheduleNeutral: true;
+}
+
+
+
+
+
+
+
+
+export interface SrsRepairEntry {
+  readonly targetId: string;
+  readonly lessonId: string;
+  readonly frozenSource: SrsDisplaySnapshot;
+  readonly scheduleNeutral: true;
+  readonly failedMoveKeys?: readonly string[];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 export interface SrsTraversalPlan {
   readonly sessionId: string;
   readonly traversalId: string;
   readonly createdAt: number;
+  /** Scored due targets — the ONLY entries whose completion mutates a schedule. */
   readonly entries: readonly SrsTraversalPlanEntry[];
+  /** Schedule-neutral lead-in context; never scored. Optional for backward compatibility (see doc). */
+  readonly context?: readonly SrsContextEntry[];
+  /** Schedule-neutral missed-context repair list; never scored. Optional for backward compatibility. */
+  readonly repair?: readonly SrsRepairEntry[];
 }
 
 // Contracts ONLY — this module now contains no runtime values (finding B1-5). The compile-time
