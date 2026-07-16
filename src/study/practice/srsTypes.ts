@@ -620,6 +620,20 @@ export interface SrsSessionProgress {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export interface SrsPracticeSessionRow {
   /** Primary key; caller-generated UUID (never derived from chess material). */
   readonly sessionId: string;

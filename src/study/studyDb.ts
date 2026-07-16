@@ -1539,26 +1539,34 @@ export async function listDuePracticeSrs(params: {
   now: number;
   limit: number;
   lessonId?: string;
-}): Promise<SrsScheduleRecord[]> {
+}): Promise<SrsPersistenceResult<SrsScheduleRecord[]>> {
   const { now, limit, lessonId } = params;
 
 
 
 
-  if (!Number.isFinite(now)) return [];
+
+
+
+
+  if (!Number.isFinite(now)) {
+    return { ok: false, failure: mkFail('non-finite-number', 'listDuePracticeSrs.now', `due-query clock \`now\` must be finite, got ${String(now)}`) };
+  }
   const db = await openDb();
   const acceptActiveDue = (r: SrsScheduleRecord): boolean =>
     r.status === 'active' && typeof r.dueAt === 'number' && Number.isFinite(r.dueAt) && r.dueAt <= now;
   if (lessonId !== undefined) {
     const range = IDBKeyRange.bound([lessonId, Number.NEGATIVE_INFINITY], [lessonId, now]);
-    return collectBoundedPracticeCursor<SrsScheduleRecord>(
+    const value = await collectBoundedPracticeCursor<SrsScheduleRecord>(
       db, 'study-practice-srs', 'lessonId_dueAt', range, 'next', limit, acceptActiveDue,
     );
+    return { ok: true, value };
   }
   const range = IDBKeyRange.upperBound(now);
-  return collectBoundedPracticeCursor<SrsScheduleRecord>(
+  const value = await collectBoundedPracticeCursor<SrsScheduleRecord>(
     db, 'study-practice-srs', 'dueAt', range, 'next', limit, acceptActiveDue,
   );
+  return { ok: true, value };
 }
 
 // --- study-practice-attempts (append-only) ---------------------------------
@@ -1726,11 +1734,19 @@ function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | nu
   if (sched) return sched;
   const disp = validateDisplaySnapshot(v.frozenSource, `${path}.frozenSource`);
   if (disp) return disp;
-  // Cross-snapshot LESSON coherence: a scored entry and its own frozen schedule snapshot must name the
-  // same lesson. (The B3 revalidation composed below keys the derived live map by the frozen snapshot's
-  // targetId and looks it up by the entry's targetId, so a targetId divergence is caught there as a
-  // 'plan-revalidation-failed' — B3 does NOT compare lessonId, so it is enforced explicitly here.)
-  const frozen = v.frozenSchedule as { lessonId: unknown };
+
+
+
+
+
+
+
+
+
+  const frozen = v.frozenSchedule as { targetId: unknown; lessonId: unknown };
+  if (frozen.targetId !== v.targetId) {
+    return mkFail('identity-mismatch', `${path}.frozenSchedule.targetId`, `frozen targetId "${String(frozen.targetId)}" != entry targetId "${String(v.targetId)}"`);
+  }
   if (frozen.lessonId !== v.lessonId) {
     return mkFail('identity-mismatch', `${path}.frozenSchedule.lessonId`, `frozen lessonId "${String(frozen.lessonId)}" != entry lessonId "${String(v.lessonId)}"`);
   }
@@ -1934,6 +1950,19 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     // S9: a `completed` session has every scored target done and the cursor at the end.
     if (raw.state === 'completed' && (completedTargetIds.length !== targetCount || entryCursor !== targetCount)) {
       return { ok: false, failure: mkFail('checkpoint-invariant', 'session.state', `state 'completed' requires completedTargetIds.length (${completedTargetIds.length}) === targetCount (${targetCount}) and entryCursor (${entryCursor}) === targetCount`) };
+    }
+
+
+
+
+    if (completedTargetIds.length !== entryCursor) {
+      return { ok: false, failure: mkFail('checkpoint-invariant', 'session.progress.completedTargetIds', `completedTargetIds.length (${completedTargetIds.length}) must equal entryCursor (${entryCursor})`) };
+    }
+    for (let i = 0; i < entryCursor; i++) {
+      const expected = plan.entries[i]?.targetId;
+      if (completedTargetIds[i] !== expected) {
+        return { ok: false, failure: mkFail('checkpoint-invariant', `session.progress.completedTargetIds[${i}]`, `completedTargetIds[${i}] "${String(completedTargetIds[i])}" must equal plan.entries[${i}].targetId "${String(expected)}" (cursor–ledger prefix)`) };
+      }
     }
 
     return { ok: true, value: raw as unknown as SrsPracticeSessionRow };
