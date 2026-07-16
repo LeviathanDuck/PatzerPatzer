@@ -27,6 +27,12 @@ const commitMessage = process.env.PATZER_COMMIT_MESSAGE || gitValue('log -1 --fo
 const buildId = process.env.PATZER_BUILD_ID || shortCommit || builtAt.replace(/[-:T.Z]/g, '').slice(0, 14);
 const release = `patzer-pro@${version}+${buildId}`;
 const sourcemapRoot = 'dist/sourcemaps';
+const buildIdentity = { release, buildId, shortCommit, commit };
+const buildIdentityJson = JSON.stringify(buildIdentity);
+if (buildIdentityJson.includes('*/') || buildIdentityJson.includes('__END_PATZER_BUILD_IDENTITY_V1__')) {
+  throw new Error('Build identity contains a value that cannot be embedded safely');
+}
+const buildIdentityMarker = `/*__PATZER_BUILD_IDENTITY_V1__${buildIdentityJson}__END_PATZER_BUILD_IDENTITY_V1__*/`;
 
 assertPublicEntrypointIntegrity();
 fs.rmSync(sourcemapRoot, { recursive: true, force: true });
@@ -53,6 +59,7 @@ await esbuild.build({
   target: 'es2021',
   minify: true,
   sourcemap: 'external',
+  banner: { js: buildIdentityMarker },
   define: {
     __PATZER_RELEASE__: JSON.stringify(release),
     __PATZER_VERSION__: JSON.stringify(version),
