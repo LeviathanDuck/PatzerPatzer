@@ -19,6 +19,11 @@ import QuestionnaireCtrl, { type QuestionnaireStage } from '../analyse/questionn
 import renderQuestionnaire, { renderQuestionnaireAnswerSummary } from '../analyse/questionnaire/questionnaireView';
 import { parseQuestionnaireFromPgn, type QuestionnaireAnswers } from '../analyse/questionnaire/model';
 import { renderToggleRow } from '../ui';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import {
@@ -145,9 +150,8 @@ function renderManualReviewToggle(redraw: () => void): VNode {
     class: { 'study-manual-review-toggle--active': _toolsOpen },
     attrs: {
       type: 'button',
-      title: label,
-      'aria-label': label,
       'aria-pressed': String(_toolsOpen),
+      ...controlExplainerAttrs({ label, description: `${_toolsOpen ? 'Closes' : 'Opens'} the manual game-study tools.` }),
     },
     on: { click: () => toggleManualReview(redraw) },
   }, [
@@ -217,7 +221,7 @@ function renderCommentsToolPanel(redraw: () => void): VNode {
   return h('div.study-tools-col__panel.study-tools-col__comments',
     rows.map(({ path, node }) => h('button.study-tools-col__comment-row', {
       key: path,
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `Go to ${formatCommentRowMove(node)}`, description: 'Navigates the Study board to this commented move.' }) },
       on: { click: () => { navigateTo(path, redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); } },
     }, [
       h('span.study-tools-col__comment-move', formatCommentRowMove(node)),
@@ -304,7 +308,7 @@ function renderOrganizeToolPanel(redraw: () => void): VNode {
     h('label.study-tools-col__field', [
       h('span.study-tools-col__label', 'Title'),
       h('input.study-tools-col__title-input', {
-        attrs: { type: 'text', placeholder: 'Study title' },
+        attrs: { type: 'text', placeholder: 'Study title', 'aria-label': 'Study title', ...controlExplainerAttrs({ label: 'Study title', description: 'Renames this Study game when the field loses focus.' }) },
         props: { value: titleValue },
         on: {
           input: (e: Event) => {
@@ -336,7 +340,7 @@ function renderOrganizeToolPanel(redraw: () => void): VNode {
       foldersLoaded()
         ? h('select.study-tools-col__folder-select', {
             props: { value: '' },
-            attrs: { 'aria-label': 'Add to folder' },
+            attrs: { 'aria-label': 'Add to folder', ...controlExplainerAttrs({ label: 'Add to folder', description: 'Adds this Study game to another folder.' }) },
             on: {
               change: (e: Event) => {
                 const select = e.target as HTMLSelectElement;
@@ -359,14 +363,14 @@ function renderOrganizeToolPanel(redraw: () => void): VNode {
             study.tags.map(tag => h('span.study-tools-col__chip.study-tools-col__chip--tag', { key: tag }, [
               h('span.study-tools-col__chip-label', tag),
               h('button.study-tools-col__chip-remove', {
-                attrs: { type: 'button', title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
+                attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove tag ${tag}`, description: 'Removes this tag from the Study game.' }) },
                 on: { click: () => removeOrganizeTag(study, tag, redraw) },
               }, '×'),
             ])),
           )
         : h('div.study-tools-col__hint', 'No tags yet.'),
       h('input.study-tools-col__tag-input', {
-        attrs: { type: 'text', placeholder: 'Add tag' },
+        attrs: { type: 'text', placeholder: 'Add tag', 'aria-label': 'Add tag', ...controlExplainerAttrs({ label: 'Add tag', description: 'Adds this tag when the field loses focus.' }) },
         props: { value: tagValue },
         on: {
           input: (e: Event) => {
@@ -645,7 +649,7 @@ function renderOrpToolPanel(redraw: () => void): VNode {
         options.map(option => h('button.study-tools-col__orp-scope', {
           key: option.scope,
           class: { 'study-tools-col__orp-scope--active': _orpScope === option.scope },
-          attrs: { type: 'button' },
+          attrs: { type: 'button', 'aria-pressed': String(_orpScope === option.scope), ...controlExplainerAttrs({ label: option.label, description: `Saves ${option.description.toLowerCase()} to Opening Repetition Practice.` }) },
           on: { click: () => { _orpScope = option.scope; _orpFeedback = null; redraw(); } },
         }, [
           h('span.study-tools-col__orp-scope-name', option.label),
@@ -659,12 +663,12 @@ function renderOrpToolPanel(redraw: () => void): VNode {
       h('div.study-tools-col__orp-train-as', [
         h('button.study-tools-col__orp-train', {
           class: { 'study-tools-col__orp-train--active': _orpTrainAs === 'white' },
-          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'white') },
+          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'white'), ...controlExplainerAttrs({ label: 'Train as White', description: 'Sets White as the side to recall in this opening line.' }) },
           on: { click: () => { _orpTrainAs = 'white'; redraw(); } },
         }, 'White'),
         h('button.study-tools-col__orp-train', {
           class: { 'study-tools-col__orp-train--active': _orpTrainAs === 'black' },
-          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'black') },
+          attrs: { type: 'button', 'aria-pressed': String(_orpTrainAs === 'black'), ...controlExplainerAttrs({ label: 'Train as Black', description: 'Sets Black as the side to recall in this opening line.' }) },
           on: { click: () => { _orpTrainAs = 'black'; redraw(); } },
         }, 'Black'),
       ]),
@@ -681,14 +685,25 @@ function renderOrpToolPanel(redraw: () => void): VNode {
       ? h('div.study-tools-col__hint', 'Need at least 3 moves.')
       : null,
 
-    h('button.study-tools-col__orp-save', {
-      class: { 'study-tools-col__orp-save--busy': _orpSaving },
-      attrs: {
-        type: 'button',
-        disabled: !canSave,
-      },
-      on: { click: () => { if (selected) saveStudyOrpLine(study, selected, redraw); } },
-    }, _orpSaving ? 'Saving...' : 'Save to ORP'),
+    canSave
+      ? h('button.study-tools-col__orp-save', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Save to Opening Repetition Practice', description: 'Saves the selected line as an opening practice sequence.' }) },
+          on: { click: () => { if (selected) saveStudyOrpLine(study, selected, redraw); } },
+        }, 'Save to ORP')
+      : renderDisabledControlExplainer(
+          {
+            label: _orpSaving ? 'Saving to Opening Repetition Practice' : 'Save to Opening Repetition Practice',
+            description: _orpSaving
+              ? 'Wait for the current Opening Repetition Practice save to finish.'
+              : !selected
+                ? 'Select a line before saving to Opening Repetition Practice.'
+                : 'Choose a line with at least 3 moves before saving.',
+          },
+          h('button.study-tools-col__orp-save', {
+            class: { 'study-tools-col__orp-save--busy': _orpSaving },
+            attrs: { type: 'button', disabled: true },
+          }, _orpSaving ? 'Saving...' : 'Save to ORP'),
+        ),
 
     feedback
       ? h(`div.study-tools-col__orp-feedback.study-tools-col__orp-feedback--${feedback.kind}`, feedback.message)
@@ -1038,7 +1053,7 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
+      attrs: iconControlExplainerAttrs({ label: 'Close Study menu' }),
       on:    { click: close },
     }, '×'),
 
@@ -1046,7 +1061,7 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
     h('div.action-menu__tools', [
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
-        attrs: { 'data-icon': ICON_FLIP, title: 'Flip board' },
+        attrs: { 'data-icon': ICON_FLIP, ...controlExplainerAttrs({ label: 'Flip board', description: 'Reverses the Study board orientation.' }) },
         on: { click: () => {
           flipStudyBoard(redraw);
           writeStudyDetailRoute();
@@ -1054,7 +1069,7 @@ function renderStudyActionMenu(redraw: () => void): VNode | null {
         } },
       }, 'Flip board'),
       h('button', {
-        attrs: { title: 'Report an issue with the Study page' },
+        attrs: controlExplainerAttrs({ label: 'Report a Study issue', description: 'Opens diagnostics reporting for the Study page.' }),
         on: { click: () => { reportStudyIssue(); close(); } },
       }, 'Report issue'),
     ]),
@@ -1168,15 +1183,29 @@ function renderStudyContextMenu(redraw: () => void): VNode | null {
   if (!isMainline) {
     items.push(
       h('div.study-ctx-item', {
+        attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Promote variation', description: 'Moves this variation one level closer to the main line.' }) },
         on: { click: () => {
           if (_studyCtxPath && root) { promoteAt(root, _studyCtxPath, false); }
+          writeStudyDetailRoute();
+          closeStudyCtxMenu(redraw);
+        }, keydown: (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (_studyCtxPath && root) promoteAt(root, _studyCtxPath, false);
           writeStudyDetailRoute();
           closeStudyCtxMenu(redraw);
         }},
       }, 'Promote variation'),
       h('div.study-ctx-item', {
+        attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Make main line', description: 'Promotes this variation to become the main line.' }) },
         on: { click: () => {
           if (_studyCtxPath && root) { promoteAt(root, _studyCtxPath, true); }
+          writeStudyDetailRoute();
+          closeStudyCtxMenu(redraw);
+        }, keydown: (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          if (_studyCtxPath && root) promoteAt(root, _studyCtxPath, true);
           writeStudyDetailRoute();
           closeStudyCtxMenu(redraw);
         }},
@@ -1186,16 +1215,35 @@ function renderStudyContextMenu(redraw: () => void): VNode | null {
 
   items.push(
     h('div.study-ctx-item', {
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Practice from here', description: 'Starts opening practice from this Study position.' }) },
       on: { click: () => {
         _practiceFromPath = _studyCtxPath;
         _showColorPicker  = true;
         closeStudyCtxMenu(redraw);
+      }, keydown: (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        _practiceFromPath = _studyCtxPath;
+        _showColorPicker = true;
+        closeStudyCtxMenu(redraw);
       }},
     }, 'Practice from here'),
     h('div.study-ctx-item.study-ctx-item--danger', {
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Delete from here', description: 'Permanently removes this move and every continuation below it.' }) },
       on: { click: () => {
         if (_studyCtxPath && root) { deleteNodeAt(root, _studyCtxPath); }
         // If deleted path is active, navigate to its parent
+        const curPath = detailPath();
+        if (_studyCtxPath && curPath.startsWith(_studyCtxPath)) {
+          navigateTo(pathInit(_studyCtxPath), redraw);
+          syncStudyBoard(redraw);
+        }
+        writeStudyDetailRoute();
+        closeStudyCtxMenu(redraw);
+      }, keydown: (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        if (_studyCtxPath && root) deleteNodeAt(root, _studyCtxPath);
         const curPath = detailPath();
         if (_studyCtxPath && curPath.startsWith(_studyCtxPath)) {
           navigateTo(pathInit(_studyCtxPath), redraw);
@@ -1208,9 +1256,11 @@ function renderStudyContextMenu(redraw: () => void): VNode | null {
   );
 
   return h('div.study-ctx-overlay', {
+    attrs: { 'aria-label': 'Close variation menu', ...controlExplainerAttrs({ label: 'Close variation menu' }) },
     on: { click: () => closeStudyCtxMenu(redraw) },
   }, [
     h('div.study-ctx-menu', {
+      attrs: { 'aria-label': 'Variation menu', ...controlExplainerAttrs({ label: 'Variation menu' }) },
       style: { left: `${_studyCtxPos.x}px`, top: `${_studyCtxPos.y}px` },
       on: { click: (e: MouseEvent) => e.stopPropagation() },
     }, items),
@@ -1231,7 +1281,7 @@ function renderGlyphQuickSelect(redraw: () => void): VNode {
     h('span.glyph-quick-select__label', 'Pick:'),
     ...filtered.map(glyph =>
       h('button.glyph-btn', {
-        attrs: { title: glyph.name },
+        attrs: iconControlExplainerAttrs({ label: glyph.name, description: 'Toggles this annotation on the current move.' }),
         on:    { click: () => {
           const node = detailNode();
           if (node) {
@@ -1246,7 +1296,7 @@ function renderGlyphQuickSelect(redraw: () => void): VNode {
       }, glyph.symbol)
     ),
     h('button.glyph-btn', {
-      attrs: { title: 'Cancel', 'aria-label': 'Cancel' },
+      attrs: iconControlExplainerAttrs({ label: 'Cancel glyph selection' }),
       on:    { click: () => { _glyphQuickSelectOpen = false; redraw(); } },
     }, '×'),
   ]);
@@ -1311,7 +1361,7 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
         return h('li.study-practice-line', { key: line.id }, [
           isRenaming
             ? h('input.study-practice-line__rename', {
-                attrs: { value: _renamingLineValue },
+                attrs: { value: _renamingLineValue, 'aria-label': 'Practice line name', ...controlExplainerAttrs({ label: 'Practice line name', description: 'Renames this practice line when the field loses focus.' }) },
                 hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
                 on: {
                   input:   (e: Event) => { _renamingLineValue = (e.target as HTMLInputElement).value; },
@@ -1331,7 +1381,17 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
                 },
               })
             : h('span.study-practice-line__label', {
-                on: { dblclick: () => { _renamingLineId = line.id; _renamingLineValue = line.label; redraw(); } },
+                attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Rename ${line.label}`, description: 'Opens this practice line name for editing.' }) },
+                on: {
+                  dblclick: () => { _renamingLineId = line.id; _renamingLineValue = line.label; redraw(); },
+                  keydown: (e: KeyboardEvent) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                    e.preventDefault();
+                    _renamingLineId = line.id;
+                    _renamingLineValue = line.label;
+                    redraw();
+                  },
+                },
               }, line.label),
           h('span.study-practice-line__color', line.trainAs === 'white' ? '♙' : '♟'),
           h('span.study-practice-line__status', {
@@ -1343,7 +1403,7 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
             : null,
           h('div.study-practice-line__actions', [
             h('button.study-practice-line__btn', {
-              attrs: { title: 'Practice now', 'aria-label': 'Practice now' },
+              attrs: iconControlExplainerAttrs({ label: 'Practice now', description: 'Starts a drill with this saved practice line.' }),
               on: { click: () => {
                 // Embedded Study launch: restore the Study workspace when the drill finally exits
                 // (CCW-H03b). The one-shot callback survives "Practice Again" and is consumed only
@@ -1361,8 +1421,7 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
             }, '▶'),
             h('button.study-practice-line__btn', {
               attrs: {
-                title: line.status === 'active' ? 'Pause' : 'Resume',
-                'aria-label': line.status === 'active' ? 'Pause' : 'Resume',
+                ...iconControlExplainerAttrs({ label: line.status === 'active' ? 'Pause practice line' : 'Resume practice line', description: `${line.status === 'active' ? 'Pauses' : 'Resumes'} scheduling for this practice line.` }),
               },
               on: { click: () => {
                 const newStatus = line.status === 'active' ? 'paused' : 'active';
@@ -1373,7 +1432,7 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
               }},
             }, line.status === 'active' ? '⏸' : '▶▶'),
             h('button.study-practice-line__btn.study-practice-line__btn--danger', {
-              attrs: { title: 'Delete practice line', 'aria-label': 'Delete practice line' },
+              attrs: iconControlExplainerAttrs({ label: 'Delete practice line', description: 'Permanently deletes this saved practice line.' }),
               on: { click: () => {
                 void deletePracticeLine(line.id).then(() => {
                   _practiceLines = _practiceLines.filter(l => l.id !== line.id);
@@ -1432,6 +1491,7 @@ function renderColorPicker(study: StudyItem, root: import('../tree/types').TreeN
   const hasCurrentPath    = currentPath.length > 0;
 
   return h('div.study-color-picker-overlay', {
+    attrs: { 'aria-label': 'Close practice setup', ...controlExplainerAttrs({ label: 'Close practice setup' }) },
     on: { click: (e: Event) => { if (e.target === e.currentTarget) { _showColorPicker = false; _practiceFromPath = null; redraw(); } } },
   }, [
     h('div.study-color-picker', [
@@ -1441,17 +1501,20 @@ function renderColorPicker(study: StudyItem, root: import('../tree/types').TreeN
             h('div.study-scope-selector__options', [
               h('button.study-scope-btn', {
                 class: { 'study-scope-btn--active': _practiceScope === 'full' },
+                attrs: { type: 'button', 'aria-pressed': String(_practiceScope === 'full'), ...controlExplainerAttrs({ label: 'Practice full game', description: 'Builds the practice sequence from the full game main line.' }) },
                 on: { click: () => { _practiceScope = 'full'; redraw(); } },
               }, 'Full game'),
               hasCurrentPath
                 ? h('button.study-scope-btn', {
                     class: { 'study-scope-btn--active': _practiceScope === 'current' },
+                    attrs: { type: 'button', 'aria-pressed': String(_practiceScope === 'current'), ...controlExplainerAttrs({ label: 'Practice from current position', description: 'Builds the practice sequence from the current position.' }) },
                     on: { click: () => { _practiceScope = 'current'; redraw(); } },
                   }, 'From current position')
                 : null,
               hasCurrentPath
                 ? h('button.study-scope-btn', {
                     class: { 'study-scope-btn--active': _practiceScope === 'variation' },
+                    attrs: { type: 'button', 'aria-pressed': String(_practiceScope === 'variation'), ...controlExplainerAttrs({ label: 'Practice selected variation', description: 'Builds the practice sequence from the selected variation.' }) },
                     on: { click: () => { _practiceScope = 'variation'; redraw(); } },
                   }, 'Selected variation')
                 : null,
@@ -1461,13 +1524,16 @@ function renderColorPicker(study: StudyItem, root: import('../tree/types').TreeN
       h('div.study-color-picker__title', 'Practice as…'),
       h('div.study-color-picker__buttons', [
         h('button.study-color-picker__btn.study-color-picker__btn--white', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Practice as White', description: 'Starts the selected practice sequence from White’s perspective.' }) },
           on: { click: () => launch('white') },
         }, '♙ White'),
         h('button.study-color-picker__btn.study-color-picker__btn--black', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Practice as Black', description: 'Starts the selected practice sequence from Black’s perspective.' }) },
           on: { click: () => launch('black') },
         }, '♟ Black'),
       ]),
       h('button.study-color-picker__cancel', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel practice setup' }) },
         on: { click: () => { _showColorPicker = false; _practiceFromPath = null; redraw(); } },
       }, 'Cancel'),
     ]),
@@ -1530,6 +1596,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
     return h('div.study-detail', [
       h('div.study-detail__header', [
         h('button.study-back', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to Library', description: 'Ends the current drill and returns to the Study Library.' }) },
           on: { click: () => { endDrill(); _showColorPicker = false; redraw(); } },
         }, '← Library'),
         h('h1.study-detail__title', study.title),
@@ -1548,19 +1615,20 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
       h('div.study-header-actions', [
         h('button.study-btn', {
-          attrs: { title: 'Copy PGN to clipboard' },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Copy PGN', description: 'Copies the annotated Study PGN to the clipboard.' }) },
           on: { click: () => {
             const pgn = buildStudyPgn();
             void navigator.clipboard.writeText(pgn).then(() => redraw());
           }},
         }, 'Copy PGN'),
         h('button.study-btn', {
-          attrs: { title: 'Download PGN file' },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Download PGN', description: 'Downloads the annotated Study game as a PGN file.' }) },
           on: { click: () => {
             const pgn  = buildStudyPgn();
             const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
             const url  = URL.createObjectURL(blob);
             const a    = document.createElement('a');
+            a.setAttribute('data-ui-explainer-exempt', 'programmatic-download-node');
             a.href     = url;
             a.download = `${study.title.replace(/[^a-z0-9]/gi, '_')}.pgn`;
             a.click();
@@ -1569,7 +1637,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
         }, 'Download PGN'),
         root
           ? h('button.study-btn.study-btn--practice', {
-              attrs: { title: 'Practice this line' },
+              attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Practice this line', description: 'Opens practice setup for the current Study line.' }) },
               on: { click: () => { _showColorPicker = true; redraw(); } },
             }, 'Practice this line')
           : null,
@@ -1585,7 +1653,7 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
     h('div.study-detail__layout', [
       // Board column — keyboard handlers for glyph quick-select and nav
       h('div.study-detail__board-col', {
-        attrs: { tabindex: '0' },
+        attrs: { tabindex: '0', 'data-ui-explainer-exempt': 'chessboard-play-surface' },
         on:    { keydown: (e: KeyboardEvent) => handleStudyKeydown(e, redraw) },
       }, [
         renderStudyBoardRegion(study, redraw),
@@ -1600,11 +1668,11 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
         h('div.study-tools-bar', [
           h('button.study-btn', {
             class: { 'study-btn--active': _showBookmarksOnly },
-            attrs: { title: _showBookmarksOnly ? 'Show all moves' : 'Show bookmarked only' },
+            attrs: { type: 'button', 'aria-pressed': String(_showBookmarksOnly), ...controlExplainerAttrs({ label: _showBookmarksOnly ? 'Show all moves' : 'Show bookmarked moves only', description: `${_showBookmarksOnly ? 'Stops filtering' : 'Filters'} the move list by bookmarked positions.` }) },
             on:    { click: () => toggleBookmarkFilter(redraw) },
           }, _showBookmarksOnly ? '★ Bookmarks' : '☆ Bookmarks'),
           isBookmarked(path)
-            ? h('span.study-bookmark-indicator', { attrs: { title: 'Current position is bookmarked' } }, '★')
+            ? h('span.study-bookmark-indicator', '★')
             : null,
         ]),
         root

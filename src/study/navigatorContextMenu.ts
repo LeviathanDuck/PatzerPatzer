@@ -71,6 +71,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
 import {
@@ -550,13 +551,17 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
     const hasSubmenu = entry.submenu.length > 0;
     const submenuOpen = hasSubmenu && _openSubmenuKey === entry.key;
 
-    return h('div.nav-ctx-menu__item-wrap', { key: entry.key }, [
-      h('button.nav-ctx-menu__item', {
+    const description = entry.warning
+      ? 'Permanently removes the named Study data after confirmation.'
+      : hasSubmenu
+        ? 'Opens a submenu of available destinations or choices.'
+        : undefined;
+    const button = h('button.nav-ctx-menu__item', {
         class: {
           'nav-ctx-menu__item--warning': entry.warning,
           'nav-ctx-menu__item--disabled': entry.disabled,
         },
-        attrs: { type: 'button', role: 'menuitem', 'aria-haspopup': hasSubmenu ? 'true' : 'false' },
+        attrs: { type: 'button', role: 'menuitem', 'aria-haspopup': hasSubmenu ? 'true' : 'false', ...controlExplainerAttrs({ label: entry.label, description: description ?? 'Runs this Study menu action.' }) },
         on: {
           click: (e: Event) => {
             e.stopPropagation();
@@ -573,9 +578,23 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
         navIcon(entry.icon, { size: 15, className: 'nav-ctx-menu__icon' }),
         h('span.nav-ctx-menu__label', entry.label),
         hasSubmenu ? navIcon('chevron-right', { size: 13, className: 'nav-ctx-menu__caret' }) : null,
-      ]),
+      ]);
+    const renderedButton = entry.disabled
+      ? renderDisabledControlExplainer(
+          { label: entry.label, description: 'Create a Study folder before using this action.' },
+          h('button.nav-ctx-menu__item.nav-ctx-menu__item--disabled', {
+            attrs: { type: 'button', role: 'menuitem', disabled: true },
+          }, [
+            navIcon(entry.icon, { size: 15, className: 'nav-ctx-menu__icon' }),
+            h('span.nav-ctx-menu__label', entry.label),
+          ]),
+        )
+      : button;
+
+    return h('div.nav-ctx-menu__item-wrap', { key: entry.key }, [
+      renderedButton,
       submenuOpen
-        ? h('div.nav-ctx-menu__submenu', { attrs: { role: 'menu' } }, renderEntries(entry.submenu, redraw, close))
+        ? h('div.nav-ctx-menu__submenu', { attrs: { role: 'menu', 'aria-label': `${entry.label} choices`, ...controlExplainerAttrs({ label: `${entry.label} choices` }) } }, renderEntries(entry.submenu, redraw, close))
         : null,
     ]);
   });
@@ -599,13 +618,14 @@ export function renderGameContextMenu(redraw: () => void): VNode | null {
   if (!_menu) return null;
   const { entries, x, y } = _menu;
   return h('div.nav-ctx-overlay', {
+    attrs: { 'aria-label': 'Close game menu', ...controlExplainerAttrs({ label: 'Close game menu' }) },
     on: {
       click: () => { closeGameContextMenu(); redraw(); },
       contextmenu: (e: Event) => e.preventDefault(),
     },
   }, [
     h('div.nav-ctx-menu', {
-      attrs: { role: 'menu' },
+      attrs: { role: 'menu', 'aria-label': 'Game menu', ...controlExplainerAttrs({ label: 'Game menu' }) },
       on: { click: (e: Event) => e.stopPropagation() },
       hook: {
         insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),
@@ -678,13 +698,14 @@ export function renderFolderContextMenu(redraw: () => void): VNode | null {
   if (!_folderMenu) return null;
   const { entries, x, y } = _folderMenu;
   return h('div.nav-ctx-overlay', {
+    attrs: { 'aria-label': 'Close folder menu', ...controlExplainerAttrs({ label: 'Close folder menu' }) },
     on: {
       click: () => { closeFolderContextMenu(); redraw(); },
       contextmenu: (e: Event) => e.preventDefault(),
     },
   }, [
     h('div.nav-ctx-menu', {
-      attrs: { role: 'menu' },
+      attrs: { role: 'menu', 'aria-label': 'Folder menu', ...controlExplainerAttrs({ label: 'Folder menu' }) },
       on: { click: (e: Event) => e.stopPropagation() },
       hook: {
         insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),
@@ -805,13 +826,14 @@ export function renderTagContextMenu(redraw: () => void): VNode | null {
   if (!_tagMenu) return null;
   const { entries, x, y } = _tagMenu;
   return h('div.nav-ctx-overlay', {
+    attrs: { 'aria-label': 'Close tag menu', ...controlExplainerAttrs({ label: 'Close tag menu' }) },
     on: {
       click: () => { closeTagContextMenu(); redraw(); },
       contextmenu: (e: Event) => e.preventDefault(),
     },
   }, [
     h('div.nav-ctx-menu', {
-      attrs: { role: 'menu' },
+      attrs: { role: 'menu', 'aria-label': 'Tag menu', ...controlExplainerAttrs({ label: 'Tag menu' }) },
       on: { click: (e: Event) => e.stopPropagation() },
       hook: {
         insert: vnode => clampMenuPosition(vnode.elm as HTMLElement, x, y),

@@ -74,6 +74,11 @@ import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
 import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './navigatorSettings';
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   advAddedFrom,
@@ -550,7 +555,7 @@ function renderDivider(redraw: () => void, controller: PaneResizeController = _n
       role: 'separator',
       'aria-orientation': 'vertical',
       'aria-label': 'Resize navigation pane',
-      title: 'Resize navigation pane',
+      ...controlExplainerAttrs({ label: 'Resize navigation pane', description: 'Drag to change the width of the adjacent Study pane.' }),
     },
     on: {
       pointerdown: (event: PointerEvent) => controller.startDrag(event, redraw),
@@ -588,8 +593,6 @@ const ITEM_LIST_DENSITY: ItemListDensity = 'full';
 
 
 
-
-
 type RailSurface = { id: string; label: string; icon: NavIconName; active: boolean; disabled: boolean };
 
 function railSurfaces(): RailSurface[] {
@@ -603,17 +606,19 @@ function railSurfaces(): RailSurface[] {
 
 function renderRail(): VNode {
   return h('div.lib-rail', { attrs: { role: 'toolbar', 'aria-label': 'Study Navigator tools', 'aria-orientation': 'vertical' } },
-    railSurfaces().map(surface => h('button.lib-rail__btn', {
-      key: `rail-${surface.id}`,
-      class: { '--active': surface.active },
-      attrs: {
-        type: 'button',
-        title: surface.disabled ? `${surface.label} (coming soon)` : surface.label,
-        'aria-label': surface.disabled ? `${surface.label} (coming soon)` : surface.label,
-        ...(surface.active ? { 'aria-pressed': 'true' } : {}),
-        ...(surface.disabled ? { 'aria-disabled': 'true' } : {}),
-      },
-    }, [navIcon(surface.icon, { size: 18, className: 'lib-rail__icon' })])),
+    railSurfaces().map(surface => surface.disabled
+      ? renderDisabledControlExplainer(
+          { label: surface.label, description: `${surface.label} is coming soon.` },
+          h('button.lib-rail__btn', {
+            key: `rail-${surface.id}`,
+            attrs: { type: 'button', disabled: true },
+          }, [navIcon(surface.icon, { size: 18, className: 'lib-rail__icon' })]),
+        )
+      : h('button.lib-rail__btn', {
+          key: `rail-${surface.id}`,
+          class: { '--active': surface.active },
+          attrs: { type: 'button', 'aria-pressed': String(surface.active), ...iconControlExplainerAttrs({ label: surface.label, description: 'Shows the Study Library surface.' }) },
+        }, [navIcon(surface.icon, { size: 18, className: 'lib-rail__icon' })])),
   );
 }
 
@@ -673,16 +678,14 @@ let _reorderMode = false;
  * navigationPaneView.ts's own existing `_collapsedIds` state (via its exported query), so this
  * button never owns a second copy of expansion state. Disabled (aria-disabled, matching this
  * shell's own convention elsewhere) while reorder mode is active — the reorder panel replaces the
- * normal tree entirely, so there is nothing for expand/collapse to act on until the user exits. */
+ * normal tree entirely, so the shared disabled-control wrapper explains why it is unavailable. */
 function renderExpandCollapseAllButton(redraw: () => void, tree: StudyNavigationTree): VNode {
   const anyExpanded = hasAnyExpanded(tree);
   const label = anyExpanded ? 'Collapse items' : 'Expand all items';
-  return h('button.nav-toolbar__btn', {
+  const control = h('button.nav-toolbar__btn', {
     attrs: {
       type: 'button',
-      title: label,
-      'aria-label': label,
-      ...(_reorderMode ? { 'aria-disabled': 'true' } : {}),
+      ...iconControlExplainerAttrs({ label, description: `${anyExpanded ? 'Collapses' : 'Expands'} every Study navigation group.` }),
     },
     on: _reorderMode ? {} : {
       click: () => {
@@ -691,6 +694,12 @@ function renderExpandCollapseAllButton(redraw: () => void, tree: StudyNavigation
       },
     },
   }, [navIcon(anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down', { size: 16 })]);
+  return _reorderMode
+    ? renderDisabledControlExplainer(
+        { label, description: 'Finish reordering before changing navigation expansion.' },
+        h('button.nav-toolbar__btn', { attrs: { type: 'button', disabled: true } }, [navIcon(anyExpanded ? 'chevrons-down-up' : 'chevrons-up-down', { size: 16 })]),
+      )
+    : control;
 }
 
 
@@ -709,9 +718,8 @@ function renderHiddenItemsToggleButton(redraw: () => void): VNode {
     class: { '--active': active },
     attrs: {
       type: 'button',
-      title: label,
-      'aria-label': label,
       'aria-pressed': String(active),
+      ...iconControlExplainerAttrs({ label, description: `${active ? 'Hides' : 'Shows'} hidden Study folders, tags, notes, and games.` }),
     },
     on: {
       click: () => { toggleShowHidden(); redraw(); },
@@ -731,9 +739,8 @@ function renderReorderToggleButton(redraw: () => void): VNode {
     class: { '--active': _reorderMode },
     attrs: {
       type: 'button',
-      title: label,
-      'aria-label': label,
       'aria-pressed': String(_reorderMode),
+      ...iconControlExplainerAttrs({ label, description: `${_reorderMode ? 'Finishes' : 'Starts'} navigation reordering mode.` }),
     },
     on: {
       click: () => {
@@ -791,7 +798,7 @@ function renderNavToolbar(redraw: () => void, selection: NavigatorSelection, tre
   if (_newFolderMode) {
     return h('div.nav-toolbar', { attrs: { role: 'toolbar', 'aria-label': 'Navigation actions' } }, [
       h('input.nav-toolbar__new-folder-input', {
-        attrs: { type: 'text', placeholder: 'Folder name…', value: _newFolderValue },
+        attrs: { type: 'text', placeholder: 'Folder name…', value: _newFolderValue, 'aria-label': 'New folder name', ...controlExplainerAttrs({ label: 'New folder name', description: 'Creates a folder under the selected Study section or folder.' }) },
         hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
         on: {
           input: (e: Event) => { _newFolderValue = (e.target as HTMLInputElement).value; },
@@ -812,15 +819,15 @@ function renderNavToolbar(redraw: () => void, selection: NavigatorSelection, tre
     renderExpandCollapseAllButton(redraw, tree),
     renderHiddenItemsToggleButton(redraw),
     renderReorderToggleButton(redraw),
-    h('button.nav-toolbar__btn', {
-      attrs: {
-        type: 'button',
-        title: canCreate ? 'New folder' : 'Select a section or folder to add a new folder',
-        'aria-label': 'New folder',
-        ...(canCreate ? {} : { 'aria-disabled': 'true' }),
-      },
-      on: canCreate ? { click: () => { _newFolderMode = true; _newFolderValue = ''; redraw(); } } : {},
-    }, [navIcon('folder-plus', { size: 16 })]),
+    canCreate
+      ? h('button.nav-toolbar__btn', {
+          attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'New folder', description: 'Creates a folder under the current Study location.' }) },
+          on: { click: () => { _newFolderMode = true; _newFolderValue = ''; redraw(); } },
+        }, [navIcon('folder-plus', { size: 16 })])
+      : renderDisabledControlExplainer(
+          { label: 'New folder', description: _reorderMode ? 'Finish reordering before creating a folder.' : 'Select a section or folder before creating a folder.' },
+          h('button.nav-toolbar__btn', { attrs: { type: 'button', disabled: true } }, [navIcon('folder-plus', { size: 16 })]),
+        ),
   ]);
 }
 
@@ -857,7 +864,7 @@ function renderSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
     class: { '--active': _itemSearchOpen },
     attrs: {
-      type: 'button', title: 'Search', 'aria-label': 'Search', 'aria-expanded': String(_itemSearchOpen),
+      type: 'button', 'aria-expanded': String(_itemSearchOpen), ...iconControlExplainerAttrs({ label: 'Search', description: `${_itemSearchOpen ? 'Closes' : 'Opens'} the Study game search field.` }),
     },
     on: {
       click: () => {
@@ -879,7 +886,7 @@ function renderSearchButton(redraw: () => void): VNode {
 function renderSearchInputRow(redraw: () => void, withAdvancedToggle: boolean): VNode {
   return h('div.item-toolbar__search-row', [
     h('input.item-toolbar__search-input', {
-      attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery() },
+      attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery(), 'aria-label': 'Search Study games', ...controlExplainerAttrs({ label: 'Search Study games', description: 'Filters the current Study list as you type.' }) },
       hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
       on: {
         input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); writeLibraryRouteState(); redraw(); },
@@ -904,9 +911,8 @@ function renderDescendantsButton(redraw: () => void): VNode {
     class: { '--active': active },
     attrs: {
       type: 'button',
-      title: 'Show games from subfolders',
-      'aria-label': 'Show games from subfolders',
       'aria-pressed': String(active),
+      ...iconControlExplainerAttrs({ label: 'Show games from subfolders', description: `${active ? 'Stops including' : 'Includes'} games from descendant folders in this list.` }),
     },
     on: { click: () => { setIncludeDescendants(!active); redraw(); } },
   }, [navIcon('layers', { size: 16 })]);
@@ -943,7 +949,7 @@ function renderSortButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
     class: { '--active': _sortMenuOpen },
     attrs: {
-      type: 'button', title: 'Change sort', 'aria-label': 'Change sort', 'aria-expanded': String(_sortMenuOpen),
+      type: 'button', 'aria-expanded': String(_sortMenuOpen), ...iconControlExplainerAttrs({ label: 'Change sort', description: 'Opens the Study sort field and direction menu.' }),
     },
     on: { click: () => { _sortMenuOpen = !_sortMenuOpen; redraw(); } },
   }, [navIcon(sortButtonIcon(), { size: 16 })]);
@@ -961,7 +967,7 @@ function renderSortMenu(redraw: () => void): VNode | null {
   // Every action in this menu mutates sort (setSortKey/setSortDir), so the route write-back belongs
   // in the shared wrapper — closing over sort edits live to the address bar (design §2.2).
   const closeAnd = (fn: () => void) => () => { fn(); writeLibraryRouteState(); _sortMenuOpen = false; redraw(); };
-  return h('div.nav-menu.item-toolbar__sort-menu', { attrs: { role: 'menu', 'aria-label': 'Sort and group' } }, [
+  return h('div.nav-menu.item-toolbar__sort-menu', { attrs: { role: 'menu', 'aria-label': 'Sort and group', ...controlExplainerAttrs({ label: 'Sort and group menu' }) } }, [
     h('div.nav-menu__header', { attrs: { role: 'presentation', 'aria-disabled': 'true' } }, [
       navIcon('arrow-up-down', { size: 14 }),
       h('span', 'Sort by'),
@@ -969,7 +975,7 @@ function renderSortMenu(redraw: () => void): VNode | null {
     h('div.nav-menu__sep'),
     ...SORT_FIELDS.map(field => h('button.nav-menu__item', {
       key: field.key,
-      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortKey() === field.key) },
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortKey() === field.key), ...controlExplainerAttrs({ label: `Sort by ${field.label}`, description: `Uses ${field.label.toLowerCase()} to order Study games.` }) },
       on: { click: closeAnd(() => setSortKey(field.key)) },
     }, [
       h('span.nav-menu__check', sortKey() === field.key ? '✓' : ''),
@@ -978,11 +984,11 @@ function renderSortMenu(redraw: () => void): VNode | null {
     ])),
     h('div.nav-menu__sep'),
     h('button.nav-menu__item', {
-      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'asc') },
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'asc'), ...controlExplainerAttrs({ label: 'Sort ascending', description: 'Orders Study games in ascending order.' }) },
       on: { click: closeAnd(() => setSortDir('asc')) },
     }, [h('span.nav-menu__check', sortDir() === 'asc' ? '✓' : ''), h('span', 'Ascending')]),
     h('button.nav-menu__item', {
-      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'desc') },
+      attrs: { type: 'button', role: 'menuitemradio', 'aria-checked': String(sortDir() === 'desc'), ...controlExplainerAttrs({ label: 'Sort descending', description: 'Orders Study games in descending order.' }) },
       on: { click: closeAnd(() => setSortDir('desc')) },
     }, [h('span.nav-menu__check', sortDir() === 'desc' ? '✓' : ''), h('span', 'Descending')]),
   ]);
@@ -994,7 +1000,7 @@ function renderAppearanceButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn.nav-settings-trigger', {
     class: { '--active': _settingsOpen },
     attrs: {
-      type: 'button', title: 'Appearance', 'aria-label': 'Appearance', 'aria-expanded': String(_settingsOpen),
+      type: 'button', 'aria-expanded': String(_settingsOpen), ...iconControlExplainerAttrs({ label: 'Appearance', description: `${_settingsOpen ? 'Closes' : 'Opens'} Study Navigator appearance settings.` }),
     },
     on: { click: () => { _settingsOpen = !_settingsOpen; redraw(); } },
   }, [navIcon('palette', { size: 16 })]);
@@ -1004,7 +1010,7 @@ function renderNewNoteButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn', {
     class: { '--active': _importMenuOpen },
     attrs: {
-      type: 'button', title: 'New game entry', 'aria-label': 'New game entry', 'aria-expanded': String(_importMenuOpen),
+      type: 'button', 'aria-expanded': String(_importMenuOpen), ...iconControlExplainerAttrs({ label: 'New game entry', description: 'Opens options to import a game or position.' }),
     },
     on: { click: () => { _importMenuOpen = !_importMenuOpen; redraw(); } },
   }, [navIcon('square-pen', { size: 16 })]);
@@ -1035,13 +1041,13 @@ function renderNewNoteButton(redraw: () => void): VNode {
 function renderImportMenu(redraw: () => void, onImportPgnClick: () => void): VNode | null {
   if (!_importMenuOpen) return null;
   const closeAnd = (fn: () => void) => () => { fn(); _importMenuOpen = false; redraw(); };
-  return h('div.nav-menu.item-toolbar__import-menu', { attrs: { role: 'menu', 'aria-label': 'New game entry' } }, [
+  return h('div.nav-menu.item-toolbar__import-menu', { attrs: { role: 'menu', 'aria-label': 'New game entry', ...controlExplainerAttrs({ label: 'New game entry menu' }) } }, [
     h('button.nav-menu__item', {
-      attrs: { type: 'button', role: 'menuitem' },
+      attrs: { type: 'button', role: 'menuitem', ...controlExplainerAttrs({ label: 'Import PGN', description: 'Opens the Study PGN import dialog.' }) },
       on: { click: closeAnd(onImportPgnClick) },
     }, [navIcon('file-plus', { size: 14 }), h('span', 'Import PGN')]),
     h('button.nav-menu__item', {
-      attrs: { type: 'button', role: 'menuitem' },
+      attrs: { type: 'button', role: 'menuitem', ...controlExplainerAttrs({ label: 'Paste FEN or position', description: 'Opens the board editor to enter a position.' }) },
       on: { click: closeAnd(() => { writeHashRoute('#/editor'); }) },
     }, [navIcon('external-link', { size: 14 }), h('span', 'Paste FEN / position')]),
   ]);
@@ -1189,7 +1195,7 @@ function renderAdvMultiChips<T extends string>(
     options.map(option => h('button.item-adv__chip', {
       key: option.value,
       class: { '--active': active.has(option.value) },
-      attrs: { type: 'button', 'aria-pressed': String(active.has(option.value)) },
+      attrs: { type: 'button', 'aria-pressed': String(active.has(option.value)), ...controlExplainerAttrs({ label: `${active.has(option.value) ? 'Remove' : 'Add'} ${option.label} filter`, description: `${active.has(option.value) ? 'Removes' : 'Adds'} this ${ariaGroupLabel.toLowerCase()} filter.` }) },
       on: { click: () => onToggle(option.value) },
     }, option.label)),
   );
@@ -1204,7 +1210,7 @@ function renderAdvTagChips(redraw: () => void): VNode {
     tagNames.map(tag => h('button.item-adv__chip', {
       key: tag,
       class: { '--active': active.has(tag) },
-      attrs: { type: 'button', 'aria-pressed': String(active.has(tag)) },
+      attrs: { type: 'button', 'aria-pressed': String(active.has(tag)), ...controlExplainerAttrs({ label: `${active.has(tag) ? 'Remove' : 'Add'} ${tag} tag filter`, description: `${active.has(tag) ? 'Removes' : 'Adds'} this tag filter.` }) },
       on: { click: () => { setAdvTags(toggleAdvValue(advTags(), tag)); commitAdvancedEdit(redraw); } },
     }, tag)),
   );
@@ -1214,7 +1220,7 @@ function renderAdvDateField(label: string, value: string | undefined, onInput: (
   return h('label.item-adv__field', [
     h('span.item-adv__field-label', label),
     h('input.item-adv__input.--date', {
-      attrs: { type: 'date', value: value ?? '' },
+      attrs: { type: 'date', value: value ?? '', 'aria-label': label, ...controlExplainerAttrs({ label, description: 'Sets a date boundary for advanced Study search.' }) },
       on: { input: (e: Event) => onInput((e.target as HTMLInputElement).value) },
     }),
   ]);
@@ -1240,7 +1246,7 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
       h('label.item-adv__field', [
         h('span.item-adv__field-label', 'Players'),
         h('input.item-adv__input', {
-          attrs: { type: 'search', placeholder: 'Name…', value: advPlayers() ?? '' },
+          attrs: { type: 'search', placeholder: 'Name…', value: advPlayers() ?? '', 'aria-label': 'Players', ...controlExplainerAttrs({ label: 'Players', description: 'Filters Study games by player name.' }) },
           on: { input: (e: Event) => { setAdvPlayers((e.target as HTMLInputElement).value); commitAdvancedEdit(redraw); } },
         }),
       ]),
@@ -1283,7 +1289,7 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
       h('div.item-adv__chip-row', [
         h('button.item-adv__chip', {
           class: { '--active': filterFav() },
-          attrs: { type: 'button', 'aria-pressed': String(filterFav()) },
+          attrs: { type: 'button', 'aria-pressed': String(filterFav()), ...controlExplainerAttrs({ label: `${filterFav() ? 'Remove' : 'Add'} Favorites-only filter`, description: `${filterFav() ? 'Stops limiting' : 'Limits'} results to favorite games.` }) },
           on: { click: () => { setFilterFav(!filterFav()); commitAdvancedEdit(redraw); } },
         }, '★ Favorites only'),
       ]),
@@ -1295,7 +1301,7 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
         ADV_VIS_OPTIONS.map(option => h('button.item-adv__chip', {
           key: option.value,
           class: { '--active': advVisibility() === option.value },
-          attrs: { type: 'button', 'aria-pressed': String(advVisibility() === option.value) },
+          attrs: { type: 'button', 'aria-pressed': String(advVisibility() === option.value), ...controlExplainerAttrs({ label: `${advVisibility() === option.value ? 'Remove' : 'Apply'} ${option.label} filter`, description: 'Changes how hidden games participate in advanced search.' }) },
           on: { click: () => {
             setAdvVisibility(advVisibility() === option.value ? undefined : option.value);
             commitAdvancedEdit(redraw);
@@ -1317,12 +1323,12 @@ function renderAdvancedSearchPanel(redraw: () => void): VNode {
     h('div.item-adv__actions', [
       advancedFilterActive()
         ? h('button.item-adv__clear', {
-            attrs: { type: 'button' },
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Clear advanced filters', description: 'Removes every advanced Study search filter.' }) },
             on: { click: () => { clearAdvancedSearch(); setFilterFav(false); commitAdvancedEdit(redraw); } },
           }, 'Clear filters')
         : null,
       h('button.item-adv__apply', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Done editing advanced search' }) },
         on: { click: () => { _advancedSearchOpen = false; redraw(); } },
       }, 'Done'),
     ]),
@@ -1337,7 +1343,7 @@ function renderAdvancedChipsBar(redraw: () => void): VNode {
     chips.push(h('span.item-adv__active-chip', [
       h('span.item-adv__active-chip-label', label),
       h('button.item-adv__active-chip-remove', {
-        attrs: { type: 'button', 'aria-label': `Remove ${label}` },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove ${label}`, description: 'Removes this active advanced-search filter.' }) },
         on: { click: () => { onRemove(); commitAdvancedEdit(redraw); } },
       }, '×'),
     ]));
@@ -1364,7 +1370,7 @@ function renderAdvancedChipsBar(redraw: () => void): VNode {
   if (filterFav()) pushChip('Favorites only', () => setFilterFav(false));
 
   chips.push(h('button.item-adv__clear.--chips', {
-    attrs: { type: 'button' },
+    attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Clear all advanced filters', description: 'Removes every active advanced-search filter.' }) },
     on: { click: () => { clearAdvancedSearch(); setFilterFav(false); commitAdvancedEdit(redraw); } },
   }, 'Clear all'));
 
@@ -1378,7 +1384,7 @@ function renderAdvancedSearchButton(redraw: () => void): VNode {
   return h('button.item-toolbar__btn.item-adv__toggle', {
     class: { '--active': _advancedSearchOpen },
     attrs: {
-      type: 'button', title: 'Advanced search', 'aria-label': 'Advanced search',
+      type: 'button', ...iconControlExplainerAttrs({ label: 'Advanced search', description: `${_advancedSearchOpen ? 'Closes' : 'Opens'} the advanced Study search filters.` }),
       'aria-expanded': String(_advancedSearchOpen),
     },
     on: { click: () => { _advancedSearchOpen = !_advancedSearchOpen; redraw(); } },
@@ -1424,12 +1430,12 @@ function renderAdvancedSearchRegion(redraw: () => void): VNode | null {
 function renderGameOpenItemListHeader(scopeLabel: string | null, exitPlain: () => void, exitToFolder: () => void): VNode {
   return h('div.lib-game-open-header', [
     h('button.lib-game-open-header__chevron', {
-      attrs: { type: 'button', title: 'Back to Library', 'aria-label': 'Back to Library' },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Back to Library' }) },
       on: { click: exitPlain },
     }, [navIcon('chevron-left', { size: 16 })]),
     scopeLabel
       ? h('button.lib-game-open-header__breadcrumb', {
-          attrs: { type: 'button', title: `Back to ${scopeLabel}`, 'aria-label': `Back to ${scopeLabel}` },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: `Back to ${scopeLabel}`, description: 'Returns to the game list scoped to this Study location.' }) },
           on: { click: exitToFolder },
         }, scopeLabel)
       : null,
@@ -1506,10 +1512,10 @@ const STUDY_TOOL_TAB_PLACEHOLDER: Readonly<Record<StudyToolTabId, string>> = {
 function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
   return h('div.study-tools-col__back-wrap', [
     h('button.study-tools-col__back', {
-      attrs: { type: 'button', title: 'Back to game list', 'aria-label': 'Back to game list' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to game list' }) },
       on: { click: opts.onCloseTools },
     }, [navIcon('chevron-left', { size: 16 }), h('span', 'Back to game list')]),
-    h('div.study-tools-col__tabs', { attrs: { role: 'tablist', 'aria-label': 'Study tools' } },
+    h('div.study-tools-col__tabs', { attrs: { role: 'tablist', 'aria-label': 'Study tools', ...controlExplainerAttrs({ label: 'Study tools tabs' }) } },
       STUDY_TOOL_TABS.map(tab => h('button.study-tools-col__tab', {
         key: tab.id,
         class: { '--active': tab.id === opts.activeToolTab },
@@ -1517,6 +1523,7 @@ function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
           type: 'button',
           role: 'tab',
           'aria-selected': String(tab.id === opts.activeToolTab),
+          ...controlExplainerAttrs({ label: `${tab.label} tools`, description: `Shows the ${tab.label.toLowerCase()} panel for this Study game.` }),
         },
         on: { click: () => opts.onSelectToolTab(tab.id) },
       }, tab.label))),
@@ -1655,6 +1662,7 @@ function renderGameOpenShell(
   }, [
     renderRail(),
     h('div.lib-items-wrap', {
+      attrs: { 'aria-label': 'Study item-list pane', ...controlExplainerAttrs({ label: 'Study item-list pane' }) },
       class: { 'lib-items-wrap--tools': opts.toolsOpen },
       on: {
         click: () => setFocusedPane('list'),
@@ -1821,6 +1829,7 @@ export function renderNavigatorShell(
   }, [
     renderRail(),
     h('div.lib-nav-wrap', {
+      attrs: { 'aria-label': 'Study navigation pane', ...controlExplainerAttrs({ label: 'Study navigation pane' }) },
       on: {
         click: () => setFocusedPane('navigation'),
         focusin: () => setFocusedPane('navigation'),
@@ -1831,6 +1840,7 @@ export function renderNavigatorShell(
     ]),
     renderDivider(redraw),
     h('div.lib-items-wrap', {
+      attrs: { 'aria-label': 'Study item-list pane', ...controlExplainerAttrs({ label: 'Study item-list pane' }) },
       on: {
         click: () => setFocusedPane('list'),
         focusin: () => setFocusedPane('list'),

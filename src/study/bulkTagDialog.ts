@@ -24,6 +24,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 import { navIcon } from './navIcons';
 import { bulkAddTags, clearSelection } from './studyCtrl';
 
@@ -109,9 +110,11 @@ export function renderBulkTagDialog(redraw: () => void): VNode | null {
   const canApply = parseTags(inputValue).length > 0;
 
   return h('div.sentry-move-dialog-overlay', {
+    attrs: { 'aria-label': 'Close tag dialog', ...controlExplainerAttrs({ label: 'Close tag dialog' }) },
     on: { click: () => { closeBulkTagDialog(); redraw(); } },
   }, [
     h('div.sentry-move-dialog', {
+      attrs: { 'aria-label': 'Tag dialog', ...controlExplainerAttrs({ label: 'Tag dialog' }) },
       on: { click: (e: Event) => e.stopPropagation() },
     }, [
       h('div.sentry-move-dialog__header', [
@@ -120,7 +123,7 @@ export function renderBulkTagDialog(redraw: () => void): VNode | null {
       ]),
       h('div.sentry-tag-dialog__body', [
         h('input.sentry-tag-dialog__input', {
-          attrs: { type: 'text', placeholder: 'Tag name(s), comma-separated…', value: inputValue },
+          attrs: { type: 'text', placeholder: 'Tag name(s), comma-separated…', value: inputValue, 'aria-label': 'Tags to apply', ...controlExplainerAttrs({ label: 'Tags to apply', description: 'Adds comma-separated tags to every selected game.' }) },
           hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
           on: {
             input: (e: Event) => setInputValue((e.target as HTMLInputElement).value, redraw),
@@ -132,13 +135,18 @@ export function renderBulkTagDialog(redraw: () => void): VNode | null {
       ]),
       h('div.sentry-move-dialog__footer', [
         h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--ghost', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel adding tags' }) },
           on: { click: () => { closeBulkTagDialog(); redraw(); } },
         }, 'Cancel'),
-        h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
-          attrs: { type: 'button', disabled: !canApply },
+        canApply ? h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Apply tags', description: 'Adds these tags to every selected game while keeping existing tags.' }) },
           on: { click: () => { void commit(redraw); } },
-        }, [navIcon('tag', { size: 13 }), h('span', 'Apply')]),
+        }, [navIcon('tag', { size: 13 }), h('span', 'Apply')]) : renderDisabledControlExplainer(
+          { label: 'Apply tags', description: 'Enter at least one tag before applying.' },
+          h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
+            attrs: { type: 'button', disabled: true },
+          }, [navIcon('tag', { size: 13 }), h('span', 'Apply')]),
+        ),
       ]),
     ]),
   ]);

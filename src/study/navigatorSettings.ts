@@ -86,6 +86,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 
 // ---------------------------------------------------------------------------------------------
 // Ranges / defaults — design doc §2.1 (global scale) and §2.2 (per-pane row height), ported
@@ -246,7 +247,18 @@ function renderSliderRow(
   return h('div.board-settings__slider-row', [
     h('label', { attrs: { for: id } }, label),
     h(`input#${id}`, {
-      attrs: { type: 'range', min, max, step, value },
+      attrs: {
+        type: 'range',
+        min,
+        max,
+        step,
+        value,
+        'aria-label': label,
+        ...controlExplainerAttrs({
+          label,
+          description: 'Adjusts this Study Navigator appearance setting.',
+        }),
+      },
       on: { input: (e: Event) => onInput(Number.parseInt((e.target as HTMLInputElement).value, 10)) },
     }),
     h('span.board-settings__slider-val', fmt(value)),

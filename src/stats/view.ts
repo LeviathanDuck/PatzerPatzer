@@ -19,6 +19,7 @@ import { diagnoseWeaknesses, type DiagnosedWeakness } from './weakness';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { writeStatsTimeFilterUrl } from './urlState';
 import { writeHashRoute } from '../router';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 
 // ── Time-control filter tabs ──────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ function renderTimeFilterTabs(redraw: () => void): VNode {
   return h('div.stats-filter-tabs', TIME_FILTERS.map(f =>
     h('button.stats-filter-tab', {
       class: { 'stats-filter-tab--active': f.value === active },
+      attrs: { type: 'button', 'aria-pressed': String(f.value === active), ...controlExplainerAttrs({ label: `Show ${f.label.toLowerCase()} games`, description: `Filters improvement stats to ${f.label.toLowerCase()} games.` }) },
       on: {
         click: () => {
           setTimeFilter(f.value);
@@ -72,7 +74,7 @@ function renderHeader(redraw: () => void): VNode {
     h('h2.stats-title', 'Improvement Stats'),
     renderTimeFilterTabs(redraw),
     h('button.stats-filter-tab', {
-      attrs: { type: 'button', title: 'Report an issue with the Stats page' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Report a Stats issue', description: 'Opens diagnostics reporting for the Stats page.' }) },
       on: { click: reportStatsIssue },
     }, 'Report issue'),
     h('div.stats-game-count', `${count} analyzed game${count === 1 ? '' : 's'}`),
@@ -273,6 +275,7 @@ function renderWeaknessCard(w: DiagnosedWeakness): VNode {
     h('div.weakness-card__meta', `Based on ${w.sampleSize} analyzed game${w.sampleSize === 1 ? '' : 's'}`),
     w.trainingAction ? h('div.weakness-card__action', [
       h('button.weakness-card__action-btn', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: w.trainingAction.label, description: 'Opens the recommended training activity for this weakness.' }) },
         on: { click: () => { writeHashRoute(trainingActionRoute(w.trainingAction!.type)); } },
       }, `${w.trainingAction.label} →`),
     ]) : null,
@@ -501,6 +504,7 @@ function renderOpeningTable(summaries: GameSummary[], redraw: () => void): VNode
       )),
     ]),
     showExpandBtn ? h('button.stats-expand-btn', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: _openingShowAll ? 'Show fewer openings' : `Show all ${rows.length} openings`, description: 'Changes how many openings appear in the table.' }) },
       on: {
         click: () => {
           _openingShowAll = !_openingShowAll;

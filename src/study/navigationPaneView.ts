@@ -106,6 +106,11 @@ import {
 import { allStudies, bumpSelectionSurface } from './studyCtrl';
 import type { StudyItem } from './types';
 import { writeHashRoute } from '../router';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 
 // ---------------------------------------------------------------------------------------------
 // System lenses (P2-LIB-2) — fixed structural label list, not computed lens content (T5-D13 owns
@@ -321,10 +326,28 @@ function commitDropOnSection(redraw: () => void): void {
 // Row renderers
 // ---------------------------------------------------------------------------------------------
 
+function activateCustomControlOnKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  (event.currentTarget as HTMLElement).click();
+}
+
 function renderLensRow(lens: NavigationPaneLensDef): VNode {
   return h(
     'div.nav-row',
-    { key: `lens-${lens.id}`, attrs: { role: 'treeitem', title: lens.label } },
+    {
+      key: `lens-${lens.id}`,
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        ...controlExplainerAttrs({
+          label: lens.label,
+          description: `Shows Study items in the ${lens.label} lens.`,
+        }),
+      },
+      on: { keydown: activateCustomControlOnKeydown },
+    },
     [
       h('span.nav-row__icon', LENS_ICONS[lens.id]),
       h('span.nav-row__label', lens.label),
@@ -363,11 +386,15 @@ function renderFolderRow(
 
   const attrs: Record<string, string> = {
     role: 'treeitem',
-    title: group.name,
+    tabindex: '0',
     style: indentStyle,
     draggable: 'true',
     'data-drop-zone': 'folder',
     'data-drop-key': collapseKey,
+    ...controlExplainerAttrs({
+      label: group.name,
+      description: 'Shows this folder\'s Study items and toggles its nested folders when available.',
+    }),
   };
   if (hasChildren) attrs['aria-expanded'] = String(!collapsed);
 
@@ -388,6 +415,7 @@ function renderFolderRow(
     attrs,
     on: {
       ...dropHandlers,
+      keydown: activateCustomControlOnKeydown,
       ...(hasChildren ? { click: () => toggleCollapsed(collapseKey, redraw) } : {}),
       dragstart: (e: DragEvent) => { beginFolderDrag(group.id, group.name, e); redraw(); },
       dragend: () => { endDrag(); redraw(); },
@@ -465,13 +493,21 @@ function renderSectionBlock(section: StudyNavigationSectionNode, redraw: () => v
       key: `section-${section.id}`,
       attrs: {
         role: 'treeitem',
+        tabindex: '0',
         'aria-expanded': String(!collapsed),
-        title: section.label,
         'data-drop-zone': 'section',
         'data-drop-key': sectionDropKey,
+        ...controlExplainerAttrs({
+          label: section.label,
+          description: 'Shows this Study section and toggles its folders.',
+        }),
       },
       class: { 'nav-row--drop-over': isDropTargetHovered(sectionDropKey) },
-      on: { ...dropHandlers, click: () => toggleCollapsed(section.id, redraw) },
+      on: {
+        ...dropHandlers,
+        click: () => toggleCollapsed(section.id, redraw),
+        keydown: activateCustomControlOnKeydown,
+      },
     },
     [
 
@@ -710,6 +746,36 @@ function renderReorderRow(
 ): VNode {
   const canMoveUp = index > 0;
   const canMoveDown = index < total - 1;
+  const renderMoveButton = (direction: 'up' | 'down', available: boolean): VNode => {
+    const labelText = `Move ${label} ${direction}`;
+    const control = h(
+      'button.nav-reorder-move',
+      {
+        attrs: {
+          type: 'button',
+          ...iconControlExplainerAttrs({
+            label: labelText,
+            description: `Moves this Study section one position ${direction}.`,
+          }),
+        },
+        on: available
+          ? { click: () => moveSectionOrderStep(sectionId, direction === 'up' ? -1 : 1, redraw) }
+          : {},
+      },
+      [navIcon('chevron-down', {
+        size: 14,
+        className: `nav-reorder-move__icon${direction === 'up' ? ' --up' : ''}`,
+      })],
+    );
+    if (available) return control;
+    return renderDisabledControlExplainer(
+      {
+        label: labelText,
+        description: `${label} is already the ${direction === 'up' ? 'first' : 'last'} Study section.`,
+      },
+      control,
+    );
+  };
   return h(
     'div.nav-reorder-row',
     { key: `reorder-section-${sectionId}`, attrs: { role: 'listitem' } },
@@ -719,39 +785,21 @@ function renderReorderRow(
         // Mouse/TouchSensor only, no KeyboardSensor — the up/down buttons below are NN's own
         // real keyboard-operable path, not this handle). `aria-hidden` + no tabindex/role is
         // deliberate: a focusable "button" with no keydown handler would be a real, silently
-        // broken affordance for keyboard/screen-reader users. `title` is kept for a sighted
-        // mouse-user tooltip only.
-        attrs: { title: `Drag to reorder ${label}`, 'aria-hidden': 'true' },
+        // broken affordance for keyboard/screen-reader users. The shared explainer provides the
+        // sighted mouse-user tooltip while the handle remains hidden from the accessibility tree.
+        attrs: {
+          'aria-hidden': 'true',
+          ...controlExplainerAttrs({
+            label: `Drag to reorder ${label}`,
+            description: 'Drags this Study section to a new position.',
+          }),
+        },
         on: { pointerdown: (e: Event) => startSectionReorderDrag(e as PointerEvent, sectionId, redraw) },
       }),
       h('span.nav-row__label', label),
       h('div.nav-reorder-row__controls', [
-        h(
-          'button.nav-reorder-move',
-          {
-            attrs: {
-              type: 'button',
-              title: `Move ${label} up`,
-              'aria-label': `Move ${label} up`,
-              ...(canMoveUp ? {} : { 'aria-disabled': 'true' }),
-            },
-            on: canMoveUp ? { click: () => moveSectionOrderStep(sectionId, -1, redraw) } : {},
-          },
-          [navIcon('chevron-down', { size: 14, className: 'nav-reorder-move__icon --up' })],
-        ),
-        h(
-          'button.nav-reorder-move',
-          {
-            attrs: {
-              type: 'button',
-              title: `Move ${label} down`,
-              'aria-label': `Move ${label} down`,
-              ...(canMoveDown ? {} : { 'aria-disabled': 'true' }),
-            },
-            on: canMoveDown ? { click: () => moveSectionOrderStep(sectionId, 1, redraw) } : {},
-          },
-          [navIcon('chevron-down', { size: 14, className: 'nav-reorder-move__icon' })],
-        ),
+        renderMoveButton('up', canMoveUp),
+        renderMoveButton('down', canMoveDown),
       ]),
     ],
   );
@@ -853,11 +901,21 @@ function renderShortcutRow(
       'div.nav-row',
       {
         key: `shortcut-game-${entry.id}`,
-        attrs: { role: 'treeitem', title },
+        attrs: {
+          role: 'treeitem',
+          tabindex: '0',
+          ...controlExplainerAttrs({
+            label: title,
+            description: 'Opens this shortcut game in the Study workspace.',
+          }),
+        },
 
 
 
-        on: { click: () => { bumpSelectionSurface(); writeHashRoute(`study/${entry.id}`); } },
+        on: {
+          click: () => { bumpSelectionSurface(); writeHashRoute(`study/${entry.id}`); },
+          keydown: activateCustomControlOnKeydown,
+        },
       },
       [
         h('span.nav-row__icon', '♟'),
@@ -872,7 +930,15 @@ function renderShortcutRow(
     'div.nav-row',
     {
       key: `folder-${target.sectionId}-${entry.id}`,
-      attrs: { role: 'treeitem', title: target.name },
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        ...controlExplainerAttrs({
+          label: target.name,
+          description: 'Shows the Study items in this shortcut folder.',
+        }),
+      },
+      on: { keydown: activateCustomControlOnKeydown },
     },
     [
 
@@ -902,13 +968,30 @@ function renderShortcutsBlock(tree: StudyNavigationTree, redraw: () => void): VN
   if (rows.length === 0) return null;
 
   const collapsed = isCollapsed(SHORTCUTS_COLLAPSE_KEY);
-  return h('div.lib-nav__pinned', { attrs: { role: 'tree', 'aria-label': 'Shortcuts' } }, [
+  return h('div.lib-nav__pinned', {
+    attrs: {
+      role: 'tree',
+      'aria-label': 'Shortcuts',
+      ...controlExplainerAttrs({ label: 'Shortcuts' }),
+    },
+  }, [
     h(
       'div.nav-row.--section',
       {
         key: 'shortcuts-header',
-        attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
-        on: { click: () => toggleCollapsed(SHORTCUTS_COLLAPSE_KEY, redraw) },
+        attrs: {
+          role: 'treeitem',
+          tabindex: '0',
+          'aria-expanded': String(!collapsed),
+          ...controlExplainerAttrs({
+            label: 'Shortcuts',
+            description: 'Expands or collapses your Study shortcuts.',
+          }),
+        },
+        on: {
+          click: () => toggleCollapsed(SHORTCUTS_COLLAPSE_KEY, redraw),
+          keydown: activateCustomControlOnKeydown,
+        },
       },
       [
         navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
@@ -961,9 +1044,19 @@ function renderRecentRow(item: StudyItem): VNode {
     'div.nav-row',
     {
       key: `recent-${item.id}`,
-      attrs: { role: 'treeitem', title: item.title },
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        ...controlExplainerAttrs({
+          label: item.title,
+          description: 'Opens this recent game in the Study workspace.',
+        }),
+      },
 
-      on: { click: () => { bumpSelectionSurface(); writeHashRoute(`study/${item.id}`); } },
+      on: {
+        click: () => { bumpSelectionSurface(); writeHashRoute(`study/${item.id}`); },
+        keydown: activateCustomControlOnKeydown,
+      },
     },
     [
       h('span.nav-row__icon', '♟'),
@@ -982,13 +1075,30 @@ function renderRecentBlock(redraw: () => void): VNode | null {
   if (recent.length === 0) return null;
 
   const collapsed = isCollapsed(RECENT_COLLAPSE_KEY);
-  return h('div.lib-nav__pinned', { attrs: { role: 'tree', 'aria-label': 'Recent' } }, [
+  return h('div.lib-nav__pinned', {
+    attrs: {
+      role: 'tree',
+      'aria-label': 'Recent',
+      ...controlExplainerAttrs({ label: 'Recent' }),
+    },
+  }, [
     h(
       'div.nav-row.--section',
       {
         key: 'recent-header',
-        attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
-        on: { click: () => toggleCollapsed(RECENT_COLLAPSE_KEY, redraw) },
+        attrs: {
+          role: 'treeitem',
+          tabindex: '0',
+          'aria-expanded': String(!collapsed),
+          ...controlExplainerAttrs({
+            label: 'Recent',
+            description: 'Expands or collapses your recently updated Study games.',
+          }),
+        },
+        on: {
+          click: () => toggleCollapsed(RECENT_COLLAPSE_KEY, redraw),
+          keydown: activateCustomControlOnKeydown,
+        },
       },
       [
         navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
@@ -1007,14 +1117,26 @@ function renderRecentBlock(redraw: () => void): VNode | null {
 function renderPinnedLensesBlock(lenses: readonly NavigationPaneLensDef[]): VNode {
 
 
-  return h('div.lib-nav__pinned', { attrs: { role: 'tree', 'aria-label': 'Lenses' } }, [
+  return h('div.lib-nav__pinned', {
+    attrs: {
+      role: 'tree',
+      'aria-label': 'Lenses',
+      ...controlExplainerAttrs({ label: 'Lenses' }),
+    },
+  }, [
     h('div.lib-nav__label', 'Lenses'),
     ...lenses.map(lens => renderLensRow(lens)),
   ]);
 }
 
 function renderSectionsBlock(tree: StudyNavigationTree, redraw: () => void): VNode {
-  return h('div.lib-nav__sections', { attrs: { role: 'tree', 'aria-label': 'Sections' } }, [
+  return h('div.lib-nav__sections', {
+    attrs: {
+      role: 'tree',
+      'aria-label': 'Sections',
+      ...controlExplainerAttrs({ label: 'Sections' }),
+    },
+  }, [
     h('div.lib-nav__label', 'Sections'),
 
 
@@ -1113,11 +1235,16 @@ function renderTagRow(name: string, count: number, redraw: () => void): VNode | 
       key: `tag-${name}`,
       attrs: {
         role: 'treeitem',
-        title: name,
+        tabindex: '0',
         style: hidden ? 'opacity:0.5' : '',
+        ...controlExplainerAttrs({
+          label: name,
+          description: 'Shows Study items carrying this tag.',
+        }),
       },
       class: { 'nav-row--hidden': hidden },
       on: {
+        keydown: activateCustomControlOnKeydown,
         contextmenu: (e: MouseEvent) => {
           e.preventDefault();
           openTagContextMenu({ tagName: name }, e.clientX, e.clientY, redraw);
@@ -1169,8 +1296,19 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
     'div.nav-row.--section',
     {
       key: 'tags-header',
-      attrs: { role: 'treeitem', 'aria-expanded': String(!collapsed) },
-      on: { click: () => toggleCollapsed(TAGS_COLLAPSE_KEY, redraw) },
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        'aria-expanded': String(!collapsed),
+        ...controlExplainerAttrs({
+          label: 'Tags',
+          description: 'Expands or collapses the Study tags tree.',
+        }),
+      },
+      on: {
+        click: () => toggleCollapsed(TAGS_COLLAPSE_KEY, redraw),
+        keydown: activateCustomControlOnKeydown,
+      },
     },
     [
       navIcon('chevron-right', { size: 16, className: 'nav-chevron', toggleClass: { '--open': !collapsed } }),
@@ -1180,7 +1318,13 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
   );
 
   if (collapsed) {
-    return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header]);
+    return h('div.lib-nav__tags', {
+      attrs: {
+        role: 'tree',
+        'aria-label': 'Tags',
+        ...controlExplainerAttrs({ label: 'Tags' }),
+      },
+    }, [header]);
   }
 
   const smartTagRows = SYSTEM_SMART_TAGS.map(lens =>
@@ -1194,7 +1338,13 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
     // the smart tags with NO empty-state text (mirrors how a hidden folder disappears silently,
     // with no "N folders hidden" message either — see `renderFolderRow`'s own comment). The smart
     // tags above still render in this branch — see this function's own header comment.
-    return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [
+    return h('div.lib-nav__tags', {
+      attrs: {
+        role: 'tree',
+        'aria-label': 'Tags',
+        ...controlExplainerAttrs({ label: 'Tags' }),
+      },
+    }, [
       header,
       ...smartTagRows,
       h('div.nav-row.--empty', { key: 'tags-empty' }, 'No tags yet'),
@@ -1205,7 +1355,13 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
     .map(tag => renderTagRow(tag.name, tag.count, redraw))
     .filter((row): row is VNode => row !== null);
 
-  return h('div.lib-nav__tags', { attrs: { role: 'tree', 'aria-label': 'Tags' } }, [header, ...smartTagRows, ...rows]);
+  return h('div.lib-nav__tags', {
+    attrs: {
+      role: 'tree',
+      'aria-label': 'Tags',
+      ...controlExplainerAttrs({ label: 'Tags' }),
+    },
+  }, [header, ...smartTagRows, ...rows]);
 }
 
 

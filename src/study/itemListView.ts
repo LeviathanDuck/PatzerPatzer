@@ -97,6 +97,11 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
 import { renderCompactGameRow, type CompactRowExtras } from '../games/view';
@@ -244,8 +249,15 @@ function renderDateGroupHeader(label: string, redraw: () => void): VNode {
   const collapsed = isDateGroupCollapsed(label);
   return h('div.sentry-group-header.sentry-group-header--date', {
     key: `group-${label}`,
-    attrs: { role: 'button', 'aria-expanded': String(!collapsed) },
-    on: { click: () => toggleDateGroupCollapsed(label, redraw) },
+    attrs: { role: 'button', tabindex: '0', 'aria-expanded': String(!collapsed), ...controlExplainerAttrs({ label: `${collapsed ? 'Expand' : 'Collapse'} ${label}`, description: `${collapsed ? 'Shows' : 'Hides'} games in this date group.` }) },
+    on: {
+      click: () => toggleDateGroupCollapsed(label, redraw),
+      keydown: (e: KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        toggleDateGroupCollapsed(label, redraw);
+      },
+    },
   }, [
     navIcon(collapsed ? 'chevron-right' : 'chevron-down', { size: 13, className: 'sentry-group-header__chevron' }),
     h('span', label),
@@ -269,7 +281,7 @@ function renderDateGroupHeader(label: string, redraw: () => void): VNode {
 
 
 
-function handleItemListClick(id: string, displayedIds: readonly string[], e: MouseEvent): void {
+function handleItemListClick(id: string, displayedIds: readonly string[], e: Pick<MouseEvent, 'shiftKey'>): void {
 
 
 
@@ -440,18 +452,19 @@ function renderActionRail(itemId: string, redraw: () => void): VNode {
   const expanded = _expandedRailIds.has(itemId);
   return h('div.sentry-rail', { class: { '--expanded': expanded } }, [
     expanded
-      ? h('div.sentry-rail__actions', RAIL_ACTIONS.map(action => h('button.sentry-rail__btn', {
-          key: action.title,
-          attrs: { type: 'button', disabled: true, title: action.title, 'aria-label': action.title },
-          on: { click: (e: Event) => e.stopPropagation() },
-        }, action.glyph)))
+      ? h('div.sentry-rail__actions', RAIL_ACTIONS.map(action => renderDisabledControlExplainer(
+          { label: action.title, description: `${action.title} is not available yet.` },
+          h('button.sentry-rail__btn', {
+            key: action.title,
+            attrs: { type: 'button', disabled: true },
+          }, action.glyph),
+        )))
       : null,
     h('button.sentry-rail__toggle', {
       attrs: {
         type: 'button',
-        title: expanded ? 'Collapse actions' : 'Show actions',
-        'aria-label': expanded ? 'Collapse actions' : 'Show actions',
         'aria-expanded': String(expanded),
+        ...iconControlExplainerAttrs({ label: expanded ? 'Collapse actions' : 'Show actions', description: `${expanded ? 'Hides' : 'Shows'} the actions available for this game.` }),
       },
       on: { click: (e: Event) => { e.stopPropagation(); toggleRailExpanded(itemId, redraw); } },
     }, expanded ? '‹' : '›'),
@@ -600,14 +613,23 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
     h('div.sentry-bulk-bar__actions', LIBRARY_BULK_ACTIONS.map(action => h('button.sentry-bulk-bar__btn', {
       key: action.key,
       class: { 'sentry-bulk-bar__btn--danger': Boolean(action.danger) },
-      attrs: { type: 'button', title: action.label(count) },
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: action.label(count),
+        description: action.key === 'delete'
+          ? 'Permanently deletes the selected games after confirmation.'
+          : action.key === 'move'
+            ? 'Opens the folder picker to move or alias the selected games.'
+            : action.key === 'tag'
+              ? 'Opens the tag dialog for every selected game.'
+              : 'Adds every selected game to Favorites.',
+      }) },
       on: { click: () => runAction(action) },
     }, [
       navIcon(action.icon, { size: 13 }),
       h('span', action.label(count)),
     ]))),
     h('button.sentry-bulk-bar__btn.sentry-bulk-bar__btn--clear', {
-      attrs: { type: 'button', title: 'Clear selection' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Clear selection', description: 'Deselects every selected game.' }) },
       on: { click: () => { clearSelection(); redraw(); } },
     }, [
       navIcon('x', { size: 13 }),
@@ -653,8 +675,8 @@ function renderSelectAllPageControl(redraw: () => void, displayedIds: readonly s
     h('input.sentry-select-all-page__checkbox', {
       attrs: {
         type: 'checkbox',
-        title: allSelected ? 'Clear selection' : label,
         'aria-label': allSelected ? 'Clear selection' : label,
+        ...controlExplainerAttrs({ label: allSelected ? 'Clear page selection' : label, description: `${allSelected ? 'Deselects' : 'Selects'} every loaded game on this page.` }),
       },
       props: { checked: allSelected },
       on: {
@@ -739,7 +761,7 @@ function renderSelectAllScopeBanner(
   return h('div.sentry-bulk-bar.sentry-scope-banner', [
     h('span.sentry-scope-banner__text', `All ${displayedIds.length} on this page selected.`),
     h('button.sentry-scope-banner__action', {
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `Select all ${scopeIds.length} in ${folderName}`, description: 'Extends the selection from this page to every game in the folder.' }) },
       on: {
         click: () => {
           void selectAllInScope(queryOptions).then(redraw).catch(redraw);
@@ -794,7 +816,13 @@ function renderItemRow(
 
   return h('div.sentry-row', {
     key: item.id,
-    attrs: { draggable: 'true', ...(hidden ? { style: 'opacity:0.5' } : {}) },
+    attrs: {
+      draggable: 'true',
+      style: hidden ? 'opacity:0.5' : '',
+      role: 'button',
+      tabindex: '0',
+      ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`, description: 'Changes this game selection for Study bulk actions.' }),
+    },
     class: {
       'sentry-row--selected': selected,
       'sentry-row--adj-above': Boolean(selected && adjacency?.above),
@@ -818,6 +846,12 @@ function renderItemRow(
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, textarea')) return;
         handleItemListClick(item.id, displayedIds, e);
+        redraw();
+      },
+      keydown: (e: KeyboardEvent) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        handleItemListClick(item.id, displayedIds, { shiftKey: e.shiftKey });
         redraw();
       },
       contextmenu: (e: MouseEvent) => {
@@ -866,8 +900,8 @@ function renderItemRow(
     h('input.sentry-checkbox', {
       attrs: {
         type: 'checkbox',
-        title: selected ? 'Deselect' : 'Select',
         'aria-label': `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`,
+        ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`, description: 'Changes this game selection for Study bulk actions.' }),
       },
       props: { checked: selected },
       on: {
@@ -887,7 +921,7 @@ function renderItemRow(
 
 
         isAlias ? navIcon('corner-down-right', { size: 11, className: 'sentry-alias-badge' }) : null,
-        h('div.sentry-title', { attrs: { title: item.title || 'Untitled' } }, item.title || 'Untitled'),
+        h('div.sentry-title', item.title || 'Untitled'),
 
 
 
@@ -984,8 +1018,16 @@ function renderPinnedGroup(
   const adjacency = withSelectionAdjacency(ids, selectedIds());
   return h('div.sentry-pinned-group', [
     h('div.sentry-group-header.sentry-group-header--pinned', {
-      attrs: { role: 'button', 'aria-expanded': String(!_pinnedGroupCollapsed) },
-      on: { click: () => { _pinnedGroupCollapsed = !_pinnedGroupCollapsed; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', 'aria-expanded': String(!_pinnedGroupCollapsed), ...controlExplainerAttrs({ label: `${_pinnedGroupCollapsed ? 'Expand' : 'Collapse'} pinned games`, description: `${_pinnedGroupCollapsed ? 'Shows' : 'Hides'} the pinned games group.` }) },
+      on: {
+        click: () => { _pinnedGroupCollapsed = !_pinnedGroupCollapsed; redraw(); },
+        keydown: (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          _pinnedGroupCollapsed = !_pinnedGroupCollapsed;
+          redraw();
+        },
+      },
     }, [
       navIcon(_pinnedGroupCollapsed ? 'chevron-right' : 'chevron-down', { size: 13, className: 'sentry-group-header__chevron' }),
       h('span', 'Pinned'),

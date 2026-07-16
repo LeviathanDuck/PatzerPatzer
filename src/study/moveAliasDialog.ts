@@ -32,6 +32,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 import { navIcon } from './navIcons';
 import { addAliasToFolder, clearSelection, folders, moveGameToFolder } from './studyCtrl';
 
@@ -140,13 +141,15 @@ export function renderMoveAliasDialog(redraw: () => void): VNode | null {
   const destinations = folders().filter(f => f.id !== sourceFolderId);
   const primaryLabel = isAlias ? 'Add alias' : 'Move here';
   const description = isAlias
-    ? 'Adds a linked alias in the chosen folder. The selection keeps its current home and stays one entry.'
-    : "Re-homes the selection to the chosen folder. It leaves the folder you're browsing now.";
+    ? 'Adds a linked alias in the chosen folder while the selection keeps its current home.'
+    : "Re-homes the selection to the chosen folder and removes it from the folder you're browsing now.";
 
   return h('div.sentry-move-dialog-overlay', {
+    attrs: { 'aria-label': 'Close folder dialog', ...controlExplainerAttrs({ label: 'Close folder dialog' }) },
     on: { click: () => { closeMoveAliasDialog(); redraw(); } },
   }, [
     h('div.sentry-move-dialog', {
+      attrs: { 'aria-label': 'Folder dialog', ...controlExplainerAttrs({ label: 'Folder dialog' }) },
       on: { click: (e: Event) => e.stopPropagation() },
     }, [
       h('div.sentry-move-dialog__header', [
@@ -156,7 +159,7 @@ export function renderMoveAliasDialog(redraw: () => void): VNode | null {
       h('div.sentry-move-dialog__seg', { attrs: { role: 'group', 'aria-label': 'Move or add alias' } }, [
         h('button.sentry-move-dialog__seg-btn', {
           class: { 'sentry-move-dialog__seg-btn--on': !isAlias },
-          attrs: { type: 'button', 'aria-pressed': String(!isAlias) },
+          attrs: { type: 'button', 'aria-pressed': String(!isAlias), ...controlExplainerAttrs({ label: 'Move selected games', description: "Re-homes the selection and removes it from the folder you're browsing now." }) },
           on: { click: () => setMode('move', redraw) },
         }, [navIcon('folder-input', { size: 13 }), h('span', 'Move')]),
         h('button.sentry-move-dialog__seg-btn', {
@@ -164,7 +167,7 @@ export function renderMoveAliasDialog(redraw: () => void): VNode | null {
             'sentry-move-dialog__seg-btn--on': isAlias,
             'sentry-move-dialog__seg-btn--alias': isAlias,
           },
-          attrs: { type: 'button', 'aria-pressed': String(isAlias) },
+          attrs: { type: 'button', 'aria-pressed': String(isAlias), ...controlExplainerAttrs({ label: 'Add aliases for selected games', description: 'Adds links in another folder while keeping the current home.' }) },
           on: { click: () => setMode('alias', redraw) },
         }, [navIcon('corner-down-right', { size: 13 }), h('span', 'Add alias to…')]),
       ]),
@@ -174,19 +177,25 @@ export function renderMoveAliasDialog(redraw: () => void): VNode | null {
         : destinations.map(folder => h('button.sentry-move-dialog__pick', {
             key: folder.id,
             class: { 'sentry-move-dialog__pick--on': targetFolderId === folder.id },
-            attrs: { type: 'button' },
+            attrs: { type: 'button', 'aria-pressed': String(targetFolderId === folder.id), ...controlExplainerAttrs({ label: `Choose ${folder.name}`, description: `Sets ${folder.name} as the destination folder.` }) },
             on: { click: () => setTarget(folder.id, redraw) },
           }, [navIcon('folder-closed', { size: 14 }), h('span', folder.name)]))),
       h('div.sentry-move-dialog__footer', [
         h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--ghost', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel folder change' }) },
           on: { click: () => { closeMoveAliasDialog(); redraw(); } },
         }, 'Cancel'),
-        h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
+        targetFolderId ? h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
           class: { 'sentry-move-dialog__btn--alias': isAlias },
-          attrs: { type: 'button', disabled: !targetFolderId },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: primaryLabel, description }) },
           on: { click: () => { void commit(redraw); } },
-        }, [navIcon(isAlias ? 'corner-down-right' : 'folder-input', { size: 13 }), h('span', primaryLabel)]),
+        }, [navIcon(isAlias ? 'corner-down-right' : 'folder-input', { size: 13 }), h('span', primaryLabel)]) : renderDisabledControlExplainer(
+          { label: primaryLabel, description: 'Choose a destination folder before continuing.' },
+          h('button.sentry-move-dialog__btn.sentry-move-dialog__btn--primary', {
+            class: { 'sentry-move-dialog__btn--alias': isAlias },
+            attrs: { type: 'button', disabled: true },
+          }, [navIcon(isAlias ? 'corner-down-right' : 'folder-input', { size: 13 }), h('span', primaryLabel)]),
+        ),
       ]),
     ]),
   ]);

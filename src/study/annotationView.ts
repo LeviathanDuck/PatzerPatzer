@@ -4,6 +4,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../ui/controlExplainer';
 import {
   isEditingComment, commentDraft, startCommentEdit,
   setCommentDraft, commitCommentEdit, cancelCommentEdit,
@@ -27,7 +28,7 @@ export function renderCommentPanel(redraw: () => void): VNode {
     return h('div.annotation-panel', [
       h('h3.annotation-panel__title', 'Comment'),
       h('textarea.annotation-panel__textarea', {
-        attrs: { placeholder: 'Add a comment…', rows: 3 },
+        attrs: { placeholder: 'Add a comment…', rows: 3, 'aria-label': 'Move comment', ...controlExplainerAttrs({ label: 'Move comment', description: 'Adds study notes to the current move.' }) },
         props: { value: commentDraft() },
         hook:  { insert: (vn) => (vn.elm as HTMLTextAreaElement).focus() },
         on: {
@@ -40,8 +41,8 @@ export function renderCommentPanel(redraw: () => void): VNode {
         },
       }),
       h('div.annotation-panel__actions', [
-        h('button.study-btn', { on: { click: () => saveComment(redraw) } }, 'Save'),
-        h('button.study-btn', { on: { mousedown: (e: MouseEvent) => { e.preventDefault(); cancelCommentEdit(); redraw(); } } }, 'Cancel'),
+        h('button.study-btn', { attrs: controlExplainerAttrs({ label: 'Save comment' }), on: { click: () => saveComment(redraw) } }, 'Save'),
+        h('button.study-btn', { attrs: controlExplainerAttrs({ label: 'Cancel comment editing' }), on: { mousedown: (e: MouseEvent) => { e.preventDefault(); cancelCommentEdit(); redraw(); } } }, 'Cancel'),
       ]),
     ]);
   }
@@ -50,10 +51,19 @@ export function renderCommentPanel(redraw: () => void): VNode {
     h('h3.annotation-panel__title', 'Comment'),
     currentComment
       ? h('div.annotation-panel__text', {
-          attrs: { title: 'Click to edit' },
-          on:    { click: () => { startCommentEdit(currentComment); redraw(); } },
+          attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Edit move comment', description: 'Opens the current move comment for editing.' }) },
+          on:    {
+            click: () => { startCommentEdit(currentComment); redraw(); },
+            keydown: (e: KeyboardEvent) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              startCommentEdit(currentComment);
+              redraw();
+            },
+          },
         }, currentComment)
       : h('button.annotation-panel__add', {
+          attrs: controlExplainerAttrs({ label: 'Add move comment' }),
           on: { click: () => { startCommentEdit(''); redraw(); } },
         }, '+ Add comment'),
   ]);
@@ -101,7 +111,7 @@ export function renderGlyphToolbar(redraw: () => void): VNode {
       const isActive = current.some(g => g.id === glyph.id);
       return h('button.glyph-btn', {
         class:  { active: isActive },
-        attrs:  { title: glyph.name },
+        attrs:  { 'aria-pressed': String(isActive), ...iconControlExplainerAttrs({ label: glyph.name, description: 'Toggles this annotation on the current move.' }) },
         on:     { click: () => toggleGlyph(glyph, redraw) },
       }, glyph.symbol);
     }),
