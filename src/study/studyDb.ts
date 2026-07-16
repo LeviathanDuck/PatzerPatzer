@@ -9,6 +9,17 @@ import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, Stud
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
 import { isHidden } from './hiddenItems';
+import type {
+  SrsScheduleRecord,
+  SrsAttemptRecord,
+  SrsTraversalPlan,
+  SrsPracticeSessionRow,
+  SrsSessionState,
+  SrsPersistenceResult,
+  SrsPersistenceFailure,
+  SrsPersistenceFailureCode,
+} from './practice/srsTypes';
+import { asPersistableScheduleRecord, asPersistableAttemptRecord } from './practice/scheduler';
 
 type StudyStoreName =
   | 'studies'
@@ -1195,4 +1206,558 @@ export async function migrateStudyFolders(
   if (plan.newFolders.length === 0 && plan.itemUpdates.size === 0) return [...existingFolders];
   await applyStudyFolderMigrationPlan(items, plan);
   return [...existingFolders, ...plan.newFolders];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type StudyPracticeStoreName =
+  | 'study-practice-lessons'
+  | 'study-practice-decisions'
+  | 'study-practice-srs'
+  | 'study-practice-attempts'
+  | 'study-practice-sessions';
+
+/**
+ * Minimal persistence-boundary row shape for `study-practice-lessons`. The canonical authored-lesson
+ * contract (roles, prompts, hints, trainability) arrives with Package D / D1; B4a only needs the key
+ * plus the §14.1 indexed fields to provide additive CRUD, so this is intentionally a structural
+ * superset-friendly shape (extra authored fields are preserved untouched on round-trip).
+ */
+export interface StudyPracticeLessonRow {
+  /** Primary key; caller-generated UUID. */
+  readonly lessonId: string;
+  /** Indexed — owning Study item. */
+  readonly studyItemId: string;
+  /** Compound-index component (`[studyItemId, chapterId]`); absent rows just skip that index. */
+  readonly chapterId?: string;
+  /** Indexed — last mutation instant, UTC epoch ms. */
+  readonly updatedAt: number;
+}
+
+/**
+ * Minimal persistence-boundary row shape for `study-practice-decisions`. The canonical
+ * decision-identity contract (immutable identity tuple, authored path, source lineage) arrives with
+ * D1; B4a needs only the key plus the §14.1 indexed fields.
+ */
+export interface StudyPracticeDecisionRow {
+  /** Primary key; caller-generated UUID (the durable Required-decision identity). */
+  readonly decisionId: string;
+  /** Indexed — owning lesson. */
+  readonly lessonId: string;
+  /** Compound-index component (`[lessonId, chapterId]`). */
+  readonly chapterId?: string;
+  /** Indexed — source lineage grouping key. */
+  readonly sourceLineageId: string;
+  /** Indexed — decision lifecycle status. */
+  readonly status: string;
+  /** Last mutation instant, UTC epoch ms. */
+  readonly updatedAt?: number;
+}
+
+function recordPracticeIdbReadFail(storeName: StudyPracticeStoreName, error: unknown): void {
+  record({
+    kind: 'idb',
+    severity: Severity.Error,
+    source: 'study/studyDb',
+    sourceTag: 'study-practice-idb-read-fail',
+    message: 'study-practice-idb-read-fail',
+    metadata: {
+      storeName,
+      errorClass: classifyStudyError(error),
+      route: studyRouteLabel(),
+    },
+    redactionClass: 'safe',
+  });
+}
+
+// --- Generic per-store plumbing --------------------------------------------
+
+async function practicePut(storeName: StudyPracticeStoreName, value: unknown): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(storeName, 'readwrite');
+  const done = txDone(tx, 'put');
+  tx.objectStore(storeName).put(value);
+  await done;
+}
+
+async function practiceDelete(storeName: StudyPracticeStoreName, key: IDBValidKey): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(storeName, 'readwrite');
+  const done = txDone(tx, 'delete');
+  tx.objectStore(storeName).delete(key);
+  await done;
+}
+
+async function practiceGet<T>(storeName: StudyPracticeStoreName, key: IDBValidKey): Promise<T | undefined> {
+  let db: IDBDatabase;
+  try {
+    db = await openDb();
+  } catch (e) {
+    recordPracticeIdbReadFail(storeName, e);
+    throw e;
+  }
+  return new Promise<T | undefined>((resolve, reject) => {
+    let req: IDBRequest<T | undefined>;
+    try {
+      req = db.transaction(storeName, 'readonly').objectStore(storeName).get(key) as IDBRequest<T | undefined>;
+    } catch (e) {
+      recordPracticeIdbReadFail(storeName, e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => {
+      recordPracticeIdbReadFail(storeName, req.error);
+      reject(req.error);
+    };
+  });
+}
+
+/**
+ * Bounded index cursor collector for the practice stores. Walks `index(indexName).openCursor(range,
+ * direction)` (or the object store when `indexName` is null), collecting at most `limit` records that
+ * pass the optional `accept` filter, then STOPS driving the cursor and settles from `tx.oncomplete`
+ * (never from the cursor callback) — the same abort-safe pattern as `collectStudyPaginatedCursor`
+ * (BUG-2026-07-10-001). This is the ONLY read path for practice list/due queries; there is no
+ * unbounded getAll() (memo risk #11 / CR-2).
+ */
+function collectBoundedPracticeCursor<T>(
+  db: IDBDatabase,
+  storeName: StudyPracticeStoreName,
+  indexName: string | null,
+  range: IDBKeyRange | null,
+  direction: IDBCursorDirection,
+  limit: number,
+  accept?: (value: T) => boolean,
+): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let completedResult: T[] | undefined;
+    const results: T[] = [];
+
+    const settleResolve = (r: T[]): void => { if (!settled) { settled = true; resolve(r); } };
+    const settleReject = (e: unknown): void => { if (!settled) { settled = true; reject(e); } };
+
+    // A non-positive/non-finite limit reads nothing (bounded by contract; never an unbounded scan).
+    if (!Number.isFinite(limit) || limit <= 0) { resolve([]); return; }
+
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(storeName, 'readonly');
+    } catch (error) {
+      settleReject(error);
+      return;
+    }
+
+    tx.oncomplete = () => {
+      if (completedResult !== undefined) settleResolve(completedResult);
+      else settleReject(new Error(
+        `Practice cursor (${storeName}) transaction completed before settling a result (coding invariant violation)`,
+      ));
+    };
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', 'read');
+      settleReject(tx.error ?? new Error(`Practice cursor (${storeName}) transaction failed`));
+    };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', 'read');
+      settleReject(tx.error ?? new DOMException(`Practice cursor (${storeName}) transaction aborted`, 'AbortError'));
+    };
+
+    let cursorRequest: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      const store = tx.objectStore(storeName);
+      const source: IDBObjectStore | IDBIndex = indexName ? store.index(indexName) : store;
+      cursorRequest = source.openCursor(range, direction);
+    } catch (error) {
+      settleReject(error);
+      try { tx.abort(); } catch { /* may already be inactive */ }
+      return;
+    }
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) { completedResult = results; return; }
+      const value = cursor.value as T;
+      if (!accept || accept(value)) {
+        results.push(value);
+        if (results.length >= limit) {
+          // Cap reached: record and stop driving the cursor; auto-commit fires tx.oncomplete.
+          completedResult = results;
+          return;
+        }
+      }
+      try {
+        cursor.continue();
+      } catch (error) {
+        settleReject(error);
+        try { tx.abort(); } catch { /* may already be inactive */ }
+      }
+    };
+    cursorRequest.onerror = () => {
+      settleReject(cursorRequest.error ?? tx.error ?? new Error(`Practice cursor (${storeName}) failed`));
+    };
+  });
+}
+
+// --- study-practice-lessons ------------------------------------------------
+
+export function savePracticeLesson(row: StudyPracticeLessonRow): Promise<void> {
+  return practicePut('study-practice-lessons', row);
+}
+export function getPracticeLesson(lessonId: string): Promise<StudyPracticeLessonRow | undefined> {
+  return practiceGet<StudyPracticeLessonRow>('study-practice-lessons', lessonId);
+}
+export function deletePracticeLesson(lessonId: string): Promise<void> {
+  return practiceDelete('study-practice-lessons', lessonId);
+}
+/** Bounded list of a Study item's lessons via the `studyItemId` index. */
+export async function listPracticeLessonsByStudyItem(
+  studyItemId: string,
+  limit: number,
+): Promise<StudyPracticeLessonRow[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<StudyPracticeLessonRow>(
+    db, 'study-practice-lessons', 'studyItemId', IDBKeyRange.only(studyItemId), 'next', limit,
+  );
+}
+
+// --- study-practice-decisions ----------------------------------------------
+
+export function savePracticeDecision(row: StudyPracticeDecisionRow): Promise<void> {
+  return practicePut('study-practice-decisions', row);
+}
+export function getPracticeDecision(decisionId: string): Promise<StudyPracticeDecisionRow | undefined> {
+  return practiceGet<StudyPracticeDecisionRow>('study-practice-decisions', decisionId);
+}
+export function deletePracticeDecision(decisionId: string): Promise<void> {
+  return practiceDelete('study-practice-decisions', decisionId);
+}
+/** Bounded list of a lesson's decisions via the `lessonId` index. */
+export async function listPracticeDecisionsByLesson(
+  lessonId: string,
+  limit: number,
+): Promise<StudyPracticeDecisionRow[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<StudyPracticeDecisionRow>(
+    db, 'study-practice-decisions', 'lessonId', IDBKeyRange.only(lessonId), 'next', limit,
+  );
+}
+
+// --- study-practice-srs ----------------------------------------------------
+
+/** Persist a schedule row. Funnels through the B1 closed-record guard so no chess material can be
+ *  smuggled onto the row. The store key path is `targetId` (== decisionId). */
+export function savePracticeSrs(schedule: SrsScheduleRecord): Promise<void> {
+  return practicePut('study-practice-srs', asPersistableScheduleRecord(schedule));
+}
+export function getPracticeSrs(targetId: string): Promise<SrsScheduleRecord | undefined> {
+  return practiceGet<SrsScheduleRecord>('study-practice-srs', targetId);
+}
+export function deletePracticeSrs(targetId: string): Promise<void> {
+  return practiceDelete('study-practice-srs', targetId);
+}
+/**
+ * Bounded due query: active schedule rows with `dueAt <= now`, honoring the due-boundary contract
+ * (`status === 'active' && dueAt <= now`). Uses the `[lessonId, dueAt]` compound index when a
+ * `lessonId` scope is given, otherwise the `dueAt` index. Non-active rows (which may still carry a
+ * concrete `dueAt`) are filtered out in the cursor so only genuinely due targets are returned.
+ */
+export async function listDuePracticeSrs(params: {
+  now: number;
+  limit: number;
+  lessonId?: string;
+}): Promise<SrsScheduleRecord[]> {
+  const { now, limit, lessonId } = params;
+  const db = await openDb();
+  const acceptActiveDue = (r: SrsScheduleRecord): boolean =>
+    r.status === 'active' && typeof r.dueAt === 'number' && Number.isFinite(r.dueAt) && r.dueAt <= now;
+  if (lessonId !== undefined) {
+    const range = IDBKeyRange.bound([lessonId, Number.NEGATIVE_INFINITY], [lessonId, now]);
+    return collectBoundedPracticeCursor<SrsScheduleRecord>(
+      db, 'study-practice-srs', 'lessonId_dueAt', range, 'next', limit, acceptActiveDue,
+    );
+  }
+  const range = IDBKeyRange.upperBound(now);
+  return collectBoundedPracticeCursor<SrsScheduleRecord>(
+    db, 'study-practice-srs', 'dueAt', range, 'next', limit, acceptActiveDue,
+  );
+}
+
+// --- study-practice-attempts (append-only) ---------------------------------
+
+/** Append an immutable attempt row. Funnels through the B1 closed-record guard. Append-only: there is
+ *  no update or delete accessor — retries produce NEW attempt IDs (P2-ORP-16/17). */
+export function savePracticeAttempt(attempt: SrsAttemptRecord): Promise<void> {
+  return practicePut('study-practice-attempts', asPersistableAttemptRecord(attempt));
+}
+export function getPracticeAttempt(attemptId: string): Promise<SrsAttemptRecord | undefined> {
+  return practiceGet<SrsAttemptRecord>('study-practice-attempts', attemptId);
+}
+/** Bounded attempt history for one decision via the `decisionId` index (key path `targetId`). */
+export async function listPracticeAttemptsByDecision(
+  targetId: string,
+  limit: number,
+): Promise<SrsAttemptRecord[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<SrsAttemptRecord>(
+    db, 'study-practice-attempts', 'decisionId', IDBKeyRange.only(targetId), 'next', limit,
+  );
+}
+/** Bounded attempt list for one session via the `sessionId` index. */
+export async function listPracticeAttemptsBySession(
+  sessionId: string,
+  limit: number,
+): Promise<SrsAttemptRecord[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<SrsAttemptRecord>(
+    db, 'study-practice-attempts', 'sessionId', IDBKeyRange.only(sessionId), 'next', limit,
+  );
+}
+
+// --- Persistence-boundary validation (closes the four recorded B4 residuals) ----
+//
+// Deserialized IndexedDB rows are UNTRUSTED. These validators treat the input as `unknown`, prove
+// every field before dereferencing it, and report a TYPED SrsPersistenceFailure rather than throwing.
+// The four recorded B4 residuals (B3F2/B3F3/B3F4 SOL reviews) are closed here at the READ boundary:
+//   (a) validatePersistedTraversalPlan validates the COMPLETE plan shape AND cross-list identity
+//       (entries ∪ context ∪ repair targetId uniqueness) before any consumer invokes B3 revalidation;
+//   (b) only planVersion === 1 is recognized — a missing/unknown version is rejected, never coerced;
+//       every numeric field is finite-checked (non-finite fails closed);
+//   (c) required identity/display strings B3 accepts when omitted are rejected here — frozen
+//       `targetId`, `lessonId`, `status` (active-only), and display `label`;
+//   (d) any malformed top-level/list/entry shape returns a typed failure; a defensive try/catch turns
+//       even an unexpected throw into a typed failure so the boundary NEVER throws raw.
+
+function mkFail(code: SrsPersistenceFailureCode, path: string, reason: string): SrsPersistenceFailure {
+  return { code, path, reason };
+}
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+function isNonEmptyString(v: unknown): boolean {
+  return typeof v === 'string' && v.length > 0;
+}
+function isFiniteNumber(v: unknown): boolean {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/** Validate a discriminated `SrsSourceVersion` union. Returns a failure or null. */
+function validateSourceVersion(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'source version is not an object');
+  if (v.kind === 'linked') {
+    if (!isFiniteNumber(v.sourceRevision)) {
+      return mkFail('non-finite-number', `${path}.sourceRevision`, 'linked sourceRevision must be finite');
+    }
+    return null;
+  }
+  if (v.kind === 'unlinked') return null;
+  return mkFail('invalid-source-discriminant', `${path}.kind`, `unknown source discriminant: ${String(v.kind)}`);
+}
+
+/** Validate an `SrsDisplaySnapshot` (source-side snapshot). Requires a non-empty `label` (residual c). */
+function validateDisplaySnapshot(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'display snapshot is not an object');
+  if (!isNonEmptyString(v.label)) return mkFail('missing-required-string', `${path}.label`, 'display label is missing/empty');
+  if (v.sourceLabel !== undefined && typeof v.sourceLabel !== 'string') {
+    return mkFail('missing-required-string', `${path}.sourceLabel`, 'sourceLabel must be a string when present');
+  }
+  return validateSourceVersion(v.source, `${path}.source`);
+}
+
+const FROZEN_SCHEDULE_NUMERIC_FIELDS = [
+  'targetRevision', 'scheduleRevision', 'configVersion', 'stepIndex', 'dueAt', 'capturedAt',
+] as const;
+
+/** Validate a frozen schedule snapshot: required strings, active-only status, and finite numerics. */
+function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'frozen schedule snapshot is not an object');
+  if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'frozen targetId is missing/empty');
+  if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'frozen lessonId is missing/empty');
+  if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', `${path}.configId`, 'frozen configId is missing/empty');
+  if (v.status !== 'active') return mkFail('invalid-status', `${path}.status`, `frozen schedule must be active, got ${String(v.status)}`);
+  for (const f of FROZEN_SCHEDULE_NUMERIC_FIELDS) {
+    if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `non-finite ${f}`);
+  }
+  return validateSourceVersion(v.source, `${path}.source`);
+}
+
+/** Validate a scored traversal-plan entry. */
+function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'plan entry is not an object');
+  if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'entry targetId is missing/empty');
+  if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'entry lessonId is missing/empty');
+  if (v.reviewKind !== 'due' && v.reviewKind !== 'early') {
+    return mkFail('invalid-status', `${path}.reviewKind`, `entry reviewKind must be due|early, got ${String(v.reviewKind)}`);
+  }
+  const sched = validateFrozenSchedule(v.frozenSchedule, `${path}.frozenSchedule`);
+  if (sched) return sched;
+  return validateDisplaySnapshot(v.frozenSource, `${path}.frozenSource`);
+}
+
+/** Validate a schedule-neutral context/repair entry. */
+function validateNeutralEntry(v: unknown, path: string, isRepair: boolean): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'neutral entry is not an object');
+  if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'neutral targetId is missing/empty');
+  if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'neutral lessonId is missing/empty');
+  if (v.scheduleNeutral !== true) return mkFail('invalid-status', `${path}.scheduleNeutral`, 'scheduleNeutral must be the literal true');
+  const disp = validateDisplaySnapshot(v.frozenSource, `${path}.frozenSource`);
+  if (disp) return disp;
+  if (isRepair && v.failedMoveKeys !== undefined) {
+    if (!Array.isArray(v.failedMoveKeys)) return mkFail('not-an-array', `${path}.failedMoveKeys`, 'failedMoveKeys must be an array when present');
+    for (let i = 0; i < v.failedMoveKeys.length; i++) {
+      if (typeof v.failedMoveKeys[i] !== 'string') {
+        return mkFail('missing-required-string', `${path}.failedMoveKeys[${i}]`, 'failedMoveKeys entries must be strings');
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Validate an untrusted deserialized traversal plan. Closes residuals (a)–(d): complete shape,
+ * recognized-version-only (planVersion === 1, never coerced), required strings/status, finite
+ * numerics, and cross-list `targetId` uniqueness across entries ∪ context ∪ repair. Never throws:
+ * an unexpected error is caught and returned as a typed failure.
+ */
+export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResult<SrsTraversalPlan> {
+  try {
+    if (!isPlainObject(raw)) return { ok: false, failure: mkFail('not-an-object', 'plan', 'plan is not an object') };
+    // (b) recognized version only — reject missing/unknown, never coerce.
+    if (raw.planVersion !== 1) {
+      return { ok: false, failure: mkFail('unrecognized-plan-version', 'plan.planVersion', `unrecognized plan version: ${String(raw.planVersion)}`) };
+    }
+    if (!isNonEmptyString(raw.sessionId)) return { ok: false, failure: mkFail('missing-required-string', 'plan.sessionId', 'plan sessionId is missing/empty') };
+    if (!isNonEmptyString(raw.traversalId)) return { ok: false, failure: mkFail('missing-required-string', 'plan.traversalId', 'plan traversalId is missing/empty') };
+    if (!isFiniteNumber(raw.createdAt)) return { ok: false, failure: mkFail('non-finite-number', 'plan.createdAt', 'plan createdAt is non-finite') };
+    if (!Array.isArray(raw.entries)) return { ok: false, failure: mkFail('not-an-array', 'plan.entries', 'plan.entries is not an array') };
+    if (!Array.isArray(raw.context)) return { ok: false, failure: mkFail('not-an-array', 'plan.context', 'plan.context is not an array') };
+    if (!Array.isArray(raw.repair)) return { ok: false, failure: mkFail('not-an-array', 'plan.repair', 'plan.repair is not an array') };
+
+    const seen = new Set<string>();
+    const checkDup = (targetId: string, path: string): SrsPersistenceFailure | null => {
+      if (seen.has(targetId)) return mkFail('duplicate-identity', path, `targetId "${targetId}" appears more than once across entries/context/repair`);
+      seen.add(targetId);
+      return null;
+    };
+
+    for (let i = 0; i < raw.entries.length; i++) {
+      const f = validatePlanEntry(raw.entries[i], `plan.entries[${i}]`);
+      if (f) return { ok: false, failure: f };
+      const dup = checkDup((raw.entries[i] as { targetId: string }).targetId, `plan.entries[${i}].targetId`);
+      if (dup) return { ok: false, failure: dup };
+    }
+    for (let i = 0; i < raw.context.length; i++) {
+      const f = validateNeutralEntry(raw.context[i], `plan.context[${i}]`, false);
+      if (f) return { ok: false, failure: f };
+      const dup = checkDup((raw.context[i] as { targetId: string }).targetId, `plan.context[${i}].targetId`);
+      if (dup) return { ok: false, failure: dup };
+    }
+    for (let i = 0; i < raw.repair.length; i++) {
+      const f = validateNeutralEntry(raw.repair[i], `plan.repair[${i}]`, true);
+      if (f) return { ok: false, failure: f };
+      const dup = checkDup((raw.repair[i] as { targetId: string }).targetId, `plan.repair[${i}].targetId`);
+      if (dup) return { ok: false, failure: dup };
+    }
+    // Every branch above is proven; the value is structurally a well-formed SrsTraversalPlan.
+    return { ok: true, value: raw as unknown as SrsTraversalPlan };
+  } catch (e) {
+    return { ok: false, failure: mkFail('not-an-object', 'plan', `unexpected validation error: ${classifyStudyError(e)}`) };
+  }
+}
+
+const SESSION_STATES: ReadonlySet<SrsSessionState> = new Set<SrsSessionState>(['active', 'partial', 'completed']);
+
+/**
+ * Validate an untrusted deserialized session row: the three indexed fields (`sessionId`, `lessonId`,
+ * `state`) and other required scalars, the progress cursor + completed-target state, and the embedded
+ * plan (via validatePersistedTraversalPlan). Never throws — malformed rows return a typed failure.
+ */
+export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<SrsPracticeSessionRow> {
+  try {
+    if (!isPlainObject(raw)) return { ok: false, failure: mkFail('not-an-object', 'session', 'session row is not an object') };
+    if (!isNonEmptyString(raw.sessionId)) return { ok: false, failure: mkFail('missing-required-string', 'session.sessionId', 'sessionId is missing/empty') };
+    if (!isNonEmptyString(raw.lessonId)) return { ok: false, failure: mkFail('missing-required-string', 'session.lessonId', 'lessonId is missing/empty') };
+    if (typeof raw.state !== 'string' || !SESSION_STATES.has(raw.state as SrsSessionState)) {
+      return { ok: false, failure: mkFail('invalid-status', 'session.state', `state must be active|partial|completed, got ${String(raw.state)}`) };
+    }
+    if (!isFiniteNumber(raw.updatedAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.updatedAt', 'updatedAt is non-finite') };
+    if (!isFiniteNumber(raw.createdAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.createdAt', 'createdAt is non-finite') };
+    if (!isFiniteNumber(raw.targetCount)) return { ok: false, failure: mkFail('non-finite-number', 'session.targetCount', 'targetCount is non-finite') };
+
+    const progress = raw.progress;
+    if (!isPlainObject(progress)) return { ok: false, failure: mkFail('not-an-object', 'session.progress', 'progress is not an object') };
+    if (!isFiniteNumber(progress.entryCursor)) return { ok: false, failure: mkFail('non-finite-number', 'session.progress.entryCursor', 'entryCursor is non-finite') };
+    for (const listName of ['completedTargetIds', 'appliedAttemptIds'] as const) {
+      const list = progress[listName];
+      if (!Array.isArray(list)) return { ok: false, failure: mkFail('not-an-array', `session.progress.${listName}`, `${listName} is not an array`) };
+      for (let i = 0; i < list.length; i++) {
+        if (typeof list[i] !== 'string') return { ok: false, failure: mkFail('missing-required-string', `session.progress.${listName}[${i}]`, `${listName} entries must be strings`) };
+      }
+    }
+
+    const planResult = validatePersistedTraversalPlan(raw.plan);
+    if (!planResult.ok) return planResult;
+    return { ok: true, value: raw as unknown as SrsPracticeSessionRow };
+  } catch (e) {
+    return { ok: false, failure: mkFail('not-an-object', 'session', `unexpected validation error: ${classifyStudyError(e)}`) };
+  }
+}
+
+// --- study-practice-sessions -----------------------------------------------
+
+/** Persist a session row (frozen plan + progress checkpoint). B4a is CRUD only — the atomic
+ *  attempt+SRS+session checkpoint transaction is B4b. */
+export function savePracticeSession(row: SrsPracticeSessionRow): Promise<void> {
+  return practicePut('study-practice-sessions', row);
+}
+/**
+ * Read a session row and validate it at the untrusted-persistence boundary. Resolves `null` when no
+ * row exists; otherwise a typed SrsPersistenceResult (ok → validated row; failure → typed rejection,
+ * never a raw throw for malformed data). This is where the four recorded B4 residuals are closed on
+ * read.
+ */
+export async function getPracticeSession(
+  sessionId: string,
+): Promise<SrsPersistenceResult<SrsPracticeSessionRow> | null> {
+  const raw = await practiceGet<unknown>('study-practice-sessions', sessionId);
+  if (raw === undefined) return null;
+  return validatePersistedSessionRow(raw);
+}
+export function deletePracticeSession(sessionId: string): Promise<void> {
+  return practiceDelete('study-practice-sessions', sessionId);
+}
+/**
+ * Bounded list of sessions in a given lifecycle state via the `state` index. Each row is validated at
+ * the persistence boundary, so the caller receives typed results (ok/failure) and never a raw throw
+ * for a malformed persisted row.
+ */
+export async function listPracticeSessionsByState(
+  state: SrsSessionState,
+  limit: number,
+): Promise<SrsPersistenceResult<SrsPracticeSessionRow>[]> {
+  const db = await openDb();
+  const rows = await collectBoundedPracticeCursor<unknown>(
+    db, 'study-practice-sessions', 'state', IDBKeyRange.only(state), 'next', limit,
+  );
+  return rows.map(validatePersistedSessionRow);
 }

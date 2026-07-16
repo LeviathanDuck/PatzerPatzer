@@ -541,6 +541,117 @@ export interface SrsTraversalPlan {
   readonly repair: readonly SrsRepairEntry[];
 }
 
+// --- Contract 6: Durable session row (persistence-backed) -----------------
+
+/**
+ * Lifecycle state of a durable practice session row. Indexed field (`study-practice-sessions.state`,
+ * §14.1). The three states cover the Hardened Contract's resumability model:
+ *   - `active`    — the traversal is in progress and driving recall.
+ *   - `partial`   — the session was interrupted; it remains resumable (Hardened Contract §attempt
+ *     behavior: "Interrupted sessions become Partial and resumable").
+ *   - `completed` — every scored target in the plan has a persisted completion; the session is done.
+ */
+export type SrsSessionState = 'active' | 'partial' | 'completed';
+
+/**
+ * The progress cursor and completed-target state persisted with a session row. This is what lets B4b
+ * update a resumable checkpoint IN THE SAME transaction as the attempt + SRS writes: on each scored
+ * completion B4b advances `entryCursor`, appends the scored `targetId` to `completedTargetIds`, and
+ * records the applied `attemptId` in `appliedAttemptIds`, then re-puts the session row.
+ *
+ * `appliedAttemptIds` is the session-level idempotency ledger: replaying an already-applied
+ * `attemptId` is a no-op checkpoint update, complementing the SRS row's own `lastAttemptId` and the
+ * store-level insert-existing-key idempotency the atomic boundary (B4b) ultimately enforces.
+ */
+export interface SrsSessionProgress {
+  /** Index into `plan.entries` of the next unattempted scored target (0-based). */
+  readonly entryCursor: number;
+  /** Scored target IDs completed in this session (completed-target state). Append-only within a
+   *  session; never a scoring authority (that is the append-only attempt row). */
+  readonly completedTargetIds: readonly string[];
+  /** Attempt IDs already applied to a schedule in this session — the session-level idempotency ledger. */
+  readonly appliedAttemptIds: readonly string[];
+}
+
+/**
+ * The durable `study-practice-sessions` row contract (finding: the B3-F1/F2 reviewer gap that
+ * `SrsTraversalPlan` alone cannot back the session store indexes or B4b's atomic checkpoint).
+ *
+ * It carries the three indexed fields §14.1 requires (`sessionId` key, `lessonId`, `state`,
+ * `updatedAt`), a progress cursor + completed-target state (`progress`), the completed-target target
+ * count (`targetCount`, = `plan.entries.length`; the session is `completed` when
+ * `progress.completedTargetIds.length === targetCount`), and the EMBEDDED frozen `plan` so a Partial
+ * session is fully resumable from this one row. Shaped so B4b can update the checkpoint (`progress`,
+ * `state`, `updatedAt`) in the SAME IndexedDB transaction as the attempt + SRS writes.
+ *
+ * The embedded `plan` is the same `planVersion`-discriminated `SrsTraversalPlan` frozen by B3; the
+ * B4 read boundary validates its complete shape and cross-list identity before any consumer invokes
+ * B3 revalidation (see the persistence-boundary result contracts below).
+ */
+export interface SrsPracticeSessionRow {
+  /** Primary key; caller-generated UUID (never derived from chess material). */
+  readonly sessionId: string;
+  /** Owning lesson scope — indexed (`study-practice-sessions.lessonId`). */
+  readonly lessonId: string;
+  /** Lifecycle state — indexed (`study-practice-sessions.state`). */
+  readonly state: SrsSessionState;
+  /** Last mutation instant, UTC epoch ms — indexed (`study-practice-sessions.updatedAt`). */
+  readonly updatedAt: number;
+  /** Creation instant, UTC epoch ms. */
+  readonly createdAt: number;
+  /** Progress cursor + completed-target state (see `SrsSessionProgress`). */
+  readonly progress: SrsSessionProgress;
+  /** Total scored targets in the plan (`plan.entries.length`); the completed-target target. */
+  readonly targetCount: number;
+  /** Embedded frozen traversal plan — makes a Partial session resumable from this single row. */
+  readonly plan: SrsTraversalPlan;
+}
+
+// --- Contract 7: Persistence-boundary validation result -------------------
+
+/**
+ * Discriminated failure code for a rejected persisted row/plan at the B4 read boundary. Deserialized
+ * IndexedDB values are UNTRUSTED (they can be corrupt on disk, predate a field, or carry an
+ * unrecognized schema); the boundary reports one of these codes as a TYPED rejection rather than
+ * throwing a raw error (closes recorded B4 residual (d)).
+ */
+export type SrsPersistenceFailureCode =
+  /** Top-level value (or a nested list/entry that must be an object) is null / not an object. */
+  | 'not-an-object'
+  /** A field that must be an array (`entries`/`context`/`repair`/`completedTargetIds`/…) is not. */
+  | 'not-an-array'
+  /** `planVersion` is absent, or present but not a recognized/normalizable version (never coerced). */
+  | 'unrecognized-plan-version'
+  /** A required identity/display string (`sessionId`/`targetId`/`lessonId`/`label`/…) is missing/empty. */
+  | 'missing-required-string'
+  /** A `status`/`state` field carries a value outside its closed set. */
+  | 'invalid-status'
+  /** A numeric field is absent or non-finite (`NaN`/`±Infinity`) — fail closed. */
+  | 'non-finite-number'
+  /** A `targetId` appears more than once across `entries` ∪ `context` ∪ `repair` (cross-list identity). */
+  | 'duplicate-identity'
+  /** A discriminated source union carries an unknown/malformed `kind`. */
+  | 'invalid-source-discriminant';
+
+/**
+ * A typed persistence-boundary failure. `path` is a dotted locator into the offending row (e.g.
+ * `plan.entries[2].frozenSchedule.dueAt`) for diagnostics; `reason` is a human-readable description.
+ */
+export interface SrsPersistenceFailure {
+  readonly code: SrsPersistenceFailureCode;
+  readonly path: string;
+  readonly reason: string;
+}
+
+/**
+ * The result of validating an untrusted deserialized row/plan at the B4 read boundary. Success
+ * carries the fully validated, correctly typed value; failure carries a typed `SrsPersistenceFailure`
+ * — the boundary NEVER throws a raw error for malformed persisted data (recorded B4 residual (d)).
+ */
+export type SrsPersistenceResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly failure: SrsPersistenceFailure };
+
 // Contracts ONLY — this module now contains no runtime values (finding B1-5). The compile-time
 // contract fixtures (positive inhabitability, negative chess-material rejection, the opaque-brand
 // forgery proof, the widened-`fen` boundary proof, and the active-implies-`dueAt` snapshot proof)

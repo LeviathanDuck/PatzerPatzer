@@ -675,7 +675,12 @@ export interface PlayerProfileRecord {
 
 export const DB_NAME = 'patzer-pro';
 
-export const DB_VERSION = 26;
+
+
+
+
+
+export const DB_VERSION = 27;
 
 let _idb: IDBDatabase | undefined;
 
@@ -859,6 +864,53 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
 
 
   ensureStore(db, event, 'user-tree', { keyPath: 'gameId' });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const practiceLessonsStore = ensureStore(db, event, 'study-practice-lessons', { keyPath: 'lessonId' });
+  ensureIndex(practiceLessonsStore, 'studyItemId',           'studyItemId',                 { unique: false });
+  ensureIndex(practiceLessonsStore, 'studyItemId_chapterId', ['studyItemId', 'chapterId'],  { unique: false });
+  ensureIndex(practiceLessonsStore, 'updatedAt',             'updatedAt',                   { unique: false });
+
+  const practiceDecisionsStore = ensureStore(db, event, 'study-practice-decisions', { keyPath: 'decisionId' });
+  ensureIndex(practiceDecisionsStore, 'lessonId',           'lessonId',                  { unique: false });
+  ensureIndex(practiceDecisionsStore, 'lessonId_chapterId', ['lessonId', 'chapterId'],   { unique: false });
+  ensureIndex(practiceDecisionsStore, 'sourceLineageId',    'sourceLineageId',           { unique: false });
+  ensureIndex(practiceDecisionsStore, 'status',             'status',                    { unique: false });
+
+  // SRS schedule rows: key path is `targetId` (== decisionId; see NOTE above).
+  const practiceSrsStore = ensureStore(db, event, 'study-practice-srs', { keyPath: 'targetId' });
+  ensureIndex(practiceSrsStore, 'dueAt',          'dueAt',                { unique: false });
+  ensureIndex(practiceSrsStore, 'lessonId_dueAt', ['lessonId', 'dueAt'],  { unique: false });
+  ensureIndex(practiceSrsStore, 'updatedAt',      'updatedAt',            { unique: false });
+
+  const practiceAttemptsStore = ensureStore(db, event, 'study-practice-attempts', { keyPath: 'attemptId' });
+  // §14.1 names this index `decisionId`; the sealed `SrsAttemptRecord` carries the decision UUID in
+  // `targetId` (and `SrsExact` forbids adding a `decisionId` field). Index name preserved from the
+  // contract; key path is the field that actually holds the decision UUID. Same reconciliation as
+  // the SRS store key path above.
+  ensureIndex(practiceAttemptsStore, 'decisionId',  'targetId',    { unique: false });
+  ensureIndex(practiceAttemptsStore, 'sessionId',   'sessionId',   { unique: false });
+  ensureIndex(practiceAttemptsStore, 'completedAt', 'completedAt', { unique: false });
+  ensureIndex(practiceAttemptsStore, 'mode',        'mode',        { unique: false });
+
+  const practiceSessionsStore = ensureStore(db, event, 'study-practice-sessions', { keyPath: 'sessionId' });
+  ensureIndex(practiceSessionsStore, 'lessonId',  'lessonId',  { unique: false });
+  ensureIndex(practiceSessionsStore, 'state',     'state',     { unique: false });
+  ensureIndex(practiceSessionsStore, 'updatedAt', 'updatedAt', { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
