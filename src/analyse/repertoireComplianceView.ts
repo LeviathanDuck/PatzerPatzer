@@ -15,6 +15,7 @@ import { repertoireDivergenceCategoryLabel } from '../repertoire/report';
 import { resolveRepertoireOrpLine } from '../repertoire/orp';
 import { repertoireSourceSideBadge } from '../repertoire/explorerViewModel';
 import { saveRepertoireLineToOrpLibrary } from '../study/saveAction';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
 export interface AnalysisRepertoireComplianceRow {
   source: RepertoireSource;
@@ -431,25 +432,45 @@ function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAna
   const jumpTitle = jumpPath === null
     ? 'Divergence node is not available in the current mainline'
     : `Jump to ${moveLabel(record.firstDivergencePly)}`;
-  const data = jumpPath === null
-    ? {
+  const divergenceContent = [
+    h('span.repertoire__line-main', [
+      h('span.repertoire__line-text', [
+        h('span.repertoire__line-prefix', `${moveLabel(record.firstDivergencePly)}: played `),
+        h('span.repertoire__line-highlight', playedMoveLabel(record)),
+        h('span.repertoire__line-expected', ` - repertoire ${missedMoveLabel(record)}`),
+      ]),
+    ]),
+    h('span.repertoire__line-metrics', [
+      h('span.repertoire__category-badge', categoryLabel),
+      h('span.analysis-repertoire__jump', 'Jump'),
+    ]),
+  ];
+  const divergenceButton = jumpPath === null
+    ? renderDisabledControlExplainer({
+        label: 'Jump to repertoire divergence',
+        description: jumpTitle,
+      }, h('button.analysis-repertoire__divergence.repertoire__line-summary', {
         attrs: {
           type: 'button',
-          title: jumpTitle,
-          'aria-label': jumpTitle,
           disabled: 'disabled',
+          ...controlExplainerAttrs({
+            label: 'Jump to repertoire divergence',
+            description: jumpTitle,
+          }),
         },
-      }
-    : {
+      }, divergenceContent))
+    : h('button.analysis-repertoire__divergence.repertoire__line-summary', {
         attrs: {
           type: 'button',
-          title: jumpTitle,
-          'aria-label': jumpTitle,
+          ...controlExplainerAttrs({
+            label: 'Jump to repertoire divergence',
+            description: jumpTitle,
+          }),
         },
         on: {
           click: () => input.navigate(jumpPath),
         },
-      };
+      }, divergenceContent);
 
   const orpReason = analysisOrpUnavailableReason(row);
   const orpKey = analysisOrpKey(row);
@@ -458,26 +479,19 @@ function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAna
   const orpTitle = orpReason ?? `Send ${row.source.name} line to Opening Repetition Practice`;
 
   return h('div.analysis-repertoire__divergence-wrap', [
-    h('button.analysis-repertoire__divergence.repertoire__line-summary', data, [
-      h('span.repertoire__line-main', [
-        h('span.repertoire__line-text', [
-          h('span.repertoire__line-prefix', `${moveLabel(record.firstDivergencePly)}: played `),
-          h('span.repertoire__line-highlight', playedMoveLabel(record)),
-          h('span.repertoire__line-expected', ` - repertoire ${missedMoveLabel(record)}`),
-        ]),
-      ]),
-      h('span.repertoire__line-metrics', [
-        h('span.repertoire__category-badge', categoryLabel),
-        h('span.analysis-repertoire__jump', 'Jump'),
-      ]),
-    ]),
+    divergenceButton,
     h('div.repertoire__line-actions.analysis-repertoire__orp-actions', [
-      h('button.study-btn.repertoire__line-action', {
+      orpReason || saving ? renderDisabledControlExplainer({
+        label: saving ? 'Saving line to ORP' : 'Send line to ORP',
+        description: saving ? 'This repertoire line is being saved to the practice library.' : orpTitle,
+      }, h('button.study-btn.repertoire__line-action', {
         attrs: {
           type: 'button',
-          title: orpTitle,
-          'aria-label': orpTitle,
-          disabled: Boolean(orpReason) || saving,
+          disabled: true,
+          ...controlExplainerAttrs({
+            label: saving ? 'Saving line to ORP' : 'Send line to ORP',
+            description: saving ? 'This repertoire line is being saved to the practice library.' : orpTitle,
+          }),
         },
         on: {
           click: () => {
@@ -485,7 +499,16 @@ function renderDivergence(row: AnalysisRepertoireComplianceRow, input: RenderAna
             saveAnalysisRepertoireLineToOrp(row, input);
           },
         },
-      }, saving ? 'Saving...' : 'Send to ORP'),
+      }, saving ? 'Saving...' : 'Send to ORP')) : h('button.study-btn.repertoire__line-action', {
+        attrs: {
+          type: 'button',
+          ...controlExplainerAttrs({
+            label: 'Send line to ORP',
+            description: orpTitle,
+          }),
+        },
+        on: { click: () => saveAnalysisRepertoireLineToOrp(row, input) },
+      }, 'Send to ORP'),
       feedback ? h('span.openings__save-feedback.repertoire__line-feedback', feedback) : null,
     ]),
   ]);
@@ -515,9 +538,11 @@ function renderPanel(
     h('button.analysis-repertoire__header', {
       attrs: {
         type: 'button',
-        title: headerTitle,
-        'aria-label': headerTitle,
         'aria-expanded': String(open),
+        ...controlExplainerAttrs({
+          label: headerTitle,
+          description: 'Show or hide this game’s matches and divergences against your repertoire sources.',
+        }),
       },
       on: {
         click: () => {

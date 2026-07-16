@@ -7,6 +7,7 @@ import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath } from '../tree/ops';
 import { GLYPH_CATEGORIES } from '../tree/glyphs';
 import { GLYPH_COLORS } from './moveList';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../ui/controlExplainer';
 import {
   LOCAL_COMMENT_ID,
   annotationPanel,
@@ -37,7 +38,7 @@ function panelHeader(title: string, redraw: () => void): VNode {
   return h('div.annotation-form__header', [
     h('h3.annotation-form__title', title),
     h('button.annotation-form__close', {
-      attrs: { type: 'button', title: 'Close', 'aria-label': 'Close' },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Close ${title}` }) },
       on: { click: () => { closeAnnotationPanel(); redraw(); } },
     }, '×'),
   ]);
@@ -59,7 +60,10 @@ function renderCommentForm(deps: AnnotationViewDeps, node: TreeNode): VNode {
       ]),
     ),
     h('textarea.annotation-form__textarea', {
-      attrs: { placeholder: 'Comment on this move…', rows: 3 },
+      attrs: { placeholder: 'Comment on this move…', rows: 3, ...controlExplainerAttrs({
+        label: 'Move comment',
+        description: 'Write a comment for this position; changes save automatically.',
+      }) },
       props: { value: localCommentText(root, path) },
       hook: { insert: vnode => (vnode.elm as HTMLTextAreaElement).focus() },
       on: {
@@ -81,7 +85,10 @@ function renderCommentForm(deps: AnnotationViewDeps, node: TreeNode): VNode {
     // commentForm parity); Discard deletes the comment outright and dismisses.
     h('div.annotation-form__footer', [
       h('button.annotation-form__discard-btn', {
-        attrs: { type: 'button', title: 'Discard comment', 'aria-label': 'Discard comment' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Discard comment',
+          description: 'Delete your comment for this position and close the editor.',
+        }) },
         on: {
           click: () => {
             discardLocalComment(root, path);
@@ -94,7 +101,10 @@ function renderCommentForm(deps: AnnotationViewDeps, node: TreeNode): VNode {
         'Discard',
       ]),
       h('button.annotation-form__save-btn', {
-        attrs: { type: 'button', title: 'Save', 'aria-label': 'Save comment' },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({
+          label: 'Save comment',
+          description: 'Finish editing; the comment has already been saved automatically.',
+        }) },
         on: {
           click: () => {
             closeAnnotationPanel();
@@ -141,7 +151,10 @@ function renderGlyphPicker(deps: AnnotationViewDeps, node: TreeNode): VNode {
             const color = GLYPH_COLORS[glyph.symbol];
             return h('button.annotation-form__glyph-btn', {
               class: { active: active.has(glyph.id) },
-              attrs: { type: 'button', 'data-symbol': glyph.symbol, title: glyph.name },
+              attrs: { type: 'button', 'data-symbol': glyph.symbol, ...controlExplainerAttrs({
+                label: glyph.name,
+                description: `${active.has(glyph.id) ? 'Remove' : 'Add'} the ${glyph.symbol} annotation on this move.`,
+              }) },
               on: {
                 click: () => {
                   toggleGlyphAt(root, path, glyph.id);

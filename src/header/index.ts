@@ -3,6 +3,11 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import { chesscom, importChesscom } from '../import/chesscom';
 import { lichess, importLichess } from '../import/lichess';
 import { pgnState, importPgn } from '../import/pgn';
@@ -97,6 +102,22 @@ import {
   releaseProductLabel,
   releaseTooltip,
 } from '../releaseIdentity';
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  action();
+}
+
+function renderDisabledControlWhen(
+  reason: string | null,
+  label: string,
+  control: VNode,
+): VNode {
+  return reason
+    ? renderDisabledControlExplainer({ label, description: reason }, control)
+    : control;
+}
 
 const HEADER_LOGO_SRC = '/images/patzer-pro-review-lens-logo-package/png/app-icons/patzerpro-app-icon-152.png';
 const PLATFORM_DISCLAIMER = 'Patzer Pro is not affiliated with or endorsed by Chess.com or Lichess.';
@@ -410,17 +431,28 @@ function renderRemoteSyncWarningIcon(className: string, title: string): VNode {
 function renderUserArea(redraw: () => void): VNode | null {
   if (remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken())) {
     return h('div.header__user', {
-      attrs: { title: remoteSyncChecking ? 'Checking sync token' : 'Sync active' },
+      attrs: controlExplainerAttrs({
+        label: remoteSyncChecking ? 'Checking sync' : 'Sync active',
+        description: remoteSyncChecking
+          ? 'Patzer is checking the saved sync token.'
+          : 'This browser is connected to Remote sync.',
+      }),
     }, [
       h('button.header__logout.header__logout--text', {
-        attrs: { type: 'button', title: 'Logout' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Log out',
+          description: 'Disconnect sync and remove this account’s local data from this browser.',
+        }) },
         on: { click: () => logoutRemoteSync(redraw) },
       }, 'Logout'),
     ]);
   }
   return h('div.header__user.header__user--login', [
     h('button.header__login', {
-      attrs: { type: 'button', title: 'Login' },
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: 'Log in',
+        description: 'Connect this browser to Remote sync.',
+      }) },
       on: { click: () => {
         remoteSyncLoginInput = '';
         remoteSyncLoginError = '';
@@ -440,12 +472,15 @@ function renderLoginModal(redraw: () => void): VNode {
   };
 
   return h('div.auth-modal', [
-    h('div.auth-modal__backdrop', { on: { click: close } }),
+    h('div.auth-modal__backdrop', {
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close sync login' }) },
+      on: { click: close, keydown: (event: KeyboardEvent) => activateOnKeyboard(event, close) },
+    }),
     h('div.auth-modal__card', [
       h('div.auth-modal__header', [
         h('h2', 'RemoteSync Sync Login'),
         h('button.auth-modal__close', {
-          attrs: { type: 'button', title: 'Close', 'aria-label': 'Close' },
+          attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close sync login' }) },
           on: { click: close },
         }, 'x'),
       ]),
@@ -453,13 +488,20 @@ function renderLoginModal(redraw: () => void): VNode {
         h('p', 'Enter the sync token to activate database sync for this browser.'),
         h('div.auth-modal__form', [
           h('label.auth-modal__label', { attrs: { for: 'remote-sync-token' } }, 'Sync token'),
-          h('input.auth-modal__input', {
+          renderDisabledControlWhen(
+            remoteSyncLoginBusy ? 'Patzer is checking the sync token.' : null,
+            'Sync token',
+            h('input.auth-modal__input', {
             attrs: {
               id: 'remote-sync-token',
               type: 'password',
               autocomplete: 'off',
               disabled: remoteSyncLoginBusy,
               placeholder: 'Admin sync token',
+              ...controlExplainerAttrs({
+                label: 'Sync token',
+                description: 'Enter the admin token used to connect this browser to Remote sync.',
+              }),
             },
             props: { value: remoteSyncLoginInput },
             on: {
@@ -473,7 +515,8 @@ function renderLoginModal(redraw: () => void): VNode {
                 submitRemoteSyncLogin(redraw);
               },
             },
-          }),
+            }),
+          ),
         ]),
         remoteSyncLoginError ? h('p.auth-modal__error', remoteSyncLoginError) : null,
         h('div.auth-modal__secondary-block', [
@@ -482,8 +525,14 @@ function renderLoginModal(redraw: () => void): VNode {
             ? h('p', `Lichess connected as ${headerAuthUser}.`)
             : h('p', 'Lichess login is only used as a chess identity option.'),
           headerAuthUser
-            ? h('button.auth-modal__secondary', {
-                attrs: { type: 'button', disabled: remoteSyncLoginBusy },
+            ? renderDisabledControlWhen(
+                remoteSyncLoginBusy ? 'Patzer is checking the sync token.' : null,
+                'Disconnect Lichess',
+                h('button.auth-modal__secondary', {
+                attrs: { type: 'button', disabled: remoteSyncLoginBusy, ...controlExplainerAttrs({
+                  label: 'Disconnect Lichess',
+                  description: 'Remove the connected Lichess chess identity from this browser.',
+                }) },
                 on: { click: () => {
 	                  logout().then(() => {
 	                    stopAccountSettingsSync();
@@ -493,28 +542,51 @@ function renderLoginModal(redraw: () => void): VNode {
                     redraw();
                   });
                 } },
-              }, 'Disconnect Lichess')
-            : h('button.auth-modal__secondary', {
-                attrs: { type: 'button', disabled: remoteSyncLoginBusy },
+                }, 'Disconnect Lichess'),
+              )
+            : renderDisabledControlWhen(
+                remoteSyncLoginBusy ? 'Patzer is checking the sync token.' : null,
+                'Continue with Lichess',
+                h('button.auth-modal__secondary', {
+                attrs: { type: 'button', disabled: remoteSyncLoginBusy, ...controlExplainerAttrs({
+                  label: 'Continue with Lichess',
+                  description: 'Connect a Lichess account as your chess identity.',
+                }) },
                 on: { click: () => {
                   login().catch(error => {
                     loginModalError = error instanceof Error ? error.message : 'Could not start Lichess login.';
                     redraw();
                   });
                 } },
-              }, 'Continue with Lichess'),
+                }, 'Continue with Lichess'),
+              ),
         ]),
         loginModalError ? h('p.auth-modal__error', loginModalError) : null,
       ]),
       h('div.auth-modal__actions', [
         h('button.auth-modal__secondary', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel login' }) },
           on: { click: close },
         }, 'Cancel'),
-        h('button.auth-modal__primary', {
-          attrs: { type: 'button', disabled: remoteSyncLoginBusy || !remoteSyncLoginInput.trim() },
+        renderDisabledControlWhen(
+          remoteSyncLoginBusy
+            ? 'Patzer is checking the sync token.'
+            : !remoteSyncLoginInput.trim()
+              ? 'Enter a sync token before logging in.'
+              : null,
+          remoteSyncLoginBusy ? 'Checking login' : 'Log in',
+          h('button.auth-modal__primary', {
+          attrs: { type: 'button', disabled: remoteSyncLoginBusy || !remoteSyncLoginInput.trim(), ...controlExplainerAttrs({
+            label: remoteSyncLoginBusy ? 'Checking login' : 'Log in',
+            description: remoteSyncLoginBusy
+              ? 'Patzer is checking the sync token.'
+              : !remoteSyncLoginInput.trim()
+                ? 'Enter a sync token before logging in.'
+                : 'Connect this browser using the entered sync token.',
+          }) },
           on: { click: () => submitRemoteSyncLogin(redraw) },
-        }, remoteSyncLoginBusy ? 'Checking...' : 'Login'),
+          }, remoteSyncLoginBusy ? 'Checking...' : 'Login'),
+        ),
       ]),
     ]),
   ]);
@@ -632,7 +704,10 @@ const navLinks: { label: string; href: string; section: string }[] = [
 function renderNav(route: Route, navHrefOverrides: Partial<Record<string, string>> = {}): VNode {
   const active = activeSection(route);
   return h('nav.header__nav', navLinks.map(({ label, href, section }) =>
-    h('a', { attrs: { href: navHrefOverrides[section] ?? href }, class: { active: active === section } }, label)
+    h('a', {
+      attrs: { href: navHrefOverrides[section] ?? href, ...controlExplainerAttrs({ label }) },
+      class: { active: active === section },
+    }, label)
   ));
 }
 
@@ -875,7 +950,7 @@ function renderReviewMenuPanelHeader(redraw: () => void): VNode {
   return h('div.review-menu__panel-header', [
     h('div.review-menu__panel-title', 'Analysis Queue'),
     h('button.review-menu__panel-close', {
-      attrs: { type: 'button', title: 'Close analysis queue menu', 'aria-label': 'Close analysis queue menu' },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close analysis queue' }) },
       on: { click: () => { showReviewMenu = false; redraw(); } },
     }, 'x'),
   ]);
@@ -936,33 +1011,57 @@ function renderReviewQueueSection(redraw: () => void): VNode {
               ].filter(Boolean).join(' · ')),
             ]),
             h('div.review-menu__queue-actions', [
-              h('button.review-menu__queue-action', {
+              renderDisabledControlWhen(
+                item.canMoveUp ? null : 'This game is already first in the analysis queue.',
+                `Move ${item.label} up`,
+                h('button.review-menu__queue-action', {
                 attrs: {
                   type: 'button',
-                  title: item.canMoveUp ? 'Move game up in review queue' : 'Cannot move this game up',
-                  'aria-label': `Move ${item.label} up in review queue`,
                   disabled: !item.canMoveUp,
+                  ...iconControlExplainerAttrs({
+                    label: `Move ${item.label} up`,
+                    description: item.canMoveUp
+                      ? 'Move this game earlier in the analysis queue.'
+                      : 'This game is already first in the analysis queue.',
+                  }),
                 },
                 on: { click: () => { moveReviewQueueGame(item.gameId, 'up'); redraw(); } },
-              }, '↑'),
-              h('button.review-menu__queue-action', {
+                }, '↑'),
+              ),
+              renderDisabledControlWhen(
+                item.canMoveDown ? null : 'This game is already last in the analysis queue.',
+                `Move ${item.label} down`,
+                h('button.review-menu__queue-action', {
                 attrs: {
                   type: 'button',
-                  title: item.canMoveDown ? 'Move game down in review queue' : 'Cannot move this game down',
-                  'aria-label': `Move ${item.label} down in review queue`,
                   disabled: !item.canMoveDown,
+                  ...iconControlExplainerAttrs({
+                    label: `Move ${item.label} down`,
+                    description: item.canMoveDown
+                      ? 'Move this game later in the analysis queue.'
+                      : 'This game is already last in the analysis queue.',
+                  }),
                 },
                 on: { click: () => { moveReviewQueueGame(item.gameId, 'down'); redraw(); } },
-              }, '↓'),
-              h('button.review-menu__queue-action.review-menu__queue-action--remove', {
+                }, '↓'),
+              ),
+              renderDisabledControlWhen(
+                item.canRemove ? null : 'The active game cannot be removed while it is being analyzed.',
+                `Remove ${item.label}`,
+                h('button.review-menu__queue-action.review-menu__queue-action--remove', {
                 attrs: {
                   type: 'button',
-                  title: item.canRemove ? 'Remove game from this review run' : 'Cannot remove the active game',
-                  'aria-label': `Remove ${item.label} from this review run`,
                   disabled: !item.canRemove,
+                  ...iconControlExplainerAttrs({
+                    label: `Remove ${item.label}`,
+                    description: item.canRemove
+                      ? 'Remove this game from the current analysis run.'
+                      : 'The active game cannot be removed while it is being analyzed.',
+                  }),
                 },
                 on: { click: () => { removeReviewQueueGame(item.gameId); redraw(); } },
-              }, '×'),
+                }, '×'),
+              ),
             ]),
           ]);
         })),
@@ -1001,11 +1100,18 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     return h('div.review-menu', [
       h('button.review-menu__trigger.review-menu__trigger--engine-error', {
         class: { active: showReviewMenu },
-        attrs: { title: engineErrorTitle, 'aria-label': engineErrorTitle },
+        attrs: iconControlExplainerAttrs({
+          label: showReviewMenu ? 'Close analysis queue error' : 'Open analysis queue error',
+          description: engineErrorTitle,
+        }),
         on: { click: () => { showReviewMenu = !showReviewMenu; redraw(); } },
       }, renderReviewTriggerPillContent({ icon: iconCross(), bolt: false, numberText: null, meterVariant: null, meterPercent: 0 })),
       showReviewMenu ? h('div.review-menu__backdrop', {
-        on: { click: () => { showReviewMenu = false; redraw(); } },
+        attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close analysis queue' }) },
+        on: {
+          click: () => { showReviewMenu = false; redraw(); },
+          keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showReviewMenu = false; redraw(); }),
+        },
       }) : null,
       showReviewMenu ? h('div.review-menu__dropdown', [
         renderReviewMenuPanelHeader(redraw),
@@ -1014,6 +1120,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
             'Review engine failed to initialise. SharedArrayBuffer or WASM may be unavailable in this browser context (requires COOP/COEP headers). Reload to retry.'),
           h('div.review-menu__row', [
             h('button.review-menu__btn.--cancel', {
+              attrs: controlExplainerAttrs({
+                label: 'Dismiss analysis queue',
+                description: 'Stop and clear the failed analysis queue.',
+              }),
               on: { click: () => { cancelBulkReview(); showReviewMenu = false; redraw(); } },
             }, 'Dismiss queue'),
           ]),
@@ -1027,12 +1137,18 @@ function renderReviewMenu(redraw: () => void): VNode | null {
   if (engineInitializing && !active) {
     const loadingTitle = 'Engine loading: review engine loading…';
     return h('div.review-menu', [
-      h('button.review-menu__trigger.review-menu__trigger--loading', {
+      renderDisabledControlExplainer({
+        label: 'Analysis engine loading',
+        description: loadingTitle,
+      }, h('button.review-menu__trigger.review-menu__trigger--loading', {
         class: { active: false },
-        attrs: { title: loadingTitle, 'aria-label': loadingTitle, disabled: true },
+        attrs: { disabled: true, ...iconControlExplainerAttrs({
+          label: 'Analysis engine loading',
+          description: loadingTitle,
+        }) },
       }, renderReviewTriggerPillContent({
         icon: iconSpinnerArc(), bolt: false, numberText: null, meterVariant: 'shimmer', meterPercent: 100,
-      })),
+      }))),
     ]);
   }
 
@@ -1115,7 +1231,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         active: showReviewMenu || active,
         [`review-menu__trigger--${pillState}`]: true,
       },
-      attrs: { title: reviewTriggerTitle, 'aria-label': reviewTriggerTitle },
+      attrs: iconControlExplainerAttrs({
+        label: showReviewMenu ? 'Close analysis queue' : 'Open analysis queue',
+        description: reviewTriggerTitle,
+      }),
       on: { click: () => {
         if (ownerUnavailable) takeOverUnavailableReviewOwner();
         showReviewMenu = !showReviewMenu;
@@ -1124,7 +1243,11 @@ function renderReviewMenu(redraw: () => void): VNode | null {
     }, renderReviewTriggerPillContent(pillSpec)),
 
     showReviewMenu ? h('div.review-menu__backdrop', {
-      on: { click: () => { showReviewMenu = false; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close analysis queue' }) },
+      on: {
+        click: () => { showReviewMenu = false; redraw(); },
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showReviewMenu = false; redraw(); }),
+      },
     }) : null,
 
     showReviewMenu ? h('div.review-menu__dropdown', [
@@ -1219,50 +1342,78 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__row', [
           (breakerPaused || completionNotice) && runSummary && runSummary.failed.length > 0
             ? h('button.review-menu__btn', {
-                attrs: { type: 'button', title: 'Re-queue only the failed games and resume the run' },
+                attrs: { type: 'button', ...controlExplainerAttrs({
+                  label: 'Retry failed games',
+                  description: 'Re-queue only the failed games and resume the analysis run.',
+                }) },
                 on: { click: () => { retryReviewRunFailedGames(); redraw(); } },
               }, 'Retry failed')
             : null,
           completionNotice
             ? h('button.review-menu__btn', {
-                attrs: { type: 'button', title: 'Dismiss this review notice' },
+                attrs: { type: 'button', ...controlExplainerAttrs({
+                  label: 'Dismiss analysis notice',
+                  description: 'Hide this completed analysis-run notice.',
+                }) },
                 on: { click: () => { dismissReviewRunNotice(); showReviewMenu = false; redraw(); } },
               }, 'Dismiss')
             : null,
           failedStatus
             ? h('button.review-menu__btn.--cancel', {
-                attrs: { type: 'button', title: 'Skip this failed game and continue the review queue' },
+                attrs: { type: 'button', ...controlExplainerAttrs({
+                  label: 'Skip failed game',
+                  description: 'Skip this game and continue the analysis queue.',
+                }) },
                 on: { click: () => { skipCurrentFailedReviewGame(); showReviewMenu = false; redraw(); } },
               }, 'Skip failed game')
             : null,
           ownerUnavailable
             ? h('button.review-menu__btn', {
-                attrs: { type: 'button', title: 'Review owner is unavailable. Take over and resume in this tab.' },
+                attrs: { type: 'button', ...controlExplainerAttrs({
+                  label: 'Take over analysis queue',
+                  description: 'The queue owner is unavailable; resume this run in the current tab.',
+                }) },
                 on: { click: () => { takeOverUnavailableReviewOwner(); redraw(); } },
               }, 'Take over')
             : canControlQueue && paused
             ? h('button.review-menu__btn', {
+                attrs: controlExplainerAttrs({
+                  label: 'Resume analysis',
+                  description: 'Continue the paused analysis queue.',
+                }),
                 on: { click: () => { resumeBulkReview(); redraw(); } },
               }, 'Resume')
             : canControlQueue
             ? h('button.review-menu__btn', {
+                attrs: controlExplainerAttrs({
+                  label: 'Pause analysis',
+                  description: 'Pause the analysis queue after the current safe stopping point.',
+                }),
                 on: { click: () => { pauseBulkReview(); redraw(); } },
               }, 'Pause')
             : null,
           canControlQueue
             ? h('button.review-menu__btn.--cancel', {
+                attrs: controlExplainerAttrs({
+                  label: 'Cancel analysis',
+                  description: 'Stop the current analysis queue.',
+                }),
                 on: { click: () => { cancelBulkReview(); redraw(); } },
               }, 'Cancel')
             : null,
         ]),
         h('label.review-menu__toggle.review-menu__toggle--inline', {
-          attrs: {
-            title: 'Keep background review running when the tab is hidden. Visible tabs are still most reliable; hidden progress depends on browser throttling.',
-          },
+          attrs: controlExplainerAttrs({
+            label: 'Unattended run',
+            description: 'Keep background analysis running while the tab is hidden; browser throttling may still pause it.',
+          }),
         }, [
           h('span', 'Unattended run'),
           h('input', {
-            attrs: { type: 'checkbox' },
+            attrs: { type: 'checkbox', ...controlExplainerAttrs({
+              label: 'Unattended run',
+              description: 'Keep background analysis running while the tab is hidden; browser throttling may still pause it.',
+            }) },
             props: { checked: isReviewUnattendedRunEnabled() },
             on: {
               change: (event: Event) => {
@@ -1278,13 +1429,17 @@ function renderReviewMenu(redraw: () => void): VNode | null {
             ? 'Unattended is on. Visible tab is reliable; hidden-tab progress is best-effort and browser-dependent.'
             : 'Unattended is off. Background review suspends while this tab is hidden.'),
         h('label.review-menu__toggle.review-menu__toggle--inline', {
-          attrs: {
-            title: 'Persistently retry and auto-resume this active game. The run continues automatically through your selection.',
-          },
+          attrs: controlExplainerAttrs({
+            label: 'Auto retry',
+            description: 'Retry and resume the active game automatically, then continue through the selection.',
+          }),
         }, [
           h('span', 'Auto retry'),
           h('input', {
-            attrs: { type: 'checkbox' },
+            attrs: { type: 'checkbox', ...controlExplainerAttrs({
+              label: 'Auto retry',
+              description: 'Retry and resume the active game automatically, then continue through the selection.',
+            }) },
             props: { checked: summary.autoRetryEnabled },
             on: {
               change: (event: Event) => {
@@ -1314,6 +1469,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__row', REVIEW_DEPTHS.map(d =>
           h('button.review-menu__pill', {
             class: { active: bulkReviewDepth === d },
+            attrs: controlExplainerAttrs({
+              label: `Bulk depth ${d}`,
+              description: 'Set the search depth for games analyzed in the background queue.',
+            }),
             on: { click: () => { setBulkReviewDepth(d); redraw(); } },
           }, String(d)),
         )),
@@ -1326,6 +1485,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__row', REVIEW_MOVETIME_OPTIONS.map(({ value, label }) =>
           h('button.review-menu__pill', {
             class: { active: bulkReviewMovetime === value },
+            attrs: controlExplainerAttrs({
+              label: `Bulk time budget ${label}`,
+              description: 'Cap search time per position alongside the selected depth.',
+            }),
             on: { click: () => { setBulkReviewMovetime(value); redraw(); } },
           }, label),
         )),
@@ -1338,6 +1501,10 @@ function renderReviewMenu(redraw: () => void): VNode | null {
         h('div.review-menu__row', REVIEW_DEPTHS.map(d =>
           h('button.review-menu__pill', {
             class: { active: reviewDepth === d },
+            attrs: controlExplainerAttrs({
+              label: `One-off depth ${d}`,
+              description: 'Set the depth used when analyzing one game from the Analysis Board.',
+            }),
             on: { click: () => { setReviewDepth(d); redraw(); } },
           }, String(d)),
         )),
@@ -1534,7 +1701,10 @@ function renderSyncIssueRow(issue: RemoteSyncIssue, redraw: () => void): VNode {
   return h('div.sync-menu__issue-row', { key: issue.reason }, [
     label,
     h('button.sync-menu__btn', {
-      attrs: { type: 'button', title: 'Dismiss this server-wins conflict notice' },
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: 'Dismiss sync conflict notice',
+        description: 'Hide this notice; the server version has already won and no sync data is deleted.',
+      }) },
       on: { click: () => { dismissServerWinsConflicts(); redraw(); } },
     }, 'Dismiss'),
   ]);
@@ -1674,7 +1844,10 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
         'sync-severity--warning': snapshot.severity === 'warning',
         'sync-severity--error': snapshot.severity === 'error',
       },
-      attrs: { type: 'button', title: snapshot.title },
+      attrs: { type: 'button', ...iconControlExplainerAttrs({
+        label: showSyncProgressMenu ? 'Close sync status' : 'Open sync status',
+        description: snapshot.title,
+      }) },
       on: { click: () => {
         const opening = !showSyncProgressMenu;
         showSyncProgressMenu = opening;
@@ -1687,14 +1860,18 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
     }, renderSyncTriggerContent(syncPillSpec)),
 
     showSyncProgressMenu ? h('div.sync-menu__backdrop', {
-      on: { click: () => { showSyncProgressMenu = false; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close sync status' }) },
+      on: {
+        click: () => { showSyncProgressMenu = false; redraw(); },
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showSyncProgressMenu = false; redraw(); }),
+      },
     }) : null,
 
     showSyncProgressMenu ? h('div.sync-menu__dropdown', [
       h('div.sync-menu__panel-header', [
         h('div.sync-menu__panel-title', 'Sync Status'),
         h('button.sync-menu__panel-close', {
-          attrs: { type: 'button', title: 'Close sync status menu', 'aria-label': 'Close sync status menu' },
+          attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close sync status' }) },
           on: { click: () => { showSyncProgressMenu = false; redraw(); } },
         }, 'x'),
       ]),
@@ -1727,21 +1904,45 @@ function renderSyncProgressMenu(redraw: () => void): VNode | null {
       h('div.sync-menu__section', [
         h('div.sync-menu__row', [
           h('button.sync-menu__btn', {
-            attrs: { type: 'button', title: 'Open the full Sync Dashboard' },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: 'Open Sync Dashboard',
+              description: 'Open detailed sync status, diagnostics, and recovery controls.',
+            }) },
             on: { click: () => { showSyncProgressMenu = false; redraw(); writeHashRoute('#/sync'); } },
           }, 'Open Sync Dashboard'),
+          renderDisabledControlWhen(
+            syncProgressCheckBusy ? 'Patzer is checking sync readiness with the server.' : null,
+            syncProgressCheckBusy ? 'Checking sync' : 'Run sync check',
+            h('button.sync-menu__btn', {
+              attrs: { type: 'button', disabled: syncProgressCheckBusy, ...controlExplainerAttrs({
+                label: syncProgressCheckBusy ? 'Checking sync' : 'Run sync check',
+                description: syncProgressCheckBusy
+                  ? 'Patzer is checking sync readiness with the server.'
+                  : 'Re-check sync readiness with the server.',
+              }) },
+              on: { click: () => runSyncProgressCheck(redraw) },
+            }, syncProgressCheckBusy ? 'Checking…' : 'Run sync check'),
+          ),
           h('button.sync-menu__btn', {
-            attrs: { type: 'button', disabled: syncProgressCheckBusy, title: 'Re-check sync readiness with the server' },
-            on: { click: () => runSyncProgressCheck(redraw) },
-          }, syncProgressCheckBusy ? 'Checking…' : 'Run sync check'),
-          h('button.sync-menu__btn', {
-            attrs: { type: 'button', title: 'Copy sync diagnostics (counts and identifiers only, no tokens)' },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: 'Copy sync diagnostics',
+              description: 'Copy counts and identifiers without including authentication tokens.',
+            }) },
             on: { click: () => copySyncProgressDiagnostics(redraw) },
           }, 'Copy diagnostics'),
-          canQueueLocalLibrary ? h('button.sync-menu__btn', {
-            attrs: { type: 'button', disabled: syncProgressQueueBusy, title: 'Queue local items the server has no recorded version for' },
-            on: { click: () => runQueueLocalLibrary(redraw) },
-          }, syncProgressQueueBusy ? 'Queueing…' : 'Queue local library for sync') : null,
+          canQueueLocalLibrary ? renderDisabledControlWhen(
+            syncProgressQueueBusy ? 'Patzer is already queueing the local library for sync.' : null,
+            syncProgressQueueBusy ? 'Queueing local library' : 'Queue local library',
+            h('button.sync-menu__btn', {
+              attrs: { type: 'button', disabled: syncProgressQueueBusy, ...controlExplainerAttrs({
+                label: syncProgressQueueBusy ? 'Queueing local library' : 'Queue local library',
+                description: syncProgressQueueBusy
+                  ? 'Patzer is already queueing the local library for sync.'
+                  : 'Queue local items for which the server has no recorded version.',
+              }) },
+              on: { click: () => runQueueLocalLibrary(redraw) },
+            }, syncProgressQueueBusy ? 'Queueing…' : 'Queue local library for sync'),
+          ) : null,
         ]),
         syncProgressCheckMessage ? h('div.sync-menu__label', syncProgressCheckMessage) : null,
         syncProgressQueueMessage ? h('div.sync-menu__label', syncProgressQueueMessage) : null,
@@ -1884,7 +2085,10 @@ function renderDetectionModal(redraw: () => void): VNode {
       h('p.detection-modal__desc', s.description),
       h('div.detection-modal__slider-wrap', [
         h('input', {
-          attrs: { type: 'range', min: s.min, max: s.max, step: s.step, value },
+          attrs: { type: 'range', min: s.min, max: s.max, step: s.step, value, ...controlExplainerAttrs({
+            label: s.label,
+            description: s.description,
+          }) },
           on: {
             input: (e: Event) => {
               const raw = parseFloat((e.target as HTMLInputElement).value);
@@ -1897,7 +2101,6 @@ function renderDetectionModal(redraw: () => void): VNode {
           ? h('span.detection-modal__default-mark', {
               attrs: {
                 style: `left: ${markerPct}%`,
-                title: `Lichess default: ${s.format(s.lichessDefault!)}`,
               },
             })
           : null,
@@ -1907,13 +2110,17 @@ function renderDetectionModal(redraw: () => void): VNode {
 
   return h('div.detection-modal', [
     h('div.detection-modal__backdrop', {
-      on: { click: () => { showDetectionModal = false; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close detection settings' }) },
+      on: {
+        click: () => { showDetectionModal = false; redraw(); },
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showDetectionModal = false; redraw(); }),
+      },
     }),
     h('div.detection-modal__card', [
       h('div.detection-modal__header', [
         h('h2', 'Detection Settings'),
         h('button.detection-modal__close', {
-          attrs: { title: 'Close', 'aria-label': 'Close' },
+          attrs: iconControlExplainerAttrs({ label: 'Close detection settings' }),
           on: { click: () => { showDetectionModal = false; redraw(); } },
         }, '✕'),
       ]),
@@ -2049,8 +2256,11 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
           attrs: {
             type: 'button',
             role: 'radio',
-            title: option.description,
             'aria-checked': cfg.feedbackTone === option.value ? 'true' : 'false',
+            ...controlExplainerAttrs({
+              label: `${option.label} feedback tone`,
+              description: option.description,
+            }),
           },
           on: { click: () => {
             setRetroConfig({ feedbackTone: option.value });
@@ -2082,7 +2292,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
           const label = RETRO_SENSITIVITY_PRESET_LABELS[preset.id];
           return h('button.detection-modal__preset-option', {
             class: { 'is-active': active },
-            attrs: { type: 'button', title: label },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label,
+              description: `Select mistakes with a win-chance loss of at least ${formatRetroChoiceLossPercent(preset.generationLossThreshold)}.`,
+            }) },
             on: { click: () => {
               retroSensitivityCustomOpen = false;
               setRetroConfig({ minLossThreshold: preset.generationLossThreshold });
@@ -2097,7 +2310,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         }),
         h('button.detection-modal__preset-option', {
           class: { 'is-active': isSensitivityCustom },
-          attrs: { type: 'button', title: 'Set a custom loss percentage' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Custom sensitivity',
+            description: 'Set a custom win-chance loss percentage for learning moments.',
+          }) },
           on: { click: () => { retroSensitivityCustomOpen = true; redraw(); } },
         }, [
           h('span.detection-modal__preset-label', 'Custom…'),
@@ -2111,7 +2327,11 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         h('div.detection-modal__severity-slider', [
           h('input.severity-range', {
             attrs: { type: 'range', min: 1, max: 25, step: 1,
-                     value: Math.round(cfg.minLossThreshold * 100) },
+                     value: Math.round(cfg.minLossThreshold * 100),
+                     ...controlExplainerAttrs({
+                       label: 'Custom sensitivity threshold',
+                       description: 'Set the minimum win-chance loss that counts as a learning moment.',
+                     }) },
             on: {
               input: (e: Event) => {
                 const pctValue = parseInt((e.target as HTMLInputElement).value, 10);
@@ -2120,11 +2340,11 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
               },
             },
           }),
-          h('span.severity-divider--inaccuracy', { attrs: { title: 'Inaccuracy: loss ≥ 5%' } }),
-          h('span.severity-divider--mistake',    { attrs: { title: 'Lichess default / Mistake: loss ≥ 10%' } }),
-          h('span.severity-divider--blunder',    { attrs: { title: 'Blunder: loss ≥ 15%' } }),
+          h('span.severity-divider--inaccuracy'),
+          h('span.severity-divider--mistake'),
+          h('span.severity-divider--blunder'),
           h('span.detection-modal__default-mark', {
-            attrs: { style: 'left: 37.5%', title: 'Lichess default: loss ≥ 10%' },
+            attrs: { style: 'left: 37.5%' },
           }),
           h('div.detection-modal__severity-ticks', [
             h('span', '1%'),
@@ -2156,7 +2376,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
       h('p.detection-modal__desc', retroMissedMateRuleText(cfg)),
       h('div.detection-modal__slider-wrap', [
         h('input', {
-          attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance },
+          attrs: { type: 'range', min: 0, max: 10, step: 1, value: cfg.missedMateDistance, ...controlExplainerAttrs({
+            label: 'Missed mate distance',
+            description: 'Set the longest forced mate that should always count as a learning moment.',
+          }) },
           on: {
             input: (e: Event) => {
               setRetroConfig({ missedMateDistance: parseInt((e.target as HTMLInputElement).value, 10) });
@@ -2166,7 +2389,7 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         }),
         // Lichess default marker at position 3 (30% of 0–10 range)
         h('span.detection-modal__default-mark', {
-          attrs: { style: 'left: 30%', title: 'Lichess default: in 3' },
+          attrs: { style: 'left: 30%' },
         }),
       ]),
       cfg.missedMateDistance > 0
@@ -2191,7 +2414,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.50, max: 0.95, step: 0.05, value: cfg.collapseWcFloor },
+            attrs: { type: 'range', min: 0.50, max: 0.95, step: 0.05, value: cfg.collapseWcFloor, ...controlExplainerAttrs({
+              label: 'Blown-win chance floor',
+              description: 'Set how winning the position must be before a collapse can be flagged.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ collapseWcFloor: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2201,7 +2427,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.02, max: 0.30, step: 0.01, value: cfg.collapseDropMin },
+            attrs: { type: 'range', min: 0.02, max: 0.30, step: 0.01, value: cfg.collapseDropMin, ...controlExplainerAttrs({
+              label: 'Blown-win minimum drop',
+              description: 'Set the minimum win-chance loss that counts as throwing away a winning position.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ collapseDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2226,7 +2455,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.10, max: 0.50, step: 0.05, value: cfg.defensiveWcCeiling },
+            attrs: { type: 'range', min: 0.10, max: 0.50, step: 0.05, value: cfg.defensiveWcCeiling, ...controlExplainerAttrs({
+              label: 'Defensive position ceiling',
+              description: 'Set how poorly you must be doing before a missed defensive resource can be flagged.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ defensiveWcCeiling: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2236,7 +2468,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.defensiveSalvageMin },
+            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.defensiveSalvageMin, ...controlExplainerAttrs({
+              label: 'Defensive salvage minimum',
+              description: 'Set how much better a missed defensive move must be than the move played.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ defensiveSalvageMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2261,7 +2496,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.punishOpponentSwingMin },
+            attrs: { type: 'range', min: 0.05, max: 0.30, step: 0.01, value: cfg.punishOpponentSwingMin, ...controlExplainerAttrs({
+              label: 'Opponent blunder swing',
+              description: 'Set how large an opponent mistake must be before a missed punishment can be flagged.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ punishOpponentSwingMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2271,7 +2509,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
         ]),
         h('div.detection-modal__slider-wrap', [
           h('input', {
-            attrs: { type: 'range', min: 0.02, max: 0.20, step: 0.01, value: cfg.punishExploitDropMin },
+            attrs: { type: 'range', min: 0.02, max: 0.20, step: 0.01, value: cfg.punishExploitDropMin, ...controlExplainerAttrs({
+              label: 'Missed-punishment drop',
+              description: 'Set how much winning chance must be given back to flag a missed punishment.',
+            }) },
             on: { input: (e: Event) => { setRetroConfig({ punishExploitDropMin: parseFloat((e.target as HTMLInputElement).value) }); redraw(); } },
           }),
         ]),
@@ -2286,6 +2527,10 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
     !isDefault ? h('div.detection-modal__row', [
       h('button', {
         class: { 'detection-modal__close': true },
+        attrs: controlExplainerAttrs({
+          label: 'Reset mistake detection',
+          description: 'Restore every mistake-detection setting to its default value.',
+        }),
         on: { click: () => { setRetroConfig({ ...RETRO_CONFIG_DEFAULTS }); redraw(); } },
       }, 'Reset to defaults'),
     ]) : null,
@@ -2295,13 +2540,17 @@ export function renderRetroConfigBody(redraw: () => void, options: RetroConfigBo
 function renderRetroModal(redraw: () => void): VNode {
   return h('div.detection-modal', [
     h('div.detection-modal__backdrop', {
-      on: { click: () => { showRetroModal = false; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close mistake detection' }) },
+      on: {
+        click: () => { showRetroModal = false; redraw(); },
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showRetroModal = false; redraw(); }),
+      },
     }),
     h('div.detection-modal__card', [
       h('div.detection-modal__header', [
         h('h2', 'Mistake Detection'),
         h('button.detection-modal__close', {
-          attrs: { title: 'Close', 'aria-label': 'Close' },
+          attrs: iconControlExplainerAttrs({ label: 'Close mistake detection' }),
           on: { click: () => { showRetroModal = false; redraw(); } },
         }, '✕'),
       ]),
@@ -2425,9 +2674,11 @@ function renderReleaseIdentityFooter(redraw: () => void): VNode {
     h('button.global-menu__release-toggle', {
       attrs: {
         type: 'button',
-        title: releaseTooltip(identity),
-        'aria-label': `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
         'aria-expanded': showReleaseDetails ? 'true' : 'false',
+        ...controlExplainerAttrs({
+          label: `${releaseProductLabel(identity)}, ${releaseDeployLabel(identity)}`,
+          description: releaseTooltip(identity),
+        }),
       },
       on: {
         click: () => {
@@ -2447,7 +2698,10 @@ function renderReleaseIdentityFooter(redraw: () => void): VNode {
     showReleaseDetails ? h('span.global-menu__release-details', [
       h('span.global-menu__release-actions', [
         h('button.global-menu__release-copy', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Copy release details',
+            description: 'Copy the current build and deployment identity.',
+          }) },
           on: { click: () => copyReleaseIdentityDetails(redraw) },
         }, 'Copy'),
         releaseCopyMessage ? h('span.global-menu__release-copy-status', releaseCopyMessage) : null,
@@ -2471,7 +2725,7 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
-      attrs: { title: 'Settings', 'aria-label': 'Settings' },
+      attrs: iconControlExplainerAttrs({ label: showGlobalMenu ? 'Close settings' : 'Open settings' }),
       on: { click: () => {
         showGlobalMenu    = !showGlobalMenu;
         showBoardSettings = false;
@@ -2485,18 +2739,29 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
     }, '⚙'),
 
     showGlobalMenu ? h('div.global-menu__backdrop', {
-      on: { click: () => closeGlobalMenu(redraw) },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close settings' }) },
+      on: {
+        click: () => closeGlobalMenu(redraw),
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => closeGlobalMenu(redraw)),
+      },
     }) : null,
 
     showGlobalMenu ? h('div.global-menu__dropdown', {
       class: { 'board-open': showBoardSettings || showEvalGraphSettings },
     }, [
       h('button.global-menu__item', {
-        attrs: { type: 'button', title: 'Report an issue with the current page' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Report issue',
+          description: 'Create a diagnostics report for the current page.',
+        }) },
         on: { click: () => reportGlobalMenuIssue(deps.route, redraw) },
       }, 'Report issue'),
 
       h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Clear local data',
+          description: 'Delete Patzer data stored locally in this browser.',
+        }),
         on: { click: () => {
           closeGlobalMenu(redraw);
           void resetAllData();
@@ -2505,23 +2770,40 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
       // Navigate to the analysis board to review the currently loaded game.
       // Disabled when no game is selected — nothing to review.
-      h('button.global-menu__item', {
-        attrs: { disabled: !hasGame, title: hasGame ? 'Open current game on the analysis board' : 'Select a game first' },
-        on: { click: () => {
-          if (!hasGame) return;
-          closeGlobalMenu(redraw);
-          writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
-        }},
-      }, 'Analysis'),
+      renderDisabledControlWhen(
+        hasGame ? null : 'Select a game before opening the Analysis Board.',
+        'Analysis',
+        h('button.global-menu__item', {
+          attrs: { disabled: !hasGame, ...controlExplainerAttrs({
+            label: 'Analysis',
+            description: hasGame
+              ? 'Open the selected game on the Analysis Board.'
+              : 'Select a game before opening the Analysis Board.',
+          }) },
+          on: { click: () => {
+            if (!hasGame) return;
+            closeGlobalMenu(redraw);
+            writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
+          }},
+        }, 'Analysis'),
+      ),
 
 
 
 
       h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Export annotated PGN',
+          description: 'Download the selected game with Patzer analysis annotations.',
+        }),
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(true); } },
       }, 'Export PGN (Annotated)'),
 
       h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Export plain PGN',
+          description: 'Download the selected game without Patzer analysis annotations.',
+        }),
         on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
       }, 'Export PGN (Plain)'),
 
@@ -2539,7 +2821,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       h('div.global-menu__item.global-menu__item--slider', [
         h('span', `Volume: ${Math.round(soundVolume * 100)}%`),
         h('input', {
-          attrs: { type: 'range', min: 0, max: 1, step: 0.05, value: soundVolume },
+          attrs: { type: 'range', min: 0, max: 1, step: 0.05, value: soundVolume, ...controlExplainerAttrs({
+            label: 'Board sound volume',
+            description: 'Set the volume of board move sounds.',
+          }) },
           on: {
             input: (e: Event) => {
               setSoundVolume(parseFloat((e.target as HTMLInputElement).value));
@@ -2550,14 +2835,26 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       ]),
 
       h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Detection Settings',
+          description: 'Configure how analyzed moves are classified as missed tactical moments.',
+        }),
         on: { click: () => { showDetectionModal = true; showGlobalMenu = false; redraw(); } },
       }, 'Detection Settings…'),
 
       h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Mistake Detection',
+          description: 'Configure which mistakes become Learn From Your Mistakes moments.',
+        }),
         on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } },
       }, 'Mistake Detection…'),
 
       hasVerifiedSyncSession ? h('button.global-menu__item', {
+        attrs: controlExplainerAttrs({
+          label: 'Sync Dashboard',
+          description: 'Open detailed sync status, diagnostics, and recovery controls.',
+        }),
         on: { click: () => {
           closeGlobalMenu(redraw);
           writeHashRoute('#/sync');
@@ -2565,6 +2862,10 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
       }, 'Sync Dashboard') : null,
 
       headerAuthUser ? h('button.global-menu__item.global-menu__item--logout', {
+        attrs: controlExplainerAttrs({
+          label: 'Disconnect Lichess',
+          description: 'Remove the connected Lichess chess identity from this browser.',
+        }),
         on: { click: () => {
 	          logout().then(() => {
 	            stopAccountSettingsSync();
@@ -2576,7 +2877,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         }},
       }, 'Disconnect Lichess') : null,
 
-      h('div.global-menu__item.global-menu__item--has-sub', {
+      h('button.global-menu__item.global-menu__item--has-sub', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Board Settings',
+          description: `${showBoardSettings ? 'Close' : 'Open'} board appearance settings.`,
+        }) },
         on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
       }, [
         h('span', 'Board Settings'),
@@ -2585,7 +2890,11 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
 
       showBoardSettings ? renderBoardSettings(redraw) : null,
 
-      h('div.global-menu__item.global-menu__item--has-sub', {
+      h('button.global-menu__item.global-menu__item--has-sub', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Evaluation Graph',
+          description: `${showEvalGraphSettings ? 'Close' : 'Open'} evaluation graph settings.`,
+        }) },
         on: { click: () => { showEvalGraphSettings = !showEvalGraphSettings; redraw(); } },
       }, [
         h('span', 'Eval Graph'),
@@ -2609,7 +2918,7 @@ function renderMobileSubmenu(submenu: HeaderMobileSubmenu, redraw: () => void): 
     ...submenu.items.map(item =>
       h('button.header__mobile-submenu-item', {
         class: { active: !!item.active },
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: item.label }) },
         on: { click: () => {
           item.onSelect();
           showMobileNav = false;
@@ -2632,7 +2941,7 @@ function renderMobileNavLinks(
   const nodes: VNode[] = [];
   navLinks.forEach(({ label, href, section }) => {
     nodes.push(h('a.header__mobile-link', {
-      attrs: { href: navHrefOverrides[section] ?? href },
+      attrs: { href: navHrefOverrides[section] ?? href, ...controlExplainerAttrs({ label }) },
       class: { active: active === section },
       on: { click: () => { showMobileNav = false; redraw(); } },
     }, label));
@@ -2656,11 +2965,15 @@ function renderMobileNav(
   return h('div.header__mobile-nav', [
     h('button.header__hamburger', {
       class: { active: showMobileNav },
-      attrs: { title: 'Menu', 'aria-label': 'Menu' },
+      attrs: iconControlExplainerAttrs({ label: showMobileNav ? 'Close navigation menu' : 'Open navigation menu' }),
       on: { click: () => { showMobileNav = !showMobileNav; redraw(); } },
     }, '☰'),
     showMobileNav ? h('div.header__mobile-backdrop', {
-      on: { click: () => { showMobileNav = false; redraw(); } },
+      attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close navigation menu' }) },
+      on: {
+        click: () => { showMobileNav = false; redraw(); },
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showMobileNav = false; redraw(); }),
+      },
     }) : null,
     showMobileNav ? h('div.header__mobile-dropdown', renderMobileNavLinks(active, mobileSubmenus, redraw, navHrefOverrides)) : null,
   ]);
@@ -2676,7 +2989,11 @@ function renderHeaderAccountControl(
   const mines = mineAccounts(accounts);
   if (mines.length === 0 || headerAccountMode === 'new') {
     const username = importPlatform === 'chesscom' ? chesscom.username : lichess.username;
-    const input = h('input.header__input', {
+    const inputLabel = `${platformLabel(importPlatform)} username`;
+    const input = renderDisabledControlWhen(
+      loading ? 'Wait for the current account import or sync to finish.' : null,
+      inputLabel,
+      h('input.header__input', {
       key: `input-${importPlatform}`,
       attrs: {
         type: 'search',
@@ -2684,6 +3001,12 @@ function renderHeaderAccountControl(
         disabled: loading,
         autocomplete: 'off',
         spellcheck: false,
+        ...controlExplainerAttrs({
+          label: inputLabel,
+          description: loading
+            ? 'Wait for the current account import or sync to finish.'
+            : 'Enter the account whose games you want to import.',
+        }),
       },
       props: { value: username },
       on: {
@@ -2704,24 +3027,42 @@ function renderHeaderAccountControl(
           redraw();
         },
       },
-    });
+      }),
+    );
 
     if (mines.length === 0) return input;
     return h('div.header__account-entry', [
       input,
-      h('button.header__account-back', {
-        attrs: { type: 'button', title: 'Choose an imported account', disabled: loading },
+      renderDisabledControlWhen(
+        loading ? 'Wait for the current account import or sync to finish.' : null,
+        'Choose imported account',
+        h('button.header__account-back', {
+        attrs: { type: 'button', disabled: loading, ...controlExplainerAttrs({
+          label: 'Choose imported account',
+          description: loading
+            ? 'Wait for the current account import or sync to finish.'
+            : 'Return to a previously imported Mine account.',
+        }) },
         on: { click: () => {
           headerAccountMode = 'account';
           showImportPanel = false;
           redraw();
         }},
-      }, 'Accounts'),
+        }, 'Accounts'),
+      ),
     ]);
   }
 
-  return h('select.header__account-select', {
-    attrs: { title: 'Choose my account to sync', disabled: loading },
+  return renderDisabledControlWhen(
+    loading ? 'Wait for the current account import or sync to finish.' : null,
+    'Account to sync',
+    h('select.header__account-select', {
+    attrs: { disabled: loading, ...controlExplainerAttrs({
+      label: 'Account to sync',
+      description: loading
+        ? 'Wait for the current account import or sync to finish.'
+        : 'Choose a Mine account to sync or add another account.',
+    }) },
     on: {
       change: (event: Event) => {
         const value = (event.target as HTMLSelectElement).value;
@@ -2747,12 +3088,13 @@ function renderHeaderAccountControl(
         redraw();
       },
     },
-  }, [
+    }, [
     ...mines.map(account => h('option', {
       attrs: { value: account.id, selected: selectedAccount?.id === account.id },
     }, `${account.displayName} - ${platformLabel(account.platform)}`)),
     h('option', { attrs: { value: 'new' } }, 'New user'),
-  ]);
+    ]),
+  );
 }
 
 
@@ -2975,6 +3317,27 @@ function renderSyncMenu(
 
   const hasOldestCursor = account.oldestGameTimestamp !== null;
   const oldestCursorAtStart = account.oldestGameTimestamp !== null && account.oldestGameTimestamp <= 0;
+  const syncDisabledReason = headerSyncRunning
+    ? 'The selected account is currently syncing.'
+    : headerOlderSyncRunning
+      ? 'Wait for older games to finish loading before starting a new sync.'
+      : null;
+  const olderInputDisabledReason = headerOlderSyncRunning
+    ? 'Older games are currently loading.'
+    : headerSyncRunning
+      ? 'Wait for the current sync to finish before changing the older-games range.'
+      : null;
+  const oneBatchDisabledReason = olderInputDisabledReason
+    ?? (!headerOlderSyncTargetDate ? 'Choose a target date before switching back to one batch.' : null);
+  const loadOlderDisabledReason = headerOlderSyncRunning
+    ? 'Older games are currently loading.'
+    : headerSyncRunning
+      ? 'Wait for the current sync to finish before loading older games.'
+      : !hasOldestCursor
+        ? 'Run Sync first to establish a history cursor.'
+        : oldestCursorAtStart
+          ? 'The full account history is already imported.'
+          : null;
 
   return h('div.header__panel', [
     h('div.header__panel-section', [
@@ -2999,13 +3362,20 @@ function renderSyncMenu(
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importFilters.speeds.size === 0 },
+          attrs: controlExplainerAttrs({
+            label: 'All time controls',
+            description: 'Include every time control in this sync.',
+          }),
           on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
         }, 'All'),
         ...SPEED_OPTIONS.map(({ value, label, icon }) => {
           const newCount = headerPeek?.newGameCountBySpeed[value] ?? 0;
           return h('button.header__pill', {
             class: { active: importFilters.speeds.has(value) },
-            attrs: { 'data-icon': icon },
+            attrs: { 'data-icon': icon, ...controlExplainerAttrs({
+              label: `${label} time control`,
+              description: 'Include or exclude this time control from the sync.',
+            }) },
             on: { click: () => {
               const s = new Set(importFilters.speeds);
               s.has(value) ? s.delete(value) : s.add(value);
@@ -3019,13 +3389,20 @@ function renderSyncMenu(
       h('div.header__panel-row', DATE_RANGE_OPTIONS.map(({ value, label }) =>
         h('button.header__pill', {
           class: { active: importFilters.dateRange === value },
+          attrs: controlExplainerAttrs({
+            label: `${label} sync period`,
+            description: 'Choose how far back the account sync should search.',
+          }),
           on: { click: () => { importFilters.dateRange = value as ImportDateRange; redraw(); } },
         }, label),
       )),
       h('div.header__panel-row.--mt', [
         h('label.header__panel-check', [
           h('input', {
-            attrs: { type: 'checkbox', checked: importFilters.rated },
+            attrs: { type: 'checkbox', checked: importFilters.rated, ...controlExplainerAttrs({
+              label: 'Rated games only',
+              description: 'Exclude casual games from this sync.',
+            }) },
             on: { change: (e: Event) => { importFilters.rated = (e.target as HTMLInputElement).checked; redraw(); } },
           }),
           'Rated only',
@@ -3042,12 +3419,22 @@ function renderSyncMenu(
       headerSyncError ? h('div.header__panel-error', headerSyncError) : null,
       headerSyncMessage ? h('p.header__panel-hint', headerSyncMessage) : null,
       h('div.header__panel-row', [
-        h('button.header__panel-btn', {
-          attrs: { disabled: headerSyncRunning || headerOlderSyncRunning },
+        renderDisabledControlWhen(
+          syncDisabledReason,
+          headerSyncRunning ? 'Syncing games' : 'Sync games',
+          h('button.header__panel-btn', {
+          attrs: { disabled: headerSyncRunning || headerOlderSyncRunning, ...controlExplainerAttrs({
+            label: headerSyncRunning ? 'Syncing games' : 'Sync games',
+            description: syncDisabledReason ?? 'Fetch new games for this account using the selected filters.',
+          }) },
           on: { click: () => { void runSync(); } },
-        }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+          }, headerSyncRunning ? 'Syncing...' : 'Sync games'),
+        ),
         headerSyncRunning ? h('button.header__panel-btn', {
-          attrs: { type: 'button', title: 'Stop after the current batch; games fetched so far are kept' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Cancel sync',
+            description: 'Stop after the current batch; games fetched so far are kept.',
+          }) },
           on: { click: () => { headerSyncAbort?.abort(); } },
         }, 'Cancel') : null,
       ]),
@@ -3062,13 +3449,19 @@ function renderSyncMenu(
         : h('p.header__panel-hint', 'Run Sync first to establish a history cursor.'),
       hasOldestCursor && !oldestCursorAtStart
         ? h('div.header__panel-row.--mt', [
-            h('input.header__date-input', {
+            renderDisabledControlWhen(
+              olderInputDisabledReason,
+              'Older-games target date',
+              h('input.header__date-input', {
               attrs: {
                 type: 'date',
                 value: headerOlderSyncTargetDate,
                 max: todayDateInputValue(),
                 disabled: headerOlderSyncRunning || headerSyncRunning,
-                title: 'Optional: fetch older games back to this date',
+                ...controlExplainerAttrs({
+                  label: 'Older-games target date',
+                  description: olderInputDisabledReason ?? 'Optionally fetch older games back to this date.',
+                }),
               },
               on: {
                 change: (event: Event) => {
@@ -3077,36 +3470,52 @@ function renderSyncMenu(
                   redraw();
                 },
               },
-            }),
-            h('button.header__pill', {
+              }),
+            ),
+            renderDisabledControlWhen(
+              oneBatchDisabledReason,
+              'Use one older batch',
+              h('button.header__pill', {
               attrs: {
                 type: 'button',
                 disabled: headerOlderSyncRunning || headerSyncRunning || !headerOlderSyncTargetDate,
-                title: 'Clear target date and fetch one older batch',
+                ...controlExplainerAttrs({
+                  label: 'Use one older batch',
+                  description: oneBatchDisabledReason ?? 'Clear the target date and fetch a single older batch.',
+                }),
               },
               on: { click: () => { headerOlderSyncTargetDate = ''; headerOlderSyncError = null; redraw(); } },
-            }, 'One batch'),
+              }, 'One batch'),
+            ),
           ])
         : null,
       headerOlderSyncError ? h('div.header__panel-error', headerOlderSyncError) : null,
       headerOlderSyncMessage ? h('p.header__panel-hint', headerOlderSyncMessage) : null,
-      h('button.header__panel-btn', {
+      renderDisabledControlWhen(
+        loadOlderDisabledReason,
+        headerOlderSyncRunning
+          ? 'Loading older games'
+          : headerOlderSyncTargetDate ? 'Load back to date' : 'Load older games',
+        h('button.header__panel-btn', {
         attrs: {
           disabled: headerOlderSyncRunning || headerSyncRunning || !hasOldestCursor || oldestCursorAtStart,
-          title: !hasOldestCursor
-            ? 'Run Sync first to establish a history cursor'
-            : oldestCursorAtStart
-            ? 'Full history already imported'
-            : headerOlderSyncTargetDate
-            ? 'Load older games back to the selected date'
-            : 'Load games older than the earliest imported game',
+          ...controlExplainerAttrs({
+            label: headerOlderSyncRunning
+              ? 'Loading older games'
+              : headerOlderSyncTargetDate ? 'Load back to date' : 'Load older games',
+            description: loadOlderDisabledReason
+              ?? (headerOlderSyncTargetDate
+                ? 'Load older games back to the selected date.'
+                : 'Load games older than the earliest imported game.'),
+          }),
         },
         on: { click: () => { void runOlderSync(); } },
-      }, headerOlderSyncRunning
+        }, headerOlderSyncRunning
         ? 'Loading older...'
         : headerOlderSyncTargetDate
         ? 'Load back to date'
         : 'Load older games'),
+      ),
     ]),
 
 
@@ -3120,13 +3529,22 @@ function renderSyncMenu(
             'Chess.com sometimes finishes analyzing a game after it was imported. Refresh to pull in newly available data (like accuracies) for already-imported games.'),
           headerRescanError ? h('div.header__panel-error', headerRescanError) : null,
           headerRescanMessage ? h('p.header__panel-hint', headerRescanMessage) : null,
-          h('button.header__panel-btn', {
+          renderDisabledControlWhen(
+            headerRescanRunning ? 'Platform data is already being refreshed.' : null,
+            headerRescanRunning ? 'Refreshing platform data' : 'Refresh platform data',
+            h('button.header__panel-btn', {
             attrs: {
               disabled: headerRescanRunning,
-              title: 'Re-check already-imported games for newly available platform data',
+              ...controlExplainerAttrs({
+                label: headerRescanRunning ? 'Refreshing platform data' : 'Refresh platform data',
+                description: headerRescanRunning
+                  ? 'Platform data is already being refreshed.'
+                  : 'Re-check imported games for newly available Chess.com data such as accuracies.',
+              }),
             },
             on: { click: () => runHeaderAccountRescan(account, deps) },
-          }, headerRescanRunning ? 'Refreshing...' : 'Refresh platform data'),
+            }, headerRescanRunning ? 'Refreshing...' : 'Refresh platform data'),
+          ),
         ])
       : null,
   ]);
@@ -3207,10 +3625,18 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importPlatform === 'chesscom' },
+          attrs: controlExplainerAttrs({
+            label: 'Chess.com platform',
+            description: 'Import games from a Chess.com account.',
+          }),
           on: { click: () => { importPlatform = 'chesscom'; syncImportCategory(redraw); redraw(); } },
         }, 'Chess.com'),
         h('button.header__pill', {
           class: { active: importPlatform === 'lichess' },
+          attrs: controlExplainerAttrs({
+            label: 'Lichess platform',
+            description: 'Import games from a Lichess account.',
+          }),
           on: { click: () => { importPlatform = 'lichess'; syncImportCategory(redraw); redraw(); } },
         }, 'Lichess'),
       ]),
@@ -3224,6 +3650,14 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row', CATEGORY_OPTIONS.map(({ value, label }) =>
         h('button.header__pill', {
           class: { active: importFilters.importCategory === value },
+          attrs: controlExplainerAttrs({
+            label: `${label} account category`,
+            description: value === 'mine'
+              ? 'Classify this as one of your own accounts.'
+              : value === 'opponent'
+              ? 'Classify this as an opponent you prepare against.'
+              : 'Classify this as a strong player you study.',
+          }),
           on: { click: () => { importFilters.importCategory = value; categoryManualKey = currentImportAccountKey(); redraw(); } },
         }, label),
       )),
@@ -3240,12 +3674,19 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row', [
         h('button.header__pill', {
           class: { active: importFilters.speeds.size === 0 },
+          attrs: controlExplainerAttrs({
+            label: 'All time controls',
+            description: 'Include every time control in this import.',
+          }),
           on: { click: () => { importFilters.speeds = new Set(); redraw(); } },
         }, 'All'),
         ...SPEED_OPTIONS.map(({ value, label, icon }) =>
           h('button.header__pill', {
             class: { active: importFilters.speeds.has(value) },
-            attrs: { 'data-icon': icon },
+            attrs: { 'data-icon': icon, ...controlExplainerAttrs({
+              label: `${label} time control`,
+              description: 'Include or exclude this time control from the import.',
+            }) },
             on: { click: () => {
               const s = new Set(importFilters.speeds);
               s.has(value) ? s.delete(value) : s.add(value);
@@ -3261,6 +3702,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
         ...DATE_RANGE_OPTIONS.map(({ value, label }) =>
           h('button.header__pill', {
             class: { active: importFilters.dateRange === value },
+            attrs: controlExplainerAttrs({
+              label: `${label} import period`,
+              description: 'Choose how far back the import should search.',
+            }),
             on: { click: () => { importFilters.dateRange = value as ImportDateRange; redraw(); } },
           }, label)
         ),
@@ -3269,12 +3714,18 @@ export function renderHeader(deps: HeaderDeps): VNode {
       importFilters.dateRange === 'custom' ? h('div.header__panel-row.--mt', [
         h('span.header__panel-hint', 'From'),
         h('input.header__date-input', {
-          attrs: { type: 'date', value: importFilters.customFrom },
+          attrs: { type: 'date', value: importFilters.customFrom, ...controlExplainerAttrs({
+            label: 'Import start date',
+            description: 'Include games played on or after this date.',
+          }) },
           on: { change: (e: Event) => { importFilters.customFrom = (e.target as HTMLInputElement).value; redraw(); } },
         }),
         h('span.header__panel-hint', 'To'),
         h('input.header__date-input', {
-          attrs: { type: 'date', value: importFilters.customTo },
+          attrs: { type: 'date', value: importFilters.customTo, ...controlExplainerAttrs({
+            label: 'Import end date',
+            description: 'Include games played on or before this date.',
+          }) },
           on: { change: (e: Event) => { importFilters.customTo = (e.target as HTMLInputElement).value; redraw(); } },
         }),
       ]) : null,
@@ -3282,7 +3733,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-row.--mt', [
         h('label.header__panel-check', [
           h('input', {
-            attrs: { type: 'checkbox', checked: importFilters.rated },
+            attrs: { type: 'checkbox', checked: importFilters.rated, ...controlExplainerAttrs({
+              label: 'Rated games only',
+              description: 'Exclude casual games from this import.',
+            }) },
             on: { change: (e: Event) => { importFilters.rated = (e.target as HTMLInputElement).checked; redraw(); } },
           }),
           'Rated only',
@@ -3298,19 +3752,36 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
     h('div.header__panel-section', [
       error ? h('div.header__panel-error', error) : null,
-      h('button.header__panel-btn', {
+      renderDisabledControlWhen(
+        loading
+          ? 'Games are currently being imported.'
+          : !username.trim()
+            ? 'Enter an account username before importing.'
+            : importFilters.importCategory === null
+              ? 'Choose an account category before importing.'
+              : null,
+        loading ? 'Importing games' : 'Import games',
+        h('button.header__panel-btn', {
         attrs: {
           disabled: loading || !username.trim() || importFilters.importCategory === null,
-          ...(importFilters.importCategory === null && username.trim()
-            ? { title: 'Choose an account category (Mine / Opponent / Study) first' }
-            : {}),
+          ...controlExplainerAttrs({
+            label: loading ? 'Importing games' : 'Import games',
+            description: loading
+              ? 'Games are currently being imported.'
+              : !username.trim()
+                ? 'Enter an account username before importing.'
+                : importFilters.importCategory === null
+                  ? 'Choose an account category before importing.'
+                  : 'Import matching games using the selected platform, category, and filters.',
+          }),
         },
         on: { click: doImport },
-      }, loading
+        }, loading
         ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0
             ? ` (${importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount})`
             : ''}`
         : 'Import games'),
+      ),
     ]),
 
     h('div.header__panel-divider'),
@@ -3319,11 +3790,18 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__panel-label', 'Paste PGN'),
       h('textarea.header__pgn-input', {
         key: pgnState.key,
-        attrs: { placeholder: 'Paste a PGN here…', rows: 3, spellcheck: false },
+        attrs: { placeholder: 'Paste a PGN here…', rows: 3, spellcheck: false, ...controlExplainerAttrs({
+          label: 'PGN text',
+          description: 'Paste one or more chess games in PGN format.',
+        }) },
         on: { input: (e: Event) => { pgnState.input = (e.target as HTMLTextAreaElement).value; } },
       }),
       h('div.header__panel-row', [
         h('button.header__panel-btn', {
+          attrs: controlExplainerAttrs({
+            label: 'Import PGN',
+            description: 'Import the pasted PGN into Patzer.',
+          }),
           on: { click: () => {
             importPgn(importCallbacks);
             if (!pgnState.error) { showImportPanel = false; }
@@ -3343,6 +3821,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
         return h('div.header__game-item', [
           h('button.header__game-row', {
             class: { active: game.id === selectedGameId },
+            attrs: controlExplainerAttrs({
+              label: 'Open imported game',
+              description: 'Select this game and open it in the current game workflow.',
+            }),
             on: { click: () => {
               onSelectGame(game.id, game.pgn);
               showImportPanel = false;
@@ -3350,7 +3832,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
             }},
           }, renderGameRow(game, isAnalyzed, hasMissedTactic)),
           srcUrl ? h('a.game-ext-link', {
-            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+            attrs: { href: srcUrl, target: '_blank', rel: 'noopener', ...iconControlExplainerAttrs({
+              label: 'View on source platform',
+              description: 'Open this game on its original chess platform in a new tab.',
+            }) },
             on: { click: (e: Event) => e.stopPropagation() },
           }) : null,
         ]);
@@ -3360,11 +3845,15 @@ export function renderHeader(deps: HeaderDeps): VNode {
   ]) : null;
 
   const backdrop = showImportPanel ? h('div.header__backdrop', {
-    on: { click: () => { showImportPanel = false; redraw(); } },
+    attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close import panel' }) },
+    on: {
+      click: () => { showImportPanel = false; redraw(); },
+      keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showImportPanel = false; redraw(); }),
+    },
   }) : null;
 
   return h('header.header', [
-    h('a.header__brand', { attrs: { href: '#/', 'aria-label': 'Patzer Pro home' } }, [
+    h('a.header__brand', { attrs: { href: '#/', ...iconControlExplainerAttrs({ label: 'Patzer Pro home' }) } }, [
       h('img.header__brand-logo', {
         attrs: {
           src: HEADER_LOGO_SRC,
@@ -3380,26 +3869,54 @@ export function renderHeader(deps: HeaderDeps): VNode {
       h('div.header__bar', [
         renderHeaderAccountControl(deps.accounts, selectedMineAccount, loading || headerSyncRunning, doImport, redraw),
 
-        h('button.header__import', {
+        renderDisabledControlWhen(
+          accountModeActive && headerSyncRunning
+            ? 'The selected account is currently syncing.'
+            : !accountModeActive && loading
+              ? 'Games are currently being imported.'
+              : null,
+          accountModeActive
+            ? (headerSyncRunning ? 'Syncing games' : 'Sync games')
+            : (loading ? 'Importing games' : 'Import games'),
+          h('button.header__import', {
           attrs: {
             disabled: accountModeActive ? headerSyncRunning : loading,
-            title: accountModeActive
-              ? 'Sync new games for this account'
-              : 'Choose platform, filters, and import',
+            ...controlExplainerAttrs({
+              label: accountModeActive
+                ? (headerSyncRunning ? 'Syncing games' : 'Sync games')
+                : (loading ? 'Importing games' : 'Import games'),
+              description: accountModeActive
+                ? (headerSyncRunning
+                  ? 'The selected account is currently syncing.'
+                  : 'Sync new games for the selected account.')
+                : (loading
+                  ? 'Games are currently being imported.'
+                  : 'Choose a platform, account category, and filters before importing.'),
+            }),
           },
 
 
           on: { click: accountModeActive ? startSyncNow : () => { showImportPanel = true; redraw(); } },
-        }, accountModeActive
+          }, accountModeActive
           ? (headerSyncRunning ? 'Syncing...' : 'Sync')
           : loading
           ? `Importing…${(importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount) > 0
               ? ` (${importPlatform === 'chesscom' ? chesscom.gameCount : lichess.gameCount})`
               : ''}`
           : 'Import'),
+        ),
 
         mineGamesCount > 0 && !error
-          ? h('span.header__count', { on: { click: () => { showImportPanel = !showImportPanel; redraw(); } } },
+          ? h('span.header__count', {
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+                label: `${mineGamesCount} imported games`,
+                description: `${showImportPanel ? 'Close' : 'Open'} the imported-games panel.`,
+              }) },
+              on: {
+                click: () => { showImportPanel = !showImportPanel; redraw(); },
+                keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { showImportPanel = !showImportPanel; redraw(); }),
+              },
+            },
               `${mineGamesCount} games`)
           : null,
         error
@@ -3408,7 +3925,10 @@ export function renderHeader(deps: HeaderDeps): VNode {
 
         h('button.header__toggle', {
           class: { active: showImportPanel, 'header__toggle--filtered': hasActiveFilters && !showImportPanel },
-          attrs: { title: 'Filters & games' },
+          attrs: iconControlExplainerAttrs({
+            label: showImportPanel ? 'Close filters and games' : 'Open filters and games',
+            description: `${showImportPanel ? 'Close' : 'Open'} import filters and the imported-games list.`,
+          }),
           on: { click: () => { showImportPanel = !showImportPanel; redraw(); } },
         }, showImportPanel ? '▴' : '▾'),
       ]),

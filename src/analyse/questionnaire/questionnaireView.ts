@@ -22,6 +22,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 import type QuestionnaireCtrl from './questionnaireCtrl';
 import {
   DECIDER_OPTIONS,
@@ -84,7 +85,17 @@ function optionTile(
   disabled: boolean,
   onClick: () => void,
 ): VNode {
-  return h('button.qnr-opt-tile', {
+  const content = [
+    icon(opt.icon),
+    h('span.qnr-opt-tile__label', opt.label),
+    rank
+      ? h('span.qnr-rank-badge', { class: { 'qnr-rank-badge--primary': rank === 1 } }, String(rank))
+      : null,
+  ];
+  if (disabled) return renderDisabledControlExplainer({
+    label: opt.label,
+    description: 'Choose or remove another ranked answer before selecting this option.',
+  }, h('button.qnr-opt-tile', {
     class: {
       [`qnr-opt-tile--fam-${opt.family}`]: true,
       'qnr-opt-tile--win': weight === 'win',
@@ -92,15 +103,27 @@ function optionTile(
       'qnr-opt-tile--picked': picked,
       'qnr-opt-tile--disabled': disabled,
     },
-    attrs: { type: 'button', disabled },
-    on: disabled ? {} : { click: onClick },
-  }, [
-    icon(opt.icon),
-    h('span.qnr-opt-tile__label', opt.label),
-    rank
-      ? h('span.qnr-rank-badge', { class: { 'qnr-rank-badge--primary': rank === 1 } }, String(rank))
-      : null,
-  ]);
+    attrs: { type: 'button', disabled: true, ...controlExplainerAttrs({
+      label: opt.label,
+      description: 'Choose or remove another ranked answer before selecting this option.',
+    }) },
+  }, content));
+  return h('button.qnr-opt-tile', {
+    class: {
+      [`qnr-opt-tile--fam-${opt.family}`]: true,
+      'qnr-opt-tile--win': weight === 'win',
+      'qnr-opt-tile--loss': weight === 'loss',
+      'qnr-opt-tile--picked': picked,
+      'qnr-opt-tile--disabled': false,
+    },
+    attrs: { type: 'button', ...controlExplainerAttrs({
+      label: opt.label,
+      description: picked
+        ? 'Remove this answer from the questionnaire.'
+        : 'Select this answer for the current review question.',
+    }) },
+    on: { click: onClick },
+  }, content);
 }
 
 function footRow(
@@ -112,11 +135,17 @@ function footRow(
   return h('div.qnr-wiz__foot', [
     h('button.qnr-wiz__link', {
       class: { 'qnr-wiz__link--hidden': !showBack },
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Previous review question' }) },
       on: { click: onBack },
     }, '◀ Back'),
     onSkip
-      ? h('button.qnr-wiz__link', { attrs: { type: 'button' }, on: { click: onSkip } }, skipLabel)
+      ? h('button.qnr-wiz__link', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: skipLabel.replace(/\s*▶$/, ''),
+            description: 'Leave this optional answer blank and continue.',
+          }) },
+          on: { click: onSkip },
+        }, skipLabel)
       : null,
   ]);
 }
@@ -128,11 +157,17 @@ function renderDrawPathwayStage(ctrl: QuestionnaireCtrl): VNode {
     h('div.qnr-wiz__sub', `${ctrl.cfg.context.line} · result: draw`),
     h('div.qnr-wiz__yn', [
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Draw felt like a win',
+          description: 'Use the winning-game question pathway for this draw.',
+        }) },
         on: { click: () => ctrl.pickDrawPathway('win') },
       }, [icon('thumbs-up'), ' Felt like a win']),
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Draw felt like a loss',
+          description: 'Use the losing-game question pathway for this draw.',
+        }) },
         on: { click: () => ctrl.pickDrawPathway('loss') },
       }, [icon('thumbs-down'), ' Felt like a loss']),
     ]),
@@ -167,13 +202,27 @@ function renderDeciderStage(ctrl: QuestionnaireCtrl): VNode {
     h('div.qnr-wiz__foot', [
       h('button.qnr-wiz__link', {
         class: { 'qnr-wiz__link--hidden': !ctrl.canGoBack },
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Previous review question' }) },
         on: { click: () => ctrl.back() },
       }, '◀ Back'),
-      h('button.qnr-wiz__link', {
-        attrs: { type: 'button', disabled: !ctrl.canContinueDecider },
+      ctrl.canContinueDecider ? h('button.qnr-wiz__link', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Continue review questions',
+          description: ctrl.canContinueDecider
+            ? 'Continue after ranking the reasons that decided the game.'
+            : 'Choose at least one deciding reason before continuing.',
+        }) },
         on: { click: () => ctrl.continueFromDecider() },
-      }, 'Continue ▶'),
+      }, 'Continue ▶') : renderDisabledControlExplainer({
+        label: 'Continue review questions',
+        description: 'Choose at least one deciding reason before continuing.',
+      }, h('button.qnr-wiz__link', {
+        attrs: { type: 'button', disabled: true, ...controlExplainerAttrs({
+          label: 'Continue review questions',
+          description: 'Choose at least one deciding reason before continuing.',
+        }) },
+        on: { click: () => ctrl.continueFromDecider() },
+      }, 'Continue ▶')),
     ]),
   ]);
 }
@@ -184,11 +233,17 @@ function renderOpeningEvalStage(ctrl: QuestionnaireCtrl): VNode {
   if (!ctrl.openingEvalVerdict) {
     body.push(h('div.qnr-wiz__yn', [
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Opening approved',
+          description: 'Record that the opening met your expectations.',
+        }) },
         on: { click: () => ctrl.pickOpeningVerdict('approved') },
       }, 'Approved'),
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Opening needs work',
+          description: 'Record that this opening needs more study or practice.',
+        }) },
         on: { click: () => ctrl.pickOpeningVerdict('needswork') },
       }, 'Needs Work'),
     ]));
@@ -210,11 +265,17 @@ function renderRepPracticeStage(ctrl: QuestionnaireCtrl): VNode {
   if (ctrl.repFlagged === null && !ctrl.repAskingSource) {
     body.push(h('div.qnr-wiz__yn', [
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Add line to repetition practice',
+          description: 'Flag a line from this game for Opening Repetition Practice.',
+        }) },
         on: { click: () => ctrl.pickRepFlag(true) },
       }, [icon('route'), ' Yes']),
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Do not add a repetition line',
+          description: 'Continue without flagging a line for Opening Repetition Practice.',
+        }) },
         on: { click: () => ctrl.pickRepFlag(false) },
       }, 'No'),
     ]));
@@ -222,7 +283,10 @@ function renderRepPracticeStage(ctrl: QuestionnaireCtrl): VNode {
     body.push(h('div.qnr-wiz__sub', 'Line from the game, or a variation you explored on the tree?'));
     body.push(h('div.qnr-wiz__yn', ctrl.repPracticeSources.map(({ label, source }) => (
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: `${label} repetition source`,
+          description: 'Choose where the repetition-practice line came from.',
+        }) },
         on: { click: () => ctrl.pickRepSource(source) },
       }, label)
     ))));
@@ -244,11 +308,17 @@ function renderStudyMaterialStage(ctrl: QuestionnaireCtrl): VNode {
   if (ctrl.needsStudyMaterial === null) {
     body.push(h('div.qnr-wiz__yn', [
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Needs study material',
+          description: 'Flag this game for finding related study material.',
+        }) },
         on: { click: () => ctrl.pickNeedsStudyMaterial(true) },
       }, [icon('library'), ' Yes']),
       h('button.qnr-wiz__yn-btn', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'No study material needed',
+          description: 'Continue without flagging this game for study material.',
+        }) },
         on: { click: () => ctrl.pickNeedsStudyMaterial(false) },
       }, 'No'),
     ]));
@@ -305,7 +375,10 @@ function renderSummaryStage(ctrl: QuestionnaireCtrl): VNode {
       h('div.qnr-chips', chips),
       h('div.qnr-module__foot', [
         h('button.qnr-wiz__link', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Edit review answers',
+            description: 'Open the left-column questionnaire to change these answers.',
+          }) },
           on: { click: () => ctrl.editRequested() },
         }, 'Edit answers → left column'),
       ]),
@@ -395,7 +468,10 @@ export function renderQuestionnaireAnswerSummary(
       ]),
       cfg.onChange
         ? h('button.qnr-answer-row__change', {
-            attrs: { type: 'button', 'aria-label': `Change ${row.label}` },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: `Change ${row.label}`,
+              description: 'Return to this questionnaire answer and edit it.',
+            }) },
             on: { click: () => cfg.onChange?.(row.id) },
           }, 'change')
         : null,
@@ -431,7 +507,10 @@ function renderWizChrome(ctrl: QuestionnaireCtrl, body: VNode): VNode {
       h('span.qnr-wiz__label', `Step ${ctrl.stepNumber} of ${ctrl.stepCount}`),
       h('div.qnr-wiz__dots', dots),
       h('button.qnr-wiz__restart', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Restart review questions',
+          description: 'Clear the current questionnaire answers and start again.',
+        }) },
         on: { click: () => ctrl.restart() },
       }, 'restart'),
     ]),

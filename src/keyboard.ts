@@ -15,6 +15,7 @@ import { pathInit } from './tree/ops';
 import { current } from './router';
 import { getActiveRoundCtrl, puzzlePrev, puzzleNext, puzzleFirst, puzzleLast } from './puzzles/ctrl';
 import { clearPremoveQueue, getPremoveQueueState } from './board/premoves';
+import { iconControlExplainerAttrs } from './ui/controlExplainer';
 
 // --- Injected deps ---
 
@@ -218,10 +219,23 @@ let showKeyboardHelp = false;
 
 export function renderKeyboardHelp(): VNode | null {
   if (!showKeyboardHelp) return null;
-  return h('div.keyboard-help', {
-    on: { click: () => { showKeyboardHelp = false; _redraw(); } },
-  }, [
-    h('div.keyboard-help__box', { on: { click: (e: Event) => e.stopPropagation() } }, [
+  const close = () => { showKeyboardHelp = false; _redraw(); };
+  return h('div.keyboard-help', [
+    h('button.keyboard-help__backdrop', {
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close keyboard shortcuts' }) },
+      style: {
+        position: 'absolute',
+        inset: '0',
+        border: '0',
+        padding: '0',
+        background: 'transparent',
+      },
+      on: { click: close },
+    }),
+    h('div.keyboard-help__box', {
+      attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keyboard shortcuts' },
+      style: { zIndex: '1' },
+    }, [
       h('h2', 'Keyboard shortcuts'),
       h('table', [
         h('tbody', [
@@ -239,8 +253,8 @@ export function renderKeyboardHelp(): VNode | null {
         ].map(([key, desc]) => h('tr', [h('td', key as string), h('td', desc as string)]))),
       ]),
       h('button.keyboard-help__close', {
-        attrs: { title: 'Close keyboard help', 'aria-label': 'Close keyboard help' },
-        on: { click: () => { showKeyboardHelp = false; _redraw(); } },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({ label: 'Close keyboard shortcuts' }) },
+        on: { click: close },
       }, '✕'),
     ]),
   ]);

@@ -39,6 +39,7 @@ import {
 } from './lichessCompare';
 import { loadAnalysisFromIdb } from '../idb';
 import { getRemoteSyncToken } from '../sync/remoteSync';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State
@@ -401,6 +402,7 @@ function downloadReportJson(report: ComparisonReport): void {
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
+  a.dataset.uiExplainerExempt = 'programmatic-download-node';
   a.href = url;
   a.download = `${report.gameId.replace(/[^a-zA-Z0-9_-]/g, '_')}_lichess-compare.json`;
   a.click();
@@ -446,16 +448,40 @@ function renderPastePanel(state: PasteState): VNode {
     h('p.lichess-compare__desc',
       'Send this game to Lichess to request its computer analysis there, or paste a Lichess PGN export with evals (Lichess game page → Download → PGN, with evaluations) below.'),
     h('textarea.lichess-compare__textarea', {
-      attrs: { rows: 10, placeholder: '[Event "?"]\n\n1. e4 { [%eval 0.2] } e5 ...' },
+      attrs: { rows: 10, placeholder: '[Event "?"]\n\n1. e4 { [%eval 0.2] } e5 ...', ...controlExplainerAttrs({
+        label: 'Lichess analysis export',
+        description: 'Paste a Lichess PGN export that includes computer evaluations.',
+      }) },
       on: { input: (e: Event) => updatePasteText((e.target as HTMLTextAreaElement).value) },
     }),
     state.error ? h('p.lichess-compare__error', state.error) : null,
     h('div.lichess-compare__actions', [
       imported
-        ? h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch analysis & compare')
-        : h('button.lichess-compare__btn', { on: { click: () => startSendToLichess() } }, 'Send to Lichess'),
-      h('button.lichess-compare__btn', { on: { click: () => submitPaste() } }, 'Compare'),
-      h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Cancel'),
+        ? h('button.lichess-compare__btn', {
+            attrs: controlExplainerAttrs({
+              label: 'Fetch analysis and compare',
+              description: 'Fetch the imported game’s completed Lichess analysis and compare it with Patzer.',
+            }),
+            on: { click: () => fetchImportedAnalysis() },
+          }, 'Fetch analysis & compare')
+        : h('button.lichess-compare__btn', {
+            attrs: controlExplainerAttrs({
+              label: 'Send to Lichess',
+              description: 'Import this game to Lichess; imported games are public.',
+            }),
+            on: { click: () => startSendToLichess() },
+          }, 'Send to Lichess'),
+      h('button.lichess-compare__btn', {
+        attrs: controlExplainerAttrs({
+          label: 'Compare pasted analysis',
+          description: 'Compare the pasted Lichess evaluations with Patzer’s stored analysis.',
+        }),
+        on: { click: () => submitPaste() },
+      }, 'Compare'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        attrs: controlExplainerAttrs({ label: 'Cancel comparison' }),
+        on: { click: () => closeLichessCompareFlow() },
+      }, 'Cancel'),
     ]),
   ].filter((n): n is VNode => n !== null));
 }
@@ -466,15 +492,31 @@ function renderImportedPanel(state: ImportedState): VNode {
       'Game sent to Lichess. On the Lichess game page, click "Request computer analysis" (you must be signed in on lichess.org), wait for the analysis to finish, then fetch it here. Note: Lichess imported games are public.'),
     h('p.lichess-compare__note', [
       h('a.lichess-compare__open-link', {
-        attrs: { href: state.lichessUrl, target: '_blank', rel: 'noopener' },
+        attrs: { href: state.lichessUrl, target: '_blank', rel: 'noopener', ...controlExplainerAttrs({
+          label: 'Open on Lichess',
+          description: 'Open the public imported game on Lichess in a new tab.',
+        }) },
       }, 'Open on Lichess ↗'),
     ]),
     h('div.lichess-compare__actions', [
-      h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch analysis & compare'),
+      h('button.lichess-compare__btn', {
+        attrs: controlExplainerAttrs({
+          label: 'Fetch analysis and compare',
+          description: 'Fetch the completed Lichess analysis and compare it with Patzer.',
+        }),
+        on: { click: () => fetchImportedAnalysis() },
+      }, 'Fetch analysis & compare'),
       h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        attrs: controlExplainerAttrs({
+          label: 'Paste export instead',
+          description: 'Paste a Lichess PGN export instead of fetching the analysis.',
+        }),
         on: { click: () => openPasteFallback(state.gameId, state.pgn, undefined, _requestToken) },
       }, 'Paste export instead'),
-      h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Cancel'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        attrs: controlExplainerAttrs({ label: 'Cancel comparison' }),
+        on: { click: () => closeLichessCompareFlow() },
+      }, 'Cancel'),
     ]),
   ]);
 }
@@ -488,23 +530,45 @@ function renderErrorPanel(state: ErrorState): VNode {
     imported
       ? h('p.lichess-compare__note', [
           h('a.lichess-compare__open-link', {
-            attrs: { href: imported.url, target: '_blank', rel: 'noopener' },
+            attrs: { href: imported.url, target: '_blank', rel: 'noopener', ...controlExplainerAttrs({
+              label: 'Open on Lichess',
+              description: 'Open the public imported game on Lichess in a new tab.',
+            }) },
           }, 'Open on Lichess ↗'),
         ])
       : null,
     h('div.lichess-compare__actions', [
       imported
-        ? h('button.lichess-compare__btn', { on: { click: () => fetchImportedAnalysis() } }, 'Fetch again')
+        ? h('button.lichess-compare__btn', {
+            attrs: controlExplainerAttrs({
+              label: 'Fetch analysis again',
+              description: 'Retry fetching the Lichess analysis for this imported game.',
+            }),
+            on: { click: () => fetchImportedAnalysis() },
+          }, 'Fetch again')
         : null,
       !imported && !isLichessGame && state.canPaste
-        ? h('button.lichess-compare__btn', { on: { click: () => startSendToLichess() } }, 'Send to Lichess')
+        ? h('button.lichess-compare__btn', {
+            attrs: controlExplainerAttrs({
+              label: 'Send to Lichess',
+              description: 'Import this game to Lichess; imported games are public.',
+            }),
+            on: { click: () => startSendToLichess() },
+          }, 'Send to Lichess')
         : null,
       state.canPaste
         ? h('button.lichess-compare__btn', {
+            attrs: controlExplainerAttrs({
+              label: 'Paste export instead',
+              description: 'Paste a Lichess PGN export instead of fetching the analysis.',
+            }),
             on: { click: () => openPasteFallback(state.gameId, state.pgn, undefined, _requestToken) },
           }, 'Paste export instead')
         : null,
-      h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Close'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        attrs: controlExplainerAttrs({ label: 'Close comparison' }),
+        on: { click: () => closeLichessCompareFlow() },
+      }, 'Close'),
     ].filter((n): n is VNode => n !== null)),
   ].filter((n): n is VNode => n !== null));
 }
@@ -536,7 +600,10 @@ function renderReportPanel(state: ReportState): VNode {
       ]),
       state.lichessId !== undefined
         ? h('a.lichess-compare__open-link', {
-            attrs: { href: `https://lichess.org/${state.lichessId}`, target: '_blank', rel: 'noopener' },
+            attrs: { href: `https://lichess.org/${state.lichessId}`, target: '_blank', rel: 'noopener', ...controlExplainerAttrs({
+              label: 'Open on Lichess',
+              description: 'Open the compared game on Lichess in a new tab.',
+            }) },
           }, 'Open on Lichess ↗')
         : null,
     ].filter((n): n is VNode => n !== null)),
@@ -547,9 +614,24 @@ function renderReportPanel(state: ReportState): VNode {
     h('pre.lichess-compare__markdown', markdown),
 
     h('div.lichess-compare__actions', [
-      h('button.lichess-compare__btn', { on: { click: () => copyReportMarkdown(markdown) } }, 'Copy report'),
-      h('button.lichess-compare__btn', { on: { click: () => downloadReportJson(report) } }, 'Download JSON'),
-      h('button.lichess-compare__btn.lichess-compare__btn--ghost', { on: { click: () => closeLichessCompareFlow() } }, 'Close'),
+      h('button.lichess-compare__btn', {
+        attrs: controlExplainerAttrs({
+          label: 'Copy comparison report',
+          description: 'Copy the full comparison report as Markdown.',
+        }),
+        on: { click: () => copyReportMarkdown(markdown) },
+      }, 'Copy report'),
+      h('button.lichess-compare__btn', {
+        attrs: controlExplainerAttrs({
+          label: 'Download comparison JSON',
+          description: 'Download the structured comparison report as a JSON file.',
+        }),
+        on: { click: () => downloadReportJson(report) },
+      }, 'Download JSON'),
+      h('button.lichess-compare__btn.lichess-compare__btn--ghost', {
+        attrs: controlExplainerAttrs({ label: 'Close comparison' }),
+        on: { click: () => closeLichessCompareFlow() },
+      }, 'Close'),
     ]),
   ]);
 }

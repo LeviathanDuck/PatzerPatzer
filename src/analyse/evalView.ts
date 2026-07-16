@@ -15,6 +15,7 @@ import {
 } from './graphSettings';
 import type { TreeNode } from '../tree/types';
 import type { ReviewEngineMetadata } from '../idb/index';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 
 // Local structural type for evalCache entries — matches PositionEval shape.
 // Using a structural type keeps this module free of the PositionEval declaration
@@ -437,7 +438,10 @@ export function renderPostGameSummaryPanel(
       ? h('div.post-game-panel__worst', [
           'Worst: Move ',
           h('a.post-game-panel__worst-link', {
-            attrs: { href: '#' },
+            attrs: { href: '#', ...controlExplainerAttrs({
+              label: `Go to move ${Math.ceil(worst!.ply / 2)}`,
+              description: 'Jump to the move with the largest win-chance loss.',
+            }) },
             on: { click: (e: MouseEvent) => { e.preventDefault(); navigate(worst!.path); } },
           }, String(Math.ceil(worst!.ply / 2))),
           ` lost ${Math.round(worst!.loss * 100)}% win chance`,
@@ -449,7 +453,11 @@ export function renderPostGameSummaryPanel(
   ];
 
   return h('div.post-game-panel', [
-    h('div.post-game-panel__header', {
+    h('button.post-game-panel__header', {
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: `${open ? 'Close' : 'Open'} Game Summary`,
+        description: 'Show or hide the post-game accuracy and mistake summary.',
+      }) },
       on: { click: () => { setPostGamePanelOpen(!open); redraw(); } },
     }, [
       h('span.post-game-panel__title', 'Game Summary'),
@@ -618,12 +626,17 @@ export function renderEvalGraph(
       }, n === 0 ? 'No moves to graph.' : 'Analyze game to see graph.'),
       h('div.eval-graph__resize-handle', {
         attrs: {
-          title: 'Drag to resize eval graph',
           role: 'slider',
+          tabindex: '0',
           'aria-label': 'Eval graph height',
+          'aria-orientation': 'vertical',
           'aria-valuemin': String(GRAPH_HEIGHT_MIN),
           'aria-valuemax': String(GRAPH_HEIGHT_MAX),
           'aria-valuenow': String(graphHeightPct),
+          ...controlExplainerAttrs({
+            label: 'Evaluation graph height',
+            description: 'Drag vertically or use arrow, Home, and End keys to resize the evaluation graph.',
+          }),
         },
         hook: {
           insert: (vnode) => bindEvalGraphResize(vnode.elm as HTMLElement, redraw),
@@ -989,12 +1002,17 @@ export function renderEvalGraph(
     ...(reviewEngineText ? [h('div.eval-graph__review-engine', reviewEngineText)] : []),
     h('div.eval-graph__resize-handle', {
       attrs: {
-        title: 'Drag to resize eval graph',
         role: 'slider',
+        tabindex: '0',
         'aria-label': 'Eval graph height',
+        'aria-orientation': 'vertical',
         'aria-valuemin': String(GRAPH_HEIGHT_MIN),
         'aria-valuemax': String(GRAPH_HEIGHT_MAX),
         'aria-valuenow': String(graphHeightPct),
+        ...controlExplainerAttrs({
+          label: 'Evaluation graph height',
+          description: 'Drag vertically or use arrow, Home, and End keys to resize the evaluation graph.',
+        }),
       },
       hook: {
         insert: (vnode) => bindEvalGraphResize(vnode.elm as HTMLElement, redraw),
@@ -1041,4 +1059,28 @@ function bindEvalGraphResize(handle: HTMLElement, redraw: () => void): void {
 
   handle.addEventListener('mousedown', startResize as EventListener, { passive: false });
   handle.addEventListener('touchstart', startResize as EventListener, { passive: false });
+  handle.addEventListener('keydown', (event: KeyboardEvent) => {
+    let nextHeight: number;
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        nextHeight = graphHeightPct - 1;
+        break;
+      case 'ArrowRight':
+      case 'ArrowUp':
+        nextHeight = graphHeightPct + 1;
+        break;
+      case 'Home':
+        nextHeight = GRAPH_HEIGHT_MIN;
+        break;
+      case 'End':
+        nextHeight = GRAPH_HEIGHT_MAX;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    setEvalGraphHeightPct(nextHeight);
+    redraw();
+  });
 }

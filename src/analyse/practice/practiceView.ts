@@ -7,6 +7,13 @@
 import { h, type VNode } from 'snabbdom';
 import { renderPremoveQueueControls } from '../../board/premoves';
 import { renderStrengthSelector } from '../../engine/strengthView';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../../ui/controlExplainer';
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  action();
+}
 import {
   isMyTurn,
   playCommentBest,
@@ -51,10 +58,16 @@ function commentBest(c: PracticeComment, redraw: () => void): (VNode | string)[]
   return [
     label,
     h('move.practice-box__best', {
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+        label: `Play ${best.san}`,
+        description: 'Play the suggested move and continue practice from that position.',
+      }) },
       hook: {
         insert: vnode => {
           const el = vnode.elm as HTMLElement;
-          el.addEventListener('click', () => { playCommentBest(); redraw(); });
+          const activate = () => { playCommentBest(); redraw(); };
+          el.addEventListener('click', activate);
+          el.addEventListener('keydown', (event: KeyboardEvent) => activateOnKeyboard(event, activate));
           el.addEventListener('mouseover', () => practiceCommentShape(true));
           el.addEventListener('mouseout', () => practiceCommentShape(false));
         },
@@ -71,7 +84,14 @@ function renderOffTrack(deps: PracticeViewDeps): VNode {
       h('strong', 'You browsed away'),
       h('div.practice-box__choices', [
         h('a', {
-          on: { click: () => { practiceResume(); deps.redraw(); } },
+          attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+            label: 'Resume practice',
+            description: 'Return to the position where the practice session left its line.',
+          }) },
+          on: {
+            click: () => { practiceResume(); deps.redraw(); },
+            keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { practiceResume(); deps.redraw(); }),
+          },
         }, 'Resume practice'),
       ]),
     ]),
@@ -106,7 +126,18 @@ function renderRunning(deps: PracticeViewDeps): VNode {
       h('div.practice-box__choices', [
         myTurn
           ? h('a', {
-              on: { click: () => { practiceHint(); deps.redraw(); } },
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+                label: hint ? (hint.mode === 'piece' ? 'See best move' : 'Hide best move') : 'Get a hint',
+                description: !hint
+                  ? 'Reveal which piece can make the best move.'
+                  : hint.mode === 'piece'
+                    ? 'Reveal the destination square for the best move.'
+                    : 'Hide the best-move hint.',
+              }) },
+              on: {
+                click: () => { practiceHint(); deps.redraw(); },
+                keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => { practiceHint(); deps.redraw(); }),
+              },
             }, hint ? (hint.mode === 'piece' ? 'See best move' : 'Hide best move') : 'Get a hint')
           : null,
       ]),
@@ -125,7 +156,10 @@ export function renderPracticeBox(deps: PracticeViewDeps): VNode {
       h('span', 'Practice vs. Computer'),
       h('span.practice-box__strength', `Level ${strength.level}`),
       h('button.practice-box__close', {
-        attrs: { type: 'button', title: 'Stop practice', 'aria-label': 'Stop practice' },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({
+          label: 'Stop practice',
+          description: 'End the current Practice vs. Computer session.',
+        }) },
         on: { click: () => deps.onClose() },
       }, '×'),
     ]),
@@ -178,29 +212,44 @@ export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
   }, [
     h('div.practice-rail__row', [
       h('button.practice-rail__btn', {
-        attrs: { type: 'button', title: 'Restart from the position this session started at' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Reset practice',
+          description: 'Restart from the position where this practice session began.',
+        }) },
         on: { click: () => practiceReset() },
       }, 'Reset'),
       h('button.practice-rail__btn', {
         class: { active: feedbackOn },
         attrs: {
           type: 'button',
-          title: feedbackOn ? 'Hide move feedback' : 'Show move feedback',
           'aria-pressed': String(feedbackOn),
+          ...controlExplainerAttrs({
+            label: feedbackOn ? 'Hide move feedback' : 'Show move feedback',
+            description: 'Toggle verdicts and best-move suggestions after each practice move.',
+          }),
         },
         on: { click: () => { setPracticeFeedbackEnabled(!feedbackOn); deps.redraw(); } },
       }, feedbackOn ? 'Feedback: On' : 'Feedback: Off'),
       h('button.practice-rail__btn', {
-        attrs: { type: 'button', title: 'Get a hint' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: hint ? (hint.mode === 'piece' ? 'See best move' : 'Hide best move') : 'Get a hint',
+          description: hint
+            ? hint.mode === 'piece'
+              ? 'Reveal the destination square for the suggested piece.'
+              : 'Hide the displayed best-move guidance.'
+            : 'Reveal the candidate piece for the best move in this position.',
+        }) },
         on: { click: () => practiceHint() },
       }, hint ? (hint.mode === 'piece' ? 'See best move' : 'Hide best move') : 'Get a hint'),
       h('button.practice-rail__btn.practice-rail__btn--settings', {
         class: { active: settingsOpen },
         attrs: {
           type: 'button',
-          title: 'Practice settings',
-          'aria-label': 'Practice settings',
           'aria-expanded': String(settingsOpen),
+          ...iconControlExplainerAttrs({
+            label: 'Practice settings',
+            description: `${settingsOpen ? 'Close' : 'Open'} computer-strength settings.`,
+          }),
         },
         on: { click: () => { setPracticeRailSettingsOpen(!settingsOpen); deps.redraw(); } },
       }, '⚙'),

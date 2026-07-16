@@ -2,6 +2,13 @@
 // Adapted from lichess-org/lila: ui/lib/src/view/cmn-toggle.ts (cmnToggleWrap pattern)
 
 import { h, type VNode } from 'snabbdom';
+import {
+  controlExplainerAttrs,
+  renderDisabledControlExplainer,
+  type ControlExplainer,
+} from './ui/controlExplainer';
+
+const TOGGLE_DISABLED_FALLBACK = 'This setting is unavailable until its prerequisite is met.';
 
 /**
  * Settings toggle row: label text on left, CSS-driven pill toggle on right.
@@ -15,16 +22,29 @@ export function renderToggleRow(
   checked: boolean,
   onChange: (v: boolean) => void,
   disabled?: boolean,
+  disabledReason?: string,
 ): VNode {
-  return h('label.settings-toggle-row', [
-    h('span.settings-toggle-row__label', label),
-    h('span.settings-toggle', [
-      h(`input#stg-${id}`, {
-        attrs: { type: 'checkbox' },
-        props: { checked, disabled: !!disabled },
-        on: { change: (e: Event) => onChange((e.target as HTMLInputElement).checked) },
-      }),
-      h('span.settings-toggle__track', { attrs: { 'aria-hidden': 'true' } }),
-    ]),
-  ]);
+  const isDisabled = disabled === true;
+  const explainer: ControlExplainer = {
+    label,
+    description: isDisabled
+      ? disabledReason?.trim() || TOGGLE_DISABLED_FALLBACK
+      : `${checked ? 'Turn off' : 'Turn on'} ${label}.`,
+  };
+  const row = h(
+    'label.settings-toggle-row',
+    { attrs: isDisabled ? {} : controlExplainerAttrs(explainer) },
+    [
+      h('span.settings-toggle-row__label', label),
+      h('span.settings-toggle', [
+        h(`input#stg-${id}`, {
+          attrs: { type: 'checkbox', ...controlExplainerAttrs(explainer) },
+          props: { checked, disabled: isDisabled },
+          on: { change: (e: Event) => onChange((e.target as HTMLInputElement).checked) },
+        }),
+        h('span.settings-toggle__track', { attrs: { 'aria-hidden': 'true' } }),
+      ]),
+    ],
+  );
+  return isDisabled ? renderDisabledControlExplainer(explainer, row) : row;
 }
