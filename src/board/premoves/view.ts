@@ -44,7 +44,6 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
             attrs: {
               role: 'listitem',
               'aria-label': `Queued premove ${index + 1}: ${rawUci}`,
-              ...controlExplainerAttrs({ label: `Queued premove ${index + 1}: ${rawUci}` }),
             },
           }, [
             h('span.premove-queue-controls__index', String(index + 1)),
@@ -73,10 +72,6 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
       ? h('span.premove-queue-controls__cost', {
           attrs: {
             'aria-label': `Pending premove clock cost: ${pendingCost} seconds`,
-            ...controlExplainerAttrs({
-              label: 'Pending premove clock cost',
-              description: `The queued premoves would cost ${pendingCost} seconds in total.`,
-            }),
           },
         }, `-${pendingCost}s`)
       : null,
@@ -94,7 +89,9 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
             'aria-pressed': String(promotionChoice.intent.promotion === choice.role),
             ...controlExplainerAttrs({
               label: `Promote to ${choice.role}`,
-              description: `Use a ${choice.role} for queued premove ${promotionChoice.index + 1}.`,
+              description: promotionChoice.intent.promotion === choice.role
+                ? `Currently selected for queued premove ${promotionChoice.index + 1}.`
+                : `Use a ${choice.role} for queued premove ${promotionChoice.index + 1}.`,
             }),
           },
           on: {

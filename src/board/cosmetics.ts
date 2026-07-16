@@ -303,7 +303,9 @@ function renderAnimationSegmentedControl(
             'aria-pressed': String(value === choice.key),
             ...controlExplainerAttrs({
               label: `${label}: ${choice.label}`,
-              description: `Use ${choice.durationMs} ms animations on ${label.toLowerCase()}.`,
+              description: value === choice.key
+                ? `Currently selected: ${choice.durationMs} ms animations on ${label.toLowerCase()}.`
+                : `Use ${choice.durationMs} ms animations on ${label.toLowerCase()}.`,
             }),
           },
           on: { click: () => { setValue(choice.key); redraw(); } },
