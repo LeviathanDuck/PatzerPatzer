@@ -19,6 +19,7 @@ import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { Shape, TreeNode, TreePath } from '../tree/types';
 import { buildQuestionnaireSummaryComment, serializeQuestionnaireTags } from './questionnaire/model';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
 // --- Injected deps ---
 
@@ -347,6 +348,7 @@ export function downloadPgn(annotated: boolean): void {
   const blob = new Blob([pgn], { type: 'application/x-chess-pgn' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
+  a.dataset.uiExplainerExempt = 'programmatic-download-node';
   a.href     = url;
   a.download = filename;
   a.click();
@@ -480,15 +482,27 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
 
   return h('div.analyse-review-controls', [
     h('div.analyse-review-controls__row', [
-      h('button.btn-review', {
+      hasGame ? h('button.btn-review', {
         class: {
           'btn-review--complete': !reviewProgress.active && analysisComplete,
           'btn-review--primary':  !reviewProgress.active && !analysisComplete && hasGame,
           'btn-review--running':  reviewProgress.active,
         },
-        attrs: { disabled: !hasGame, title: reviewTitle },
+        attrs: controlExplainerAttrs({
+          label: reviewProgress.active ? 'Pause analysis' : analysisComplete ? 'Re-Analyze game' : 'Analyze game',
+          description: reviewTitle,
+        }),
         on: { click: reviewClick },
-      }, reviewContent),
+      }, reviewContent) : renderDisabledControlExplainer({
+        label: 'Analyze game',
+        description: 'Load or select a game before analyzing it.',
+      }, h('button.btn-review', {
+        attrs: { disabled: true, ...controlExplainerAttrs({
+          label: 'Analyze game',
+          description: reviewTitle,
+        }) },
+        on: { click: reviewClick },
+      }, reviewContent)),
       hintText,
       ...(extraButtons ?? []),
     ]),

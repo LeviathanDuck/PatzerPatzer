@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 import type { DiagnosticReport } from './reportAssembly';
 import type { ReportBreadcrumb, ReportRecentError } from './reportContext';
 import { redactDiagnosticText } from '../redact';
@@ -80,16 +81,25 @@ function renderToggle(
   actionType: PreviewAction['type'],
   dispatch: PreviewDispatch | undefined,
 ): VNode {
-  return h('label.report-preview__toggle', [
+  const disabled = !dispatch;
+  const explainer = {
+    label,
+    description: disabled
+      ? 'This preview is read-only in the current report state.'
+      : `${checked ? 'Exclude' : 'Include'} this section in the saved and submitted report.`,
+  };
+  const toggle = h('label.report-preview__toggle', [
     h('input.report-preview__toggle-input', {
       attrs: {
         type: 'checkbox',
         checked,
-        disabled: !dispatch,
+        disabled,
+        'aria-label': label,
+        ...controlExplainerAttrs(explainer),
       },
       props: {
         checked,
-        disabled: !dispatch,
+        disabled,
       },
       on: {
         change: (event: Event) => {
@@ -101,6 +111,7 @@ function renderToggle(
     }),
     h('span.report-preview__toggle-label', label),
   ]);
+  return disabled ? renderDisabledControlExplainer(explainer, toggle) : toggle;
 }
 
 function renderToggleSection(title: string, toggle: VNode, children: VNode[]): VNode {

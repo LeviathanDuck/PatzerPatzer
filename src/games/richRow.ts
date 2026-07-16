@@ -22,6 +22,11 @@ import {
   questionnaireBranch, findQuestionnaireOption, STORY_OPTIONS, DECIDER_OPTIONS,
   type QuestionnaireOption,
 } from '../analyse/questionnaire/model';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 
 // ---------------------------------------------------------------------------
 // Minimal local duplicates of view.ts's getUserColor / gameResult (see file header).
@@ -474,7 +479,9 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
       // container-query mechanism (same one the reviewed pill already used), leaving a bolt-only
       // ghost tile at the narrowest compact widths (spec §5).
       return h('button.grr__review.--unreviewed' + (opts.compact ? '.--compact' : ''), {
-        attrs: { type: 'button', title: 'Analyze this game' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Analyze game', description: 'Queue this game for engine analysis.',
+        }) },
         on:    { click: (e: Event) => stopAnd(e, opts.onReview) },
       }, [
         h('span.grr__review-bolt', '⚡'),
@@ -486,7 +493,7 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
       return h('span.grr__review.--queued', {
-        attrs: { title: `Queued for Analysis — wave ${state.wave} of ${state.totalWaves}` },
+        attrs: { 'aria-label': `Queued for Analysis — wave ${state.wave} of ${state.totalWaves}` },
       }, [
         '⏲ Queued · wave ',
         h('span.grr__review-num', `${state.wave}`),
@@ -502,7 +509,7 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
 
-      return h('div.grr__review.--running', { attrs: { title: 'Analyzing…' } }, [
+      return h('div.grr__review.--running', { attrs: { 'aria-label': `Analyzing game — ${Math.round(state.percent)} percent complete` } }, [
         h('span.grr__review-bolt.--breathing', '⚡'),
         h('span.grr__review-label', [
           'Analyzing · ',
@@ -513,14 +520,18 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
     case 'failed':
       return h('div.grr__review.--failed', [
-        h('span.grr__review-label', { attrs: { title: 'Analysis failed' } },
+        h('span.grr__review-label',
           state.attempts !== undefined ? `⚠ Analysis failed (${state.attempts})` : '⚠ Analysis failed'),
         h('button.grr__review-retry', {
-          attrs: { type: 'button', title: 'Retry analysis' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Retry analysis', description: 'Queue another engine-analysis attempt for this game.',
+          }) },
           on:    { click: (e: Event) => stopAnd(e, opts.onRetry) },
         }, 'Retry'),
         h('button.grr__review-skip', {
-          attrs: { type: 'button', title: 'Skip this game' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Skip analysis', description: 'Remove this failed game from the current analysis run.',
+          }) },
           on:    { click: (e: Event) => stopAnd(e, opts.onSkip) },
         }, 'Skip'),
       ]);
@@ -532,9 +543,11 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
 
 
-      const title = 'Open in the analysis board';
+      const title = 'Open Analysis Board';
       return h('button.grr__review.--reviewed' + (opts.compact ? '.--compact' : ''), {
-        attrs: { type: 'button', title, 'aria-label': title },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: title, description: 'Open this analyzed game on the Analysis Board.',
+        }) },
         on:    { click: (e: Event) => stopAnd(e, opts.onOpenReview) },
       }, [
         h('span.grr__review-main', [
@@ -556,13 +569,17 @@ export function renderReviewControl(state: ReviewControlState, opts: ReviewContr
 
     case 'stalled':
       return h('button.grr__review.--stalled', {
-        attrs: { type: 'button', title: 'Analysis appears stalled — click to resume' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Resume stalled analysis', description: 'Restart analysis for this game from its stalled state.',
+        }) },
         on:    { click: (e: Event) => stopAnd(e, opts.onResume) },
       }, '⚠ Stalled — resume?');
 
     case 'incomplete':
       return h('button.grr__review.--incomplete', {
-        attrs: { type: 'button', title: 'Analysis incomplete — click to resume' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Resume incomplete analysis', description: 'Continue analysis for this partially analyzed game.',
+        }) },
         on:    { click: (e: Event) => stopAnd(e, opts.onResume) },
       }, '◐ Resume analysis');
 
@@ -667,15 +684,22 @@ export function renderTagArea(
   const visible = tags.slice(0, TAG_OVERFLOW_VISIBLE);
   const overflowCount = tags.length - visible.length;
 
-  return h('div.grr__tags', [
-    h('button.grr__tag.--add-library', {
+  const libraryExplainer = {
+    label: 'Add to Study Library',
+    description: addLibrary
+      ? 'Add this game to the Study Library.'
+      : 'Study Library add flow is not available yet.',
+  };
+  const libraryControl = h('button.grr__tag.--add-library', {
       attrs: {
         type:  'button',
         disabled: !addLibrary,
-        title: addLibrary ? 'Add to Study Library' : 'Study Library add flow is not available yet',
+        ...controlExplainerAttrs(libraryExplainer),
       },
       on: { click: (e: Event) => { e.stopPropagation(); addLibrary?.onAdd(); } },
-    }, '+ Add Library'),
+    }, '+ Add Library');
+  return h('div.grr__tags', [
+    addLibrary ? libraryControl : renderDisabledControlExplainer(libraryExplainer, libraryControl),
     ...visible.map(tag => h('span.grr__tag.' + tag.cls, tag.label)),
     overflowCount > 0 ? h('span.grr__tag.--overflow', `+${overflowCount}`) : null,
   ]);
@@ -778,14 +802,21 @@ export function renderStoryChip(game: ImportedGame): VNode | null {
 
 
 export function renderLibraryChip(addLibrary: { onAdd: () => void } | null | undefined): VNode {
-  return h('button.grr__chip.--library', {
+  const explainer = {
+    label: 'Add to Study Library',
+    description: addLibrary
+      ? 'Add this game to the Study Library.'
+      : 'Study Library add flow is not available yet.',
+  };
+  const control = h('button.grr__chip.--library', {
     attrs: {
       type:  'button',
       disabled: !addLibrary,
-      title: addLibrary ? 'Add to Study Library' : 'Study Library add flow is not available yet',
+      ...controlExplainerAttrs(explainer),
     },
     on: { click: (e: Event) => { e.stopPropagation(); addLibrary?.onAdd(); } },
   }, '+ Library');
+  return addLibrary ? control : renderDisabledControlExplainer(explainer, control);
 }
 
 
@@ -1034,7 +1065,9 @@ function renderRailMeta(game: ImportedGame, extras: GameExtras, sourceUrl: strin
     extras.timestamp.dateLabel ? metaRow(null, '', extras.timestamp.dateLabel, tsTooltip) : null,
     extras.timestamp.timeLabel ? metaRow(CLOCK_GLYPH, '', extras.timestamp.timeLabel, tsTooltip) : null,
     sourceUrl ? h('a.grr__rail-meta-row.grr__rail-ext-link', {
-      attrs: { href: sourceUrl, target: '_blank', rel: 'noopener', title: 'View on source platform' },
+      attrs: { href: sourceUrl, target: '_blank', rel: 'noopener', ...iconControlExplainerAttrs({
+        label: 'View source game', description: 'Open this game on its source platform in a new tab.',
+      }) },
       on:    { click: (e: Event) => e.stopPropagation() },
     }, [
       h('span.grr__rail-meta-icon', { attrs: { 'data-icon': EXTERNAL_LINK_GLYPH } }),
@@ -1079,7 +1112,7 @@ export interface RichGameRowDeps {
    * none). Does not alter the seven review-control states themselves.
    */
   secondaryActions?: RichRowSecondaryAction[];
-  onSelectRow?: (game: ImportedGame, e: MouseEvent) => void;
+  onSelectRow?: (game: ImportedGame, e: MouseEvent | KeyboardEvent) => void;
   /** External source-platform link (Chess.com/Lichess), rendered as the rail meta stack's last row. */
   sourceUrl?:   string | null;
 }
@@ -1088,7 +1121,9 @@ export interface RichGameRowDeps {
 export function renderSecondaryActions(actions: RichRowSecondaryAction[]): VNode | null {
   if (actions.length === 0) return null;
   return h('div.grr__secondary', actions.map(action => h('button.grr__secondary-btn', {
-    attrs: { type: 'button', title: action.title, 'aria-label': action.title },
+    attrs: { type: 'button', ...iconControlExplainerAttrs({
+      label: action.title, description: 'Apply this queue action to the game.',
+    }) },
     on:    { click: (e: Event) => { e.stopPropagation(); action.onClick(); } },
   }, action.glyph)));
 }
@@ -1115,10 +1150,8 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
 
 
 
-  return h('div.grr', {
-    class: { selected: deps.selected, open: deps.open === true },
-    on:    { click: (e: MouseEvent) => deps.onSelectRow?.(game, e) },
-  }, [
+  const rowLabel = `Open ${game.white || 'White'} versus ${game.black || 'Black'}`;
+  const children = [
 
 
 
@@ -1146,5 +1179,24 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
       ]),
       renderRailMeta(game, extras, deps.sourceUrl),
     ]),
-  ]);
+  ];
+  if (!deps.onSelectRow) {
+    return h('div.grr', { class: { selected: deps.selected, open: deps.open === true } }, children);
+  }
+  return h('div.grr', {
+    class: { selected: deps.selected, open: deps.open === true },
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+      label: rowLabel, description: 'Open this game on the Analysis Board.',
+    }) },
+    on: { click: (e: MouseEvent) => deps.onSelectRow?.(game, e) },
+    hook: {
+      insert: vnode => {
+        (vnode.elm as HTMLElement).addEventListener('keydown', e => {
+          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ') || e.repeat) return;
+          e.preventDefault();
+          deps.onSelectRow?.(game, e);
+        });
+      },
+    },
+  }, children);
 }

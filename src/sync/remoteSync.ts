@@ -4355,6 +4355,7 @@ function triggerJsonDownload(fileName: string, payload: unknown): void {
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
+  anchor.setAttribute('data-ui-explainer-exempt', 'programmatic-download-node');
   anchor.href = url;
   anchor.download = fileName;
   document.body.append(anchor);

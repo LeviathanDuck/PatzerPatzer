@@ -11,6 +11,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { STRENGTH_LEVELS } from './types';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
 /** One genuinely shipped engine build. Do not list builds that are not actually served. */
 export interface EngineModelOption {
@@ -66,6 +67,7 @@ export function renderStrengthSelector(
               name: 'strength-level',
               value: s.level,
               checked: s.level === currentLevel,
+              ...controlExplainerAttrs({ label: `Engine strength ${s.level}`, description: `Set the computer opponent to strength level ${s.level}.` }),
             },
             on: { change: () => onChange(s.level) },
           }),
@@ -74,21 +76,18 @@ export function renderStrengthSelector(
       ),
     ),
     h('div.strength-selector__section-label', 'Engine'),
-    h(
-      'select.strength-selector__engine',
-      {
-        attrs: {
-          id: 'strength-engine-model',
-          title: 'Engine build',
-          disabled: ENGINE_MODELS.length <= 1,
-        },
+    (() => {
+      const disabled = ENGINE_MODELS.length <= 1;
+      const explainer = { label: 'Engine build', description: disabled ? 'Only one engine build is currently installed.' : 'Choose the engine build used by the computer opponent.' };
+      const control = h('select.strength-selector__engine', {
+        attrs: { id: 'strength-engine-model', name: 'strength-engine-model', disabled, ...controlExplainerAttrs(explainer) },
         on: {
           change: (e: Event) => setEngineModel((e.target as HTMLSelectElement).value),
         },
-      },
-      ENGINE_MODELS.map(m =>
+      }, ENGINE_MODELS.map(m =>
         h('option', { attrs: { value: m.id, selected: m.id === currentModel } }, m.name),
-      ),
-    ),
+      ));
+      return disabled ? renderDisabledControlExplainer(explainer, control) : control;
+    })(),
   ]);
 }

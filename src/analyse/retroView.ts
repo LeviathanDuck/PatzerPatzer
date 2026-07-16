@@ -41,6 +41,17 @@ import {
 } from '../feedback/severity';
 import type { FeedbackTone } from '../feedback/severity';
 import { retroConfig } from './retroConfig';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  action();
+}
 
 // --- Entry button ---
 
@@ -69,23 +80,43 @@ export interface RetroEntryDeps {
 export function renderRetroEntry(deps: RetroEntryDeps): VNode {
   const { retro, choiceOpen, analysisComplete, batchAnalyzing, onToggle } = deps;
   const active = !!retro || choiceOpen;
-  return h('button.btn-mistakes', {
-    class: { 'btn-mistakes--active': active },
-    attrs: {
-      disabled: !analysisComplete || batchAnalyzing,
-      title: retro
-        ? 'Close mistake review'
-        : choiceOpen
-          ? 'Close mistake choices'
-        : analysisComplete
-          ? 'Review your mistakes from this game'
-          : 'Complete game review first',
-    },
-    on: { click: onToggle },
-  }, [
+  const content = [
     h('span.lfym-badge', { class: { 'lfym-badge--inverted': active } }, '?!'),
     active ? ' Close Mistakes' : ' Mistakes',
-  ]);
+  ];
+  const disabledReason = batchAnalyzing
+    ? 'Wait for the current batch analysis to finish.'
+    : 'Analyze the game before reviewing its mistakes.';
+  if (!analysisComplete || batchAnalyzing) return renderDisabledControlExplainer({
+    label: active ? 'Close Mistakes' : 'Mistakes',
+    description: disabledReason,
+  }, h('button.btn-mistakes', {
+    class: { 'btn-mistakes--active': active },
+    attrs: {
+      disabled: true,
+      ...controlExplainerAttrs({
+        label: active ? 'Close Mistakes' : 'Mistakes',
+        description: retro
+          ? 'Close the active Learn From Your Mistakes session.'
+          : choiceOpen
+            ? 'Close the mistake-selection choices.'
+          : disabledReason,
+      }),
+    },
+    on: { click: onToggle },
+  }, content));
+  return h('button.btn-mistakes', {
+    class: { 'btn-mistakes--active': active },
+    attrs: controlExplainerAttrs({
+      label: active ? 'Close Mistakes' : 'Mistakes',
+      description: retro
+        ? 'Close the active Learn From Your Mistakes session.'
+        : choiceOpen
+          ? 'Close the mistake-selection choices.'
+          : 'Review the learning moments found in this game.',
+    }),
+    on: { click: onToggle },
+  }, content);
 }
 
 // --- Choice page ---
@@ -133,7 +164,10 @@ export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
     h('div.retro-box__title', [
       h('span', 'Learn From Your Mistakes'),
       h('span.retro-box__progress', `${choice.candidates.length} found`),
-      h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close', 'aria-label': 'Close' } }, '✕'),
+      h('button.retro-box__close', {
+        on: { click: onClose },
+        attrs: iconControlExplainerAttrs({ label: 'Close mistake choices' }),
+      }, '✕'),
     ]),
     h('div.retro-choice__body', [
       h('div.retro-choice__section', [
@@ -145,7 +179,10 @@ export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
             class: { 'is-selected': checked },
           }, [
             h('input', {
-              attrs: { type: 'checkbox' },
+              attrs: { type: 'checkbox', ...controlExplainerAttrs({
+                label: category.label,
+                description: `${checked ? 'Exclude' : 'Include'} ${category.description.toLowerCase()}.`,
+              }) },
               props: { checked },
               on: { change: () => onSelectionChange(toggleChoiceCategory(choice.selection, category.id)) },
             }),
@@ -173,6 +210,10 @@ export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
               type: 'button',
               role: 'radio',
               'aria-checked': active ? 'true' : 'false',
+              ...controlExplainerAttrs({
+                label: preset.label,
+                description: preset.helper,
+              }),
             },
             on: { click: () => onSelectionChange(setChoiceSeverity(choice.selection, preset.id)) },
           }, [
@@ -185,10 +226,24 @@ export function renderRetroChoicePage(deps: RetroChoicePageDeps): VNode | null {
       selectedCount === 0
         ? h('div.retro-choice__empty', 'No moments match these choices.')
         : null,
-      h('button.retro-choice__begin', {
-        attrs: { type: 'button', disabled: selectedCount === 0 },
+      selectedCount > 0 ? h('button.retro-choice__begin', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: beginLabel,
+          description: selectedCount === 0
+            ? 'Choose at least one matching mistake category and severity.'
+            : 'Start a Learn From Your Mistakes session with the selected moments.',
+        }) },
         on: { click: () => { if (filterRetroCandidatesForChoice(choice.candidates, choice.selection).length > 0) onBegin(); } },
-      }, beginLabel),
+      }, beginLabel) : renderDisabledControlExplainer({
+        label: beginLabel,
+        description: 'Choose at least one matching mistake category and severity.',
+      }, h('button.retro-choice__begin', {
+        attrs: { type: 'button', disabled: true, ...controlExplainerAttrs({
+          label: beginLabel,
+          description: 'Choose at least one matching mistake category and severity.',
+        }) },
+        on: { click: onBegin },
+      }, beginLabel)),
     ].filter(Boolean) as VNode[]),
   ]);
 }
@@ -402,28 +457,44 @@ function renderSkipOrView(
   redraw: () => void,
 ): VNode {
   const cand = retro.current();
+  const viewSolution = () => {
+    retro.viewSolution();
+    retro.revealGuidance();
+    setRetroVisibleEngineEnabled(true);
+    if (cand) {
+      navigate(cand.parentPath);
+      playUciMove(cand.bestMove);
+    } else {
+      redraw();
+    }
+  };
+  const skip = () => {
+    retro.skip();
+    resetRetroVisibleEngineUi();
+    const next = retro.current();
+    if (next) navigate(next.parentPath);
+    else redraw();
+  };
   return h('div.retro-choices', [
     h('a', {
-      on: { click: () => {
-        retro.viewSolution();
-        retro.revealGuidance();
-        setRetroVisibleEngineEnabled(true);
-        if (cand) {
-          navigate(cand.parentPath);
-          playUciMove(cand.bestMove);
-        } else {
-          redraw();
-        }
-      }},
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+        label: LFYM_MESSAGES[retroConfig.feedbackTone].viewTheSolution,
+        description: 'Reveal and play the engine’s best move for this learning moment.',
+      }) },
+      on: {
+        click: viewSolution,
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, viewSolution),
+      },
     }, LFYM_MESSAGES[retroConfig.feedbackTone].viewTheSolution),
     h('a', {
-      on: { click: () => {
-        retro.skip();
-        resetRetroVisibleEngineUi();
-        const next = retro.current();
-        if (next) navigate(next.parentPath);
-        else redraw();
-      }},
+      attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+        label: LFYM_MESSAGES[retroConfig.feedbackTone].skipThisMove,
+        description: 'Skip this learning moment and continue to the next one.',
+      }) },
+      on: {
+        click: skip,
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, skip),
+      },
     }, LFYM_MESSAGES[retroConfig.feedbackTone].skipThisMove),
   ]);
 }
@@ -431,14 +502,22 @@ function renderSkipOrView(
 // Blue "▶ Next" continue half-button.
 // Mirrors lichess-org/lila: retroView.ts jumpToNext VNode (a.half.continue)
 function renderContinue(retro: RetroCtrl, navigate: (path: string) => void, redraw: () => void): VNode {
+  const next = () => {
+    retro.jumpToNext();
+    resetRetroVisibleEngineUi();
+    const candidate = retro.current();
+    if (candidate) navigate(candidate.parentPath);
+    else redraw();
+  };
   return h('a.retro-continue', {
-    on: { click: () => {
-      retro.jumpToNext();
-      resetRetroVisibleEngineUi();
-      const next = retro.current();
-      if (next) navigate(next.parentPath);
-      else redraw();
-    }},
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+      label: 'Next mistake',
+      description: 'Continue to the next Learn From Your Mistakes moment.',
+    }) },
+    on: {
+      click: next,
+      keydown: (event: KeyboardEvent) => activateOnKeyboard(event, next),
+    },
   }, [
     h('span.retro-continue__icon', '▶'),
     'Next',
@@ -622,6 +701,10 @@ function renderSaveToLibrary(
     return h('div.retro-save', h('span.retro-save__confirm', 'Saved!'));
   }
   return h('div.retro-save', h('button.retro-save__btn', {
+    attrs: controlExplainerAttrs({
+      label: LFYM_MESSAGES[retroConfig.feedbackTone].saveToLibrary,
+      description: 'Open the save flow for this learning moment.',
+    }),
     on: { click: () => openLfymSaveFlow(cand, retro, variant, opponentName, redraw) },
   }, LFYM_MESSAGES[retroConfig.feedbackTone].saveToLibrary));
 }
@@ -763,6 +846,10 @@ function renderBulkSaveToLibrary(
 
   const count = unsaved.length;
   return h('div.retro-bulk-save', h('button.retro-save__btn', {
+    attrs: controlExplainerAttrs({
+      label: `Save ${count} missed position${count === 1 ? '' : 's'}`,
+      description: 'Save all unsaved missed positions from this session to the puzzle library.',
+    }),
     on: { click: () => {
       _bulkSaveState = 'saving';
       redraw();
@@ -837,13 +924,28 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
   if (!cand) {
     // Session complete — no more candidates.
     // Mirrors lichess-org/lila: retroView.ts feedback.end()
+    const restart = () => {
+      retro.reset();
+      const first = retro.current();
+      if (first) navigate(first.parentPath);
+      else redraw();
+    };
     feedbackContent = [
       h('div.retro-player', [
         h('div.retro-king', '♚'),
         h('div.retro-instruction', [
           h('em', { style: { color: countFeedback.color } }, mistakeCountSessionEnd(countFeedback, tone)),
           h('div.retro-choices', [
-            total > 0 && h('a', { on: { click: () => { retro.reset(); const f = retro.current(); if (f) navigate(f.parentPath); else redraw(); } } }, msg.doItAgain),
+            total > 0 && h('a', {
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+                label: msg.doItAgain,
+                description: 'Restart this Learn From Your Mistakes session from the first moment.',
+              }) },
+              on: {
+                click: restart,
+                keydown: (event: KeyboardEvent) => activateOnKeyboard(event, restart),
+              },
+            }, msg.doItAgain),
           ].filter(Boolean) as VNode[]),
           total > 0 ? renderBulkSaveToLibrary(retro, redraw) : null,
         ].filter(Boolean) as VNode[]),
@@ -874,6 +976,11 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
   } else if (feedback === 'offTrack') {
     // User navigated away.
     // Mirrors lichess-org/lila: retroView.ts feedback.offTrack()
+    const resume = () => {
+      const current = retro.current();
+      if (current) navigate(current.parentPath);
+      else redraw();
+    };
     feedbackContent = [
       h('div.retro-player', [
         h('div.retro-icon.retro-icon--off', '!'),
@@ -881,11 +988,14 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
           h('strong', msg.offTrackMessage),
           h('div.retro-choices.retro-choices--off', [
             h('a', {
-              on: { click: () => {
-                const c = retro.current();
-                if (c) navigate(c.parentPath);
-                else redraw();
-              }},
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
+                label: msg.offTrackResume,
+                description: 'Return to the active learning moment and resume the session.',
+              }) },
+              on: {
+                click: resume,
+                keydown: (event: KeyboardEvent) => activateOnKeyboard(event, resume),
+              },
             }, msg.offTrackResume),
           ]),
         ]),
@@ -918,7 +1028,10 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
             if (cand) navigate(cand.parentPath);
             syncArrow();
             redraw();
-          }}}, msg.tryAnotherMove)),
+          }}, attrs: controlExplainerAttrs({
+            label: msg.tryAnotherMove,
+            description: 'Reset this learning moment and try a different move.',
+          }) }, msg.tryAnotherMove)),
         ]),
       ]),
     ];
@@ -956,7 +1069,10 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
               if (cand) navigate(cand.parentPath);
               syncArrow();
               redraw();
-            }}}, msg.tryAnotherMove)),
+            }}, attrs: controlExplainerAttrs({
+              label: msg.tryAnotherMove,
+              description: 'Reset this learning moment and try a different move.',
+            }) }, msg.tryAnotherMove)),
           ]),
         ]),
       ),
@@ -982,7 +1098,10 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
               if (cand) navigate(cand.parentPath);
               syncArrow();
               redraw();
-            }}}, msg.tryAnotherMove)),
+            }}, attrs: controlExplainerAttrs({
+              label: msg.tryAnotherMove,
+              description: 'Reset this learning moment and try a different move.',
+            }) }, msg.tryAnotherMove)),
           ]),
         ]),
       ),
@@ -997,7 +1116,13 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
       h('div.retro-box__title-meta', [
         severityBadge,
         h('span.retro-box__progress', { style: { color: countFeedback.color } }, progressText),
-        h('button.retro-box__close', { on: { click: onClose }, attrs: { title: 'Close', 'aria-label': 'Close' } }, '✕'),
+        h('button.retro-box__close', {
+          on: { click: onClose },
+          attrs: iconControlExplainerAttrs({
+            label: 'Close Learn From Your Mistakes',
+            description: 'End the current mistake-review session.',
+          }),
+        }, '✕'),
       ].filter(Boolean) as VNode[]),
     ]),
     // Feedback area — mirrors lichess-org/lila: retroView.ts div.feedback.{state}

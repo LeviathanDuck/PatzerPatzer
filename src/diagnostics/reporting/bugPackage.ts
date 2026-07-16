@@ -261,6 +261,7 @@ export async function copyBugPackageToClipboard(pkg: BugPackage): Promise<void> 
 
     if (typeof document === 'undefined') return;
     const textarea = document.createElement('textarea');
+    textarea.setAttribute('data-ui-explainer-exempt', 'hidden-implementation-input');
     textarea.value = json;
     textarea.setAttribute('readonly', 'true');
     textarea.style.position = 'fixed';
@@ -282,6 +283,7 @@ export function downloadBugPackageAsJson(pkg: BugPackage, filename?: string): vo
     const blob = new Blob([serializeBugPackage(pkg)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
+    anchor.setAttribute('data-ui-explainer-exempt', 'programmatic-download-node');
     anchor.href = url;
     anchor.download = filename ?? defaultFilename;
     anchor.style.display = 'none';

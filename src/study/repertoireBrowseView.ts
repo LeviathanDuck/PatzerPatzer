@@ -8,6 +8,7 @@ import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import { uciToMove } from '@lichess-org/chessground/util';
 import type { Color } from 'chessops/types';
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 import { renderMoveList } from '../analyse/moveList';
 import { renderMoveNavBar, type MoveNavOverride } from '../analyse/analysisControls';
 import { renderBoard } from '../board/index';
@@ -410,8 +411,9 @@ function renderChapterList(redraw: () => void): VNode {
       key: `${index}:${chapter.sourceGameIndex}`,
       class: { active },
       attrs: {
-        title: `Open ${chapterTitle(chapter, index)}`,
         'aria-label': `Open ${chapterTitle(chapter, index)}`,
+        'aria-pressed': String(active),
+        ...controlExplainerAttrs({ label: `Open ${chapterTitle(chapter, index)}`, description: 'Loads this chapter on the repertoire board.' }),
       },
       on: { click: () => selectChapter(index, redraw) },
     }, [
@@ -496,7 +498,7 @@ export function renderRepertoireSourceBrowse(redraw: () => void): VNode {
   if (!source) {
     return h('section.repertoire__browse', [
       h('button.repertoire__browse-back', {
-        attrs: { title: 'Back to Study Library', 'aria-label': 'Back to Study Library' },
+        attrs: { ...controlExplainerAttrs({ label: 'Back to Study Library' }) },
         on: { click: () => { closeRepertoireSourceBrowse(); redraw(); } },
       }, '← Library'),
       h('div.repertoire__browse-empty', 'No repertoire source selected.'),
@@ -505,7 +507,7 @@ export function renderRepertoireSourceBrowse(redraw: () => void): VNode {
   if (_state.error) {
     return h('section.repertoire__browse', [
       h('button.repertoire__browse-back', {
-        attrs: { title: 'Back to Study Library', 'aria-label': 'Back to Study Library' },
+        attrs: { ...controlExplainerAttrs({ label: 'Back to Study Library' }) },
         on: { click: () => { closeRepertoireSourceBrowse(); redraw(); } },
       }, '← Library'),
       h('div.repertoire__browse-error', 'Could not parse this repertoire source.'),
@@ -514,7 +516,7 @@ export function renderRepertoireSourceBrowse(redraw: () => void): VNode {
   return h('section.repertoire__browse', [
     h('div.repertoire__browse-header', [
       h('button.repertoire__browse-back', {
-        attrs: { title: 'Back to Study Library', 'aria-label': 'Back to Study Library' },
+        attrs: { ...controlExplainerAttrs({ label: 'Back to Study Library' }) },
         on: { click: () => { closeRepertoireSourceBrowse(); redraw(); } },
       }, '← Library'),
       renderChip(source),

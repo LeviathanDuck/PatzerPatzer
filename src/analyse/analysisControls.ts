@@ -6,6 +6,11 @@
 import { h, type VNode } from 'snabbdom';
 import type { Color } from 'chessops/types';
 import { renderToggleRow } from '../ui';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import { writeHashRoute } from '../router';
 import type { AnalyseCtrl } from './ctrl';
 import type { RetroChoiceCountSummary } from './retroChoice';
@@ -168,7 +173,10 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
   const explorerBtn: VNode | null = nav?.onBook !== undefined
     ? h('button.fbt', {
         class: { active: !!nav.bookActive },
-        attrs: { 'data-icon': ICON_BOOK, title: 'Opening explorer', 'aria-label': 'Opening explorer' },
+        attrs: { 'data-icon': ICON_BOOK, ...iconControlExplainerAttrs({
+          label: 'Opening explorer',
+          description: `${nav.bookActive ? 'Close' : 'Open'} moves from the opening database for this position.`,
+        }) },
         on:    { click: nav.onBook },
       })
     : null;
@@ -179,13 +187,19 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
     : (nav?.menuTitle !== undefined && nav?.onMenu !== undefined)
     ? h('div.move-nav-bar__right', [h('button.fbt', {
         class: { active: !!nav.menuOpen },
-        attrs: { 'data-icon': ICON_HAMBURGER, title: nav.menuTitle, 'aria-label': nav.menuTitle },
+        attrs: { 'data-icon': ICON_HAMBURGER, ...iconControlExplainerAttrs({
+          label: `${nav.menuOpen ? 'Close' : 'Open'} ${nav.menuTitle}`,
+          description: `${nav.menuOpen ? 'Close' : 'Open'} ${nav.menuTitle.toLowerCase()}.`,
+        }) },
         on:    { click: nav.onMenu },
       })])
     : h('div.move-nav-bar__right', [
         h('button.fbt', {
           class: { active: _actionMenuOpen },
-          attrs: { 'data-icon': ICON_HAMBURGER, title: 'Analysis menu', 'aria-label': 'Analysis menu' },
+          attrs: { 'data-icon': ICON_HAMBURGER, ...iconControlExplainerAttrs({
+            label: _actionMenuOpen ? 'Close Analysis menu' : 'Open Analysis menu',
+            description: `${_actionMenuOpen ? 'Close' : 'Open'} the Analysis tools menu.`,
+          }) },
           on:    { click: () => { toggleActionMenu(); deps?.redraw(); } },
         }),
       ]);
@@ -195,22 +209,66 @@ export function renderMoveNavBar(leftNodes: Array<VNode | null>, nav?: MoveNavOv
     ...(explorerBtn ? [explorerBtn] : []),
     h('div.move-nav-bar__middle', [
       h('div.jumps', [
-        h('button.fbt', {
-          attrs: { 'data-icon': ICON_JUMP_FIRST, disabled: !canPrev, title: 'First move', 'aria-label': 'First move' },
+        canPrev ? h('button.fbt', {
+          attrs: { 'data-icon': ICON_JUMP_FIRST, ...iconControlExplainerAttrs({
+            label: 'First move',
+            description: 'Jump to the starting position.',
+          }) },
           on:    { click: first },
-        }),
-        h('button.fbt', {
-          attrs: { 'data-icon': ICON_PREV, disabled: !canPrev, title: 'Previous move', 'aria-label': 'Previous move' },
+        }) : renderDisabledControlExplainer({
+          label: 'First move',
+          description: 'Already at the starting position.',
+        }, h('button.fbt', {
+          attrs: { 'data-icon': ICON_JUMP_FIRST, disabled: true, ...iconControlExplainerAttrs({
+            label: 'First move', description: 'Already at the starting position.',
+          }) },
+          on: { click: first },
+        })),
+        canPrev ? h('button.fbt', {
+          attrs: { 'data-icon': ICON_PREV, ...iconControlExplainerAttrs({
+            label: 'Previous move',
+            description: 'Step back one move.',
+          }) },
           on:    { click: prev },
-        }),
-        h('button.fbt', {
-          attrs: { 'data-icon': ICON_NEXT, disabled: !canNext, title: 'Next move', 'aria-label': 'Next move' },
+        }) : renderDisabledControlExplainer({
+          label: 'Previous move',
+          description: 'There is no previous move.',
+        }, h('button.fbt', {
+          attrs: { 'data-icon': ICON_PREV, disabled: true, ...iconControlExplainerAttrs({
+            label: 'Previous move', description: 'There is no previous move.',
+          }) },
+          on: { click: prev },
+        })),
+        canNext ? h('button.fbt', {
+          attrs: { 'data-icon': ICON_NEXT, ...iconControlExplainerAttrs({
+            label: 'Next move',
+            description: 'Step forward one move.',
+          }) },
           on:    { click: next },
-        }),
-        h('button.fbt', {
-          attrs: { 'data-icon': ICON_JUMP_LAST, disabled: !canNext, title: 'Last move', 'aria-label': 'Last move' },
+        }) : renderDisabledControlExplainer({
+          label: 'Next move',
+          description: 'There is no next move.',
+        }, h('button.fbt', {
+          attrs: { 'data-icon': ICON_NEXT, disabled: true, ...iconControlExplainerAttrs({
+            label: 'Next move', description: 'There is no next move.',
+          }) },
+          on: { click: next },
+        })),
+        canNext ? h('button.fbt', {
+          attrs: { 'data-icon': ICON_JUMP_LAST, ...iconControlExplainerAttrs({
+            label: 'Last move',
+            description: 'Jump to the end of this line.',
+          }) },
           on:    { click: last },
-        }),
+        }) : renderDisabledControlExplainer({
+          label: 'Last move',
+          description: 'Already at the end of this line.',
+        }, h('button.fbt', {
+          attrs: { 'data-icon': ICON_JUMP_LAST, disabled: true, ...iconControlExplainerAttrs({
+            label: 'Last move', description: 'Already at the end of this line.',
+          }) },
+          on: { click: last },
+        })),
       ]),
     ]),
     rightZone,
@@ -257,6 +315,7 @@ export function renderActionMenu(): VNode | null {
   if (_actionMenuSubView === 'mistake-detection') {
     return h('div.action-menu', [
       h('button.action-menu__back-btn', {
+        attrs: controlExplainerAttrs({ label: 'Back to Analysis menu' }),
         on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
       }, '\u2190 Back'),
       h('h2', 'Mistake Detection'),
@@ -273,6 +332,7 @@ export function renderActionMenu(): VNode | null {
   if (_actionMenuSubView === 'practice') {
     return h('div.action-menu', [
       h('button.action-menu__back-btn', {
+        attrs: controlExplainerAttrs({ label: 'Back to Analysis menu' }),
         on: { click: () => { _actionMenuSubView = null; deps.redraw(); } },
       }, '← Back'),
       h('h2', 'Practice vs. Computer'),
@@ -289,6 +349,7 @@ export function renderActionMenu(): VNode | null {
   if (_actionMenuSubView === 'lichess-compare') {
     return h('div.action-menu', [
       h('button.action-menu__back-btn', {
+        attrs: controlExplainerAttrs({ label: 'Back to Analysis menu' }),
         on: { click: () => { closeLichessCompareFlow(); _actionMenuSubView = null; deps.redraw(); } },
       }, '\u2190 Back'),
       h('h2', 'Compare with Lichess analysis'),
@@ -298,7 +359,7 @@ export function renderActionMenu(): VNode | null {
 
   return h('div.action-menu', [
     h('button.action-menu__close-btn', {
-      attrs: { title: 'Close menu', 'aria-label': 'Close menu' },
+      attrs: iconControlExplainerAttrs({ label: 'Close Analysis menu' }),
       on:    { click: close },
     }, '×'),
 
@@ -306,12 +367,18 @@ export function renderActionMenu(): VNode | null {
     h('h2', 'Tools'),
     h('div.action-menu__tools', [
       h('button', {
-        attrs: { title: 'Open a fresh standard analysis board' },
+        attrs: controlExplainerAttrs({
+          label: 'New Board',
+          description: 'Open a fresh standard position on the Analysis Board.',
+        }),
         on:    { click: () => { deps.onNewBoard(); close(); } },
       }, 'New Board'),
 
       ...(analysisComplete ? [h('button', {
-        attrs: { title: 'Re-analyze this game — replaces the stored review' },
+        attrs: controlExplainerAttrs({
+          label: 'Re-Analyze game',
+          description: 'Run Stockfish again and replace this game’s stored analysis.',
+        }),
         on: { click: () => {
           requestSelectedGameAnalysis();
           close();
@@ -320,13 +387,19 @@ export function renderActionMenu(): VNode | null {
 
 
       h('button', {
-        attrs: { title: 'Save this game to Study Library' },
+        attrs: controlExplainerAttrs({
+          label: 'Save game to Library',
+          description: 'Save this game to the Study Library.',
+        }),
         on:    { click: () => { deps.onSaveToLibrary(); close(); } },
       }, 'Save game to Library'),
 
       // Flip board — mirrors lichess-org/lila: actionMenu.ts ctrl.flip() action
       h('button', {
-        attrs: { 'data-icon': ICON_FLIP, title: 'Flip board (hotkey: f)' },
+        attrs: { 'data-icon': ICON_FLIP, ...controlExplainerAttrs({
+          label: 'Flip board',
+          description: 'Reverse the board orientation; keyboard shortcut: F.',
+        }) },
         on:    { click: () => { deps.onFlipBoard(); close(); } },
       }, 'Flip board'),
 
@@ -351,7 +424,10 @@ export function renderActionMenu(): VNode | null {
       // render that constructs an EditorCtrl, so exactly one gets created and its Chessground
       // mounts normally, matching a direct/bare `#/editor` visit.
       h('button', {
-        attrs: { title: 'Open this position in the Board Editor' },
+        attrs: controlExplainerAttrs({
+          label: 'Board Editor',
+          description: 'Open the current position and orientation in the Board Editor.',
+        }),
         on: { click: () => {
           const fen = deps.getCtrl().node.fen;
           const boardOrientation = deps.getOrientation?.() ?? 'white';
@@ -361,7 +437,10 @@ export function renderActionMenu(): VNode | null {
       }, 'Board Editor'),
 
       h('button', {
-        attrs: { title: 'Report an issue with the Analysis page' },
+        attrs: controlExplainerAttrs({
+          label: 'Report issue',
+          description: 'Create a diagnostics report for the Analysis page.',
+        }),
         on:    { click: () => {
           const session = reportIssue({ triggeredBy: 'analysis-route', route: '/analysis' });
           console.info('[diagnostics] report issue session', session);
@@ -371,7 +450,10 @@ export function renderActionMenu(): VNode | null {
 
 
       ...(canCompareWithLichess ? [h('button', {
-        attrs: { title: 'Compare this Game Review against Lichess server analysis' },
+        attrs: controlExplainerAttrs({
+          label: 'Compare with Lichess analysis',
+          description: 'Compare this stored analysis with Lichess server analysis.',
+        }),
         on: { click: () => {
           const selection = deps.getSelectedGameForCompare?.() ?? null;
           if (!selection) return;
@@ -387,19 +469,31 @@ export function renderActionMenu(): VNode | null {
     h('div.action-menu__tools', [
       // Learn From Your Mistakes — mirrors lichess-org/lila: actionMenu.ts canRetro → toggleRetro()
       // LFYM brand (approved redesign 2026-07-05): the ?! badge replaces the bullseye glyph.
-      h('button', {
+      canLFYM ? h('button', {
         class:  { active: hasRetro },
         attrs:  {
-          title: canLFYM
-            ? (hasRetro ? 'Exit mistakes review' : 'Review your mistakes')
-            : 'Analyze the game first',
-          disabled: !canLFYM,
+          ...controlExplainerAttrs({
+            label: hasRetro ? 'Close Learn From Your Mistakes' : 'Learn From Your Mistakes',
+            description: hasRetro ? 'Exit the current mistakes review.' : 'Practice the learning moments found in this game.',
+          }),
         },
         on: { click: () => { if (canLFYM) { deps.onToggleRetro(); close(); } } },
       }, [
         h('span.lfym-badge', { class: { 'lfym-badge--inverted': hasRetro } }, '?!'),
         hasRetro ? ' Close Mistakes' : ' Learn From Your Mistakes',
-      ]),
+      ]) : renderDisabledControlExplainer({
+        label: 'Learn From Your Mistakes',
+        description: 'Analyze the game before reviewing its mistakes.',
+      }, h('button', {
+        attrs: { disabled: true, ...controlExplainerAttrs({
+          label: 'Learn From Your Mistakes',
+          description: 'Analyze the game before reviewing its mistakes.',
+        }) },
+        on: { click: () => { if (canLFYM) { deps.onToggleRetro(); close(); } } },
+      }, [
+        h('span.lfym-badge', '?!'),
+        ' Learn From Your Mistakes',
+      ])),
 
 
 
@@ -407,20 +501,37 @@ export function renderActionMenu(): VNode | null {
 
 
 
-      ...(deps.onToggleQuestionnaire ? [h('button', {
+      ...(deps.onToggleQuestionnaire ? [canQuestionnaire ? h('button', {
         attrs: {
-          title: canQuestionnaire ? 'Post Game Review Questions' : 'Analyze the game first',
-          disabled: !canQuestionnaire,
+          ...controlExplainerAttrs({
+            label: 'Post Game Review Questions',
+            description: 'Open the manual post-game reflection questionnaire.',
+          }),
         },
         on: { click: () => { if (canQuestionnaire) { deps.onToggleQuestionnaire!(); close(); } } },
       }, [
         h('span.qnr-pulse.qnr-pulse--unsatisfied'),
         ' Post Game Review Questions',
-      ])] : []),
+      ]) : renderDisabledControlExplainer({
+        label: 'Post Game Review Questions',
+        description: 'Analyze the game before completing the review questions.',
+      }, h('button', {
+        attrs: { disabled: true, ...controlExplainerAttrs({
+          label: 'Post Game Review Questions',
+          description: 'Analyze the game before completing the review questions.',
+        }) },
+        on: { click: () => { if (canQuestionnaire) { deps.onToggleQuestionnaire!(); close(); } } },
+      }, [
+        h('span.qnr-pulse.qnr-pulse--unsatisfied'),
+        ' Post Game Review Questions',
+      ]))] : []),
 
 
       h('button', {
-        attrs: { title: 'Configure mistake detection thresholds' },
+        attrs: controlExplainerAttrs({
+          label: 'Mistake Detection',
+          description: 'Configure which mistakes become Learn From Your Mistakes moments.',
+        }),
         on: { click: () => { _actionMenuSubView = 'mistake-detection'; deps.redraw(); } },
       }, 'Mistake Detection'),
     ]),
@@ -434,9 +545,12 @@ export function renderActionMenu(): VNode | null {
         class: { active: practiceActive() },
         attrs: {
           'data-icon': ICON_PRACTICE,
-          title: practiceActive()
-            ? 'Stop playing against the computer'
-            : 'Play this position against the computer',
+          ...controlExplainerAttrs({
+            label: practiceActive() ? 'Stop practice' : 'Practice vs. Computer',
+            description: practiceActive()
+              ? 'Stop playing the current position against the computer.'
+              : 'Play the current position against the computer.',
+          }),
         },
         on: { click: () => {
           if (deps.onTogglePractice) deps.onTogglePractice();
@@ -446,7 +560,10 @@ export function renderActionMenu(): VNode | null {
         } },
       }, practiceActive() ? 'Stop practice' : 'Practice vs. Computer'),
       h('button', {
-        attrs: { title: 'Choose the computer opponent strength' },
+        attrs: controlExplainerAttrs({
+          label: `Computer strength level ${practiceStrengthLevel()}`,
+          description: 'Choose the computer opponent strength for practice.',
+        }),
         on: { click: () => { _actionMenuSubView = 'practice'; deps.redraw(); } },
       }, `Strength: Level ${practiceStrengthLevel()}`),
     ]),
@@ -471,7 +588,10 @@ export function renderActionMenu(): VNode | null {
       h('div.action-menu__slider-row', [
         h('label', { attrs: { for: 'action-menu-label-size' } }, 'Label size'),
         h('input#action-menu-label-size', {
-          attrs: { type: 'range', min: 6, max: 18, step: 1, value: arrowLabelSize },
+          attrs: { type: 'range', min: 6, max: 18, step: 1, value: arrowLabelSize, ...controlExplainerAttrs({
+            label: 'Arrow label size',
+            description: 'Set the text size used on engine-arrow labels.',
+          }) },
           on:    { input: (e: Event) => {
             setArrowLabelSize(parseInt((e.target as HTMLInputElement).value));
             syncArrow();

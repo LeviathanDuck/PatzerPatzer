@@ -9,6 +9,7 @@
 
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
+import { controlExplainerAttrs } from '../ui/controlExplainer';
 
 export type EvalGraphTheme = 'mountain' | 'ember' | 'glass';
 
@@ -92,7 +93,10 @@ export function renderEvalGraphSettings(redraw: () => void): VNode {
         THEME_CHOICES.map(choice =>
           h('button.board-settings__segmented-option', {
             class: { active: evalGraphTheme === choice.key },
-            attrs: { type: 'button', title: choice.label },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: `${choice.label} graph theme`,
+              description: 'Change the visual style of the evaluation graph.',
+            }) },
             on: { click: () => { setEvalGraphTheme(choice.key); redraw(); } },
           }, choice.label),
         ),

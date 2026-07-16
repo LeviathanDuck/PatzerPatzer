@@ -10,6 +10,13 @@ import { pathInit } from '../tree/ops';
 import { nagToGlyph } from '../tree/pgn';
 import type { ReviewEngineMetadata } from '../idb';
 import type { Glyph, TreeNode, TreePath } from '../tree/types';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../ui/controlExplainer';
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  action();
+}
 
 // True on touch/stylus devices — used to decide which context-menu trigger to attach.
 // Mirrors lichess-org/lila: ui/lib/src/device.ts isTouchDevice()
@@ -166,9 +173,13 @@ function renderMoveSpan(
       'worst-miss':     isWorstMiss,
       bookmarked:       isBookmarked,
     },
-    attrs: { p: path },
+    attrs: { p: path, role: 'button', tabindex: '0', ...iconControlExplainerAttrs({
+      label: `Go to ${node.san ?? 'move'}`,
+      description: 'Jump to this position in the move tree.',
+    }) },
     on: {
       click: () => navigate(path),
+      keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => navigate(path)),
       ...(onContextMenu ? buildContextHandlers(path, onContextMenu) : {}),
     },
   }, inner);
@@ -182,8 +193,12 @@ function renderMoveSpan(
     h('button.bookmark-btn', {
       class:  { 'bookmark-btn--active': isBookmarked },
       attrs:  {
-        title: isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
-        'aria-label': isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
+        ...iconControlExplainerAttrs({
+          label: isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
+          description: isBookmarked
+            ? 'Remove the bookmark from this move-tree position.'
+            : 'Bookmark this move-tree position for quick reference.',
+        }),
       },
       on:     { click: (e: MouseEvent) => { e.stopPropagation(); onToggleBookmark(path); } },
     }, '★'),
@@ -368,8 +383,10 @@ function renderColumnNodes(
         h('button.variation-fold', {
           class: { 'variation-fold--open': !isFolded },
           attrs: {
-            title: isFolded ? 'Show variations' : 'Hide variations',
-            'aria-label': isFolded ? 'Show variations' : 'Hide variations',
+            ...iconControlExplainerAttrs({
+              label: isFolded ? 'Show variations' : 'Hide variations',
+              description: `${isFolded ? 'Expand' : 'Collapse'} the side variations at this move.`,
+            }),
           },
           on:    { click: () => onToggleFold(firstVarPath) },
         }, isFolded ? '▶' : '▼'),
@@ -386,7 +403,10 @@ function renderColumnNodes(
         if (deleteVariation) {
           return h('line', [
             h('button.variation-remove', {
-              attrs: { title: 'Remove variation', 'aria-label': 'Remove variation' },
+              attrs: iconControlExplainerAttrs({
+                label: 'Remove variation',
+                description: 'Delete this variation branch from the move tree.',
+              }),
               on: { click: () => deleteVariation(varPath) },
             }, '×'),
             ...lineNodes,
@@ -434,8 +454,14 @@ export function renderContextMoves(
     if (isWhite) out.push(h('index', String(Math.ceil(node.ply / 2))));
     out.push(h('move', {
       class: { active: path === currentPath },
-      attrs: { p: path },
-      on: { click: () => navigate(path) },
+      attrs: { p: path, role: 'button', tabindex: '0', 'aria-label': `Go to ${node.san ?? 'move'}`, ...controlExplainerAttrs({
+        label: `Go to ${node.san ?? 'move'}`,
+        description: 'Jump to this position in the move sequence.',
+      }) },
+      on: {
+        click: () => navigate(path),
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => navigate(path)),
+      },
     }, [h('san', node.san ?? '')]));
   }
   const cls = ['tview2', 'tview2-column', ...(extraClass ? [extraClass] : [])].join('.');

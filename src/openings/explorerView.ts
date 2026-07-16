@@ -49,6 +49,7 @@ import {
 } from '../repertoire/explorerViewModel';
 import { isAccountRepertoireSource, repertoireAccountFilterSummary } from '../repertoire';
 import { syncArrowForced } from '../engine/ctrl';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../ui/controlExplainer';
 
 let _bookAuthNotice = '';
 let _repertoireExplorerNotice = '';
@@ -179,6 +180,19 @@ function bindExplorerMoveRowInteractions(root: ExplorerMoveRowsElement, opts: Ex
     const row = rowFromEventTarget(event.target, root, opts.rowSelector);
     const uci = row?.getAttribute('data-uci');
     if (uci) handleExplorerMoveClick(uci, opts);
+  });
+  root.addEventListener('keydown', (event: KeyboardEvent) => {
+    if ((event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+    const opts = currentExplorerMoveRowOptions(root);
+    if (!opts) return;
+    const target = event.target as HTMLElement | null;
+    if (target && opts.ignoreClickSelector && target.closest(opts.ignoreClickSelector)) return;
+    const row = rowFromEventTarget(event.target, root, opts.rowSelector);
+    if (!row || event.target !== row) return;
+    const uci = row.getAttribute('data-uci');
+    if (!uci) return;
+    event.preventDefault();
+    handleExplorerMoveClick(uci, opts);
   });
 }
 
@@ -348,8 +362,11 @@ function renderRepertoireMoveRows(
       class: { 'repertoire__move-row--expanded': expanded },
       attrs: {
         'data-uci': entry.uci,
-        title: `Play repertoire move ${entry.san}`,
-        'aria-label': `Play repertoire move ${entry.san}`,
+        role: 'button', tabindex: '0',
+        ...controlExplainerAttrs({
+          label: `Play repertoire move ${entry.san}`,
+          description: 'Play this move from the current position.',
+        }),
       },
     }, [
       h('div.repertoire__move-main', [
@@ -362,8 +379,7 @@ function renderRepertoireMoveRows(
       preview ? h('button.repertoire__comment-preview.repertoire__annotation-toggle', {
         attrs: {
           type: 'button',
-          title: expandedLabel,
-          'aria-label': expandedLabel,
+          ...controlExplainerAttrs({ label: expandedLabel, description: 'Show or hide this move annotation.' }),
           'aria-expanded': String(expanded),
         },
         on: {
@@ -428,8 +444,10 @@ function renderRepertoireSourceGroup(
       ]),
       h('button.repertoire__source-toggle', {
         attrs: {
-          title: group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
-          'aria-label': group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
+          ...controlExplainerAttrs({
+            label: group.source.enabled ? `Disable ${group.source.name}` : `Enable ${group.source.name}`,
+            description: 'Toggle this repertoire source in explorer results.',
+          }),
         },
         class: { active: group.source.enabled },
         on: { click: () => toggleRepertoireSourceFromExplorer(group.source, redraw, host.restoreAutoShapes) },
@@ -461,10 +479,9 @@ function renderRepertoireOutOfLine<Path>(
     h('span', match ? `Out of repertoire${moveLabel}.` : 'No repertoire match for this line.'),
     canJump
       ? h('button.repertoire__jump', {
-          attrs: {
-            title: 'Jump to deepest repertoire match',
-            'aria-label': 'Jump to deepest repertoire match',
-          },
+          attrs: controlExplainerAttrs({
+            label: 'Jump to deepest repertoire match', description: 'Return to the last position matching the active repertoire.',
+          }),
           on: { click: () => onJumpToPrior(match.matched.path as Path) },
         }, 'Jump')
       : null,
@@ -515,8 +532,9 @@ function renderRepertoireExplorerPanel<Path = unknown>(
           h('a.repertoire__empty-link', {
             attrs: {
               href: '#/study',
-              title: 'Open Study Library to upload a repertoire PGN',
-              'aria-label': 'Open Study Library to upload a repertoire PGN',
+              ...controlExplainerAttrs({
+                label: 'Open Study Library', description: 'Upload or manage repertoire PGNs in Study Library.',
+              }),
             },
           }, 'Study Library'),
           '.',
@@ -594,13 +612,22 @@ function renderTablebaseMoveRow(fen: string, move: TablebaseMoveStats, onMoveCli
   else if (move.stalemate)         badge.push(h('result.draws', 'Stalemate'));
   else if (move.insufficient_material) badge.push(h('result.draws', 'Insufficient'));
   else if (move.dtz === 0)         badge.push(h('result.draws', 'Draw'));
-  else if (move.dtz !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Zeroing' } }, `DTZ ${Math.abs(move.dtz)}`));
-  else if (move.dtm !== undefined) badge.push(h(`result.${cls}`, { attrs: { title: 'Distance To Mate' } }, `DTM ${Math.abs(move.dtm)}`));
+  else if (move.dtz !== undefined) badge.push(h(`result.${cls}`, { attrs: { 'aria-label': 'Distance To Zeroing' } }, `DTZ ${Math.abs(move.dtz)}`));
+  else if (move.dtm !== undefined) badge.push(h(`result.${cls}`, { attrs: { 'aria-label': 'Distance To Mate' } }, `DTM ${Math.abs(move.dtm)}`));
   else                             badge.push(h(`result.${cls}`, CATEGORY_LABELS[move.category] ?? move.category));
 
   return h('tr.tablebase__row', {
-    attrs: { 'data-uci': move.uci },
+    attrs: { 'data-uci': move.uci, role: 'button', tabindex: '0', ...controlExplainerAttrs({
+      label: `Play tablebase move ${move.san}`, description: 'Play this tablebase move from the current position.',
+    }) },
     on: { click: () => onMoveClick(move.uci) },
+    hook: { insert: vnode => {
+      (vnode.elm as HTMLElement).addEventListener('keydown', event => {
+        if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+        event.preventDefault();
+        onMoveClick(move.uci);
+      });
+    } },
   }, [
     h('td.tablebase__san', move.san),
     h('td.tablebase__result', badge),
@@ -667,6 +694,7 @@ function renderPlayerNamePrompt(redraw: () => void): VNode {
       h('strong', 'Enter a player name'),
       h('p.openings__explorer-explanation', 'Open the settings panel and enter a Lichess username to search player games.'),
       h('button.openings__explorer-retry', {
+        attrs: controlExplainerAttrs({ label: 'Open explorer settings', description: 'Enter a Lichess username for Player explorer.' }),
         on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
       }, 'Open settings'),
     ]),
@@ -722,11 +750,15 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
           : null,
         h('div.openings__explorer-auth-actions', [
           h('button.openings__explorer-connect-btn', {
-            attrs: { type: 'button' },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: 'Connect to Lichess', description: 'Authorize opening-book access through Lichess.',
+            }) },
             on: { click: () => connectBookAccess(fen, redraw) },
           }, 'Connect to Lichess'),
           h('button.openings__explorer-retry.openings__explorer-reset-btn', {
-            attrs: { type: 'button' },
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: 'Reset Lichess connection', description: 'Clear saved book access and begin connection again.',
+            }) },
             on: { click: () => resetBookConnection(redraw) },
           }, 'Reset connection'),
         ]),
@@ -739,6 +771,7 @@ function renderExplorerErrorBox(err: Error, fen: string, redraw: () => void): VN
       h('h3', 'Oops, sorry!'),
       h('p.openings__explorer-explanation', err.message),
       h('button.openings__explorer-retry', {
+        attrs: controlExplainerAttrs({ label: 'Retry explorer', description: 'Request explorer data for this position again.' }),
         on: { click: () => { explorerCtrl.reload(fen, redraw); redraw(); } },
       }, 'Retry'),
     ]),
@@ -759,19 +792,19 @@ export function renderExplorerDbTabs(
   };
   return h('div.openings__explorer-tabs', [
     h(`button.openings__explorer-tab${db === 'masters' ? '.active' : ''}`, {
-      attrs: { title: 'Show Masters explorer', 'aria-label': 'Show Masters explorer' },
+      attrs: controlExplainerAttrs({ label: 'Show Masters explorer', description: 'Use master-game opening statistics.' }),
       on: { click: () => setDb('masters') },
     }, 'Masters'),
     h(`button.openings__explorer-tab${db === 'lichess' ? '.active' : ''}`, {
-      attrs: { title: 'Show Lichess explorer', 'aria-label': 'Show Lichess explorer' },
+      attrs: controlExplainerAttrs({ label: 'Show Lichess explorer', description: 'Use Lichess game opening statistics.' }),
       on: { click: () => setDb('lichess') },
     }, 'Lichess'),
     h(`button.openings__explorer-tab${db === 'player' ? '.active' : ''}`, {
-      attrs: { title: 'Show Player explorer', 'aria-label': 'Show Player explorer' },
+      attrs: controlExplainerAttrs({ label: 'Show Player explorer', description: 'Use opening statistics for one Lichess player.' }),
       on: { click: () => setDb('player') },
     }, 'Player'),
     h(`button.openings__explorer-tab${db === 'repertoire' ? '.active' : ''}`, {
-      attrs: { title: 'Show Repertoire explorer', 'aria-label': 'Show Repertoire explorer' },
+      attrs: controlExplainerAttrs({ label: 'Show Repertoire explorer', description: 'Compare the current line with enabled repertoire sources.' }),
       on: { click: () => setDb('repertoire') },
     }, 'Repertoire'),
     // Config gear shares the right end of the tabs row; swaps to a close glyph
@@ -780,8 +813,10 @@ export function renderExplorerDbTabs(
     h('button.openings__explorer-gear', {
       class: { active: explorerCtrl.configOpen },
       attrs: {
-        title: explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
-        'aria-label': explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
+        ...iconControlExplainerAttrs({
+          label: explorerCtrl.configOpen ? 'Close explorer settings' : 'Configure explorer',
+          description: 'Show or hide database-specific explorer filters.',
+        }),
       },
       on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
     }, explorerCtrl.configOpen ? '✕' : '⚙'),
@@ -799,6 +834,7 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
   const toggleBtn = <T>(label: string, active: boolean, onClick: () => void) =>
     h('button.openings__explorer-filter-btn', {
       class: { active },
+      attrs: controlExplainerAttrs({ label: `Toggle ${label}`, description: 'Include or exclude this explorer filter value.' }),
       on: { click: () => { onClick(); redraw(); } },
     }, label);
 
@@ -827,7 +863,9 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
     h('label.openings__explorer-date-label', [
       label,
       h('input', {
-        attrs: { type, value, placeholder: type === 'number' ? 'YYYY' : 'YYYY-MM', min: type === 'number' ? '1952' : '1952-01' },
+        attrs: { type, name: `explorer-${label.toLowerCase()}`, value, placeholder: type === 'number' ? 'YYYY' : 'YYYY-MM', min: type === 'number' ? '1952' : '1952-01', ...controlExplainerAttrs({
+          label: `${label} date`, description: `${label === 'Since' ? 'Include games from' : 'Include games through'} this date.`,
+        }) },
         on: { change: (e: Event) => { onChange((e.target as HTMLInputElement).value); redraw(); } },
       }),
     ]);
@@ -841,7 +879,9 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
   const playerSection = () => h('div.openings__explorer-config-section', [
     h('label', 'Player'),
     h('input.openings__explorer-player-input', {
-      attrs: { type: 'text', placeholder: 'Lichess username', value: cfg.playerName },
+      attrs: { type: 'text', name: 'explorer-player', placeholder: 'Lichess username', value: cfg.playerName, ...controlExplainerAttrs({
+        label: 'Explorer player', description: 'Set the Lichess username used by Player explorer.',
+      }) },
       on: {
         change: (e: Event) => {
           cfg.setPlayerName((e.target as HTMLInputElement).value.trim());
@@ -852,6 +892,7 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
     cfg.playerPrevious.length ? h('div.openings__explorer-player-prev',
       cfg.playerPrevious.slice(0, 10).map(name =>
         h('button.openings__explorer-prev-btn', {
+          attrs: controlExplainerAttrs({ label: `Use player ${name}`, description: 'Restore this recently used Player explorer username.' }),
           on: { click: () => { cfg.setPlayerName(name); redraw(); } },
         }, name),
       ),
@@ -871,6 +912,7 @@ export function renderExplorerConfigPanel(redraw: () => void): VNode {
   return h('div.openings__explorer-config', [
     ...sections,
     h('button.openings__explorer-config-close', {
+      attrs: controlExplainerAttrs({ label: 'Close explorer settings', description: 'Return to explorer results.' }),
       on: { click: () => { explorerCtrl.toggleConfig(); redraw(); } },
     }, 'Done'),
   ]);
@@ -1009,8 +1051,18 @@ function renderExplorerGamesTable(
       games.map(game =>
         h('tr', {
           key: game.id,
-          attrs: { 'data-id': game.id, 'data-uci': game.uci ?? '' },
+          attrs: { 'data-id': game.id, 'data-uci': game.uci ?? '', role: 'link', tabindex: '0', ...controlExplainerAttrs({
+            label: `Open ${game.white.name} versus ${game.black.name}`,
+            description: 'Open this explorer game on Lichess in a new tab.',
+          }) },
           on: { click: () => openGame(game.id) },
+          hook: { insert: vnode => {
+            (vnode.elm as HTMLElement).addEventListener('keydown', event => {
+              if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ') || event.repeat) return;
+              event.preventDefault();
+              openGame(game.id);
+            });
+          } },
         }, [
           h('td.ratings', [
             h('span', String(game.white.rating)),
@@ -1109,7 +1161,11 @@ function renderExplorerMovesTable(
       const isSum = move.uci === '';
       return h(isSum ? 'tr.sum' : 'tr', {
         key: move.uci || '\u03A3',
-        attrs: move.uci ? { 'data-uci': move.uci } : {},
+        attrs: move.uci ? {
+          'data-uci': move.uci, role: 'button', tabindex: '0', ...controlExplainerAttrs({
+            label: `Play explorer move ${move.san}`, description: 'Play this move from the current position.',
+          }),
+        } : {},
       }, [
         h('td', move.san),
         h('td', `${((total / sumTotal) * 100).toFixed(0)}%`),

@@ -10,6 +10,7 @@ import { parseFen } from 'chessops/fen';
 import { makeSanAndPlay } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs } from '../../ui/controlExplainer';
 import { createDrillBoardAdapter, type DrillBoardController } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
 import { scheduleNext, positionKey, isDue } from './scheduler';
@@ -669,6 +670,7 @@ function renderDrillControls(session: DrillSession, redraw: () => void): VNode {
   return h('div.drill-controls', [
     showNext
       ? h('button.drill-btn.drill-btn--next', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Next practice move' }) },
           on: { click: () => {
             if (!_session) return;
             _session = _session.advance();
@@ -678,6 +680,7 @@ function renderDrillControls(session: DrillSession, redraw: () => void): VNode {
         }, 'Next')
       : null,
     h('button.drill-btn.drill-btn--end', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'End practice session', description: 'Ends this session and opens the session summary.' }) },
       on: { click: () => { captureSummary(); endDrill(); redraw(); } },
     }, 'End Session'),
   ]);
@@ -707,6 +710,7 @@ export function renderDrillSummary(redraw: () => void): VNode {
     ]),
     h('div.drill-summary__actions', [
       h('button.drill-btn.drill-btn--again', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Practice again', description: 'Starts a new session with the same lines.' }) },
         on: { click: () => {
           if (_sequences.length > 0) {
             initDrillView(_sequences, _rootFen, _trainAs, _redraw);
@@ -715,6 +719,7 @@ export function renderDrillSummary(redraw: () => void): VNode {
         }},
       }, 'Practice Again'),
       h('button.drill-btn.drill-btn--back', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to Study Library' }) },
         on: { click: () => { endDrill('summary-back', 'dismiss'); redraw(); } },
       }, 'Back to Library'),
     ]),

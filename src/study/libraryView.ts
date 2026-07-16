@@ -4,6 +4,11 @@
 
 import { h, type VNode } from 'snabbdom';
 import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
+import {
   allStudies, isLoaded, studyLibraryError, initStudyLibrary,
   sortKey, sortDir, filterFav, filterTag, filterSrc, searchQuery,
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
@@ -440,11 +445,19 @@ function removeRepertoireSource(source: RepertoireSource, redraw: () => void): v
     });
 }
 
+function renderRepertoireBusyControl(label: string, control: VNode): VNode {
+  return _repertoireSourceBusy
+    ? renderDisabledControlExplainer(
+        { label, description: 'Wait for the current repertoire source operation to finish.' },
+        control,
+      )
+    : control;
+}
+
 function renderRepertoireUploadControl(redraw: () => void): VNode {
-  return h('label.study-btn.study-btn--import.repertoire__upload', {
+  return renderRepertoireBusyControl('Upload repertoire PGN', h('label.study-btn.study-btn--import.repertoire__upload', {
     attrs: {
-      title: 'Upload repertoire PGN',
-      'aria-label': 'Upload repertoire PGN',
+      ...controlExplainerAttrs({ label: 'Upload repertoire PGN', description: 'Imports a PGN file as a repertoire source.' }),
     },
   }, [
     _repertoireSourceBusy ? 'Working...' : 'Upload repertoire PGN',
@@ -453,8 +466,7 @@ function renderRepertoireUploadControl(redraw: () => void): VNode {
         type: 'file',
         accept: '.pgn,text/plain',
         disabled: _repertoireSourceBusy,
-        title: 'Choose repertoire PGN file',
-        'aria-label': 'Choose repertoire PGN file',
+        'data-ui-explainer-exempt': 'hidden-implementation-input',
       },
       on: { change: (e: Event) => {
         const input = e.target as HTMLInputElement;
@@ -463,17 +475,15 @@ function renderRepertoireUploadControl(redraw: () => void): VNode {
         if (file) uploadRepertoireFile(file, redraw);
       }},
     }),
-  ]);
+  ]));
 }
 
 function renderAccountSourceAddButton(redraw: () => void): VNode {
-  return h('button.study-btn.repertoire__account-add', {
+  const button = h('button.study-btn.repertoire__account-add', {
     attrs: {
       type: 'button',
-      title: 'Add account-backed repertoire source',
-      'aria-label': 'Add account-backed repertoire source',
-      disabled: _repertoireSourceBusy,
       'aria-expanded': String(_showAccountSourcePicker),
+      ...controlExplainerAttrs({ label: 'Add account repertoire', description: 'Chooses an imported account to use as a repertoire source.' }),
     },
     on: { click: () => {
       _showAccountSourcePicker = !_showAccountSourcePicker;
@@ -481,6 +491,12 @@ function renderAccountSourceAddButton(redraw: () => void): VNode {
       redraw();
     } },
   }, 'Add account');
+  return _repertoireSourceBusy
+    ? renderDisabledControlExplainer(
+        { label: 'Add account repertoire', description: 'Wait for the current repertoire source operation to finish.' },
+        h('button.study-btn.repertoire__account-add', { attrs: { type: 'button', disabled: true } }, 'Add account'),
+      )
+    : button;
 }
 
 function renderAccountSourcePicker(redraw: () => void): VNode | null {
@@ -509,13 +525,11 @@ function renderAccountSourcePicker(redraw: () => void): VNode | null {
     const title = candidate.alreadySource
       ? `${candidate.accountLabel} is already a repertoire source`
       : `Add ${candidate.accountLabel} as an account-backed repertoire source`;
-    return h('button.repertoire__account-candidate', {
+    const button = h('button.repertoire__account-candidate', {
       key: candidate.accountId,
       attrs: {
         type: 'button',
-        title,
-        'aria-label': title,
-        disabled,
+        ...controlExplainerAttrs({ label: title, description: 'Adds this imported account as a repertoire source.' }),
       },
       on: { click: () => {
         if (disabled) return;
@@ -531,6 +545,15 @@ function renderAccountSourcePicker(redraw: () => void): VNode | null {
         candidate.alreadySource ? ' · added' : '',
       ]),
     ]);
+    return disabled
+      ? renderDisabledControlExplainer(
+          { label: `Add ${candidate.accountLabel}`, description: candidate.alreadySource ? 'This account is already a repertoire source.' : 'Wait for the current repertoire source operation to finish.' },
+          h('button.repertoire__account-candidate', { attrs: { type: 'button', disabled: true } }, [
+            h('span.repertoire__account-candidate-name', candidate.accountLabel),
+            h('span.repertoire__account-candidate-meta', candidate.alreadySource ? 'Already added' : 'Working'),
+          ]),
+        )
+      : button;
   }));
 }
 
@@ -558,11 +581,10 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
     { value: 'losses', label: 'Losses' },
   ];
   return h('div.repertoire__source-menu', [
-    h('button.repertoire__source-menu-item', {
+    renderRepertoireBusyControl(`Rename ${source.name}`, h('button.repertoire__source-menu-item', {
       attrs: {
-        title: `Rename ${source.name}`,
-        'aria-label': `Rename ${source.name}`,
         disabled: _repertoireSourceBusy,
+        ...controlExplainerAttrs({ label: `Rename ${source.name}`, description: 'Opens this repertoire source name for editing.' }),
       },
       on: { click: (e: Event) => {
         e.stopPropagation();
@@ -571,28 +593,28 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
         _openRepertoireMenuId = null;
         redraw();
       }},
-    }, 'Rename'),
+    }, 'Rename')),
     accountSource ? h('label.repertoire__source-menu-label', [
       h('span', 'Result'),
-      h('select.repertoire__side-select', {
+      renderRepertoireBusyControl(`Filter ${source.name} by account result`, h('select.repertoire__side-select', {
         attrs: {
-          title: `Filter ${source.name} by account result`,
           'aria-label': `Filter ${source.name} by account result`,
           disabled: _repertoireSourceBusy,
+          ...controlExplainerAttrs({ label: `Filter ${source.name} by account result`, description: 'Limits this account repertoire source by game result.' }),
         },
         props: { value: accountFilters.result },
         on: { change: (e: Event) => {
           e.stopPropagation();
           changeRepertoireAccountFilters(source, { result: (e.target as HTMLSelectElement).value as RepertoireAccountResultFilter }, redraw);
         } },
-      }, resultOptions.map(option => h('option', { attrs: { value: option.value } }, option.label))),
+      }, resultOptions.map(option => h('option', { attrs: { value: option.value } }, option.label)))),
     ]) : h('label.repertoire__source-menu-label', [
       h('span', 'Side'),
-      h('select.repertoire__side-select', {
+      renderRepertoireBusyControl(`Set side for ${source.name}`, h('select.repertoire__side-select', {
         attrs: {
-          title: `Set side for ${source.name}`,
           'aria-label': `Set side for ${source.name}`,
           disabled: _repertoireSourceBusy,
+          ...controlExplainerAttrs({ label: `Set side for ${source.name}`, description: 'Chooses which side this repertoire source trains.' }),
         },
         props: { value: selectedSide },
         on: { change: (e: Event) => {
@@ -604,15 +626,15 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
         h('option', { attrs: { value: 'white' } }, 'White'),
         h('option', { attrs: { value: 'black' } }, 'Black'),
         h('option', { attrs: { value: 'both' } }, 'White + Black'),
-      ]),
+      ])),
     ]),
     accountSource ? h('label.repertoire__source-menu-label', [
       h('span', 'Time'),
-      h('select.repertoire__side-select', {
+      renderRepertoireBusyControl(`Filter ${source.name} by time class`, h('select.repertoire__side-select', {
         attrs: {
-          title: `Filter ${source.name} by time class`,
           'aria-label': `Filter ${source.name} by time class`,
           disabled: _repertoireSourceBusy,
+          ...controlExplainerAttrs({ label: `Filter ${source.name} by time class`, description: 'Limits this account repertoire source by time class.' }),
         },
         props: { value: accountFilters.timeClass ?? '' },
         on: { change: (e: Event) => {
@@ -626,47 +648,46 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
         h('option', { attrs: { value: 'blitz' } }, 'Blitz'),
         h('option', { attrs: { value: 'rapid' } }, 'Rapid'),
         h('option', { attrs: { value: 'classical' } }, 'Classical'),
-      ]),
+      ])),
     ]) : null,
     accountSource ? h('label.repertoire__source-menu-label.repertoire__rating-filter', [
       h('span', 'Rating'),
       h('span.repertoire__rating-inputs', [
-        h('input.repertoire__rating-input', {
+        renderRepertoireBusyControl(`Minimum rating for ${source.name}`, h('input.repertoire__rating-input', {
           attrs: {
             type: 'number',
             min: '1',
             placeholder: 'min',
-            title: `Minimum account rating for ${source.name}`,
             'aria-label': `Minimum account rating for ${source.name}`,
             disabled: _repertoireSourceBusy,
+            ...controlExplainerAttrs({ label: `Minimum rating for ${source.name}`, description: 'Sets the lowest account-game rating included in this source.' }),
           },
           props: { value: accountFilters.minRating === null ? '' : String(accountFilters.minRating) },
           on: { change: (e: Event) => {
             e.stopPropagation();
             changeRepertoireAccountFilters(source, { minRating: parseRatingInput((e.target as HTMLInputElement).value) }, redraw);
           } },
-        }),
-        h('input.repertoire__rating-input', {
+        })),
+        renderRepertoireBusyControl(`Maximum rating for ${source.name}`, h('input.repertoire__rating-input', {
           attrs: {
             type: 'number',
             min: '1',
             placeholder: 'max',
-            title: `Maximum account rating for ${source.name}`,
             'aria-label': `Maximum account rating for ${source.name}`,
             disabled: _repertoireSourceBusy,
+            ...controlExplainerAttrs({ label: `Maximum rating for ${source.name}`, description: 'Sets the highest account-game rating included in this source.' }),
           },
           props: { value: accountFilters.maxRating === null ? '' : String(accountFilters.maxRating) },
           on: { change: (e: Event) => {
             e.stopPropagation();
             changeRepertoireAccountFilters(source, { maxRating: parseRatingInput((e.target as HTMLInputElement).value) }, redraw);
           } },
-        }),
+        })),
       ]),
     ]) : null,
-    accountSource ? null : h('label.repertoire__source-menu-item.repertoire__replace-label', {
+    accountSource ? null : renderRepertoireBusyControl(`Replace PGN for ${source.name}`, h('label.repertoire__source-menu-item.repertoire__replace-label', {
       attrs: {
-        title: `Replace PGN file for ${source.name}`,
-        'aria-label': `Replace PGN file for ${source.name}`,
+        ...controlExplainerAttrs({ label: `Replace PGN for ${source.name}`, description: 'Replaces this repertoire source with another PGN file.' }),
       },
     }, [
       'Replace file',
@@ -675,8 +696,7 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
           type: 'file',
           accept: '.pgn,text/plain',
           disabled: _repertoireSourceBusy,
-          title: `Choose replacement PGN for ${source.name}`,
-          'aria-label': `Choose replacement PGN for ${source.name}`,
+          'data-ui-explainer-exempt': 'hidden-implementation-input',
         },
         on: { change: (e: Event) => {
           const input = e.target as HTMLInputElement;
@@ -685,18 +705,17 @@ function renderRepertoireSourceMenu(source: RepertoireSource, redraw: () => void
           if (file) replaceSourceFile(source, file, redraw);
         }},
       }),
-    ]),
-    h('button.repertoire__source-menu-item.repertoire__source-menu-item--danger', {
+    ])),
+    renderRepertoireBusyControl(`Delete ${source.name}`, h('button.repertoire__source-menu-item.repertoire__source-menu-item--danger', {
       attrs: {
-        title: `Delete ${source.name}`,
-        'aria-label': `Delete ${source.name}`,
         disabled: _repertoireSourceBusy,
+        ...controlExplainerAttrs({ label: `Delete ${source.name}`, description: 'Permanently deletes this repertoire source after confirmation.' }),
       },
       on: { click: (e: Event) => {
         e.stopPropagation();
         removeRepertoireSource(source, redraw);
       }},
-    }, 'Delete'),
+    }, 'Delete')),
   ]);
 }
 
@@ -724,8 +743,8 @@ function renderRepertoireSourceRow(source: RepertoireSource, index: number, redr
         ? h('input.repertoire__source-name-input', {
             attrs: {
               value: _editingRepertoireSourceValue,
-              title: `Rename ${source.name}`,
               'aria-label': `Rename ${source.name}`,
+              ...controlExplainerAttrs({ label: `Rename ${source.name}`, description: 'Saves the new repertoire source name when the field loses focus.' }),
             },
             hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
             on: {
@@ -757,39 +776,37 @@ function renderRepertoireSourceRow(source: RepertoireSource, index: number, redr
       ? h('div.repertoire__source-main', sourceMainChildren)
       : h('button.repertoire__source-main.repertoire__source-open', {
           attrs: {
-            title: `Open ${source.name}`,
-            'aria-label': `Open ${source.name}`,
+            ...controlExplainerAttrs({ label: `Open ${source.name}`, description: 'Opens this repertoire source for chapter browsing.' }),
           },
           on: { click: () => {
             openRepertoireSourceBrowse(source, index);
             redraw();
           }},
         }, sourceMainChildren),
-    h('button.repertoire__source-toggle', {
+    renderRepertoireBusyControl(source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`, h('button.repertoire__source-toggle', {
       attrs: {
-        title: source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`,
-        'aria-label': source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`,
         disabled: _repertoireSourceBusy,
+        'aria-pressed': String(source.enabled),
+        ...controlExplainerAttrs({ label: source.enabled ? `Disable ${source.name}` : `Enable ${source.name}`, description: `${source.enabled ? 'Excludes' : 'Includes'} this source in repertoire reports and practice.` }),
       },
       class: { active: source.enabled },
       on: { click: (e: Event) => {
         e.stopPropagation();
         toggleRepertoireSourceEnabled(source, redraw);
       }},
-    }, source.enabled ? 'On' : 'Off'),
+    }, source.enabled ? 'On' : 'Off')),
     h('div.repertoire__source-menu-wrap', [
-      h('button.repertoire__source-menu-button', {
+      renderRepertoireBusyControl(`Actions for ${source.name}`, h('button.repertoire__source-menu-button', {
         attrs: {
-          title: `Source actions for ${source.name}`,
-          'aria-label': `Source actions for ${source.name}`,
           disabled: _repertoireSourceBusy,
+          ...iconControlExplainerAttrs({ label: `Actions for ${source.name}`, description: 'Opens repertoire source settings and destructive actions.' }),
         },
         on: { click: (e: Event) => {
           e.stopPropagation();
           _openRepertoireMenuId = _openRepertoireMenuId === source.id ? null : source.id;
           redraw();
         }},
-      }, '⋮'),
+      }, '⋮')),
       renderRepertoireSourceMenu(source, redraw),
     ]),
   ]);
@@ -860,8 +877,8 @@ function renderReportSelect(
     h('span.games-view__filter-label', label),
     h('select.repertoire__filter-select', {
       attrs: {
-        title: `Filter repertoire report by ${label.toLowerCase()}`,
         'aria-label': `Filter repertoire report by ${label.toLowerCase()}`,
+        ...controlExplainerAttrs({ label: `Filter repertoire report by ${label.toLowerCase()}`, description: `Limits the repertoire report by ${label.toLowerCase()}.` }),
       },
       props: { value },
       on: { change: (e: Event) => onChange((e.target as HTMLSelectElement).value) },
@@ -905,9 +922,8 @@ function renderReportPill<T extends string>(
     class: { active },
     attrs: {
       type: 'button',
-      title,
-      'aria-label': title,
       'aria-pressed': String(active),
+      ...controlExplainerAttrs({ label: title, description: `${active && key !== 'category' ? 'Removes' : 'Applies'} this repertoire report filter.` }),
     },
     on: { click: apply },
   }, label);
@@ -958,8 +974,7 @@ function renderRepertoireReportFilters(report: RepertoireComplianceReport, redra
           h('button.games-view__clear', {
             attrs: {
               type: 'button',
-              title: 'Clear repertoire report filters',
-              'aria-label': 'Clear repertoire report filters',
+              ...controlExplainerAttrs({ label: 'Clear repertoire report filters', description: 'Removes every active repertoire report filter.' }),
             },
             on: { click: () => { resetRepertoireComplianceReportFilters(); redraw(); } },
           }, 'Clear filters'),
@@ -973,7 +988,7 @@ function renderLossRatioToken(group: RepertoireComplianceReportGroup): VNode {
   const nonLossPct = 100 - lostPct;
   const label = `${group.seenCount.toLocaleString()} seen · ${group.lostCount.toLocaleString()} lost`;
   return h('span.repertoire__loss-ratio', {
-    attrs: { title: label, 'aria-label': label },
+    attrs: { 'aria-label': label },
   }, [
     h('span.repertoire__loss-ratio-bar', [
       h('span.wdl-w.repertoire__loss-ratio-segment', {
@@ -1019,7 +1034,7 @@ function setRepertoireOrpFeedback(key: string, message: string, redraw: () => vo
 function renderStudyNextFormula(group: RepertoireComplianceReportGroup): VNode {
   const label = `seen ${group.seenCount.toLocaleString()} x lost ${group.lostCount.toLocaleString()}`;
   return h('span.repertoire__study-next-formula', {
-    attrs: { title: label, 'aria-label': label },
+    attrs: { 'aria-label': label },
   }, label);
 }
 
@@ -1071,8 +1086,7 @@ function renderRepertoireReportGameList(group: RepertoireComplianceReportGroup):
       key: entry.gameId,
       attrs: {
         href,
-        title,
-        'aria-label': title,
+        ...controlExplainerAttrs({ label: title, description: 'Opens this game in Analysis at the first repertoire divergence.' }),
       },
     }, entry.game
       ? renderCompactGameRow(entry.game, false, false)
@@ -1090,29 +1104,24 @@ function renderRepertoireStudyNextActions(group: RepertoireComplianceReportGroup
   const orpTitle = orpUnavailableReason ?? `Send ${group.sourceName} line to Opening Repetition Practice`;
   const feedback = _repertoireOrpFeedback.get(group.key) ?? null;
   return h('div.repertoire__line-actions', [
-    h('button.study-btn.repertoire__line-action', {
-      attrs: {
-        type: 'button',
-        title: openTitle,
-        'aria-label': openTitle,
-        disabled: !source,
-      },
-      on: { click: () => openRepertoireReportGroupOnBoard(group, redraw) },
-    }, 'Open on board'),
-    h('button.study-btn.repertoire__line-action', {
-      attrs: {
-        type: 'button',
-        title: orpTitle,
-        'aria-label': orpTitle,
-        disabled: Boolean(orpUnavailableReason) || saving,
-      },
-      on: {
-        click: () => {
-          if (!source || orpUnavailableReason || saving) return;
-          saveRepertoireReportGroupToOrp(group, source, redraw);
-        },
-      },
-    }, saving ? 'Saving...' : 'Send to ORP'),
+    source
+      ? h('button.study-btn.repertoire__line-action', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: openTitle, description: 'Opens this repertoire line on the board before the divergence.' }) },
+          on: { click: () => openRepertoireReportGroupOnBoard(group, redraw) },
+        }, 'Open on board')
+      : renderDisabledControlExplainer(
+          { label: 'Open on board', description: `Source ${group.sourceName} is not available.` },
+          h('button.study-btn.repertoire__line-action', { attrs: { type: 'button', disabled: true } }, 'Open on board'),
+        ),
+    !orpUnavailableReason && !saving
+      ? h('button.study-btn.repertoire__line-action', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: orpTitle, description: 'Saves this repertoire line to Opening Repetition Practice.' }) },
+          on: { click: () => { if (source) saveRepertoireReportGroupToOrp(group, source, redraw); } },
+        }, 'Send to ORP')
+      : renderDisabledControlExplainer(
+          { label: saving ? 'Saving to Opening Repetition Practice' : 'Send to Opening Repetition Practice', description: saving ? 'Wait for the current Opening Repetition Practice save to finish.' : `${orpUnavailableReason}` },
+          h('button.study-btn.repertoire__line-action', { attrs: { type: 'button', disabled: true } }, saving ? 'Saving...' : 'Send to ORP'),
+        ),
     feedback ? h('span.openings__save-feedback.repertoire__line-feedback', feedback) : null,
   ]);
 }
@@ -1174,9 +1183,8 @@ function renderRepertoireReportRow(
     h('button.repertoire__line-summary', {
       attrs: {
         type: 'button',
-        title: toggleTitle,
-        'aria-label': toggleTitle,
         'aria-expanded': String(expanded),
+        ...controlExplainerAttrs({ label: toggleTitle, description: `${expanded ? 'Hides' : 'Shows'} the matching games behind this repertoire divergence.` }),
       },
       on: { click: () => {
         if (expanded) _expandedRepertoireReportRows.delete(group.key);
@@ -1206,7 +1214,7 @@ function renderRepertoireReportTabs(redraw: () => void): VNode {
     { mode: 'study-next', label: 'Study next' },
   ];
   return h('div.repertoire__report-tabs', {
-    attrs: { role: 'tablist', 'aria-label': 'Repertoire compliance report view' },
+    attrs: { role: 'tablist', 'aria-label': 'Repertoire compliance report view', ...controlExplainerAttrs({ label: 'Repertoire compliance report views' }) },
   }, tabs.map(tab => {
     const active = _repertoireReportMode === tab.mode;
     return h('button.repertoire__report-tab', {
@@ -1215,7 +1223,7 @@ function renderRepertoireReportTabs(redraw: () => void): VNode {
         type: 'button',
         role: 'tab',
         'aria-selected': String(active),
-        'aria-label': tab.label,
+        ...controlExplainerAttrs({ label: tab.label, description: `Shows the ${tab.label.toLowerCase()} repertoire report view.` }),
       },
       on: { click: () => {
         _repertoireReportMode = tab.mode;
@@ -1243,9 +1251,8 @@ function renderRepertoireStudyNextGroupToggle(redraw: () => void): VNode | null 
         class: { active },
         attrs: {
           type: 'button',
-          title,
-          'aria-label': title,
           'aria-pressed': String(active),
+          ...controlExplainerAttrs({ label: title, description: 'Changes how Study-Next repertoire rows are grouped.' }),
         },
         on: { click: () => {
           if (_repertoireStudyNextGroupMode === option.mode) return;
@@ -1333,22 +1340,16 @@ function renderRepertoireComplianceSection(redraw: () => void): VNode {
   return h('section.repertoire__scan-section', [
     h('div.repertoire__scan-header', [
       h('h2.repertoire__section-title', 'Repertoire Compliance'),
-      h('button.study-btn.repertoire__scan-action', {
-        attrs: {
-          type: 'button',
-          title: actionTitle,
-          'aria-label': actionTitle,
-          disabled,
-        },
-        on: { click: () => {
-          if (disabled) return;
-          if (busy) pauseRepertoireScanFromStudy(redraw);
-          else runRepertoireScanFromStudy(redraw);
-        } },
-      }, actionLabel),
-      h('span.repertoire__scan-progress', {
-        attrs: { title: progressLabel },
-      }, progressLabel),
+      disabled
+        ? renderDisabledControlExplainer(
+            { label: actionTitle, description: !loaded ? 'Wait for repertoire scan status to load.' : progress?.state === 'empty' ? 'Add repertoire sources before running a compliance scan.' : 'Resolve the repertoire scan error before trying again.' },
+            h('button.study-btn.repertoire__scan-action', { attrs: { type: 'button', disabled: true } }, actionLabel),
+          )
+        : h('button.study-btn.repertoire__scan-action', {
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: actionTitle, description: `${busy ? 'Pauses' : 'Starts'} the repertoire compliance scan.` }) },
+            on: { click: () => { if (busy) pauseRepertoireScanFromStudy(redraw); else runRepertoireScanFromStudy(redraw); } },
+          }, actionLabel),
+      h('span.repertoire__scan-progress', progressLabel),
     ]),
     progress?.message
       ? h(`div.repertoire__scan-message.repertoire__scan-message--${progress.state}`, progress.message)
@@ -1367,13 +1368,19 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
   return h('div.study-row', {
     key: item.id,
     class: { 'study-row--selected': selected },
-    attrs: { draggable: 'true' },
+    attrs: { draggable: 'true', role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title}`, description: 'Changes this game selection for Study bulk actions.' }) },
     on: {
       click: (e: MouseEvent) => {
         // Only trigger selection if clicking on row background (not on child buttons/inputs)
         const target = e.target as HTMLElement;
         if (target.closest('button, a, input, textarea')) return;
         handleStudyClick(item.id, idx, e);
+        redraw();
+      },
+      keydown: (e: KeyboardEvent) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        handleStudyClick(item.id, idx, e as unknown as MouseEvent);
         redraw();
       },
       dragstart: (e: DragEvent) => {
@@ -1388,7 +1395,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
   }, [
     // Selection checkbox
     h('input.study-row__checkbox', {
-      attrs: { type: 'checkbox', checked: selected },
+      attrs: { type: 'checkbox', checked: selected, 'aria-label': `${selected ? 'Deselect' : 'Select'} ${item.title}`, ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title}`, description: 'Changes this game selection for Study bulk actions.' }) },
       on: { click: (e: Event) => {
         e.stopPropagation();
         handleStudyClick(item.id, idx, e as unknown as MouseEvent);
@@ -1398,7 +1405,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
     // Favorite star
     h('button.study-row__fav', {
       class: { active: item.favorite },
-      attrs: { title: item.favorite ? 'Remove from favorites' : 'Add to favorites' },
+      attrs: { type: 'button', 'aria-pressed': String(item.favorite), ...iconControlExplainerAttrs({ label: item.favorite ? `Remove ${item.title} from Favorites` : `Add ${item.title} to Favorites`, description: `${item.favorite ? 'Removes' : 'Adds'} this Study game ${item.favorite ? 'from' : 'to'} Favorites.` }) },
       on: { click: (e: Event) => {
         e.stopPropagation();
         void updateStudy({ id: item.id, favorite: !item.favorite }).then(redraw);
@@ -1411,7 +1418,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
       h('div.study-row__title-row', [
         isEditingTitle
           ? h('input.study-row__title-input', {
-              attrs: { value: _editingTitleValue, placeholder: 'Study title' },
+              attrs: { value: _editingTitleValue, placeholder: 'Study title', 'aria-label': 'Study title', ...controlExplainerAttrs({ label: 'Study title', description: 'Renames this Study game when the field loses focus.' }) },
               hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
               on: {
                 input:   (e: Event) => { _editingTitleValue = (e.target as HTMLInputElement).value; },
@@ -1427,19 +1434,25 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
               },
             })
           : h('span.study-row__title', {
-              attrs: { title: 'Click to rename' },
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Rename ${item.title}`, description: 'Opens this Study title for editing.' }) },
               on: { click: () => {
                 _editingTitleId    = item.id;
+                _editingTitleValue = item.title;
+                redraw();
+              }, keydown: (e: KeyboardEvent) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                _editingTitleId = item.id;
                 _editingTitleValue = item.title;
                 redraw();
               } },
             }, item.title),
         h('a.study-row__open', {
-          attrs: { href: `#/study/${item.id}`, title: 'Open study' },
+          attrs: { href: `#/study/${item.id}`, ...iconControlExplainerAttrs({ label: `Open ${item.title}`, description: 'Opens this game in the Study workspace.' }) },
           on: { click: (e: Event) => e.stopPropagation() },
         }, '→'),
         h('button.study-row__expand', {
-          attrs: { title: _expandedRows.has(item.id) ? 'Collapse' : 'Expand details' },
+          attrs: { type: 'button', 'aria-expanded': String(_expandedRows.has(item.id)), ...iconControlExplainerAttrs({ label: _expandedRows.has(item.id) ? `Collapse ${item.title} details` : `Expand ${item.title} details`, description: `${_expandedRows.has(item.id) ? 'Hides' : 'Shows'} notes and folder details for this game.` }) },
           on: { click: () => {
             if (_expandedRows.has(item.id)) _expandedRows.delete(item.id);
             else _expandedRows.add(item.id);
@@ -1468,7 +1481,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
           h('span.study-tag', { key: tag }, [
             tag,
             h('button.study-tag__remove', {
-              attrs: { title: `Remove tag "${tag}"`, 'aria-label': `Remove tag "${tag}"` },
+              attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove tag ${tag}`, description: 'Removes this tag from the Study game.' }) },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 void updateStudy({ id: item.id, tags: item.tags.filter(t => t !== tag) }).then(redraw);
@@ -1479,7 +1492,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
         // Tag input toggle
         isEditingTag
           ? h('input.study-tag__input', {
-              attrs: { placeholder: 'Add tag…', value: _editingTagValue },
+              attrs: { placeholder: 'Add tag…', value: _editingTagValue, 'aria-label': 'Add tag', ...controlExplainerAttrs({ label: 'Add tag', description: 'Adds this tag when the field loses focus.' }) },
               hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
               on: {
                 input:   (e: Event) => { _editingTagValue = (e.target as HTMLInputElement).value; },
@@ -1498,7 +1511,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
               },
             })
           : h('button.study-tag__add', {
-              attrs: { title: 'Add tag' },
+              attrs: iconControlExplainerAttrs({ label: 'Add tag' }),
               on: { click: () => {
                 _editingTagId    = item.id;
                 _editingTagValue = '';
@@ -1512,7 +1525,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
         // Notes textarea
         h('label.study-row__notes-label', 'Notes'),
         h('textarea.study-row__notes', {
-          attrs: { placeholder: 'Add notes…', rows: 3 },
+          attrs: { placeholder: 'Add notes…', rows: 3, 'aria-label': `Notes for ${item.title}`, ...controlExplainerAttrs({ label: `Notes for ${item.title}`, description: 'Saves these Study notes when the field loses focus.' }) },
           props: { value: item.notes ?? '' },
           on: { blur: (e: Event) => {
             void updateStudy({ id: item.id, notes: (e.target as HTMLTextAreaElement).value });
@@ -1530,7 +1543,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
                 return h('span.study-folder', { key: f }, [
                   label,
                   h('button.study-folder__remove', {
-                    attrs: { title: `Remove folder "${label}"`, 'aria-label': `Remove folder "${label}"` },
+                    attrs: { type: 'button', ...iconControlExplainerAttrs({ label: `Remove folder ${label}`, description: 'Removes this game from the folder.' }) },
                     on: { click: () => {
                       void updateStudy({ id: item.id, folders: item.folders.filter(x => x !== f) }).then(redraw);
                     } },
@@ -1540,7 +1553,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
             : null,
           _editingFolderId === item.id
             ? h('input.study-folder__input', {
-                attrs: { placeholder: 'Folder name…', value: _editingFolderValue },
+                attrs: { placeholder: 'Folder name…', value: _editingFolderValue, 'aria-label': 'Folder name', ...controlExplainerAttrs({ label: 'Folder name', description: 'Adds this Study game to the named folder.' }) },
                 hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
                 on: {
                   input: (e: Event) => { _editingFolderValue = (e.target as HTMLInputElement).value; },
@@ -1562,7 +1575,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
                 },
               })
             : h('button.study-tag__add', {
-                attrs: { title: 'Add to folder' },
+                attrs: controlExplainerAttrs({ label: 'Add to folder', description: 'Opens a folder-name field for this Study game.' }),
                 on: { click: () => { _editingFolderId = item.id; _editingFolderValue = ''; redraw(); } },
               }, '+ folder'),
         ]),
@@ -1571,7 +1584,7 @@ function renderStudyRow(item: StudyItem, idx: number, redraw: () => void, folder
 
     // Delete button
     h('button.study-row__delete', {
-      attrs: { title: 'Delete study', 'aria-label': 'Delete study' },
+      attrs: iconControlExplainerAttrs({ label: `Delete ${item.title}`, description: 'Permanently deletes this Study game after confirmation.' }),
       on: { click: (e: Event) => {
         e.stopPropagation();
         if (confirm(`Delete "${item.title}"?`)) {
@@ -1619,13 +1632,14 @@ function renderFolderSidebar(redraw: () => void): VNode {
     h('div.study-sidebar__header', [
       h('span.study-sidebar__title', 'Folders'),
       h('button.study-sidebar__toggle', {
-        attrs: { title: sidebarCollapsed() ? 'Expand sidebar' : 'Collapse sidebar' },
+        attrs: { type: 'button', ...iconControlExplainerAttrs({ label: sidebarCollapsed() ? 'Expand folder sidebar' : 'Collapse folder sidebar', description: `${sidebarCollapsed() ? 'Shows' : 'Hides'} the Study folder list.` }) },
         on: { click: () => { toggleSidebar(); redraw(); } },
       }, sidebarCollapsed() ? '›' : '‹'),
     ]),
     sidebarCollapsed() ? null : h('div.study-sidebar__folders', [
       h('button.study-sidebar__folder', {
         class: { active: activeFolderId() === null },
+        attrs: { type: 'button', 'aria-pressed': String(activeFolderId() === null), ...controlExplainerAttrs({ label: 'Show all Studies', description: 'Clears the current folder filter.' }) },
         on: { click: () => {
           setActiveFolderId(null);
           writeStudyLibraryRoute({ folder: null }, { resetPages: true });
@@ -1642,7 +1656,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
         return h('div.study-sidebar__folder-row', { key: folder.id }, [
           isRenaming
             ? h('input.study-sidebar__folder-rename', {
-                attrs: { value: _renamingFolderValue },
+                attrs: { value: _renamingFolderValue, 'aria-label': `Rename ${folder.name}`, ...controlExplainerAttrs({ label: `Rename ${folder.name}`, description: 'Saves the new folder name when the field loses focus.' }) },
                 hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
                 on: {
                   input: (e: Event) => { _renamingFolderValue = (e.target as HTMLInputElement).value; },
@@ -1664,6 +1678,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
                   active:       activeFolderId() === folder.id,
                   'drag-over':  _dragOverFolderId === folder.id,
                 },
+                attrs: { type: 'button', 'aria-pressed': String(activeFolderId() === folder.id), ...controlExplainerAttrs({ label: `Show ${folder.name}`, description: 'Filters the Study Library to this folder.' }) },
                 on: {
                   click: () => {
                     const nextFolder = activeFolderId() === folder.id ? null : folder.id;
@@ -1677,7 +1692,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
               }, folder.name),
           h('div.study-sidebar__folder-actions', [
             h('button.study-sidebar__folder-action', {
-              attrs: { title: 'Rename folder', 'aria-label': 'Rename folder' },
+              attrs: iconControlExplainerAttrs({ label: `Rename ${folder.name}` }),
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 _renamingFolderId    = folder.id;
@@ -1686,7 +1701,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
               } },
             }, '✎'),
             h('button.study-sidebar__folder-action.study-sidebar__folder-action--danger', {
-              attrs: { title: 'Delete folder', 'aria-label': 'Delete folder' },
+              attrs: iconControlExplainerAttrs({ label: `Delete ${folder.name}`, description: 'Deletes this folder after confirmation without deleting its games.' }),
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 if (confirm(`Delete folder "${folder.name}"? Studies will not be deleted.`)) {
@@ -1701,7 +1716,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
       // New folder input or button
       _newFolderMode
         ? h('input.study-sidebar__new-folder', {
-            attrs: { placeholder: 'Folder name…', value: _newFolderValue },
+            attrs: { placeholder: 'Folder name…', value: _newFolderValue, 'aria-label': 'New folder name', ...controlExplainerAttrs({ label: 'New folder name', description: 'Creates a Study folder when the field loses focus.' }) },
             hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
             on: {
               input:   (e: Event) => { _newFolderValue = (e.target as HTMLInputElement).value; },
@@ -1720,6 +1735,7 @@ function renderFolderSidebar(redraw: () => void): VNode {
             },
           })
         : h('button.study-sidebar__new-folder-btn', {
+            attrs: controlExplainerAttrs({ label: 'New folder' }),
             on: { click: () => { _newFolderMode = true; _newFolderValue = ''; redraw(); } },
           }, '+ New Folder'),
     ]),
@@ -1735,7 +1751,7 @@ function renderFilterBar(redraw: () => void): VNode {
   return h('div.study-filter-bar', [
     // Search
     h('input.study-filter-bar__search', {
-      attrs: { placeholder: 'Search studies…', value: searchQuery() },
+      attrs: { placeholder: 'Search studies…', value: searchQuery(), 'aria-label': 'Search Studies', ...controlExplainerAttrs({ label: 'Search Studies', description: 'Filters the Study Library as you type.' }) },
       on: { input: (e: Event) => {
         setSearch((e.target as HTMLInputElement).value);
         writeStudyLibraryRoute({ q: searchQuery() }, { resetPages: true });
@@ -1747,6 +1763,7 @@ function renderFilterBar(redraw: () => void): VNode {
     // Favorite filter
     h('button.study-filter-btn', {
       class: { active: filterFav() },
+      attrs: { type: 'button', 'aria-pressed': String(filterFav()), ...controlExplainerAttrs({ label: `${filterFav() ? 'Clear' : 'Apply'} Favorites filter`, description: `${filterFav() ? 'Stops limiting' : 'Limits'} results to favorite Studies.` }) },
       on: { click: () => {
         setFilterFav(!filterFav());
         writeStudyLibraryRoute({ fav: filterFav() }, { resetPages: true });
@@ -1759,6 +1776,7 @@ function renderFilterBar(redraw: () => void): VNode {
     ...sources.map(src =>
       h('button.study-filter-btn', {
         class: { active: filterSrc() === src },
+        attrs: { type: 'button', 'aria-pressed': String(filterSrc() === src), ...controlExplainerAttrs({ label: `${filterSrc() === src ? 'Clear' : 'Apply'} ${sourceLabel(src)} source filter`, description: `${filterSrc() === src ? 'Removes' : 'Applies'} this Study source filter.` }) },
         on: { click: () => {
           const nextSource = filterSrc() === src ? null : src;
           setFilterSrc(nextSource);
@@ -1773,6 +1791,7 @@ function renderFilterBar(redraw: () => void): VNode {
     ...tags.map(tag =>
       h('button.study-filter-btn', {
         class: { active: filterTag() === tag },
+        attrs: { type: 'button', 'aria-pressed': String(filterTag() === tag), ...controlExplainerAttrs({ label: `${filterTag() === tag ? 'Clear' : 'Apply'} ${tag} tag filter`, description: `${filterTag() === tag ? 'Removes' : 'Applies'} this Study tag filter.` }) },
         on: { click: () => {
           const nextTag = filterTag() === tag ? null : tag;
           setFilterTag(nextTag);
@@ -1801,11 +1820,18 @@ function renderStudyCard(item: StudyItem, idx: number, redraw: () => void): VNod
   return h('div.study-card', {
     key: item.id,
     class: { 'study-card--selected': selected },
+    attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title}`, description: 'Changes this game selection for Study bulk actions.' }) },
     on: {
       click: (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         if (target.closest('button, a')) return;
         handleStudyClick(item.id, idx, e);
+        redraw();
+      },
+      keydown: (e: KeyboardEvent) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        handleStudyClick(item.id, idx, e as unknown as MouseEvent);
         redraw();
       },
     },
@@ -1830,7 +1856,7 @@ function renderStudyCard(item: StudyItem, idx: number, redraw: () => void): VNod
     }),
     h('div.study-card__body', [
       h('a.study-card__title', {
-        attrs: { href: `#/study/${item.id}` },
+        attrs: { href: `#/study/${item.id}`, ...controlExplainerAttrs({ label: `Open ${item.title}`, description: 'Opens this game in the Study workspace.' }) },
         on:    { click: (e: Event) => e.stopPropagation() },
       }, item.title),
       h('div.study-card__meta', [
@@ -1859,11 +1885,13 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
   return h('div.study-bulk-bar', [
     h('span.study-bulk-bar__count', `${count} selected`),
     h('button.study-bulk-bar__btn', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `Favorite ${count} selected Studies`, description: 'Adds every selected Study game to Favorites.' }) },
       on: { click: () => {
         void bulkSetFavorite(true).then(redraw);
       } },
     }, '★ Favorite'),
     h('button.study-bulk-bar__btn', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `Unfavorite ${count} selected Studies`, description: 'Removes every selected Study game from Favorites.' }) },
       on: { click: () => {
         void bulkSetFavorite(false).then(redraw);
       } },
@@ -1871,11 +1899,13 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
     bulkFolders.length > 0
       ? h('div.study-bulk-bar__folder-wrap', [
           h('button.study-bulk-bar__btn', {
+            attrs: { type: 'button', 'aria-expanded': String(_bulkFolderMenuOpen), ...controlExplainerAttrs({ label: 'Add selected Studies to folder', description: 'Opens the destination-folder menu for selected games.' }) },
             on: { click: () => { _bulkFolderMenuOpen = !_bulkFolderMenuOpen; redraw(); } },
           }, 'Add to folder ▾'),
           _bulkFolderMenuOpen ? h('div.study-bulk-bar__folder-menu', bulkFolders.map(folder =>
             h('button.study-bulk-bar__folder-item', {
               key: folder.id,
+              attrs: { type: 'button', ...controlExplainerAttrs({ label: `Add selected Studies to ${folder.name}`, description: 'Adds every selected Study game to this folder.' }) },
               on: { click: () => {
                 _bulkFolderMenuOpen = false;
                 void bulkAddToFolder(folder.id).then(redraw);
@@ -1885,6 +1915,7 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
         ])
       : null,
     h('button.study-bulk-bar__btn.study-bulk-bar__btn--danger', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: `Delete ${count} selected Studies`, description: 'Permanently deletes every selected Study game after confirmation.' }) },
       on: { click: () => {
         if (confirm(`Delete ${count} selected stud${count === 1 ? 'y' : 'ies'}?`)) {
           void bulkDeleteStudies().then(redraw);
@@ -1892,6 +1923,7 @@ function renderBulkActionBar(redraw: () => void): VNode | null {
       } },
     }, 'Delete'),
     h('button.study-bulk-bar__btn', {
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Clear Study selection', description: 'Deselects every selected Study game.' }) },
       on: { click: () => { clearSelection(); redraw(); } },
     }, 'Clear'),
   ]);
@@ -1910,6 +1942,7 @@ function renderSortControls(redraw: () => void): VNode {
     ...sortOptions.map(({ label, key }) =>
       h('button.study-sort-btn', {
         class: { active: sortKey() === key },
+        attrs: { type: 'button', 'aria-pressed': String(sortKey() === key), ...controlExplainerAttrs({ label: `Sort Studies by ${label}`, description: sortKey() === key ? 'Reverses the current Study sort direction.' : `Orders Study games by ${label.toLowerCase()}.` }) },
         on: { click: () => {
           if (sortKey() === key) {
             setSortDir(sortDir() === 'desc' ? 'asc' : 'desc');
@@ -1946,17 +1979,17 @@ function renderImportModal(redraw: () => void): VNode {
     });
   };
 
-  return h('div.study-modal-backdrop', { on: { click: close } }, [
-    h('div.study-modal', { on: { click: (e: Event) => e.stopPropagation() } }, [
+  return h('div.study-modal-backdrop', { attrs: { 'aria-label': 'Close PGN import dialog', ...controlExplainerAttrs({ label: 'Close PGN import dialog' }) }, on: { click: close } }, [
+    h('div.study-modal', { attrs: { 'aria-label': 'PGN import dialog', ...controlExplainerAttrs({ label: 'PGN import dialog' }) }, on: { click: (e: Event) => e.stopPropagation() } }, [
       h('div.study-modal__header', [
         h('h2', 'Import PGN'),
         h('button.study-modal__close', {
-          attrs: { title: 'Close import dialog', 'aria-label': 'Close import dialog' },
+          attrs: iconControlExplainerAttrs({ label: 'Close PGN import dialog' }),
           on: { click: close },
         }, '×'),
       ]),
       h('textarea.study-modal__pgn', {
-        attrs: { placeholder: 'Paste PGN here (single or multi-game)…', rows: 10 },
+        attrs: { placeholder: 'Paste PGN here (single or multi-game)…', rows: 10, 'aria-label': 'PGN text', ...controlExplainerAttrs({ label: 'PGN text', description: 'Accepts one or more games for Study import.' }) },
         props: { value: _importPgnText },
         on: { input: (e: Event) => { _importPgnText = (e.target as HTMLTextAreaElement).value; } },
       }),
@@ -1964,7 +1997,7 @@ function renderImportModal(redraw: () => void): VNode {
         h('label.study-modal__file-label', [
           'Or upload a .pgn file: ',
           h('input', {
-            attrs: { type: 'file', accept: '.pgn,text/plain' },
+            attrs: { type: 'file', accept: '.pgn,text/plain', 'aria-label': 'Choose PGN file', ...controlExplainerAttrs({ label: 'Choose PGN file', description: 'Loads PGN text from a local file.' }) },
             on: { change: (e: Event) => {
               const file = (e.target as HTMLInputElement).files?.[0];
               if (!file) return;
@@ -1975,8 +2008,8 @@ function renderImportModal(redraw: () => void): VNode {
       ]),
       _importStatus ? h('div.study-modal__status', _importStatus) : null,
       h('div.study-modal__actions', [
-        h('button.study-btn.study-btn--import', { on: { click: doImport } }, 'Import'),
-        h('button.study-btn', { on: { click: close } }, 'Cancel'),
+        h('button.study-btn.study-btn--import', { attrs: controlExplainerAttrs({ label: 'Import PGN', description: 'Imports the pasted or uploaded games into Study.' }), on: { click: doImport } }, 'Import'),
+        h('button.study-btn', { attrs: controlExplainerAttrs({ label: 'Cancel PGN import' }), on: { click: close } }, 'Cancel'),
       ]),
     ]),
   ]);
@@ -2008,7 +2041,7 @@ function renderStudyLibraryLoadError(): VNode {
     h('p', 'Couldn’t load your studies — a storage error occurred.'),
     h('p', 'Your studies are not lost. Reload to try again.'),
     h('button.study-btn', {
-      attrs: { type: 'button' },
+      attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Reload Study Library', description: 'Reloads the page to retry the failed Study storage read.' }) },
       on: { click: () => { window.location.reload(); } },
     }, 'Reload'),
   ]);
@@ -2052,6 +2085,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
       h('div.study-page__header', [
         h('h1', 'Study Library'),
         h('button.study-btn', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to Study Library', description: 'Ends the current drill and returns to the Study Library.' }) },
           on: { click: () => { endDrill('library-back', 'dismiss'); redraw(); } },
         }, '← Back to Library'),
       ]),
@@ -2143,6 +2177,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
             isLoadingMore()
               ? h('span.study-list__loading', 'Loading…')
               : h('button.study-btn.study-btn--load-more', {
+                  attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Load more Studies', description: 'Loads the next page of Study Library games.' }) },
                   on: { click: () => {
                     void loadNextPage(redraw).then(loaded => {
                       if (loaded) writeStudyLibraryRoute({ pages: loadedStudyPageCount() });
@@ -2166,6 +2201,7 @@ export function renderStudyLibrary(redraw: () => void): VNode {
           ? (isSeeding()
               ? h('span.study-page__seeding', 'Seeding sample studies…')
               : h('button.study-btn.study-btn--seed', {
+                  attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Seed sample Studies', description: 'Creates sample Study games for onboarding.' }) },
                   on: { click: () => { void seedSampleStudies(redraw); } },
                 }, 'Seed sample studies'))
           : null,
@@ -2173,9 +2209,8 @@ export function renderStudyLibrary(redraw: () => void): VNode {
           class: { 'study-btn--active': _repertoireSectionOpen },
           attrs: {
             type: 'button',
-            title: _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
-            'aria-label': _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire',
             'aria-expanded': String(_repertoireSectionOpen),
+            ...controlExplainerAttrs({ label: _repertoireSectionOpen ? 'Hide Repertoire' : 'Show Repertoire', description: `${_repertoireSectionOpen ? 'Hides' : 'Shows'} repertoire compliance and source controls.` }),
           },
           on: { click: () => { _repertoireSectionOpen = !_repertoireSectionOpen; redraw(); } },
         }, 'Repertoire'),
@@ -2183,9 +2218,8 @@ export function renderStudyLibrary(redraw: () => void): VNode {
           class: { 'study-btn--active': _orpSectionOpen },
           attrs: {
             type: 'button',
-            title: _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
-            'aria-label': _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice',
             'aria-expanded': String(_orpSectionOpen),
+            ...controlExplainerAttrs({ label: _orpSectionOpen ? 'Hide Opening Repetition Practice' : 'Show Opening Repetition Practice', description: `${_orpSectionOpen ? 'Hides' : 'Shows'} saved opening practice lines.` }),
           },
           on: { click: () => { _orpSectionOpen = !_orpSectionOpen; redraw(); } },
         }, 'Opening Repetition Practice'),
@@ -2344,7 +2378,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
   return h('div.study-orp-row', { key: sequence.id }, [
     // Favorite star (informational only — editing is Phase 4)
-    favorite ? h('span.study-orp-row__fav', { attrs: { title: 'Favorited' } }, '★') : null,
+    favorite ? h('span.study-orp-row__fav', '★') : null,
 
     // Main content
     h('div.study-orp-row__main', [
@@ -2353,7 +2387,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
       h('div.study-orp-row__title-row', [
         isEditingLabel
           ? h('input.study-orp-row__label-input', {
-              attrs: { value: _editingOrpLabelValue, placeholder: 'Line label' },
+              attrs: { value: _editingOrpLabelValue, placeholder: 'Line label', 'aria-label': 'Opening practice line label', ...controlExplainerAttrs({ label: 'Opening practice line label', description: 'Renames this opening practice line when the field loses focus.' }) },
               hook: { insert: (vn) => (vn.elm as HTMLInputElement).focus() },
               on: {
                 input: (e: Event) => { _editingOrpLabelValue = (e.target as HTMLInputElement).value; },
@@ -2388,10 +2422,16 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
               },
             })
           : h('span.study-orp-row__label', {
-              attrs: { title: 'Click to rename' },
+              attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: `Rename ${currentLabel}`, description: 'Opens this opening practice line label for editing.' }) },
               on: { click: (e: Event) => {
                 e.stopPropagation();
                 _editingOrpLabelId    = sequence.id;
+                _editingOrpLabelValue = currentLabel;
+                redraw();
+              }, keydown: (e: KeyboardEvent) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                _editingOrpLabelId = sequence.id;
                 _editingOrpLabelValue = currentLabel;
                 redraw();
               }},
@@ -2417,7 +2457,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
 
     h('button.study-orp-row__drill', {
-      attrs: { title: `Practice this line as ${sequence.trainAs}`, 'aria-label': `Practice this line as ${sequence.trainAs}` },
+      attrs: iconControlExplainerAttrs({ label: `Practice this line as ${sequence.trainAs}`, description: 'Starts a drill with this opening practice line.' }),
       on: { click: (e: Event) => {
         e.stopPropagation();
         _orpDrillPending = true;
@@ -2430,7 +2470,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
 
     h('button.study-orp-row__pause', {
-      attrs: { title: sequence.status === 'active' ? 'Pause this line' : 'Resume this line' },
+      attrs: { type: 'button', 'aria-pressed': String(sequence.status === 'paused'), ...controlExplainerAttrs({ label: sequence.status === 'active' ? 'Pause this line' : 'Resume this line', description: `${sequence.status === 'active' ? 'Pauses' : 'Resumes'} scheduling for this opening practice line.` }) },
       on: { click: (e: Event) => {
         e.stopPropagation();
         const newStatus = sequence.status === 'active' ? 'paused' : 'active';
@@ -2454,8 +2494,7 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
 
     h('button.study-orp-row__remove', {
       attrs: {
-        title: 'Remove this line from Opening Repetition Practice',
-        'aria-label': 'Remove this line from Opening Repetition Practice',
+        ...iconControlExplainerAttrs({ label: 'Remove from Opening Repetition Practice', description: 'Permanently deletes this practice line after confirmation without deleting the Study game.' }),
       },
       on: { click: (e: Event) => {
         e.stopPropagation();
@@ -2546,8 +2585,13 @@ function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNo
 
 
     const reviewDueBtn: VNode | null = state === 'DUE'
-      ? h('button.study-btn.study-btn--review.study-orp-bucket__review-btn', {
-          attrs: { disabled: totalDue === 0 || _orpDueLaunching, title: 'Start review session for all due opening lines' },
+      ? (totalDue === 0 || _orpDueLaunching
+        ? renderDisabledControlExplainer(
+            { label: 'Review due opening lines', description: _orpDueLaunching ? 'Wait for the due-opening review session to start.' : 'No opening positions are currently due for review.' },
+            h('button.study-btn.study-btn--review.study-orp-bucket__review-btn', { attrs: { type: 'button', disabled: true } }, _orpDueLaunching ? 'Starting…' : `Review due (${totalDue})`),
+          )
+        : h('button.study-btn.study-btn--review.study-orp-bucket__review-btn', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Review due opening lines', description: 'Starts an SRS review session for all due opening lines.' }) },
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (totalDue === 0 || _orpDueLaunching) return;
@@ -2558,14 +2602,19 @@ function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNo
 
             void launchOrpDueSession(redraw).catch(e => console.warn('[libraryView] ORP review-due launch failed', e));
           }},
-        }, _orpDueLaunching ? 'Starting…' : `Review due (${totalDue})`)
+        }, `Review due (${totalDue})`))
       : null;
 
 
 
     const learnNewBtn: VNode | null = state === 'NEW'
-      ? h('button.study-btn.study-btn--learn.study-orp-bucket__learn-btn', {
-          attrs: { disabled: _orpLearnLaunching, title: 'Start a learn session for new opening lines' },
+      ? (_orpLearnLaunching
+        ? renderDisabledControlExplainer(
+            { label: 'Learn new opening lines', description: 'Wait for the new-opening learn session to start.' },
+            h('button.study-btn.study-btn--learn.study-orp-bucket__learn-btn', { attrs: { type: 'button', disabled: true } }, 'Starting…'),
+          )
+        : h('button.study-btn.study-btn--learn.study-orp-bucket__learn-btn', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Learn new opening lines', description: 'Starts a learning session for new opening lines.' }) },
           on: { click: (e: Event) => {
             e.stopPropagation();
             if (_orpLearnLaunching) return;
@@ -2574,7 +2623,7 @@ function renderOrpBuckets(lines: OrpPracticeLineView[], redraw: () => void): VNo
 
             void launchOrpLearnSession(redraw).catch(e => console.warn('[libraryView] ORP learn-new launch failed', e));
           }},
-        }, _orpLearnLaunching ? 'Starting…' : `Learn new (${group.length})`)
+        }, `Learn new (${group.length})`))
       : null;
 
     nodes.push(
@@ -2605,6 +2654,7 @@ function renderPracticeDashboard(redraw: () => void): VNode | null {
       ? h('div.study-practice-banner', [
           h('span.study-practice-banner__text', `${due} position${due === 1 ? '' : 's'} due for review`),
           h('button.study-btn.study-btn--review', {
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Start due-position review', description: 'Starts an SRS review session for due Study positions.' }) },
             on: { click: () => {
               if (review.length === 0) return;
               initDrillView(review, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'white', redraw);
@@ -2617,6 +2667,7 @@ function renderPracticeDashboard(redraw: () => void): VNode | null {
       ? h('div.study-practice-learn', [
           h('span.study-practice-learn__label', `${learn.length} new line${learn.length === 1 ? '' : 's'} to learn`),
           h('button.study-btn', {
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Learn new Study lines', description: 'Starts a learning session for new Study practice lines.' }) },
             on: { click: () => {
               initDrillView(learn, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'white', redraw);
               redraw();

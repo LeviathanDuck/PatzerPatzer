@@ -1,4 +1,10 @@
 import { h, type VNode } from 'snabbdom';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+  type ControlExplainer,
+} from '../../ui/controlExplainer';
 import type { ReviewEngineMetadata } from '../../idb';
 import type { ImportedGame } from '../../import/types';
 import { nodeAtPath } from '../../tree/ops';
@@ -59,6 +65,22 @@ let screenshotUploadStates: PackageUploadState[] = [];
 let screenshotUploadSummary = '';
 let submittedPackage: ReviewErrorPackage | null = null;
 let copyMessage = '';
+
+function renderDisabledControlWhen(
+  reason: string | null,
+  explainer: ControlExplainer,
+  control: VNode,
+): VNode {
+  return reason
+    ? renderDisabledControlExplainer({ label: explainer.label, description: reason }, control)
+    : control;
+}
+
+function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  action();
+}
 
 function requestKey(request: ReviewErrorSubmitRequest): string {
   return `${request.issueId}:${request.gameId}:${request.path}:${request.openedAt}`;
@@ -191,6 +213,23 @@ function packageTextForCopy(pkg: ReviewErrorPackage): string {
 }
 
 function renderIssueCopyPanel(request: ReviewErrorSubmitRequest, redraw: () => void): VNode {
+  const packageCopyReason = submittedPackage ? null : 'Save the package before copying its package text.';
+  const packageCopyExplainer = {
+    label: 'Copy review error package text',
+    description: packageCopyReason ?? 'Copies a concise package summary to the clipboard.',
+  };
+  const packageCopyButton = h('button.admin-btn.admin-btn--muted', {
+    attrs: { type: 'button', disabled: !submittedPackage, ...controlExplainerAttrs(packageCopyExplainer) },
+    on: {
+      click: () => {
+        if (!submittedPackage) {
+          setCopyMessage(request, 'Save the package before copying package text.', redraw);
+          return;
+        }
+        copyTextToClipboard(request, packageTextForCopy(submittedPackage), 'Package text copied.', redraw);
+      },
+    },
+  }, 'Copy package text');
   return h('div.report-issue-modal__copy-panel', [
     h('div.report-issue-modal__issue-id', [
       h('span', 'Issue ID'),
@@ -198,21 +237,13 @@ function renderIssueCopyPanel(request: ReviewErrorSubmitRequest, redraw: () => v
     ]),
     h('div.report-issue-modal__copy-actions', [
       h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Copy issue ID',
+          description: 'Copies this review-error package identifier to the clipboard.',
+        }) },
         on: { click: () => copyTextToClipboard(request, request.issueId, 'Issue ID copied.', redraw) },
       }, 'Copy ID'),
-      h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button', disabled: !submittedPackage },
-        on: {
-          click: () => {
-            if (!submittedPackage) {
-              setCopyMessage(request, 'Save the package before copying package text.', redraw);
-              return;
-            }
-            copyTextToClipboard(request, packageTextForCopy(submittedPackage), 'Package text copied.', redraw);
-          },
-        },
-      }, 'Copy package text'),
+      renderDisabledControlWhen(packageCopyReason, packageCopyExplainer, packageCopyButton),
     ]),
     copyMessage ? h('p.report-issue-modal__copy-status', copyMessage) : null,
   ]);
@@ -335,6 +366,16 @@ function submitDisabled(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSu
   );
 }
 
+function submitDisabledReason(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSubmitRequest): string | null {
+  if (submitBusy) return 'The review-error package is already being saved.';
+  if (submitSuccess !== null) return 'This review-error package has already been saved.';
+  if (!deps.game || deps.game.id !== request.gameId) return 'The selected game changed; reopen Review Error Bug from the move list.';
+  if (!deps.analysisComplete) return 'Completed analysis must be loaded before saving a review-error package.';
+  if (!memoText.trim()) return 'Enter an admin memo before saving the review-error package.';
+  if (screenshotErrors.length > 0) return 'Fix the screenshot attachment errors before saving the review-error package.';
+  return null;
+}
+
 function submitPackage(deps: ReviewErrorSubmitModalDeps, request: ReviewErrorSubmitRequest): void {
   if (submitDisabled(deps, request)) {
     if (!memoText.trim()) submitError = 'Enter a memo before saving the package.';
@@ -431,18 +472,26 @@ function renderPackagePreview(): VNode {
 }
 
 function renderScreenshotPreview(submitLocked: boolean, redraw: () => void): VNode {
+  const disabledReason = submitLocked ? 'Screenshot attachments cannot change while or after this package is saved.' : null;
+  const explainer = {
+    label: 'Add review-error screenshots',
+    description: disabledReason ?? 'Adds optional admin-only screenshots to the local package and consented remote upload.',
+  };
+  const fileInput = h('input.review-error-modal__file', {
+    attrs: {
+      type: 'file',
+      accept: 'image/png,image/jpeg,image/webp',
+      multiple: true,
+      disabled: submitLocked,
+      'aria-label': explainer.label,
+      ...controlExplainerAttrs(explainer),
+    },
+    on: { change: (event: Event) => handleScreenshotInput(event, redraw) },
+  });
   return h('section.review-error-modal__screenshots', [
     h('h3', 'Screenshots'),
     h('p', 'Optional admin-only screenshots. Accepted files: PNG, JPEG, WebP; max 10 MB each; max 10 files. File bytes upload only after consent and local package save.'),
-    h('input.review-error-modal__file', {
-      attrs: {
-        type: 'file',
-        accept: 'image/png,image/jpeg,image/webp',
-        multiple: true,
-        disabled: submitLocked,
-      },
-      on: { change: (event: Event) => handleScreenshotInput(event, redraw) },
-    }),
+    renderDisabledControlWhen(disabledReason, explainer, fileInput),
     screenshotAttachments.length > 0
       ? h('ul.review-error-modal__attachment-list', screenshotAttachments.map(attachment => (
         h('li', `${attachment.fileName} - ${attachment.mimeType}, ${Math.round(attachment.sizeBytes / 1024)} KB`)
@@ -499,6 +548,11 @@ function renderRemoteConsent(redraw: () => void): VNode {
         attrs: {
           type: 'checkbox',
           checked: remoteConsentState.explicitConsent,
+          'aria-label': 'Consent to remote review-error upload',
+          ...controlExplainerAttrs({
+            label: 'Consent to remote review-error upload',
+            description: 'Allows this saved full-context package and its screenshots to upload when an admin token is available.',
+          }),
         },
         on: {
           change: (event: Event) => {
@@ -529,23 +583,59 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
     ? `${movePrefix(node.ply)} ${node.san ?? node.uci ?? request.path}`
     : request.path;
   const disabled = submitDisabled(deps, request);
+  const saveDisabledReason = submitDisabledReason(deps, request);
+  const closeDisabledReason = submitBusy ? 'Wait for the review-error package save to finish before closing.' : null;
+  const memoDisabledReason = submitBusy
+    ? 'The admin memo cannot change while the package is being saved.'
+    : submitSuccess !== null
+      ? 'The admin memo is locked because this package has already been saved.'
+      : null;
+  const closeExplainer = { label: 'Close review-error package dialog' };
+  const closeButton = h('button.review-error-modal__close', {
+    attrs: { type: 'button', disabled: submitBusy, ...controlExplainerAttrs(closeExplainer) },
+    on: { click: () => close(deps.redraw) },
+  }, 'Close');
+  const memoExplainer = {
+    label: 'Review-error admin memo',
+    description: memoDisabledReason ?? 'Records what looked wrong about the selected move evaluation.',
+  };
+  const memoControl = h('textarea.review-error-modal__memo', {
+    attrs: {
+      id: 'review-error-memo',
+      rows: 5,
+      placeholder: 'Describe what looked wrong about this move eval.',
+      disabled: submitBusy || submitSuccess !== null,
+      ...controlExplainerAttrs(memoExplainer),
+    },
+    props: { value: memoText },
+    on: {
+      input: (event: Event) => {
+        memoText = (event.target as HTMLTextAreaElement).value;
+        submitError = null;
+        deps.redraw();
+      },
+    },
+  });
 
   return h('div.review-error-modal', [
     h('div.review-error-modal__backdrop', {
-      on: { click: () => close(deps.redraw) },
+      attrs: {
+        role: 'button',
+        tabindex: '0',
+        ...iconControlExplainerAttrs({ label: 'Close review-error package dialog' }),
+      },
+      on: {
+        click: () => close(deps.redraw),
+        keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => close(deps.redraw)),
+      },
     }),
-    h('div.review-error-modal__card', {
-      on: { click: (event: Event) => event.stopPropagation() },
-    }, [
+    h('div.review-error-modal__card', [
       h('div.review-error-modal__header', [
         h('div', [
           h('h2', 'Review Error Bug'),
           h('p.review-error-modal__subtitle', 'Admin-only local diagnostic package'),
         ]),
-        h('button.review-error-modal__close', {
-          attrs: { type: 'button', disabled: submitBusy, title: 'Close' },
-          on: { click: () => close(deps.redraw) },
-        }, 'Close'),
+        renderDisabledControlWhen(closeDisabledReason, closeExplainer, closeButton),
       ]),
       h('div.review-error-modal__body', [
         renderIssueCopyPanel(request, deps.redraw),
@@ -560,39 +650,34 @@ export function renderReviewErrorPackageSubmitModal(deps: ReviewErrorSubmitModal
         renderPackagePreview(),
         renderScreenshotPreview(submitBusy || submitSuccess !== null, deps.redraw),
         h('label.review-error-modal__label', { attrs: { for: 'review-error-memo' } }, 'Admin memo'),
-        h('textarea.review-error-modal__memo', {
-          attrs: {
-            id: 'review-error-memo',
-            rows: 5,
-            placeholder: 'Describe what looked wrong about this move eval.',
-            disabled: submitBusy || submitSuccess !== null,
-          },
-          props: { value: memoText },
-          on: {
-            input: (event: Event) => {
-              memoText = (event.target as HTMLTextAreaElement).value;
-              submitError = null;
-              deps.redraw();
-            },
-          },
-        }),
+        renderDisabledControlWhen(memoDisabledReason, memoExplainer, memoControl),
         renderRemoteConsent(deps.redraw),
         renderScreenshotUploadProgress(),
         submitError ? h('p.review-error-modal__error', submitError) : null,
         submitSuccess ? h('p.review-error-modal__success', submitSuccess) : null,
       ]),
       h('div.review-error-modal__actions', [
-        h('button.review-error-modal__secondary', {
-          attrs: { type: 'button', disabled: submitBusy },
+        renderDisabledControlWhen(closeDisabledReason, {
+          label: submitSuccess ? 'Close review-error package dialog' : 'Cancel review-error package',
+        }, h('button.review-error-modal__secondary', {
+          attrs: { type: 'button', disabled: submitBusy, ...controlExplainerAttrs({
+            label: submitSuccess ? 'Close review-error package dialog' : 'Cancel review-error package',
+          }) },
           on: { click: () => close(deps.redraw) },
-        }, submitSuccess ? 'Close' : 'Cancel'),
-        h('button.review-error-modal__primary', {
+        }, submitSuccess ? 'Close' : 'Cancel')),
+        renderDisabledControlWhen(saveDisabledReason, {
+          label: 'Save review-error package',
+        }, h('button.review-error-modal__primary', {
           attrs: {
             type: 'button',
             disabled,
+            ...controlExplainerAttrs({
+              label: 'Save review-error package',
+              description: saveDisabledReason ?? 'Saves the full diagnostic package locally and uploads screenshots only with explicit consent.',
+            }),
           },
           on: { click: () => submitPackage(deps, request) },
-        }, submitBusy ? 'Saving...' : 'Save package'),
+        }, submitBusy ? 'Saving...' : 'Save package')),
       ]),
     ]),
   ]);

@@ -10,6 +10,7 @@ import {
   setQueuedPremovePromotion,
 } from './controller';
 import { intentToRawUci, type PremovePromotionRole } from './model';
+import { controlExplainerAttrs, iconControlExplainerAttrs } from '../../ui/controlExplainer';
 
 export interface PremoveQueueControlsDeps {
   redraw(): void;
@@ -42,7 +43,6 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
           return h('span.premove-queue-controls__move', {
             attrs: {
               role: 'listitem',
-              title: `Queued premove ${index + 1}: ${rawUci}`,
               'aria-label': `Queued premove ${index + 1}: ${rawUci}`,
             },
           }, [
@@ -57,14 +57,22 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
         }, [
           h('span', status.message),
           h('button.premove-queue-controls__status-close', {
-            attrs: { type: 'button', title: 'Dismiss premove status', 'aria-label': 'Dismiss premove status' },
+            attrs: {
+              type: 'button',
+              ...iconControlExplainerAttrs({
+                label: 'Dismiss premove status',
+                description: 'Hide this premove status message.',
+              }),
+            },
             on: { click: () => { dismissPremoveQueueStatus(); deps.redraw(); } },
           }, '×'),
         ])
       : null,
     pendingCost
       ? h('span.premove-queue-controls__cost', {
-          attrs: { title: 'Pending premove clock cost' },
+          attrs: {
+            'aria-label': `Pending premove clock cost: ${pendingCost} seconds`,
+          },
         }, `-${pendingCost}s`)
       : null,
     promotionChoice
@@ -77,9 +85,14 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
           class: { 'is-active': promotionChoice.intent.promotion === choice.role },
           attrs: {
             type: 'button',
-            title: `Promote queued premove ${promotionChoice.index + 1} to ${choice.role}`,
             'aria-label': `Promote queued premove ${promotionChoice.index + 1} to ${choice.role}`,
             'aria-pressed': String(promotionChoice.intent.promotion === choice.role),
+            ...controlExplainerAttrs({
+              label: `Promote to ${choice.role}`,
+              description: promotionChoice.intent.promotion === choice.role
+                ? `Currently selected for queued premove ${promotionChoice.index + 1}.`
+                : `Use a ${choice.role} for queued premove ${promotionChoice.index + 1}.`,
+            }),
           },
           on: {
             click: () => {
@@ -92,11 +105,25 @@ export function renderPremoveQueueControls(deps: PremoveQueueControlsDeps): VNod
     queue.intents.length > 0
       ? h('div.premove-queue-controls__actions', [
           h('button.premove-queue-controls__btn', {
-            attrs: { type: 'button', title: 'Cancel last queued premove', 'aria-label': 'Cancel last queued premove' },
+            attrs: {
+              type: 'button',
+              'aria-label': 'Cancel last queued premove',
+              ...controlExplainerAttrs({
+                label: 'Undo last premove',
+                description: 'Remove only the most recently queued premove.',
+              }),
+            },
             on: { click: () => { cancelLastQueuedPremove(); deps.redraw(); } },
           }, 'Undo'),
           h('button.premove-queue-controls__btn.premove-queue-controls__btn--clear', {
-            attrs: { type: 'button', title: 'Clear all queued premoves', 'aria-label': 'Clear all queued premoves' },
+            attrs: {
+              type: 'button',
+              'aria-label': 'Clear all queued premoves',
+              ...controlExplainerAttrs({
+                label: 'Clear premove queue',
+                description: 'Remove every queued premove.',
+              }),
+            },
             on: { click: () => { clearPremoveQueue('manual-clear'); deps.redraw(); } },
           }, 'Clear'),
         ])

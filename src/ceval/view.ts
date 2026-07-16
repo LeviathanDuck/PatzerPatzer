@@ -12,6 +12,11 @@ import { makeSanAndPlay } from 'chessops/san';
 import { makeUci, parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { renderToggleRow } from '../ui';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+} from '../ui/controlExplainer';
 import type { AnalyseCtrl } from '../analyse/ctrl';
 import {
   protocol,
@@ -177,7 +182,10 @@ export function renderCeval(opts?: {
     // Toggle — mirrors .cmn-toggle (flex: 0 0 40px)
     h('button.cmn-toggle', {
       class: { active: visibleEngineEnabled },
-      attrs: { title: 'Toggle analysis engine (L)' },
+      attrs: controlExplainerAttrs({
+        label: visibleEngineEnabled ? 'Turn engine off' : 'Turn engine on',
+        description: 'Toggle the Analysis engine; keyboard shortcut: L.',
+      }),
       on: {
         click: () => {
           // Additive pre-toggle hook: a false return swallows the toggle before
@@ -215,7 +223,10 @@ export function renderCeval(opts?: {
     // Settings gear — mirrors button.settings-gear positioning
     h('button.settings-gear', {
       class: { active: showEngineSettings },
-      attrs: { title: 'Engine settings', 'aria-label': 'Engine settings' },
+      attrs: iconControlExplainerAttrs({
+        label: showEngineSettings ? 'Close engine settings' : 'Open engine settings',
+        description: `${showEngineSettings ? 'Close' : 'Open'} engine lines, depth, and time settings.`,
+      }),
       on: { click: (e: Event) => { e.stopPropagation(); showEngineSettings = !showEngineSettings; _redraw(); } },
     }, '⚙'),
   ]);
@@ -247,7 +258,18 @@ function renderPvMoves(fen: string, moves: string[]): { first: VNode[]; rest: VN
       // Store FEN + UCI on each move so hover can preview the resulting position.
       // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts renderPvMoves
       const boardFen = makeFen(pos.toSetup());
-      const sanNode = h('span.pv-san', { key: `${i}|${uci}`, attrs: { 'data-board': `${boardFen}|${uci}` } }, san);
+      const sanNode = h('span.pv-san', {
+        key: `${i}|${uci}`,
+        attrs: {
+          'data-board': `${boardFen}|${uci}`,
+          role: 'button',
+          tabindex: '0',
+          ...controlExplainerAttrs({
+            label: `Play engine line through ${san}`,
+            description: 'Add this engine line to the move tree and jump to this position.',
+          }),
+        },
+      }, san);
       if (!firstMoveDone) {
         if (numNode) first.push(numNode);
         first.push(sanNode);
@@ -417,10 +439,8 @@ export function renderPvBox(): VNode | null {
         // then walks the tree from ctrl.node — following existing children or
         // creating new variation nodes as needed.
         // Adapted from lichess-org/lila: ui/lib/src/ceval/view/main.ts pointerdown handler
-        el.addEventListener('click', (e: MouseEvent) => {
-          const sanSpan = (e.target as HTMLElement).closest<HTMLElement>('span.pv-san');
+        const activatePvMove = (sanSpan: HTMLElement): void => {
           if (!sanSpan) return;
-          e.preventDefault();
           const pvRow = sanSpan.closest<HTMLElement>('div.pv');
           if (!pvRow) return;
           const allSans = Array.from(pvRow.querySelectorAll<HTMLElement>('span.pv-san'));
@@ -433,6 +453,19 @@ export function renderPvBox(): VNode | null {
             ucis.push(db.slice(db.indexOf('|') + 1));
           }
           if (ucis.length > 0) playPvUciList(ucis);
+        };
+        el.addEventListener('click', (e: MouseEvent) => {
+          const sanSpan = (e.target as HTMLElement).closest<HTMLElement>('span.pv-san');
+          if (!sanSpan) return;
+          e.preventDefault();
+          activatePvMove(sanSpan);
+        });
+        el.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          const sanSpan = (e.target as HTMLElement).closest<HTMLElement>('span.pv-san');
+          if (!sanSpan) return;
+          e.preventDefault();
+          activatePvMove(sanSpan);
         });
       },
     },
@@ -499,7 +532,7 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
           setArrowAllLines(v);
           syncArrow();
           _redraw();
-        }, !showEngineArrows),
+        }, !showEngineArrows, 'Turn on Engine arrows before showing arrows for every engine line.'),
       ]
     : [];
   return h('div.ceval-settings', [
@@ -507,7 +540,10 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-multipv' } }, 'Lines'),
       h('input#ceval-multipv', {
-        attrs: { type: 'range', min: 1, max: 5, step: 1, value: multiPv },
+        attrs: { type: 'range', min: 1, max: 5, step: 1, value: multiPv, ...controlExplainerAttrs({
+          label: 'Engine lines',
+          description: 'Choose how many candidate engine lines to calculate and display.',
+        }) },
         on: {
           input: (e: Event) => {
             setMultiPv(parseInt((e.target as HTMLInputElement).value));
@@ -526,6 +562,10 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-review-depth' } }, 'Review depth'),
       h('select#ceval-review-depth', {
+        attrs: controlExplainerAttrs({
+          label: 'Analysis queue depth',
+          description: 'Choose the Stockfish depth used when analyzing games.',
+        }),
         on: {
           change: (e: Event) => {
             setReviewDepth(parseInt((e.target as HTMLSelectElement).value));
@@ -539,6 +579,10 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
     h('div.ceval-settings__row', [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-analysis-depth' } }, 'Analysis depth'),
       h('select#ceval-analysis-depth', {
+        attrs: controlExplainerAttrs({
+          label: 'Live analysis depth',
+          description: 'Choose the maximum Stockfish depth for the current position.',
+        }),
         on: {
           change: (e: Event) => {
             setAnalysisDepth(parseInt((e.target as HTMLSelectElement).value));
@@ -552,8 +596,19 @@ export function renderEngineSettings(opts?: { showArrowSettings?: boolean }): VN
     renderToggleRow('ceval-until-depth', 'Search to depth', searchUntilDepth, (v) => { setSearchUntilDepth(v); _redraw(); }),
     h('div.ceval-settings__row', { class: { 'ceval-settings__row--disabled': searchUntilDepth } }, [
       h('label.ceval-settings__label', { attrs: { for: 'ceval-search-time' } }, 'Search time'),
-      h('input#ceval-search-time', {
-        attrs: { type: 'range', min: 1000, max: 60000, step: 1000, value: searchTime, disabled: searchUntilDepth },
+      searchUntilDepth ? renderDisabledControlExplainer({
+        label: 'Engine search time',
+        description: 'Turn off Search to depth before setting a time limit.',
+      }, h('input#ceval-search-time', {
+        attrs: { type: 'range', min: 1000, max: 60000, step: 1000, value: searchTime, disabled: true, ...controlExplainerAttrs({
+          label: 'Engine search time',
+          description: 'Turn off Search to depth before setting a time limit.',
+        }) },
+      })) : h('input#ceval-search-time', {
+        attrs: { type: 'range', min: 1000, max: 60000, step: 1000, value: searchTime, ...controlExplainerAttrs({
+          label: 'Engine search time',
+          description: 'Set the maximum time Stockfish may search the current position.',
+        }) },
         on: {
           input: (e: Event) => {
             setSearchTime(parseInt((e.target as HTMLInputElement).value));

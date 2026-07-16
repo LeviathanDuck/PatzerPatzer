@@ -27,6 +27,12 @@ import { showToast } from '../ui/toast';
 import { requestPracticeStartOnNextBoard } from '../analyse/practice/practiceCtrl';
 import SaveFlowCtrl, { type SaveFlowContext, type SaveFlowResult } from '../save/saveFlowCtrl';
 import renderSaveFlowModal from '../save/saveFlowView';
+import {
+  controlExplainerAttrs,
+  iconControlExplainerAttrs,
+  renderDisabledControlExplainer,
+  type ControlExplainer,
+} from '../ui/controlExplainer';
 
 const ROLES: Role[] = ['king', 'queen', 'rook', 'bishop', 'knight', 'pawn'];
 
@@ -34,6 +40,41 @@ const ROLES: Role[] = ['king', 'queen', 'rook', 'bishop', 'knight', 'pawn'];
 // lila's selectedToClass so the active tool can be highlighted via a CSS class.
 function selectedToClass(s: Selected): string {
   return s === 'pointer' || s === 'trash' ? s : s.join(' ');
+}
+
+function paletteToolLabel(selected: Selected): string {
+  if (selected === 'pointer') return 'Move pieces';
+  if (selected === 'trash') return 'Remove pieces';
+  return `Place ${selected[0]} ${selected[1]}`;
+}
+
+function paletteToolDescription(selected: Selected, isSelected: boolean): string {
+  if (selected === 'pointer') {
+    return isSelected
+      ? 'Move pieces without adding or removing them; this tool is selected.'
+      : 'Select the pointer tool to move pieces without adding or removing them.';
+  }
+  if (selected === 'trash') {
+    return isSelected
+      ? 'Remove pieces from the board; this tool is selected.'
+      : 'Select the trash tool to remove pieces from the board.';
+  }
+  const piece = `${selected[0]} ${selected[1]}`;
+  return isSelected
+    ? `Add a ${piece} to the board; this piece tool is selected.`
+    : `Select the ${piece} to add it to the board.`;
+}
+
+function onPaletteKeydown(ctrl: EditorCtrl, selected: Selected): (e: KeyboardEvent) => void {
+  return e => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    if (e.repeat) return;
+    // Keyboard selection chooses the tool directly. It must not manufacture the pointer event
+    // required by Chessground's dragNewPiece path.
+    ctrl.selected = selected;
+    ctrl.redraw();
+  };
 }
 
 // Tracks the last touch position during a spare-piece drag so the touchend
@@ -83,6 +124,10 @@ function sparePieces(ctrl: EditorCtrl, color: Color, position: 'top' | 'bottom')
         s !== 'pointer' && s !== 'trash' ? { 'data-color': s[0], 'data-role': s[1] } : {};
       const isDraggingNewPiece = !!ctrl.chessground?.state.draggable.current?.newPiece;
       const selectedSquare = selectedClass === className && !isDraggingNewPiece;
+      const explainer = {
+        label: paletteToolLabel(s),
+        description: paletteToolDescription(s, selectedSquare),
+      };
       return h(
         'div',
         {
@@ -92,12 +137,19 @@ function sparePieces(ctrl: EditorCtrl, color: Color, position: 'top' | 'bottom')
             trash: s === 'trash',
             'selected-square': selectedSquare,
           },
+          attrs: {
+            role: 'button',
+            tabindex: '0',
+            'aria-pressed': String(selectedSquare),
+            ...iconControlExplainerAttrs(explainer),
+          },
           on: {
             mousedown: onSelectSparePiece(ctrl, s, 'mouseup'),
             touchstart: onSelectSparePiece(ctrl, s, 'touchend'),
             touchmove: (e: MouchEvent) => {
               lastTouchMovePos = eventPosition(e);
             },
+            keydown: onPaletteKeydown(ctrl, s),
           },
         },
         [h('div', [h(pieceSelector, { attrs: pieceAttrs })])],
@@ -110,13 +162,66 @@ function sparePieces(ctrl: EditorCtrl, color: Color, position: 'top' | 'bottom')
 // Mirrors lichess-org/lila ui/editor/src/view.ts `controls()`, minus the variant
 // select and Chess960 position-ID input (standard chess only, locked decision).
 
+const CASTLING_EXPLAINERS: Record<CastlingToggle, ControlExplainer & {
+  color: Color;
+  kingSquare: string;
+  rookSquare: string;
+}> = {
+  K: {
+    label: 'White kingside castling',
+    description: 'Place the white king on e1 and a white rook on h1 to enable this castling right.',
+    color: 'white', kingSquare: 'e1', rookSquare: 'h1',
+  },
+  Q: {
+    label: 'White queenside castling',
+    description: 'Place the white king on e1 and a white rook on a1 to enable this castling right.',
+    color: 'white', kingSquare: 'e1', rookSquare: 'a1',
+  },
+  k: {
+    label: 'Black kingside castling',
+    description: 'Place the black king on e8 and a black rook on h8 to enable this castling right.',
+    color: 'black', kingSquare: 'e8', rookSquare: 'h8',
+  },
+  q: {
+    label: 'Black queenside castling',
+    description: 'Place the black king on e8 and a black rook on a8 to enable this castling right.',
+    color: 'black', kingSquare: 'e8', rookSquare: 'a8',
+  },
+};
+
+function disabledCastlingDescription(ctrl: EditorCtrl, id: CastlingToggle): string {
+  const config = CASTLING_EXPLAINERS[id];
+  const board = parseFen(ctrl.chessground?.getFen() || ctrl.initialFen).unwrap(
+    setup => setup.board,
+    () => undefined,
+  );
+  const hasPiece = (square: string, role: Role): boolean => {
+    const piece = board?.get(parseSquare(square)!);
+    return piece?.color === config.color && piece.role === role;
+  };
+  const missing: string[] = [];
+  if (!hasPiece(config.kingSquare, 'king')) missing.push(`${config.color} king on ${config.kingSquare}`);
+  if (!hasPiece(config.rookSquare, 'rook')) missing.push(`${config.color} rook on ${config.rookSquare}`);
+  return `Place the ${missing.join(' and a ')} to enable this castling right.`;
+}
+
 function castleCheckBox(ctrl: EditorCtrl, id: CastlingToggle, label: string, reversed: boolean): VNode {
+  const enabled = ctrl.enabledCastlingToggles[id];
+  const checked = ctrl.castlingToggles[id] && enabled;
+  const explainer = enabled
+    ? {
+        label: CASTLING_EXPLAINERS[id].label,
+        description: checked
+          ? 'This castling right is currently enabled.'
+          : 'Enable this castling right for the position.',
+      }
+    : { label: CASTLING_EXPLAINERS[id].label, description: disabledCastlingDescription(ctrl, id) };
   const input = h('input', {
-    class: { 'not-allowed': !ctrl.enabledCastlingToggles[id] },
-    attrs: { type: 'checkbox' },
+    class: { 'not-allowed': !enabled },
+    attrs: { type: 'checkbox', ...controlExplainerAttrs(explainer) },
     props: {
-      checked: ctrl.castlingToggles[id] && ctrl.enabledCastlingToggles[id],
-      disabled: !ctrl.enabledCastlingToggles[id],
+      checked,
+      disabled: !enabled,
     },
     on: {
       change(e: Event) {
@@ -124,15 +229,20 @@ function castleCheckBox(ctrl: EditorCtrl, id: CastlingToggle, label: string, rev
       },
     },
   });
-  return h('label', reversed ? [input, label] : [label, input]);
+  const control = h('label', reversed ? [input, label] : [label, input]);
+  return enabled ? control : renderDisabledControlExplainer(explainer, control);
 }
 
 function turnSelect(ctrl: EditorCtrl): VNode {
-  return h(
-    'div.color',
+  return h('div.color', [
+    h('label', { attrs: { for: 'editor-turn-select' } }, [h('strong', 'Side to move')]),
     h(
-      'select',
+      'select#editor-turn-select',
       {
+        attrs: controlExplainerAttrs({
+          label: 'Side to move',
+          description: `${ctrl.turn === 'white' ? 'White' : 'Black'} is currently selected to move.`,
+        }),
         on: {
           change(e: Event) {
             ctrl.setTurn((e.target as HTMLSelectElement).value as Color);
@@ -145,7 +255,7 @@ function turnSelect(ctrl: EditorCtrl): VNode {
         h('option', { attrs: { value: 'black' } }, 'Black to play'),
       ],
     ),
-  );
+  ]);
 }
 
 // En-passant target squares are always rank 6 (white to play, black just played the
@@ -162,6 +272,12 @@ function enPassantSelect(ctrl: EditorCtrl, state: EditorState): VNode {
     h(
       'select#enpassant-select',
       {
+        attrs: controlExplainerAttrs({
+          label: 'En passant square',
+          description: ctrl.epSquare === undefined
+            ? 'No en passant target square is currently set.'
+            : `The en passant target square is currently ${makeSquare(ctrl.epSquare)}.`,
+        }),
         on: {
           change(e: Event) {
             ctrl.setEnPassant(parseSquare((e.target as HTMLSelectElement).value));
@@ -203,31 +319,43 @@ function presetSelect(ctrl: EditorCtrl, state: EditorState): VNode {
   const openingMatch = OPENING_POSITIONS.find(p => fenToEpd(p.fen) === epd);
   const endgameMatch = ENDGAME_POSITIONS.find(p => fenToEpd(p.fen) === epd);
   const value = openingMatch?.fen ?? endgameMatch?.fen ?? '';
-  return h(
-    'select.positions',
-    {
-      props: { value },
-      on: {
-        change(e: Event) {
-          const el = e.target as HTMLSelectElement;
-          if (!el.value || !ctrl.setFen(el.value)) el.value = '';
+  const selectedName = openingMatch
+    ? `${openingMatch.eco} ${openingMatch.name}`
+    : endgameMatch?.name;
+  return h('div.board-editor__preset', [
+    h('label', { attrs: { for: 'editor-preset-select' } }, [h('strong', 'Board preset')]),
+    h(
+      'select#editor-preset-select.positions',
+      {
+        attrs: controlExplainerAttrs({
+          label: 'Board preset',
+          description: selectedName
+            ? `Currently selected: ${selectedName}.`
+            : 'Choose an opening or endgame position for the board.',
+        }),
+        props: { value },
+        on: {
+          change(e: Event) {
+            const el = e.target as HTMLSelectElement;
+            if (!el.value || !ctrl.setFen(el.value)) el.value = '';
+          },
         },
       },
-    },
-    [
-      h('option', { attrs: { value: '' } }, 'Set the board'),
-      h(
-        'optgroup',
-        { attrs: { label: 'Popular openings' } },
-        OPENING_POSITIONS.map(p => presetOption(p.fen, `${p.eco} ${p.name}`)),
-      ),
-      h(
-        'optgroup',
-        { attrs: { label: 'Endgame positions' } },
-        ENDGAME_POSITIONS.map(p => presetOption(p.fen, p.name)),
-      ),
-    ],
-  );
+      [
+        h('option', { attrs: { value: '' } }, 'Set the board'),
+        h(
+          'optgroup',
+          { attrs: { label: 'Popular openings' } },
+          OPENING_POSITIONS.map(p => presetOption(p.fen, `${p.eco} ${p.name}`)),
+        ),
+        h(
+          'optgroup',
+          { attrs: { label: 'Endgame positions' } },
+          ENDGAME_POSITIONS.map(p => presetOption(p.fen, p.name)),
+        ),
+      ],
+    ),
+  ]);
 }
 
 
@@ -365,21 +493,108 @@ function renderActiveEditorSaveFlowModal(): VNode | null {
 function actionsRow(ctrl: EditorCtrl, state: EditorState): VNode {
   const legalFen = state.legalFen;
   const playable = state.playable;
+  const analysisExplainer = legalFen
+    ? {
+        label: 'Open Analysis Board',
+        description: 'Open a new Analysis Board from this position.',
+      }
+    : {
+        label: 'Open Analysis Board',
+        description: 'Set up a legal position before opening it in Analysis.',
+      };
+  const continueExplainer = playable
+    ? {
+        label: 'Continue against computer',
+        description: 'Open this position in Analysis and continue against the computer.',
+      }
+    : {
+        label: 'Continue against computer',
+        description: legalFen
+          ? 'This position is already finished, so there is no move to continue from.'
+          : 'Set up a legal position before continuing against the computer.',
+      };
+  const studyExplainer = legalFen
+    ? {
+        label: 'Save position to Study',
+        description: 'Open the save flow for this position in the Study Library.',
+      }
+    : {
+        label: 'Save position to Study',
+        description: 'Set up a legal position before saving it to Study.',
+      };
+  const analysisControl = h(
+    'button.button.button-empty',
+    {
+      class: { disabled: !legalFen },
+      attrs: { type: 'button', disabled: !legalFen, ...controlExplainerAttrs(analysisExplainer) },
+      on: {
+        click: () => {
+          if (!legalFen) return;
+          ctrl.cfg.onAnalysisBoard?.(buildFromPositionPgn(legalFen));
+        },
+      },
+    },
+    'Analysis board',
+  );
+  const continueControl = h(
+    'button.button.button-empty',
+    {
+      class: { disabled: !playable },
+      attrs: { type: 'button', disabled: !playable, ...controlExplainerAttrs(continueExplainer) },
+      on: {
+        click: () => {
+          if (!playable || !legalFen) return;
+          requestPracticeStartOnNextBoard(legalFen, ctrl.bottomColor());
+          ctrl.cfg.onAnalysisBoard?.(buildFromPositionPgn(legalFen));
+        },
+      },
+    },
+    'Continue from here',
+  );
+  const studyControl = h(
+    'button.button.button-empty',
+    {
+      class: { disabled: !legalFen },
+      attrs: { type: 'button', disabled: !legalFen, ...controlExplainerAttrs(studyExplainer) },
+      on: {
+        click: () => {
+          if (!legalFen) return;
+          openEditorSaveFlow(legalFen, ctrl.redraw);
+        },
+      },
+    },
+    'to Study',
+  );
   return h('div.actions', [
     h(
       'button.button.button-empty',
-      { attrs: { type: 'button' }, on: { click: () => ctrl.startPosition() } },
+      {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Start position',
+          description: 'Replace the board with the standard starting position.',
+        }) },
+        on: { click: () => ctrl.startPosition() },
+      },
       'Start position',
     ),
     h(
       'button.button.button-empty',
-      { attrs: { type: 'button' }, on: { click: () => ctrl.clearBoard() } },
+      {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Clear board',
+          description: 'Remove every piece from the board.',
+        }) },
+        on: { click: () => ctrl.clearBoard() },
+      },
       'Clear board',
     ),
     h(
       'button.button.button-empty',
       {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Flip board',
+          description: `Show ${ctrl.bottomColor() === 'white' ? 'Black' : 'White'} at the bottom of the board.`,
+        }) },
         // Mirrors lila's flip-board action button: toggle chessground directly and
         // run onChange explicitly, rather than ctrl.setOrientation (used by the `f`
         // hotkey in ./chessground.ts), so the URL's `color=` param stays in sync.
@@ -392,63 +607,9 @@ function actionsRow(ctrl: EditorCtrl, state: EditorState): VNode {
       },
       'Flip board',
     ),
-    h(
-      'button.button.button-empty',
-      {
-        class: { disabled: !legalFen },
-        attrs: {
-          type: 'button',
-          disabled: !legalFen,
-          title: legalFen ? 'Open a new analysis board from this position' : 'Illegal position',
-        },
-        on: {
-          click: () => {
-            if (!legalFen) return;
-            ctrl.cfg.onAnalysisBoard?.(buildFromPositionPgn(legalFen));
-          },
-        },
-      },
-      'Analysis board',
-    ),
-    h(
-      'button.button.button-empty',
-      {
-        class: { disabled: !playable },
-        attrs: {
-          type: 'button',
-          disabled: !playable,
-          title: playable
-            ? 'Open a new analysis board from this position and play it against the computer'
-            : 'Illegal or finished position',
-        },
-        on: {
-          click: () => {
-            if (!playable || !legalFen) return;
-            requestPracticeStartOnNextBoard(legalFen, ctrl.bottomColor());
-            ctrl.cfg.onAnalysisBoard?.(buildFromPositionPgn(legalFen));
-          },
-        },
-      },
-      'Continue from here',
-    ),
-    h(
-      'button.button.button-empty',
-      {
-        class: { disabled: !legalFen },
-        attrs: {
-          type: 'button',
-          disabled: !legalFen,
-          title: legalFen ? 'Save this position to the Study Library' : 'Illegal position',
-        },
-        on: {
-          click: () => {
-            if (!legalFen) return;
-            openEditorSaveFlow(legalFen, ctrl.redraw);
-          },
-        },
-      },
-      'to Study',
-    ),
+    legalFen ? analysisControl : renderDisabledControlExplainer(analysisExplainer, analysisControl),
+    playable ? continueControl : renderDisabledControlExplainer(continueExplainer, continueControl),
+    legalFen ? studyControl : renderDisabledControlExplainer(studyExplainer, studyControl),
   ]);
 }
 
@@ -479,8 +640,15 @@ function controls(ctrl: EditorCtrl, state: EditorState): VNode {
 // the focused element; the live-typed value in the DOM is otherwise left alone
 // until change/blur/Enter resolves it.
 function fenInput(ctrl: EditorCtrl, fen: string): VNode {
-  return h('input.board-editor__fen-input', {
-    attrs: { spellcheck: 'false', enterkeyhint: 'done' },
+  return h('input#editor-fen-input.board-editor__fen-input', {
+    attrs: {
+      spellcheck: 'false',
+      enterkeyhint: 'done',
+      ...controlExplainerAttrs({
+        label: 'FEN',
+        description: 'Edit the position notation; invalid FEN is rejected.',
+      }),
+    },
     hook: {
       insert: vnode => {
         (vnode.elm as HTMLInputElement).value = fen;
@@ -519,8 +687,15 @@ function fenInput(ctrl: EditorCtrl, fen: string): VNode {
 // `EditorCtrl.onChange` keeps current via `history.replaceState` (src/main.ts
 // `serializeEditorRoute`) before this view re-renders.
 function urlField(): VNode {
-  return h('input.board-editor__url-input', {
-    attrs: { readonly: true, spellcheck: 'false' },
+  return h('input#editor-url-input.board-editor__url-input', {
+    attrs: {
+      readonly: true,
+      spellcheck: 'false',
+      ...controlExplainerAttrs({
+        label: 'URL',
+        description: 'Share this URL to open the current editor position.',
+      }),
+    },
     hook: {
       insert: vnode => {
         (vnode.elm as HTMLInputElement).value = window.location.href;
@@ -534,8 +709,8 @@ function urlField(): VNode {
 
 function inputs(ctrl: EditorCtrl, fen: string): VNode {
   return h('div.board-editor__inputs', [
-    h('p', [h('strong', 'FEN'), fenInput(ctrl, fen)]),
-    h('p', [h('strong', 'URL'), urlField()]),
+    h('p', [h('label', { attrs: { for: 'editor-fen-input' } }, [h('strong', 'FEN')]), fenInput(ctrl, fen)]),
+    h('p', [h('label', { attrs: { for: 'editor-url-input' } }, [h('strong', 'URL')]), urlField()]),
   ]);
 }
 

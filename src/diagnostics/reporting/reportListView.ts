@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs } from '../../ui/controlExplainer';
 import { copyReportToClipboard, downloadReportAsJson } from './reportExport';
 import {
   canTransitionReportTriage,
@@ -39,6 +40,10 @@ function renderReportRow(report: StoredDiagnosticReport, options: ReportListOpti
     h('td.report-list__cell', [
       options.onTriageChange
         ? h('select.admin-token-input', {
+          attrs: { 'aria-label': `Triage report ${report.reportId}`, ...controlExplainerAttrs({
+            label: 'Change report triage state',
+            description: 'Moves this saved report through the local diagnostics triage workflow.',
+          }) },
           props: { value: triageState },
           on: { change: event => {
             options.onTriageChange?.(
@@ -59,19 +64,28 @@ function renderReportRow(report: StoredDiagnosticReport, options: ReportListOpti
     ]),
     h('td.report-list__cell.report-list__cell--actions', [
       options.onViewReport ? h('button.admin-btn.admin-btn--muted.report-list__action', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'View report' }) },
         on: { click: () => options.onViewReport?.(report.reportId) },
       }, 'View') : null,
       h('button.admin-btn.admin-btn--muted.report-list__action', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Copy report JSON',
+          description: 'Copies the redacted saved report payload to the clipboard.',
+        }) },
         on: { click: () => { void copyReportToClipboard(report); } },
       }, 'Copy JSON'),
       h('button.admin-btn.admin-btn--muted.report-list__action', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Download report JSON',
+          description: 'Downloads the redacted saved report payload as a JSON file.',
+        }) },
         on: { click: () => downloadReportAsJson(report) },
       }, 'Download JSON'),
       options.onDeleteReport ? h('button.admin-btn.admin-btn--muted.report-list__action', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Delete report',
+          description: 'Permanently deletes this report from this browser after confirmation.',
+        }) },
         on: { click: () => options.onDeleteReport?.(report.reportId) },
       }, 'Delete') : null,
     ]),
