@@ -89,6 +89,7 @@ export function createBrowserAppearanceController(
   const storage: AppearanceStorage = {
     getItem: key => win.localStorage.getItem(key),
     setItem: (key, value) => win.localStorage.setItem(key, value),
+    removeItem: key => win.localStorage.removeItem?.(key),
   };
 
   return createAppearanceController({

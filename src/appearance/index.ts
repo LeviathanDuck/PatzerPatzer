@@ -11,6 +11,7 @@ export interface AppearanceState {
 export interface AppearanceStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface AppearanceMediaQuery {
@@ -35,6 +36,7 @@ export interface AppearanceControllerDependencies {
 export interface AppearanceController {
   getState(): AppearanceState;
   setPreference(preference: AppearancePreference): void;
+  clearPreference(): void;
   subscribe(subscriber: (state: AppearanceState) => void): () => void;
   destroy(): void;
 }
@@ -120,6 +122,22 @@ export function createAppearanceController({
         preference,
         theme: resolveTheme(preference, mediaQuery),
       };
+      if (nextState.preference === state.preference && nextState.theme === state.theme) return;
+
+      state = nextState;
+      syncSystemListener();
+      apply();
+      notify();
+    },
+
+    clearPreference(): void {
+      try {
+        storage?.removeItem?.(APPEARANCE_STORAGE_KEY);
+      } catch {
+        // A denied localStorage mutation must not abort the remaining full-data wipe.
+      }
+
+      const nextState: AppearanceState = { preference: 'dark', theme: 'dark' };
       if (nextState.preference === state.preference && nextState.theme === state.theme) return;
 
       state = nextState;
