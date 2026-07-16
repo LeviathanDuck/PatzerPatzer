@@ -133,3 +133,45 @@ export interface DrillAttempt {
   expectedMove: string;            // SAN of correct move
   attemptsBeforeCorrect: number;
 }
+
+
+
+
+
+
+
+
+export type {
+  SrsScheduleStatus,
+  SrsReviewKind,
+  SrsFirstAttemptResult,
+  SrsTraversalMode,
+  SrsAssistanceType,
+  SrsScheduleRecordBase,
+  SrsActiveScheduleRecord,
+  SrsInactiveScheduleRecord,
+  SrsScheduleRecord,
+  SrsScheduledSnapshot,
+  SrsDisplaySnapshot,
+  SrsAttemptRecord,
+  SrsCompletedTargetResult,
+  SrsPresentationGroup,
+  SrsGraduationPolicy,
+  SrsLadderConfig,
+  SrsValidatedLadderConfig,
+  SrsTransitionOutcome,
+  SrsTransitionApplied,
+  SrsTransitionDuplicate,
+  SrsTransitionStale,
+  SrsTransitionInactive,
+  SrsTransitionInvalid,
+  SrsTransitionResult,
+  SrsTransitionFn,
+  SrsDueQuery,
+  SrsPresentationGroupRef,
+  SrsFrozenScheduleSnapshot,
+  SrsDuePriorityInputs,
+  SrsDueTarget,
+  SrsTraversalPlanEntry,
+  SrsTraversalPlan,
+} from './practice/srsTypes';
