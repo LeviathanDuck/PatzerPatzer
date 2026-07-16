@@ -120,12 +120,15 @@ export interface SrsPlanRevalidation {
  * Rules (memo §2, binding):
  *   - Due = `status === 'active' && dueAt <= now` (boundary is `<=`, not `<`).
  *   - Non-active statuses never surface; a candidate not in the set is never due ("no row => not due").
- *   - Scope by `scopeLessonIds`, optionally narrow by `targetIds`, and cap the due-now backlog by
- *     `limit` in the stable base order (`dueAt` asc, then `targetId` asc).
+ *   - Scope by `scopeLessonIds`, optionally narrow by `targetIds`, sort in the stable base order
+ *     (`dueAt` asc, then `targetId` asc), and enforce `limit` as a HARD cap on the TOTAL returned
+ *     candidates (due-now targets AND explicit early reviews together).
  *   - The ONLY way a not-yet-due active target surfaces is an explicit `earlyReviewTargetIds`
  *     selection (`reviewKind: 'early'`, `overdueMs: 0`, `dueNow: false`); `forceAddedAt` is never
- *     consulted for eligibility. Explicit early reviews are a deliberate, bounded set and are included
- *     in addition to the limited due-now backlog.
+ *     consulted for eligibility. Explicit early reviews are a deliberate, bounded set, but they do NOT
+ *     escape the cap: allocation under pressure is due-precedence — genuinely due-now targets fill the
+ *     cap first (base order), and early reviews fill only the remaining slots (base order). The total
+ *     returned is therefore never more than `limit`.
  *   - Fail closed (exit note (c)): a non-finite `now` surfaces nothing; a candidate with a non-finite
  *     `dueAt` is dropped, never surfaced as due.
  */
@@ -163,9 +166,13 @@ export function selectDueTargets(
   dueNow.sort(compareDueByBaseOrder);
   early.sort(compareDueByBaseOrder);
 
-  // The limit bounds the potentially-unbounded due-now backlog (the indexed read). The explicitly
-  // selected early reviews are appended in base order regardless of the limit.
-  return dueNow.slice(0, limit).concat(early);
+
+
+
+
+  const dueSlice = dueNow.slice(0, limit);
+  const remaining = Math.max(0, limit - dueSlice.length);
+  return dueSlice.concat(early.slice(0, remaining));
 }
 
 function buildDueTarget(
@@ -232,43 +239,87 @@ function copySource(source: SrsSourceVersion): SrsSourceVersion {
 
 // --- Ordering + ranking -----------------------------------------------------
 
-/** Stable base ordering: `dueAt` ascending, then `targetId` ascending. Total and deterministic. */
+
+
+
+
+
+function sanitizeFinite(x: number, fallback: number): number {
+  return Number.isFinite(x) ? x : fallback;
+}
+
+
+
+
+
+
+function sanitizeOptional(x: number | undefined, fallback: number): number {
+  return typeof x === 'number' && Number.isFinite(x) ? x : fallback;
+}
+
+
+
+
+
+
+
+
 export function compareDueByBaseOrder(a: SrsDueTarget, b: SrsDueTarget): number {
-  const ad = a.frozenSchedule.dueAt;
-  const bd = b.frozenSchedule.dueAt;
-  if (ad !== bd) return ad - bd;
+  const ad = sanitizeFinite(a.frozenSchedule.dueAt, 0);
+  const bd = sanitizeFinite(b.frozenSchedule.dueAt, 0);
+  if (ad !== bd) return ad < bd ? -1 : 1;
   return a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0;
 }
 
-/**
- * The ratified ORP session ranking as the provided default comparator (Required behavior 2): overdue,
- * recent failure/reset, due-now, first-attempt percentage, importance, then path cost, over
- * `SrsDuePriorityInputs`. Unknown optional inputs sort to the low-priority end of their axis. The final
- * tiebreak is the stable base order, so the ranking is a strict total order. The ORP adapter later
- * supplies material-aware inputs; consumers may pass any custom comparator to override this default.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const defaultOrpPriorityComparator: SrsDueTargetComparator = (a, b) => {
   const pa = a.priority;
   const pb = b.priority;
-  // 1. Overdue: more overdue first.
-  if (pa.overdueMs !== pb.overdueMs) return pb.overdueMs - pa.overdueMs;
-  // 2. Recent failure, then recent reset: more first.
-  if (pa.recentFailureCount !== pb.recentFailureCount) return pb.recentFailureCount - pa.recentFailureCount;
-  if (pa.recentResetCount !== pb.recentResetCount) return pb.recentResetCount - pa.recentResetCount;
+  // 1. Overdue: more overdue first. Non-finite overdue -> 0 (not overdue, least urgent on this axis).
+  const oa = sanitizeFinite(pa.overdueMs, 0);
+  const ob = sanitizeFinite(pb.overdueMs, 0);
+  if (oa !== ob) return oa > ob ? -1 : 1;
+  // 2. Recently reset OR failed — one combined tier: recency = max(failure, reset) counts, more first.
+  //    Non-finite counts -> 0. This is the single §9.5 tier, not failure-before-reset.
+  const ra = Math.max(sanitizeFinite(pa.recentFailureCount, 0), sanitizeFinite(pa.recentResetCount, 0));
+  const rb = Math.max(sanitizeFinite(pb.recentFailureCount, 0), sanitizeFinite(pb.recentResetCount, 0));
+  if (ra !== rb) return ra > rb ? -1 : 1;
   // 3. Due now before not-due (explicit early reviews rank after genuinely due-now targets).
   if (pa.dueNow !== pb.dueNow) return pa.dueNow ? -1 : 1;
-  // 4. First-attempt clean rate: lower (weaker recall) first; unknown ranks last on this axis.
-  const ra = pa.firstAttemptCleanRate ?? Number.POSITIVE_INFINITY;
-  const rb = pb.firstAttemptCleanRate ?? Number.POSITIVE_INFINITY;
-  if (ra !== rb) return ra - rb;
-  // 5. Importance: higher first; unknown ranks last.
-  const ia = pa.importance ?? Number.NEGATIVE_INFINITY;
-  const ib = pb.importance ?? Number.NEGATIVE_INFINITY;
-  if (ia !== ib) return ib - ia;
-  // 6. Path cost: lower first; unknown ranks last.
-  const ca = pa.pathCost ?? Number.POSITIVE_INFINITY;
-  const cb = pb.pathCost ?? Number.POSITIVE_INFINITY;
-  if (ca !== cb) return ca - cb;
+  // 4. First-attempt clean rate: lower (weaker recall) first; unknown/non-finite ranks last (+Infinity).
+  const fa = sanitizeOptional(pa.firstAttemptCleanRate, Number.POSITIVE_INFINITY);
+  const fb = sanitizeOptional(pb.firstAttemptCleanRate, Number.POSITIVE_INFINITY);
+  if (fa !== fb) return fa < fb ? -1 : 1;
+  // 5. Importance: higher first; unknown/non-finite ranks last (-Infinity).
+  const ia = sanitizeOptional(pa.importance, Number.NEGATIVE_INFINITY);
+  const ib = sanitizeOptional(pb.importance, Number.NEGATIVE_INFINITY);
+  if (ia !== ib) return ia > ib ? -1 : 1;
+  // 6. Path cost: lower first; unknown/non-finite ranks last (+Infinity).
+  const ca = sanitizeOptional(pa.pathCost, Number.POSITIVE_INFINITY);
+  const cb = sanitizeOptional(pb.pathCost, Number.POSITIVE_INFINITY);
+  if (ca !== cb) return ca < cb ? -1 : 1;
   // Total-order tiebreak.
   return compareDueByBaseOrder(a, b);
 };
@@ -296,10 +347,13 @@ export function buildTraversalPlan(
     frozenSource: copyDisplay(c.frozenSource),
   }));
   return {
+    planVersion: 1,
     sessionId: input.sessionId,
     traversalId: input.traversalId,
     createdAt: input.createdAt,
     entries,
+
+
     context: (input.context ?? []).map(copyContext),
     repair: (input.repair ?? []).map(copyRepair),
   };
@@ -345,15 +399,19 @@ function copyRepair(r: SrsRepairEntry): SrsRepairEntry {
 
 // --- Plan revalidation ------------------------------------------------------
 
-/**
- * Detect which plan entries no longer match the live state, WITHOUT mutating the plan (Required
- * behavior 4). Reads only. A scored entry is invalid when its schedule row is gone, no longer active,
- * or diverges on `targetRevision` (a replaced decision, P2-ORP-17), `scheduleRevision`, `configVersion`,
- * `stepIndex`, or `dueAt`, or when its source linkage/revision changed. Context/repair entries are
- * schedule-neutral, so only their source is revalidated. Fails closed on non-finite `dueAt`/source
- * revision (exit note (c)); source `origin` is provenance only and never drives staleness (exit note
- * (a)).
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function revalidateTraversalPlan(
   plan: SrsTraversalPlan,
   currentById: ReadonlyMap<string, SrsScheduleRecord>,
@@ -365,11 +423,11 @@ export function revalidateTraversalPlan(
     const reason = revalidateScheduledEntry(entry, currentById, currentSourceById);
     if (reason) invalidEntries.push({ kind: 'target', targetId: entry.targetId, reason });
   }
-  for (const c of plan.context ?? []) {
+  for (const c of plan.context) {
     const reason = revalidateSource(c.targetId, c.frozenSource.source, currentSourceById);
     if (reason) invalidEntries.push({ kind: 'context', targetId: c.targetId, reason });
   }
-  for (const r of plan.repair ?? []) {
+  for (const r of plan.repair) {
     const reason = revalidateSource(r.targetId, r.frozenSource.source, currentSourceById);
     if (reason) invalidEntries.push({ kind: 'repair', targetId: r.targetId, reason });
   }
@@ -389,10 +447,15 @@ function revalidateScheduledEntry(
   if (!Number.isFinite(f.dueAt) || !Number.isFinite(current.dueAt)) return 'non-finite dueAt';
   if (current.targetRevision !== f.targetRevision) return 'targetRevision superseded (decision replaced)';
   if (current.scheduleRevision !== f.scheduleRevision) return 'scheduleRevision advanced';
+  if (current.configId !== f.configId) return 'configId changed';
   if (current.configVersion !== f.configVersion) return 'configVersion changed';
   if (current.stepIndex !== f.stepIndex) return 'stepIndex changed';
   if (current.dueAt !== f.dueAt) return 'dueAt changed';
-  return revalidateSource(entry.targetId, f.source, currentSourceById);
+
+
+  const scheduleSourceReason = revalidateSource(entry.targetId, f.source, currentSourceById);
+  if (scheduleSourceReason) return scheduleSourceReason;
+  return revalidateSource(entry.targetId, entry.frozenSource.source, currentSourceById);
 }
 
 function revalidateSource(
@@ -400,15 +463,20 @@ function revalidateSource(
   frozen: SrsSourceVersion,
   currentSourceById?: ReadonlyMap<string, SrsSourceVersion>,
 ): string | null {
-  if (!currentSourceById) return null; // no live source map supplied => nothing to compare against
+
+
+
+
+  if (frozen.kind === 'linked' && !Number.isFinite(frozen.sourceRevision)) {
+    return 'non-finite linked sourceRevision';
+  }
+  if (!currentSourceById) return null; // no live source map supplied => skip the live comparison only
   const current = currentSourceById.get(targetId);
   if (!current) return 'source no longer present';
   if (frozen.kind !== current.kind) return 'source linkage changed';
   if (frozen.kind === 'linked' && current.kind === 'linked') {
-    // Fail closed on a non-finite linked revision on either side.
-    if (!Number.isFinite(frozen.sourceRevision) || !Number.isFinite(current.sourceRevision)) {
-      return 'non-finite linked sourceRevision';
-    }
+    // Fail closed on a non-finite live linked revision (the frozen side was checked unconditionally above).
+    if (!Number.isFinite(current.sourceRevision)) return 'non-finite linked sourceRevision';
     if (frozen.sourceRevision !== current.sourceRevision) return 'source revision changed';
   }
   // Unlinked vs unlinked: `origin` is provenance-only (never a version). An absent origin is

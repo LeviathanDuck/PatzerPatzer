@@ -370,7 +370,10 @@ export interface SrsDueQuery {
   readonly scopeLessonIds: readonly string[];
   /** Optional explicit target-id filter within scope. */
   readonly targetIds?: readonly string[];
-  /** Hard cap on returned candidates (bounded/indexed reads only — never getAll()). */
+  /** Hard cap on the TOTAL returned candidates — due-now targets AND explicit early reviews together
+   *  (bounded/indexed reads only — never getAll()). Under pressure the allocation is due-precedence:
+   *  genuinely due-now targets fill the cap first (in stable base order), and explicit early reviews
+   *  fill only the slots that remain. The count of returned candidates therefore never exceeds `limit`. */
   readonly limit: number;
   /** Optional not-yet-due targets explicitly selected for early review. */
   readonly earlyReviewTargetIds?: readonly string[];
@@ -519,16 +522,23 @@ export interface SrsRepairEntry {
 
 
 
+
+
+
+
 export interface SrsTraversalPlan {
+
+
+  readonly planVersion: 1;
   readonly sessionId: string;
   readonly traversalId: string;
   readonly createdAt: number;
   /** Scored due targets — the ONLY entries whose completion mutates a schedule. */
   readonly entries: readonly SrsTraversalPlanEntry[];
-  /** Schedule-neutral lead-in context; never scored. Optional for backward compatibility (see doc). */
-  readonly context?: readonly SrsContextEntry[];
-  /** Schedule-neutral missed-context repair list; never scored. Optional for backward compatibility. */
-  readonly repair?: readonly SrsRepairEntry[];
+  /** Schedule-neutral lead-in context; never scored. Required (empty array when none) — see doc. */
+  readonly context: readonly SrsContextEntry[];
+  /** Schedule-neutral missed-context repair list; never scored. Required (empty array when none). */
+  readonly repair: readonly SrsRepairEntry[];
 }
 
 // Contracts ONLY — this module now contains no runtime values (finding B1-5). The compile-time
