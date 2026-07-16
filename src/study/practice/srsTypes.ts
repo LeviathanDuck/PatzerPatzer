@@ -134,6 +134,33 @@ export interface SrsScheduledSnapshot {
 }
 
 /**
+ * Discriminated source-material versioning captured on a frozen snapshot (finding B1F1-MEDIUM).
+ *
+ * The Hardened Contract splits source linkage into exactly two states: a `linked` source preserves
+ * "verified source identity and snapshot lineage" and is revalidated by a staged three-way snapshot
+ * comparison (§4.4 Import scope and linkage, §4.5 Linked update protocol), so it always carries a
+ * snapshot revision; a `manual` (unlinked) source has no upstream version at all ("Manual PGN imports
+ * are unlinked unless they contain a recognized source URL/identity", §4.4).
+ *
+ * A discriminated union — not a bare `sourceRevision?: number` and not a `number | null` — was chosen
+ * because it is the shape that matches those semantics exactly and closes the review hole:
+ *   - a `linked` snapshot CANNOT omit its revision (the variant requires `sourceRevision`), so a
+ *     linked plan whose revision was accidentally dropped is a compile error; and
+ *   - a `manual` snapshot is an explicit, self-documenting unversioned state rather than an absent
+ *     field, so an intentionally unversioned source stays expressible.
+ * Because the field carrying this union is required, a complete plan can no longer omit source
+ * versioning silently (the review's omitted-both-revisions probe now fails to compile). A required-
+ * nullable `number | null` would also make omission a compile error, but it conflates "manual, no
+ * version" with "linked, revision unknown" — the union keeps those distinct, matching the contract's
+ * two-state linkage model.
+ */
+export type SrsSourceVersion =
+  /** Linked to an upstream source: always carries the snapshot revision revalidation compares. */
+  | { readonly kind: 'linked'; readonly sourceRevision: number }
+  /** Intentionally unversioned manual/unlinked source: no upstream revision exists. */
+  | { readonly kind: 'manual' };
+
+/**
  * Compact immutable display/source snapshot — sufficient to explain archived history after the
  * originating lesson material is gone. Deliberately NOT chess material: a human-readable label and
  * source lineage only, never FEN/SAN/expected-move/PGN fields.
@@ -143,8 +170,9 @@ export interface SrsDisplaySnapshot {
   readonly label: string;
   /** Source/lesson label captured at attempt time. */
   readonly sourceLabel?: string;
-  /** Source revision captured at attempt time. */
-  readonly sourceRevision?: number;
+  /** Discriminated source versioning captured at attempt time (required — finding B1F1-MEDIUM). A
+   *  `linked` source carries its snapshot revision; a `manual` source is explicitly unversioned. */
+  readonly source: SrsSourceVersion;
 }
 
 /**
@@ -333,9 +361,10 @@ export interface SrsPresentationGroupRef {
  * Frozen schedule snapshot persisted with a due candidate and a session/traversal plan. Revalidated
  * after Study changes; it is a point-in-time copy, never a live view of the schedule row.
  *
- * Revalidation-capable (finding B1-2): it carries `targetRevision` and a compact `sourceRevision` so
- * a persisted plan can be compared against the live record/source after Study edits — a divergence
- * means the decision was replaced (P2-ORP-17) or the source material changed, and the entry is stale.
+ * Revalidation-capable (finding B1-2): it carries `targetRevision` and a required discriminated
+ * `source` versioning field (finding B1F1-MEDIUM) so a persisted plan can be compared against the
+ * live record/source after Study edits — a divergence means the decision was replaced (P2-ORP-17) or
+ * the source material changed, and the entry is stale.
  *
  * Active-only invariant (finding B1-3): the snapshot is only ever frozen for an active due candidate.
  * The due query is `status === 'active' && dueAt <= now`; explicit early reviews are still active with
@@ -359,10 +388,12 @@ export interface SrsFrozenScheduleSnapshot {
   readonly status: 'active';
   /** Next due instant, UTC epoch ms. Non-null because the snapshot is active-only. */
   readonly dueAt: number;
-  /** Compact source-material revision captured at freeze time, when the source is versioned. Lets a
-   *  plan be revalidated against the live source revision after Study edits. Optional: not every
-   *  source (e.g. manual) carries a revision. */
-  readonly sourceRevision?: number;
+  /** Discriminated source-material versioning captured at freeze time (required — finding
+   *  B1F1-MEDIUM). A `linked` source carries the snapshot revision revalidation compares against the
+   *  live source after Study edits; a `manual` source is explicitly unversioned. Being required (not
+   *  an optional `sourceRevision?`) is what makes an omitted revision on a persisted plan a compile
+   *  error, while the `manual` variant keeps an intentionally unversioned source expressible. */
+  readonly source: SrsSourceVersion;
   /** When this snapshot was frozen, UTC epoch ms. */
   readonly capturedAt: number;
 }
