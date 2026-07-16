@@ -102,18 +102,18 @@ function copiedAriaState(vnode: VNode, role: string): Record<string, string> {
   const roleStateAttrs: Record<string, readonly string[]> = {
     button: ['aria-expanded', 'aria-haspopup', 'aria-pressed'],
     checkbox: ['aria-checked', 'aria-readonly'],
-    combobox: ['aria-autocomplete', 'aria-expanded', 'aria-haspopup', 'aria-invalid', 'aria-readonly', 'aria-required'],
-    listbox: ['aria-multiselectable', 'aria-orientation', 'aria-required'],
+    combobox: ['aria-autocomplete', 'aria-description', 'aria-expanded', 'aria-haspopup', 'aria-invalid', 'aria-readonly', 'aria-required'],
+    listbox: ['aria-description', 'aria-multiselectable', 'aria-orientation', 'aria-required'],
     menuitemcheckbox: ['aria-checked'],
     menuitemradio: ['aria-checked'],
     option: ['aria-checked', 'aria-selected'],
     radio: ['aria-checked', 'aria-readonly'],
     slider: ['aria-orientation', 'aria-readonly', 'aria-valuemax', 'aria-valuemin', 'aria-valuenow', 'aria-valuetext'],
     spinbutton: ['aria-readonly', 'aria-required', 'aria-valuemax', 'aria-valuemin', 'aria-valuenow', 'aria-valuetext'],
-    searchbox: ['aria-autocomplete', 'aria-invalid', 'aria-placeholder', 'aria-readonly', 'aria-required'],
+    searchbox: ['aria-autocomplete', 'aria-description', 'aria-invalid', 'aria-placeholder', 'aria-readonly', 'aria-required'],
     switch: ['aria-checked', 'aria-readonly'],
     tab: ['aria-selected'],
-    textbox: ['aria-autocomplete', 'aria-invalid', 'aria-multiline', 'aria-placeholder', 'aria-readonly', 'aria-required'],
+    textbox: ['aria-autocomplete', 'aria-description', 'aria-invalid', 'aria-multiline', 'aria-placeholder', 'aria-readonly', 'aria-required'],
   };
   const state: Record<string, string> = {};
   for (const name of roleStateAttrs[role] ?? []) {
@@ -142,6 +142,15 @@ function copiedAriaState(vnode: VNode, role: string): Record<string, string> {
     const placeholder = stringState(vnodeProp(vnode, 'placeholder') ?? vnodeAttr(vnode, 'placeholder'));
     if (placeholder && state['aria-placeholder'] === undefined) state['aria-placeholder'] = placeholder;
     if (vnodeTagName(vnode) === 'textarea' && state['aria-multiline'] === undefined) state['aria-multiline'] = 'true';
+  }
+  if (['combobox', 'listbox', 'textbox', 'searchbox'].includes(role)) {
+    const value = stringState(vnodeProp(vnode, 'value') ?? vnodeAttr(vnode, 'value'));
+    if (value !== undefined) {
+      const currentValueDescription = value ? `Current value: ${value}.` : 'Current value: empty.';
+      state['aria-description'] = state['aria-description']
+        ? `${state['aria-description']} ${currentValueDescription}`
+        : currentValueDescription;
+    }
   }
   return state;
 }
