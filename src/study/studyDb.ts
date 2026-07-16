@@ -21,6 +21,9 @@ import type {
 } from './practice/srsTypes';
 import { asPersistableScheduleRecord, asPersistableAttemptRecord } from './practice/scheduler';
 
+
+import { revalidateTraversalPlan } from './practice/sessionBuilder';
+
 type StudyStoreName =
   | 'studies'
   | 'practice-lines'
@@ -1299,6 +1302,56 @@ async function practicePut(storeName: StudyPracticeStoreName, value: unknown): P
   await done;
 }
 
+
+
+
+
+
+
+
+async function practiceAdd(
+  storeName: StudyPracticeStoreName,
+  value: unknown,
+): Promise<{ readonly duplicate: boolean }> {
+  const db = await openDb();
+  return new Promise<{ readonly duplicate: boolean }>((resolve, reject) => {
+    let duplicate = false;
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(storeName, 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    let req: IDBRequest;
+    try {
+      req = tx.objectStore(storeName).add(value);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    req.onerror = (event: Event) => {
+      const err = req.error;
+      if (err && err.name === 'ConstraintError') {
+        // Duplicate key: keep the first-write truth. Prevent the default abort so the tx completes.
+        duplicate = true;
+        event.preventDefault();
+      }
+      // Any other error is left to abort the transaction (handled by tx.onabort/onerror below).
+    };
+    tx.oncomplete = () => resolve({ duplicate });
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', 'add');
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      if (duplicate) { resolve({ duplicate: true }); return; }
+      recordStudyTxFail(tx, 'onabort', 'add');
+      reject(tx.error ?? new DOMException(`Practice add (${storeName}) transaction aborted`, 'AbortError'));
+    };
+  });
+}
+
 async function practiceDelete(storeName: StudyPracticeStoreName, key: IDBValidKey): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(storeName, 'readwrite');
@@ -1488,6 +1541,11 @@ export async function listDuePracticeSrs(params: {
   lessonId?: string;
 }): Promise<SrsScheduleRecord[]> {
   const { now, limit, lessonId } = params;
+
+
+
+
+  if (!Number.isFinite(now)) return [];
   const db = await openDb();
   const acceptActiveDue = (r: SrsScheduleRecord): boolean =>
     r.status === 'active' && typeof r.dueAt === 'number' && Number.isFinite(r.dueAt) && r.dueAt <= now;
@@ -1505,10 +1563,20 @@ export async function listDuePracticeSrs(params: {
 
 // --- study-practice-attempts (append-only) ---------------------------------
 
-/** Append an immutable attempt row. Funnels through the B1 closed-record guard. Append-only: there is
- *  no update or delete accessor — retries produce NEW attempt IDs (P2-ORP-16/17). */
-export function savePracticeAttempt(attempt: SrsAttemptRecord): Promise<void> {
-  return practicePut('study-practice-attempts', asPersistableAttemptRecord(attempt));
+
+
+
+
+
+
+export async function savePracticeAttempt(
+  attempt: SrsAttemptRecord,
+): Promise<SrsPersistenceResult<SrsAttemptRecord>> {
+  const { duplicate } = await practiceAdd('study-practice-attempts', asPersistableAttemptRecord(attempt));
+  if (duplicate) {
+    return { ok: false, failure: mkFail('duplicate-identity', 'attempt.attemptId', `attempt "${attempt.attemptId}" already exists; append-only store never overwrites`) };
+  }
+  return { ok: true, value: attempt };
 }
 export function getPracticeAttempt(attemptId: string): Promise<SrsAttemptRecord | undefined> {
   return practiceGet<SrsAttemptRecord>('study-practice-attempts', attemptId);
@@ -1551,8 +1619,30 @@ export async function listPracticeAttemptsBySession(
 function mkFail(code: SrsPersistenceFailureCode, path: string, reason: string): SrsPersistenceFailure {
   return { code, path, reason };
 }
+
+
+
+
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+
+
+
+
+
+
+function rejectUnknownKeys(v: Record<string, unknown>, allowed: readonly string[], path: string): SrsPersistenceFailure | null {
+  const allow = new Set<string>(allowed);
+  for (const key of Object.getOwnPropertyNames(v)) {
+    if (key === '__proto__') return mkFail('unknown-key', `${path}.__proto__`, 'row carries an own __proto__ payload');
+    if (!allow.has(key)) return mkFail('unknown-key', `${path}.${key}`, `undeclared own key "${key}" is not part of the contract`);
+  }
+  return null;
 }
 function isNonEmptyString(v: unknown): boolean {
   return typeof v === 'string' && v.length > 0;
@@ -1561,22 +1651,40 @@ function isFiniteNumber(v: unknown): boolean {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+const SOURCE_LINKED_KEYS = ['kind', 'sourceRevision'] as const;
+const SOURCE_UNLINKED_KEYS = ['kind', 'origin'] as const;
+const DISPLAY_SNAPSHOT_KEYS = ['label', 'sourceLabel', 'source'] as const;
+const FROZEN_SCHEDULE_KEYS = [
+  'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
+  'stepIndex', 'status', 'dueAt', 'source', 'capturedAt',
+] as const;
+const PLAN_ENTRY_KEYS = ['targetId', 'lessonId', 'reviewKind', 'frozenSchedule', 'frozenSource'] as const;
+const CONTEXT_ENTRY_KEYS = ['targetId', 'lessonId', 'frozenSource', 'scheduleNeutral'] as const;
+const REPAIR_ENTRY_KEYS = ['targetId', 'lessonId', 'frozenSource', 'scheduleNeutral', 'failedMoveKeys'] as const;
+const PLAN_KEYS = ['planVersion', 'sessionId', 'traversalId', 'createdAt', 'entries', 'context', 'repair'] as const;
+const PROGRESS_KEYS = ['entryCursor', 'completedTargetIds', 'appliedAttemptIds'] as const;
+const SESSION_ROW_KEYS = ['sessionId', 'lessonId', 'state', 'updatedAt', 'createdAt', 'progress', 'targetCount', 'plan'] as const;
+
 /** Validate a discriminated `SrsSourceVersion` union. Returns a failure or null. */
 function validateSourceVersion(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'source version is not an object');
   if (v.kind === 'linked') {
+    const extra = rejectUnknownKeys(v, SOURCE_LINKED_KEYS, path);
+    if (extra) return extra;
     if (!isFiniteNumber(v.sourceRevision)) {
       return mkFail('non-finite-number', `${path}.sourceRevision`, 'linked sourceRevision must be finite');
     }
     return null;
   }
-  if (v.kind === 'unlinked') return null;
+  if (v.kind === 'unlinked') return rejectUnknownKeys(v, SOURCE_UNLINKED_KEYS, path);
   return mkFail('invalid-source-discriminant', `${path}.kind`, `unknown source discriminant: ${String(v.kind)}`);
 }
 
 /** Validate an `SrsDisplaySnapshot` (source-side snapshot). Requires a non-empty `label` (residual c). */
 function validateDisplaySnapshot(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'display snapshot is not an object');
+  const extra = rejectUnknownKeys(v, DISPLAY_SNAPSHOT_KEYS, path);
+  if (extra) return extra;
   if (!isNonEmptyString(v.label)) return mkFail('missing-required-string', `${path}.label`, 'display label is missing/empty');
   if (v.sourceLabel !== undefined && typeof v.sourceLabel !== 'string') {
     return mkFail('missing-required-string', `${path}.sourceLabel`, 'sourceLabel must be a string when present');
@@ -1591,6 +1699,8 @@ const FROZEN_SCHEDULE_NUMERIC_FIELDS = [
 /** Validate a frozen schedule snapshot: required strings, active-only status, and finite numerics. */
 function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'frozen schedule snapshot is not an object');
+  const extra = rejectUnknownKeys(v, FROZEN_SCHEDULE_KEYS, path);
+  if (extra) return extra;
   if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'frozen targetId is missing/empty');
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'frozen lessonId is missing/empty');
   if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', `${path}.configId`, 'frozen configId is missing/empty');
@@ -1601,9 +1711,12 @@ function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure
   return validateSourceVersion(v.source, `${path}.source`);
 }
 
-/** Validate a scored traversal-plan entry. */
+
+
 function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'plan entry is not an object');
+  const extra = rejectUnknownKeys(v, PLAN_ENTRY_KEYS, path);
+  if (extra) return extra;
   if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'entry targetId is missing/empty');
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'entry lessonId is missing/empty');
   if (v.reviewKind !== 'due' && v.reviewKind !== 'early') {
@@ -1611,12 +1724,24 @@ function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | nu
   }
   const sched = validateFrozenSchedule(v.frozenSchedule, `${path}.frozenSchedule`);
   if (sched) return sched;
-  return validateDisplaySnapshot(v.frozenSource, `${path}.frozenSource`);
+  const disp = validateDisplaySnapshot(v.frozenSource, `${path}.frozenSource`);
+  if (disp) return disp;
+  // Cross-snapshot LESSON coherence: a scored entry and its own frozen schedule snapshot must name the
+  // same lesson. (The B3 revalidation composed below keys the derived live map by the frozen snapshot's
+  // targetId and looks it up by the entry's targetId, so a targetId divergence is caught there as a
+  // 'plan-revalidation-failed' — B3 does NOT compare lessonId, so it is enforced explicitly here.)
+  const frozen = v.frozenSchedule as { lessonId: unknown };
+  if (frozen.lessonId !== v.lessonId) {
+    return mkFail('identity-mismatch', `${path}.frozenSchedule.lessonId`, `frozen lessonId "${String(frozen.lessonId)}" != entry lessonId "${String(v.lessonId)}"`);
+  }
+  return null;
 }
 
 /** Validate a schedule-neutral context/repair entry. */
 function validateNeutralEntry(v: unknown, path: string, isRepair: boolean): SrsPersistenceFailure | null {
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'neutral entry is not an object');
+  const extra = rejectUnknownKeys(v, isRepair ? REPAIR_ENTRY_KEYS : CONTEXT_ENTRY_KEYS, path);
+  if (extra) return extra;
   if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'neutral targetId is missing/empty');
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'neutral lessonId is missing/empty');
   if (v.scheduleNeutral !== true) return mkFail('invalid-status', `${path}.scheduleNeutral`, 'scheduleNeutral must be the literal true');
@@ -1642,6 +1767,9 @@ function validateNeutralEntry(v: unknown, path: string, isRepair: boolean): SrsP
 export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResult<SrsTraversalPlan> {
   try {
     if (!isPlainObject(raw)) return { ok: false, failure: mkFail('not-an-object', 'plan', 'plan is not an object') };
+    // Closed record: no smuggled chess material / own __proto__ at the top level (findings 6/7).
+    const planExtra = rejectUnknownKeys(raw, PLAN_KEYS, 'plan');
+    if (planExtra) return { ok: false, failure: planExtra };
     // (b) recognized version only — reject missing/unknown, never coerce.
     if (raw.planVersion !== 1) {
       return { ok: false, failure: mkFail('unrecognized-plan-version', 'plan.planVersion', `unrecognized plan version: ${String(raw.planVersion)}`) };
@@ -1678,8 +1806,40 @@ export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResu
       const dup = checkDup((raw.repair[i] as { targetId: string }).targetId, `plan.repair[${i}].targetId`);
       if (dup) return { ok: false, failure: dup };
     }
-    // Every branch above is proven; the value is structurally a well-formed SrsTraversalPlan.
-    return { ok: true, value: raw as unknown as SrsTraversalPlan };
+    // Every local branch above is proven; the value is structurally a well-formed SrsTraversalPlan.
+    const plan = raw as unknown as SrsTraversalPlan;
+
+    // COMPOSE with the sealed B3 revalidation (finding 1): a persisted plan is valid ONLY if the sealed
+    // `revalidateTraversalPlan` also reports zero invalid entries — the boundary composes the sealed
+    // authority instead of forking its logic. We revalidate against a live schedule map DERIVED FROM the
+    // plan's OWN frozen snapshots, keyed by each snapshot's `targetId`; B3 then looks each entry up by the
+    // ENTRY's `targetId`, so a scored entry whose `targetId` diverges from its frozen schedule snapshot
+    // (a frozen schedule bound to the wrong scored target) surfaces as a missing live row and the plan is
+    // rejected. `currentSourceById` is intentionally omitted so B3 runs its structural/finite/discriminant
+    // checks without a live-source comparison (there is no live source at this read boundary).
+    const derivedLive = new Map<string, SrsScheduleRecord>();
+    for (const entry of plan.entries) {
+      const f = entry.frozenSchedule;
+      derivedLive.set(f.targetId, {
+        targetId: f.targetId,
+        lessonId: f.lessonId,
+        status: 'active',
+        dueAt: f.dueAt,
+        targetRevision: f.targetRevision,
+        scheduleRevision: f.scheduleRevision,
+        configId: f.configId,
+        configVersion: f.configVersion,
+        stepIndex: f.stepIndex,
+      } as unknown as SrsScheduleRecord);
+    }
+    const reval = revalidateTraversalPlan(plan, derivedLive, undefined);
+    for (const first of reval.invalidEntries) {
+      return {
+        ok: false,
+        failure: mkFail('plan-revalidation-failed', `plan.${first.kind}[${first.targetId}]`, `sealed B3 revalidation rejected entry: ${first.reason}`),
+      };
+    }
+    return { ok: true, value: plan };
   } catch (e) {
     return { ok: false, failure: mkFail('not-an-object', 'plan', `unexpected validation error: ${classifyStudyError(e)}`) };
   }
@@ -1695,6 +1855,9 @@ const SESSION_STATES: ReadonlySet<SrsSessionState> = new Set<SrsSessionState>(['
 export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<SrsPracticeSessionRow> {
   try {
     if (!isPlainObject(raw)) return { ok: false, failure: mkFail('not-an-object', 'session', 'session row is not an object') };
+    // Closed record: no smuggled chess material / own __proto__ at the top level (findings 6/7).
+    const rowExtra = rejectUnknownKeys(raw, SESSION_ROW_KEYS, 'session');
+    if (rowExtra) return { ok: false, failure: rowExtra };
     if (!isNonEmptyString(raw.sessionId)) return { ok: false, failure: mkFail('missing-required-string', 'session.sessionId', 'sessionId is missing/empty') };
     if (!isNonEmptyString(raw.lessonId)) return { ok: false, failure: mkFail('missing-required-string', 'session.lessonId', 'lessonId is missing/empty') };
     if (typeof raw.state !== 'string' || !SESSION_STATES.has(raw.state as SrsSessionState)) {
@@ -1706,6 +1869,8 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
 
     const progress = raw.progress;
     if (!isPlainObject(progress)) return { ok: false, failure: mkFail('not-an-object', 'session.progress', 'progress is not an object') };
+    const progressExtra = rejectUnknownKeys(progress, PROGRESS_KEYS, 'session.progress');
+    if (progressExtra) return { ok: false, failure: progressExtra };
     if (!isFiniteNumber(progress.entryCursor)) return { ok: false, failure: mkFail('non-finite-number', 'session.progress.entryCursor', 'entryCursor is non-finite') };
     for (const listName of ['completedTargetIds', 'appliedAttemptIds'] as const) {
       const list = progress[listName];
@@ -1715,8 +1880,62 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
       }
     }
 
+    // Validate + compose the embedded plan BEFORE the checkpoint invariants so the invariants can read
+    // the plan's proven entries (targetCount denominator, completed-target membership set).
     const planResult = validatePersistedTraversalPlan(raw.plan);
     if (!planResult.ok) return planResult;
+    const plan = planResult.value;
+
+    // --- NORMATIVE CHECKPOINT INVARIANTS S1–S9 (see SrsPracticeSessionRow doc) --------------------
+    const sessionId = raw.sessionId as string;
+    const lessonId = raw.lessonId as string;
+    const targetCount = raw.targetCount as number;
+    const entryCursor = progress.entryCursor as number;
+    const completedTargetIds = progress.completedTargetIds as readonly string[];
+    const appliedAttemptIds = progress.appliedAttemptIds as readonly string[];
+
+    // S1: session/plan identity coherence.
+    if (plan.sessionId !== sessionId) {
+      return { ok: false, failure: mkFail('identity-mismatch', 'session.plan.sessionId', `plan.sessionId "${plan.sessionId}" != session.sessionId "${sessionId}"`) };
+    }
+    // S2: single-lesson coherence across every plan entry/context/repair.
+    for (const e of plan.entries) {
+      if (e.lessonId !== lessonId) return { ok: false, failure: mkFail('identity-mismatch', 'session.plan.entries', `entry lessonId "${e.lessonId}" != session lessonId "${lessonId}"`) };
+    }
+    for (const c of plan.context) {
+      if (c.lessonId !== lessonId) return { ok: false, failure: mkFail('identity-mismatch', 'session.plan.context', `context lessonId "${c.lessonId}" != session lessonId "${lessonId}"`) };
+    }
+    for (const r of plan.repair) {
+      if (r.lessonId !== lessonId) return { ok: false, failure: mkFail('identity-mismatch', 'session.plan.repair', `repair lessonId "${r.lessonId}" != session lessonId "${lessonId}"`) };
+    }
+    // S3: targetCount is the scored-entry denominator.
+    if (targetCount !== plan.entries.length) {
+      return { ok: false, failure: mkFail('checkpoint-invariant', 'session.targetCount', `targetCount ${targetCount} != plan.entries.length ${plan.entries.length}`) };
+    }
+    // S4: cursor is an integer within [0, targetCount] (rejects negative, fractional, past-end).
+    if (!Number.isInteger(entryCursor) || entryCursor < 0 || entryCursor > targetCount) {
+      return { ok: false, failure: mkFail('checkpoint-invariant', 'session.progress.entryCursor', `entryCursor ${entryCursor} must be an integer in [0, ${targetCount}]`) };
+    }
+    // S5/S6: every completed target is a known scored target, with no duplicates.
+    const scoredIds = new Set(plan.entries.map(e => e.targetId));
+    const seenCompleted = new Set<string>();
+    for (const id of completedTargetIds) {
+      if (!scoredIds.has(id)) return { ok: false, failure: mkFail('checkpoint-invariant', 'session.progress.completedTargetIds', `completed target "${id}" is not a scored plan entry`) };
+      if (seenCompleted.has(id)) return { ok: false, failure: mkFail('duplicate-identity', 'session.progress.completedTargetIds', `completed target "${id}" is duplicated`) };
+      seenCompleted.add(id);
+    }
+    // S7/S8: applied attempt ids are non-empty and unique (session idempotency ledger).
+    const seenApplied = new Set<string>();
+    for (const id of appliedAttemptIds) {
+      if (id.length === 0) return { ok: false, failure: mkFail('missing-required-string', 'session.progress.appliedAttemptIds', 'applied attempt id is empty') };
+      if (seenApplied.has(id)) return { ok: false, failure: mkFail('duplicate-identity', 'session.progress.appliedAttemptIds', `applied attempt id "${id}" is duplicated`) };
+      seenApplied.add(id);
+    }
+    // S9: a `completed` session has every scored target done and the cursor at the end.
+    if (raw.state === 'completed' && (completedTargetIds.length !== targetCount || entryCursor !== targetCount)) {
+      return { ok: false, failure: mkFail('checkpoint-invariant', 'session.state', `state 'completed' requires completedTargetIds.length (${completedTargetIds.length}) === targetCount (${targetCount}) and entryCursor (${entryCursor}) === targetCount`) };
+    }
+
     return { ok: true, value: raw as unknown as SrsPracticeSessionRow };
   } catch (e) {
     return { ok: false, failure: mkFail('not-an-object', 'session', `unexpected validation error: ${classifyStudyError(e)}`) };

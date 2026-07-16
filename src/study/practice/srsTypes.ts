@@ -573,21 +573,53 @@ export interface SrsSessionProgress {
   readonly appliedAttemptIds: readonly string[];
 }
 
-/**
- * The durable `study-practice-sessions` row contract (finding: the B3-F1/F2 reviewer gap that
- * `SrsTraversalPlan` alone cannot back the session store indexes or B4b's atomic checkpoint).
- *
- * It carries the three indexed fields §14.1 requires (`sessionId` key, `lessonId`, `state`,
- * `updatedAt`), a progress cursor + completed-target state (`progress`), the completed-target target
- * count (`targetCount`, = `plan.entries.length`; the session is `completed` when
- * `progress.completedTargetIds.length === targetCount`), and the EMBEDDED frozen `plan` so a Partial
- * session is fully resumable from this one row. Shaped so B4b can update the checkpoint (`progress`,
- * `state`, `updatedAt`) in the SAME IndexedDB transaction as the attempt + SRS writes.
- *
- * The embedded `plan` is the same `planVersion`-discriminated `SrsTraversalPlan` frozen by B3; the
- * B4 read boundary validates its complete shape and cross-list identity before any consumer invokes
- * B3 revalidation (see the persistence-boundary result contracts below).
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export interface SrsPracticeSessionRow {
   /** Primary key; caller-generated UUID (never derived from chess material). */
   readonly sessionId: string;
@@ -628,10 +660,27 @@ export type SrsPersistenceFailureCode =
   | 'invalid-status'
   /** A numeric field is absent or non-finite (`NaN`/`±Infinity`) — fail closed. */
   | 'non-finite-number'
-  /** A `targetId` appears more than once across `entries` ∪ `context` ∪ `repair` (cross-list identity). */
+  /** A `targetId` appears more than once across `entries` ∪ `context` ∪ `repair` (cross-list identity),
+   *  or a completed-target / applied-attempt id is duplicated in a session checkpoint. */
   | 'duplicate-identity'
   /** A discriminated source union carries an unknown/malformed `kind`. */
-  | 'invalid-source-discriminant';
+  | 'invalid-source-discriminant'
+  /** Two identity fields that MUST agree do not — e.g. a scored entry's `targetId`/`lessonId` diverges
+   *  from its own frozen schedule snapshot, or a session row's `sessionId`/`lessonId` diverges from its
+   *  embedded plan. A persisted plan/session is coherent only when these cross-snapshot ids match. */
+  | 'identity-mismatch'
+  /** A session checkpoint invariant is violated (see the normative invariant list on
+   *  `SrsPracticeSessionRow`): bad `targetCount`, out-of-range/non-integer cursor, unknown completed
+   *  target, or a `completed` state with no full completion. The checkpoint is not a safe resume point. */
+  | 'checkpoint-invariant'
+  /** A validated object carries an own key outside its declared contract — smuggled chess material
+   *  (`fen`/`pgn`/…) or an own `__proto__` payload. Persisted rows are closed records: undeclared own
+   *  keys are rejected, never silently preserved. */
+  | 'unknown-key'
+  /** The persisted plan passed local shape validation but the sealed B3 `revalidateTraversalPlan`
+   *  (composed at this boundary against a live map derived from the plan's own frozen snapshots) still
+   *  reported one or more invalid entries — the plan is not accepted unless B3 revalidation is clean. */
+  | 'plan-revalidation-failed';
 
 /**
  * A typed persistence-boundary failure. `path` is a dotted locator into the offending row (e.g.

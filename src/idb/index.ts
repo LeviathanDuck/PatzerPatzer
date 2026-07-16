@@ -759,23 +759,32 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
 
 
 
-  const accountsCursorReq = accountsStore.openCursor();
-  accountsCursorReq.onsuccess = () => {
-    const cursor = accountsCursorReq.result;
-    if (!cursor) return;
-    const record = cursor.value as ChessAccount;
-    let changed = false;
-    if (record.section === undefined) {
-      record.section = record.category === 'opponent' ? 'research' : 'study';
-      changed = true;
-    }
-    if (record.order === undefined) {
-      record.order = record.addedAt;
-      changed = true;
-    }
-    if (changed) cursor.update(record);
-    cursor.continue();
-  };
+
+
+
+
+
+
+
+  if (event.oldVersion < 23) {
+    const accountsCursorReq = accountsStore.openCursor();
+    accountsCursorReq.onsuccess = () => {
+      const cursor = accountsCursorReq.result;
+      if (!cursor) return;
+      const record = cursor.value as ChessAccount;
+      let changed = false;
+      if (record.section === undefined) {
+        record.section = record.category === 'opponent' ? 'research' : 'study';
+        changed = true;
+      }
+      if (record.order === undefined) {
+        record.order = record.addedAt;
+        changed = true;
+      }
+      if (changed) cursor.update(record);
+      cursor.continue();
+    };
+  }
 
 
 
