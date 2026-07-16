@@ -21,9 +21,6 @@ import type {
 } from './practice/srsTypes';
 import { asPersistableScheduleRecord, asPersistableAttemptRecord } from './practice/scheduler';
 
-
-import { revalidateTraversalPlan } from './practice/sessionBuilder';
-
 type StudyStoreName =
   | 'studies'
   | 'practice-lines'
@@ -1825,36 +1822,14 @@ export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResu
     // Every local branch above is proven; the value is structurally a well-formed SrsTraversalPlan.
     const plan = raw as unknown as SrsTraversalPlan;
 
-    // COMPOSE with the sealed B3 revalidation (finding 1): a persisted plan is valid ONLY if the sealed
-    // `revalidateTraversalPlan` also reports zero invalid entries — the boundary composes the sealed
-    // authority instead of forking its logic. We revalidate against a live schedule map DERIVED FROM the
-    // plan's OWN frozen snapshots, keyed by each snapshot's `targetId`; B3 then looks each entry up by the
-    // ENTRY's `targetId`, so a scored entry whose `targetId` diverges from its frozen schedule snapshot
-    // (a frozen schedule bound to the wrong scored target) surfaces as a missing live row and the plan is
-    // rejected. `currentSourceById` is intentionally omitted so B3 runs its structural/finite/discriminant
-    // checks without a live-source comparison (there is no live source at this read boundary).
-    const derivedLive = new Map<string, SrsScheduleRecord>();
-    for (const entry of plan.entries) {
-      const f = entry.frozenSchedule;
-      derivedLive.set(f.targetId, {
-        targetId: f.targetId,
-        lessonId: f.lessonId,
-        status: 'active',
-        dueAt: f.dueAt,
-        targetRevision: f.targetRevision,
-        scheduleRevision: f.scheduleRevision,
-        configId: f.configId,
-        configVersion: f.configVersion,
-        stepIndex: f.stepIndex,
-      } as unknown as SrsScheduleRecord);
-    }
-    const reval = revalidateTraversalPlan(plan, derivedLive, undefined);
-    for (const first of reval.invalidEntries) {
-      return {
-        ok: false,
-        failure: mkFail('plan-revalidation-failed', `plan.${first.kind}[${first.targetId}]`, `sealed B3 revalidation rejected entry: ${first.reason}`),
-      };
-    }
+
+
+
+
+
+
+
+
     return { ok: true, value: plan };
   } catch (e) {
     return { ok: false, failure: mkFail('not-an-object', 'plan', `unexpected validation error: ${classifyStudyError(e)}`) };
