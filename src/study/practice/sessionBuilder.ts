@@ -424,14 +424,35 @@ export function revalidateTraversalPlan(
     if (reason) invalidEntries.push({ kind: 'target', targetId: entry.targetId, reason });
   }
   for (const c of plan.context) {
-    const reason = revalidateSource(c.targetId, c.frozenSource.source, currentSourceById);
+    const reason = revalidateNeutralEntry(c.targetId, c.frozenSource, currentSourceById);
     if (reason) invalidEntries.push({ kind: 'context', targetId: c.targetId, reason });
   }
   for (const r of plan.repair) {
-    const reason = revalidateSource(r.targetId, r.frozenSource.source, currentSourceById);
+    const reason = revalidateNeutralEntry(r.targetId, r.frozenSource, currentSourceById);
     if (reason) invalidEntries.push({ kind: 'repair', targetId: r.targetId, reason });
   }
   return { invalidEntries };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function revalidateNeutralEntry(
+  targetId: string,
+  frozenSource: SrsDisplaySnapshot,
+  currentSourceById?: ReadonlyMap<string, SrsSourceVersion>,
+): string | null {
+  const displayShapeReason = validateDisplaySnapshotShape(frozenSource);
+  if (displayShapeReason) return displayShapeReason;
+  return revalidateSource(targetId, frozenSource.source, currentSourceById);
 }
 
 /** Numeric fields of a frozen schedule snapshot that MUST be finite for the snapshot to be usable. */
