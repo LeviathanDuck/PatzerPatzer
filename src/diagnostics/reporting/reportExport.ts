@@ -39,6 +39,7 @@ export function downloadReportAsJson(report: DiagnosticReport): void {
     const blob = new Blob([reportJson(report)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
+    link.setAttribute('data-ui-explainer-exempt', 'programmatic-download-node');
     link.href = url;
     link.download = `patzer-report-${safeFilenamePart(report.reportId)}-${filenameDate(report)}.json`;
     link.rel = 'noopener';

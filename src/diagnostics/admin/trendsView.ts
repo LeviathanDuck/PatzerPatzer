@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 import type { RemoteDiagnosticTrendResult } from '../reporting/remoteViewer';
 
 interface DiagnosticTrendsPanelOptions {
@@ -39,6 +40,16 @@ function renderTrendRows(trends: RemoteDiagnosticTrendResult): VNode {
 
 export function renderDiagnosticTrendsPanel(options: DiagnosticTrendsPanelOptions): VNode {
   const { trends, loading, message, rangeDays, period } = options;
+  const refreshExplainer = {
+    label: 'Refresh diagnostic trends',
+    description: loading
+      ? 'Remote diagnostic trends are already being refreshed.'
+      : 'Requests fresh aggregate diagnostic trends from the configured remote inbox.',
+  };
+  const refreshButton = h('button.admin-btn.admin-btn--muted', {
+    attrs: { type: 'button', disabled: loading, ...controlExplainerAttrs(refreshExplainer) },
+    on: { click: options.onRefresh },
+  }, 'Refresh');
 
   return h('section.admin-panel.admin-panel--diagnostic-trends', [
     h('div.admin-panel__header', [
@@ -47,6 +58,10 @@ export function renderDiagnosticTrendsPanel(options: DiagnosticTrendsPanelOption
     ]),
     h('div.admin-token-row', [
       h('select.admin-token-input', {
+        attrs: { 'aria-label': 'Diagnostic trend range', ...controlExplainerAttrs({
+          label: 'Diagnostic trend range',
+          description: 'Chooses how many recent days are included in the remote aggregate query.',
+        }) },
         props: { value: String(rangeDays) },
         on: { change: event => {
           const parsed = Number((event.target as HTMLSelectElement).value);
@@ -58,6 +73,10 @@ export function renderDiagnosticTrendsPanel(options: DiagnosticTrendsPanelOption
         h('option', { attrs: { value: '90' } }, 'Last 90 days'),
       ]),
       h('select.admin-token-input', {
+        attrs: { 'aria-label': 'Diagnostic trend period', ...controlExplainerAttrs({
+          label: 'Diagnostic trend period',
+          description: 'Groups remote diagnostic totals into daily or weekly buckets.',
+        }) },
         props: { value: period },
         on: { change: event => {
           const value = (event.target as HTMLSelectElement).value === 'week' ? 'week' : 'day';
@@ -67,10 +86,7 @@ export function renderDiagnosticTrendsPanel(options: DiagnosticTrendsPanelOption
         h('option', { attrs: { value: 'day' } }, 'Daily'),
         h('option', { attrs: { value: 'week' } }, 'Weekly'),
       ]),
-      h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button', disabled: loading },
-        on: { click: options.onRefresh },
-      }, 'Refresh'),
+      loading ? renderDisabledControlExplainer(refreshExplainer, refreshButton) : refreshButton,
     ]),
     message ? h('p.admin-log__empty', message) : null,
     trends

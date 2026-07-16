@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 
 export const REPORT_PREVIEW_REQUIRED_MESSAGE = 'Please review your report first.';
 
@@ -56,22 +57,27 @@ export function renderReportSubmitButton(
 ): VNode {
   const blockedReason = getReportSubmitBlockedReason(state);
   const disabled = blockedReason !== null;
+  const explainer = {
+    label,
+    description: blockedReason ?? 'Submits the report after its preview has been reviewed.',
+  };
+  const button = h('button.report-submit-gate__button', {
+    attrs: {
+      type: 'button',
+      disabled,
+      'aria-disabled': String(disabled),
+      ...controlExplainerAttrs(explainer),
+    },
+    on: {
+      click: () => {
+        if (!canSubmitReport(state)) return;
+        onSubmit();
+      },
+    },
+  }, label);
 
   return h('div.report-submit-gate', [
-    h('button.report-submit-gate__button', {
-      attrs: {
-        type: 'button',
-        disabled,
-        title: blockedReason ?? '',
-        'aria-disabled': String(disabled),
-      },
-      on: {
-        click: () => {
-          if (!canSubmitReport(state)) return;
-          onSubmit();
-        },
-      },
-    }, label),
+    disabled ? renderDisabledControlExplainer(explainer, button) : button,
     blockedReason
       ? h('div.report-submit-gate__reason', blockedReason)
       : h('div.report-submit-gate__reason.report-submit-gate__reason--ready', 'Report preview reviewed.'),

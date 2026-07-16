@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 import type {
   MobileOnlyIssuesReport,
   PostDeployRegressionReport,
@@ -156,6 +157,16 @@ function renderPrioritySection(title: string, summary: string, body: VNode): VNo
 
 export function renderPrioritySummaryPanel(options: PrioritySummaryOptions): VNode {
   const { topCrashGroups, topSlowRoutes, mobileOnlyIssues, postDeployRegressions, loading, message } = options;
+  const refreshExplainer = {
+    label: 'Refresh priority reports',
+    description: loading
+      ? 'Priority reports are already being refreshed.'
+      : 'Recomputes the local engineering-priority summaries from current diagnostics.',
+  };
+  const refreshButton = h('button.admin-btn.admin-btn--muted', {
+    attrs: { type: 'button', disabled: loading, ...controlExplainerAttrs(refreshExplainer) },
+    on: { click: options.onRefresh },
+  }, 'Refresh');
   return h('section.admin-panel.admin-panel--diagnostic-priority', [
     h('div.admin-panel__header', [
       h('h3', 'Engineering Priority Reports'),
@@ -166,10 +177,7 @@ export function renderPrioritySummaryPanel(options: PrioritySummaryOptions): VNo
           : 'Local priority summary'),
     ]),
     h('div.admin-token-row', [
-      h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button', disabled: loading },
-        on: { click: options.onRefresh },
-      }, 'Refresh'),
+      loading ? renderDisabledControlExplainer(refreshExplainer, refreshButton) : refreshButton,
     ]),
     message ? h('p.admin-log__empty', message) : null,
     renderPrioritySection(

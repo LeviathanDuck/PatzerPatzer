@@ -1,4 +1,5 @@
 import { h, type VNode } from 'snabbdom';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 
 export const reportSeverities = ['low', 'medium', 'high', 'critical'] as const;
 
@@ -69,7 +70,10 @@ function renderScreenshotControls(options: ReportFormOptions, dispatch: ReportFo
       ]),
       options.screenshotAttachments.length > 0
         ? h('button.report-form__link-button', {
-          attrs: { type: 'button' },
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Clear screenshots',
+            description: 'Removes every screenshot attachment from this report draft.',
+          }) },
           on: { click: () => dispatch({ type: 'screenshots', files: [] }) },
         }, 'Clear screenshots')
         : null,
@@ -83,6 +87,11 @@ function renderScreenshotControls(options: ReportFormOptions, dispatch: ReportFo
             type: 'file',
             accept: 'image/png,image/jpeg,image/webp',
             multiple: true,
+            'aria-label': 'Add report screenshots',
+            ...controlExplainerAttrs({
+              label: 'Add report screenshots',
+              description: 'Adds image attachments to this local report draft for optional upload on submit.',
+            }),
           },
           on: {
             change: (event: Event) => dispatch({ type: 'screenshots', files: readInputFiles(event) }),
@@ -108,7 +117,10 @@ function renderIssueMeta(options: ReportFormOptions, dispatch: ReportFormDispatc
       h('span.report-form__issue-label', 'Issue ID'),
       h('code', options.issueId),
       h('button.report-form__copy-id.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button' },
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Copy issue ID',
+          description: 'Copies this report session identifier to the clipboard.',
+        }) },
         on: { click: () => dispatch({ type: 'copyIssueId' }) },
       }, 'Copy ID'),
     ]),
@@ -135,6 +147,8 @@ function textAreaField(
       attrs: {
         rows,
         placeholder,
+        'aria-label': label,
+        ...controlExplainerAttrs({ label }),
       },
       props: {
         value,
@@ -149,6 +163,22 @@ function textAreaField(
 
 export function renderReportForm(state: ReportFormState, dispatch: ReportFormDispatch, options: ReportFormOptions): VNode {
   const canSubmit = !state.submitting && options.screenshotErrors.length === 0;
+  const submitLabel = state.submitting ? 'Submitting report' : 'Review report';
+  const submitExplainer = {
+    label: submitLabel,
+    description: state.submitting
+      ? 'This report is already being prepared for submission.'
+      : options.screenshotErrors.length > 0
+        ? 'Fix or remove invalid screenshot attachments before reviewing the report.'
+        : 'Opens the final redacted preview before the report can be saved or uploaded.',
+  };
+  const submitButton = h('button.report-form__submit.admin-btn.admin-btn--primary', {
+    attrs: {
+      type: 'submit',
+      disabled: !canSubmit,
+      ...controlExplainerAttrs(submitExplainer),
+    },
+  }, state.submitting ? 'Submitting...' : 'Submit');
 
   return h('form.report-form', {
     on: {
@@ -179,6 +209,10 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
     h('label.report-form__field', [
       h('span.report-form__label', 'Severity'),
       h('select.report-form__select.admin-token-input', {
+        attrs: { 'aria-label': 'Report severity', ...controlExplainerAttrs({
+          label: 'Report severity',
+          description: 'Classifies how seriously this issue affected the current workflow.',
+        }) },
         props: {
           value: state.severity,
         },
@@ -200,6 +234,10 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
       h('button.report-form__discard.admin-btn.admin-btn--danger', {
         attrs: {
           type: 'button',
+          ...controlExplainerAttrs({
+            label: 'Discard report draft',
+            description: 'Permanently removes the saved draft and its local screenshot attachments.',
+          }),
         },
         on: {
           click: () => dispatch({ type: 'discardDraft' }),
@@ -208,17 +246,13 @@ export function renderReportForm(state: ReportFormState, dispatch: ReportFormDis
       h('button.report-form__close.admin-btn.admin-btn--muted', {
         attrs: {
           type: 'button',
+          ...controlExplainerAttrs({ label: 'Close report form' }),
         },
         on: {
           click: () => dispatch({ type: 'close' }),
         },
       }, 'Close'),
-      h('button.report-form__submit.admin-btn.admin-btn--primary', {
-        attrs: {
-          type: 'submit',
-          disabled: !canSubmit,
-        },
-      }, state.submitting ? 'Submitting...' : 'Submit'),
+      canSubmit ? submitButton : renderDisabledControlExplainer(submitExplainer, submitButton),
     ]),
   ]);
 }
