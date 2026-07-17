@@ -3400,6 +3400,37 @@ function rawServerVersion(raw: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function canonicalizePracticePayload(item: RemoteSyncItem): RemoteSyncItem | null {
+  if (!isPracticeStore(item.store) || isDeletedItem(item) || !('payload' in item)) return item;
+  try {
+    return { ...item, payload: structuredClone(item.payload) };
+  } catch {
+    return null;
+  }
+}
+
 function normalizeSyncItem(
   item: unknown,
   options: { logInvalid?: boolean; requireUpdatedAt?: boolean; logAction?: RemoteSyncLogAction } = {},
@@ -3408,8 +3439,18 @@ function normalizeSyncItem(
     ...(options.requireUpdatedAt !== undefined ? { requireUpdatedAt: options.requireUpdatedAt } : {}),
   });
   if (migrated.ok) {
+
+
+    const canonical = canonicalizePracticePayload(migrated.item);
+    if (!canonical) {
+      if (options.logInvalid) {
+        const target = [migrated.item.store, migrated.item.itemKey].filter(Boolean).join('/') || 'unknown item';
+        recordRemoteSyncLog(options.logAction ?? 'pull', 'error', `Skipped ${target}: practice payload could not be canonicalized to plain data.`);
+      }
+      return null;
+    }
     const serverVersion = rawServerVersion(item);
-    return serverVersion === undefined ? migrated.item : { ...migrated.item, serverVersion };
+    return serverVersion === undefined ? canonical : { ...canonical, serverVersion };
   }
 
   if (options.logInvalid) {
