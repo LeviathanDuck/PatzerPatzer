@@ -51,6 +51,7 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
@@ -1685,6 +1686,14 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
   const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary();
   reconcileStudyPracticeSlot(practiceRequested, redraw);
+
+
+
+
+
+
+
+  establishRouteDestination({ name: 'study-detail', params: { id }, query: routeQuery }, isStudyWorkspaceActive());
 
 
   if (isDrillActive() || isDrillSummary()) {
