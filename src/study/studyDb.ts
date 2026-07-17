@@ -1668,14 +1668,40 @@ export async function listDuePracticeSrs(params: {
 export async function planStudyPracticeMigration(
   mapping: LegacyReviewedPathMapping,
 ): Promise<LegacyMigrationPlanResult> {
+
+
+
+
+
+
+
+
+
+  let capturedMapping: LegacyReviewedPathMapping;
+  try {
+    capturedMapping = structuredClone(mapping);
+  } catch (e) {
+    return { ok: false, failure: { code: 'capture-failed', path: 'mapping', reason: `migration mapping could not be snapshotted (hostile getter / uncloneable value): ${safeDiag(e)}` } };
+  }
+  if (!isPlainObject(capturedMapping)) {
+    return { ok: false, failure: { code: 'not-an-object', path: 'mapping', reason: 'migration mapping is not a plain object' } };
+  }
+  const capturedEntries = capturedMapping.entries;
+  if (!Array.isArray(capturedEntries)) {
+    return { ok: false, failure: { code: 'not-an-array', path: 'mapping.entries', reason: 'mapping.entries is not an array' } };
+  }
+
+  // Capture succeeded — only now perform the bounded legacy/authority/enrollment reads, using EXCLUSIVELY
+  // the canonical getter-free capture.
   const legacyRecords = await listAllPositionProgress();
   // Bounded probe over exactly the explicitly-mapped decision ids (mapping-sized, indexed primary-key
   // gets), never an unbounded SRS/decisions scan. One pass builds both the already-enrolled set and the
-  // decision/lesson authority.
+  // decision/lesson authority. Each `decisionId` is read once from the getter-free capture.
   const mappedTargetIds = new Set<string>();
-  for (const entry of mapping.entries) {
-    if (typeof entry?.decisionId === 'string' && entry.decisionId.length > 0) {
-      mappedTargetIds.add(entry.decisionId);
+  for (const entry of capturedEntries) {
+    const decisionId = entry?.decisionId;
+    if (typeof decisionId === 'string' && decisionId.length > 0) {
+      mappedTargetIds.add(decisionId);
     }
   }
   const alreadyEnrolledTargetIds: string[] = [];
@@ -1692,7 +1718,7 @@ export async function planStudyPracticeMigration(
   }
   return planLegacyMigration({
     legacyRecords,
-    mapping,
+    mapping: capturedMapping,
     alreadyEnrolledTargetIds,
     decisionAuthority: { decisions: authorityDecisions },
   });
