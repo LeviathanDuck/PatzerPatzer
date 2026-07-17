@@ -6,7 +6,14 @@
 
 
 import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
-import { isPracticeChildStore, practiceParentLessonId } from './runtimeApply';
+import {
+  isPracticeChildStore,
+  isPracticeStore,
+  practiceParentLessonId,
+  practiceDecisionDependencyId,
+  planPracticeApplyOrder,
+  type PracticeApplyItem,
+} from './runtimeApply';
 import type { SyncResult } from './client';
 import {
   drainDurableVersionedOutbox,
@@ -3378,14 +3385,30 @@ function isDeletedItem(item: Pick<RemoteSyncItem, 'deleted' | 'operation'>): boo
   return item.deleted === true || item.operation === 'delete';
 }
 
+
+
+
+
+
+
+type NormalizedSyncItem = RemoteSyncItem & { serverVersion?: number };
+
+function rawServerVersion(raw: unknown): number | undefined {
+  const value = objectValue(raw)?.version;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : undefined;
+}
+
 function normalizeSyncItem(
   item: unknown,
   options: { logInvalid?: boolean; requireUpdatedAt?: boolean; logAction?: RemoteSyncLogAction } = {},
-): RemoteSyncItem | null {
+): NormalizedSyncItem | null {
   const migrated = migrateRemoteSyncItem(item, {
     ...(options.requireUpdatedAt !== undefined ? { requireUpdatedAt: options.requireUpdatedAt } : {}),
   });
-  if (migrated.ok) return migrated.item;
+  if (migrated.ok) {
+    const serverVersion = rawServerVersion(item);
+    return serverVersion === undefined ? migrated.item : { ...migrated.item, serverVersion };
+  }
 
   if (options.logInvalid) {
     const target = [migrated.store, migrated.itemKey].filter(Boolean).join('/') || 'unknown item';
@@ -5533,7 +5556,7 @@ export async function readLocalRemoteSyncItemsForKeys(
 
 
 async function applyIdbItem(
-  item: RemoteSyncItem,
+  item: NormalizedSyncItem,
   spec: IdbStoreSpec,
   db: IDBDatabase,
   applyIdentity: string,
@@ -5574,10 +5597,34 @@ async function applyIdbItem(
       const parentLesson = await readRecordByItemKey(db, lessonsSpec, parentLessonId);
       if (parentLesson === undefined) return { skipped: 'orphan-deferred' };
     }
+
+
+
+
+    const parentDecisionId = practiceDecisionDependencyId(item.store, item.payload);
+    if (parentDecisionId) {
+      const decisionsSpec = IDB_SPECS_BY_STORE.get('study-practice-decisions');
+      if (decisionsSpec) {
+        const parentDecision = await readRecordByItemKey(db, decisionsSpec, parentDecisionId);
+        if (parentDecision === undefined) return { skipped: 'orphan-deferred' };
+      }
+    }
   }
 
-  const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
-  if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
+
+
+
+
+
+
+
+  if (isPracticeStore(item.store) && typeof item.serverVersion === 'number') {
+    const localVersion = getRemoteSyncItemStateVersion(applyIdentity, item.store, item.itemKey);
+    if (localVersion !== null && item.serverVersion <= localVersion) return { skipped: 'stale-remote' };
+  } else {
+    const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);
+    if (item.updatedAt < existingUpdatedAt) return { skipped: 'stale-remote' };
+  }
 
   if (isDeletedItem(item)) {
     await deleteRecordByItemKey(db, spec, item.itemKey);
@@ -5601,6 +5648,64 @@ interface RemoteSyncApplyProgress {
 
 
 const APPLY_PROGRESS_REPORT_EVERY = 25;
+
+/** Keyed existence read (never a full-store scan — CR-2) of which referenced practice parent ids are
+ *  ALREADY present in IndexedDB from a prior pull, so `planPracticeApplyOrder` does not spuriously
+ *  defer a child whose parent landed earlier. Bounded by the distinct ids referenced in one batch. */
+async function readExistingPracticeParentIds(
+  store: RemoteSyncStoreName,
+  ids: ReadonlySet<string>,
+  connectionForSpec: (spec: IdbStoreSpec) => Promise<IDBDatabase>,
+): Promise<Set<string>> {
+  const known = new Set<string>();
+  if (ids.size === 0) return known;
+  const spec = IDB_SPECS_BY_STORE.get(store);
+  if (!spec) return known;
+  const db = await connectionForSpec(spec);
+  for (const id of ids) {
+    const row = await readRecordByItemKey(db, spec, id);
+    if (row !== undefined) known.add(id);
+  }
+  return known;
+}
+
+
+
+
+
+
+
+
+
+async function planPracticeApplyBatch(
+  practiceItems: readonly NormalizedSyncItem[],
+  connectionForSpec: (spec: IdbStoreSpec) => Promise<IDBDatabase>,
+): Promise<{ ordered: NormalizedSyncItem[]; deferred: NormalizedSyncItem[] }> {
+  const byKey = new Map<string, NormalizedSyncItem>();
+  const applyItems: PracticeApplyItem[] = [];
+  const referencedLessonIds = new Set<string>();
+  const referencedDecisionIds = new Set<string>();
+  for (const item of practiceItems) {
+    byKey.set(`${item.store}::${item.itemKey}`, item);
+    const lessonId = practiceParentLessonId(item.store, item.payload);
+    const decisionId = practiceDecisionDependencyId(item.store, item.payload);
+    applyItems.push({ store: item.store, itemKey: item.itemKey, lessonId, decisionId, deleted: isDeletedItem(item) });
+    if (lessonId) referencedLessonIds.add(lessonId);
+    if (decisionId) referencedDecisionIds.add(decisionId);
+  }
+  const knownLessonIds = await readExistingPracticeParentIds('study-practice-lessons', referencedLessonIds, connectionForSpec);
+  const knownDecisionIds = await readExistingPracticeParentIds('study-practice-decisions', referencedDecisionIds, connectionForSpec);
+  const plan = planPracticeApplyOrder(applyItems, knownLessonIds, knownDecisionIds);
+  const mapBack = (list: readonly PracticeApplyItem[]): NormalizedSyncItem[] => {
+    const out: NormalizedSyncItem[] = [];
+    for (const entry of list) {
+      const item = byKey.get(`${entry.store}::${entry.itemKey}`);
+      if (item) out.push(item);
+    }
+    return out;
+  };
+  return { ordered: mapBack(plan.ordered), deferred: mapBack(plan.deferred) };
+}
 
 export async function applyRemoteSyncItems(
   items: unknown[],
@@ -5637,14 +5742,52 @@ export async function applyRemoteSyncItems(
     dbConnections.set(key, db);
     return db;
   };
+  const cancellationHit = (): boolean =>
+    options.generation !== undefined && (syncGeneration !== options.generation || !hasRemoteSyncToken());
+
+
+
+  const applyOne = async (item: NormalizedSyncItem): Promise<void> => {
+    try {
+      let result: 'applied' | 'deleted' | RemoteSyncSkippedApplyResult;
+      if (item.store === 'settings') {
+        result = await applySettingItem(item, applyIdentity);
+      } else {
+        const spec = IDB_SPECS_BY_STORE.get(item.store);
+        if (!spec) {
+          result = { skipped: 'unknown-store' };
+        } else {
+          const db = await connectionForSpec(spec);
+          result = await applyIdbItem(item, spec, db, applyIdentity);
+        }
+      }
+      if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
+        analysisChanged = true;
+      }
+      if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
+      else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
+      else countSkippedApplyResult(counts, result.skipped);
+    } catch (error) {
+      counts.skipped = (counts.skipped ?? 0) + 1;
+      counts.skippedApplyFailed = (counts.skippedApplyFailed ?? 0) + 1;
+      const message = error instanceof Error ? error.message : 'Could not apply sync item.';
+      recordRemoteSyncLog('pull', 'error', `Skipped ${item.store}/${item.itemKey}: ${message}`);
+    }
+  };
   applyingRemoteSync = true;
   try {
+
+
+
+    const practiceItems: NormalizedSyncItem[] = [];
     let index = 0;
+    let cancelled = false;
     for (const raw of items) {
       index += 1;
-      if (options.generation !== undefined && (syncGeneration !== options.generation || !hasRemoteSyncToken())) {
+      if (cancellationHit()) {
         counts.cancelled = (counts.cancelled ?? 0) + 1;
         reportProgress(index);
+        cancelled = true;
         break;
       }
       const item = normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true });
@@ -5654,33 +5797,34 @@ export async function applyRemoteSyncItems(
         reportProgress(index);
         continue;
       }
-
-      try {
-        let result: 'applied' | 'deleted' | RemoteSyncSkippedApplyResult;
-        if (item.store === 'settings') {
-          result = await applySettingItem(item, applyIdentity);
-        } else {
-          const spec = IDB_SPECS_BY_STORE.get(item.store);
-          if (!spec) {
-            result = { skipped: 'unknown-store' };
-          } else {
-            const db = await connectionForSpec(spec);
-            result = await applyIdbItem(item, spec, db, applyIdentity);
-          }
-        }
-        if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
-          analysisChanged = true;
-        }
-        if (result === 'applied') counts[item.store] = (counts[item.store] ?? 0) + 1;
-        else if (result === 'deleted') counts[`${item.store}:deleted`] = (counts[`${item.store}:deleted`] ?? 0) + 1;
-        else countSkippedApplyResult(counts, result.skipped);
-      } catch (error) {
-        counts.skipped = (counts.skipped ?? 0) + 1;
-        counts.skippedApplyFailed = (counts.skippedApplyFailed ?? 0) + 1;
-        const message = error instanceof Error ? error.message : 'Could not apply sync item.';
-        recordRemoteSyncLog('pull', 'error', `Skipped ${item.store}/${item.itemKey}: ${message}`);
+      if (isPracticeStore(item.store)) {
+        practiceItems.push(item);
+        reportProgress(index);
+        continue;
       }
+      await applyOne(item);
       reportProgress(index);
+    }
+
+    // Phase 2: ordered practice apply. planPracticeApplyBatch owns the ordering + full-chain defer;
+    // applyIdbItem re-checks per item as the authoritative backstop.
+    if (!cancelled && practiceItems.length > 0) {
+      const plan = await planPracticeApplyBatch(practiceItems, connectionForSpec);
+      for (const item of plan.ordered) {
+        if (cancellationHit()) {
+          counts.cancelled = (counts.cancelled ?? 0) + 1;
+          cancelled = true;
+          break;
+        }
+        await applyOne(item);
+      }
+      // A batch-level orphan (parent absent locally and not upserted this batch) blocks the cursor so
+      // a later pull re-applies it once its parent lands — the same 'orphan-deferred' blocking skip
+      // applyIdbItem returns per item.
+      if (!cancelled) {
+        for (let i = 0; i < plan.deferred.length; i += 1) countSkippedApplyResult(counts, 'orphan-deferred');
+      }
+      reportProgress(total);
     }
   } finally {
     applyingRemoteSync = false;

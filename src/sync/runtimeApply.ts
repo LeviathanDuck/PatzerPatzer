@@ -115,11 +115,30 @@ export function practiceParentLessonId(store: string, payload: unknown): string 
   return typeof lessonId === 'string' && lessonId.trim() ? lessonId : null;
 }
 
+/** The owning DECISION id a practice leaf depends on, or null when the store has no single decision
+ *  dependency. An `srs`/`attempts` row is scheduling/history for exactly one Required decision and
+ *  carries it in `targetId` (== the decision's `decisionId`; see the store specs). Sessions embed
+ *  MANY decisions across their plan entries rather than one `targetId`, so a session has no single
+ *  decision dependency here and defers on its lesson alone; a lesson/decision row is not a leaf.
+ *  Pure — reads only the durable identity field, never chess material. */
+export function practiceDecisionDependencyId(store: string, payload: unknown): string | null {
+  if (store !== 'study-practice-srs' && store !== 'study-practice-attempts') return null;
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : null;
+  if (!record) return null;
+  const targetId = record.targetId;
+  return typeof targetId === 'string' && targetId.trim() ? targetId : null;
+}
+
 export interface PracticeApplyItem {
   readonly store: string;
   readonly itemKey: string;
   /** Owning lesson id (own id for a lesson, parent id for a child); null when absent from the row. */
   readonly lessonId: string | null;
+  /** Owning decision id a leaf depends on (`targetId` for srs/attempts); null when the store has no
+   *  single decision dependency (lessons, decisions, sessions). */
+  readonly decisionId: string | null;
   /** A tombstone delete — never deferred (a delete must always land; no reanimation risk). */
   readonly deleted: boolean;
 }
@@ -133,15 +152,25 @@ export interface PracticeApplyPlan {
 }
 
 /**
- * Pure model of the B7 apply ordering + orphan-defer the live `applyIdbItem` path enforces per item.
- * Stable-sorts practice items into parent-before-child order, then defers any child upsert whose
- * owning lesson is not available after this batch (known locally OR upserted here). Mirrors the memo
- * B7 attack-surface requirements "child apply before parent" and "orphan child … defers"; the live
- * loop reaches the same outcome via a per-child parent-existence read plus server version ordering.
+ * Pure model of the B7 apply ordering + FULL-CHAIN orphan-defer the live `applyIdbItem` path enforces
+ * per item. Stable-sorts practice items into lesson→decision→leaf order, then defers any child upsert
+ * whose dependency chain is not available after this batch. The chain is the full one §14.1 implies:
+ *  - a decision defers unless its owning lesson is available (known locally OR upserted earlier here);
+ *  - an srs/attempt leaf defers unless BOTH its lesson AND its `targetId` decision are available;
+ *  - a session leaf defers on its lesson alone (it embeds many decisions, no single `targetId`);
+ *  - a tombstone delete NEVER defers (a delete must always land; no reanimation risk), and a deleted
+ *    parent never satisfies a child (a deleted row is not "available").
+ * Availability is seeded from the caller's local sets (rows already present in IndexedDB) and grown by
+ * each applied — not deferred — parent UPSERT in this batch. The stable rank sort guarantees lessons
+ * are resolved before decisions and decisions before leaves in the single forward pass. Mirrors the
+ * memo B7 attack-surface requirements "child apply before parent" and "orphan child … defers"; the
+ * live loop consumes `ordered` for its apply sequence and reaches the same defer outcome via a
+ * per-child parent-existence read plus server-version ordering.
  */
 export function planPracticeApplyOrder(
   items: readonly PracticeApplyItem[],
   knownLessonIds: ReadonlySet<string>,
+  knownDecisionIds: ReadonlySet<string> = new Set(),
 ): PracticeApplyPlan {
   const ordered = items
     .map((item, index) => ({ item, index }))
@@ -151,22 +180,37 @@ export function planPracticeApplyOrder(
     })
     .map(entry => entry.item);
 
-  // Lessons available after this batch: everything already local plus every lesson UPSERT in the run.
+  // Availability grows as the single forward pass resolves each rank tier. Lessons (rank 0) resolve
+  // before decisions (rank 1) before leaves (rank 2), so a parent upserted in this batch is already
+  // marked available by the time a dependent child is examined.
   const availableLessons = new Set(knownLessonIds);
-  for (const item of ordered) {
-    if (item.store === 'study-practice-lessons' && !item.deleted && item.lessonId) {
-      availableLessons.add(item.lessonId);
-    }
-  }
+  const availableDecisions = new Set(knownDecisionIds);
 
   const applied: PracticeApplyItem[] = [];
   const deferred: PracticeApplyItem[] = [];
   for (const item of ordered) {
-    if (isPracticeChildStore(item.store) && !item.deleted
-      && (!item.lessonId || !availableLessons.has(item.lessonId))) {
-      deferred.push(item);
+    if (item.store === 'study-practice-lessons') {
+      // Lessons are parents and never defer; an applied (non-delete) lesson becomes available.
+      if (!item.deleted && item.lessonId) availableLessons.add(item.lessonId);
+      applied.push(item);
       continue;
     }
+    if (item.deleted) {
+      // A tombstone delete always lands and never enables a child.
+      applied.push(item);
+      continue;
+    }
+    const lessonAvailable = !!item.lessonId && availableLessons.has(item.lessonId);
+    if (item.store === 'study-practice-decisions') {
+      if (!lessonAvailable) { deferred.push(item); continue; }
+      // An applied decision becomes available to its dependent leaves (keyed by its own decisionId).
+      availableDecisions.add(item.itemKey);
+      applied.push(item);
+      continue;
+    }
+    // Leaf (srs/attempts/sessions): needs its lesson AND, when it names one, its targetId decision.
+    const decisionAvailable = !item.decisionId || availableDecisions.has(item.decisionId);
+    if (!lessonAvailable || !decisionAvailable) { deferred.push(item); continue; }
     applied.push(item);
   }
   return { ordered: applied, deferred };
