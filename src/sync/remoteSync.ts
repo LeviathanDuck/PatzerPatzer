@@ -11,6 +11,7 @@ import {
   isPracticeStore,
   practiceParentLessonId,
   practiceDecisionDependencyId,
+  practiceSessionDecisionIds,
   planPracticeApplyOrder,
   type PracticeApplyItem,
 } from './runtimeApply';
@@ -5562,7 +5563,19 @@ async function applyIdbItem(
   applyIdentity: string,
 ): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
   const existing = await readRecordByItemKey(db, spec, item.itemKey);
-  if (!isDeletedItem(item) && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt, applyIdentity)) return { skipped: 'suppressed-upsert' };
+
+
+
+
+
+
+
+
+
+
+  const versionedPractice = isPracticeStore(item.store) && typeof item.serverVersion === 'number';
+  if (!isDeletedItem(item) && !versionedPractice && shouldSuppressRemoteSyncUpsert(spec.store, item.itemKey, item.updatedAt, applyIdentity)) return { skipped: 'suppressed-upsert' };
+  if (!isDeletedItem(item) && versionedPractice && isActiveDataManagementDeleteKey(spec.store, item.itemKey)) return { skipped: 'suppressed-upsert' };
   if (item.store === 'accounts' && !isDeletedItem(item)) {
     if (item.payload === undefined) return { skipped: 'missing-payload' };
     const merged = mergeRemoteSyncAccountPayload(existing, item.payload, item.itemKey);
@@ -5600,13 +5613,27 @@ async function applyIdbItem(
 
 
 
-
     const parentDecisionId = practiceDecisionDependencyId(item.store, item.payload);
     if (parentDecisionId) {
       const decisionsSpec = IDB_SPECS_BY_STORE.get('study-practice-decisions');
       if (decisionsSpec) {
         const parentDecision = await readRecordByItemKey(db, decisionsSpec, parentDecisionId);
         if (parentDecision === undefined) return { skipped: 'orphan-deferred' };
+      }
+    }
+
+
+
+
+
+    const sessionDecisionIds = practiceSessionDecisionIds(item.store, item.payload);
+    if (sessionDecisionIds.length > 0) {
+      const decisionsSpec = IDB_SPECS_BY_STORE.get('study-practice-decisions');
+      if (decisionsSpec) {
+        for (const decisionId of sessionDecisionIds) {
+          const decision = await readRecordByItemKey(db, decisionsSpec, decisionId);
+          if (decision === undefined) return { skipped: 'orphan-deferred' };
+        }
       }
     }
   }
@@ -5689,9 +5716,13 @@ async function planPracticeApplyBatch(
     byKey.set(`${item.store}::${item.itemKey}`, item);
     const lessonId = practiceParentLessonId(item.store, item.payload);
     const decisionId = practiceDecisionDependencyId(item.store, item.payload);
-    applyItems.push({ store: item.store, itemKey: item.itemKey, lessonId, decisionId, deleted: isDeletedItem(item) });
+
+
+    const decisionIds = practiceSessionDecisionIds(item.store, item.payload);
+    applyItems.push({ store: item.store, itemKey: item.itemKey, lessonId, decisionId, decisionIds, deleted: isDeletedItem(item) });
     if (lessonId) referencedLessonIds.add(lessonId);
     if (decisionId) referencedDecisionIds.add(decisionId);
+    for (const id of decisionIds) referencedDecisionIds.add(id);
   }
   const knownLessonIds = await readExistingPracticeParentIds('study-practice-lessons', referencedLessonIds, connectionForSpec);
   const knownDecisionIds = await readExistingPracticeParentIds('study-practice-decisions', referencedDecisionIds, connectionForSpec);

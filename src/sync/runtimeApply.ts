@@ -115,12 +115,13 @@ export function practiceParentLessonId(store: string, payload: unknown): string 
   return typeof lessonId === 'string' && lessonId.trim() ? lessonId : null;
 }
 
-/** The owning DECISION id a practice leaf depends on, or null when the store has no single decision
- *  dependency. An `srs`/`attempts` row is scheduling/history for exactly one Required decision and
- *  carries it in `targetId` (== the decision's `decisionId`; see the store specs). Sessions embed
- *  MANY decisions across their plan entries rather than one `targetId`, so a session has no single
- *  decision dependency here and defers on its lesson alone; a lesson/decision row is not a leaf.
- *  Pure — reads only the durable identity field, never chess material. */
+
+
+
+
+
+
+
 export function practiceDecisionDependencyId(store: string, payload: unknown): string | null {
   if (store !== 'study-practice-srs' && store !== 'study-practice-attempts') return null;
   const record = payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -131,14 +132,49 @@ export function practiceDecisionDependencyId(store: string, payload: unknown): s
   return typeof targetId === 'string' && targetId.trim() ? targetId : null;
 }
 
+
+
+
+
+
+
+
+
+export function practiceSessionDecisionIds(store: string, payload: unknown): string[] {
+  if (store !== 'study-practice-sessions') return [];
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : null;
+  const plan = record && record.plan && typeof record.plan === 'object' && !Array.isArray(record.plan)
+    ? record.plan as Record<string, unknown>
+    : null;
+  if (!plan) return [];
+  const ids = new Set<string>();
+  for (const listName of ['entries', 'context', 'repair'] as const) {
+    const list = plan[listName];
+    if (!Array.isArray(list)) continue;
+    for (const entry of list) {
+      const targetId = entry && typeof entry === 'object' && !Array.isArray(entry)
+        ? (entry as Record<string, unknown>).targetId
+        : undefined;
+      if (typeof targetId === 'string' && targetId.trim()) ids.add(targetId);
+    }
+  }
+  return Array.from(ids);
+}
+
 export interface PracticeApplyItem {
   readonly store: string;
   readonly itemKey: string;
   /** Owning lesson id (own id for a lesson, parent id for a child); null when absent from the row. */
   readonly lessonId: string | null;
-  /** Owning decision id a leaf depends on (`targetId` for srs/attempts); null when the store has no
-   *  single decision dependency (lessons, decisions, sessions). */
+  /** Owning decision id an srs/attempt leaf depends on (`targetId`); null when the store has no single
+   *  decision dependency (lessons, decisions, sessions). */
   readonly decisionId: string | null;
+
+
+
+  readonly decisionIds?: readonly string[];
   /** A tombstone delete — never deferred (a delete must always land; no reanimation risk). */
   readonly deleted: boolean;
 }
@@ -151,22 +187,23 @@ export interface PracticeApplyPlan {
   readonly deferred: PracticeApplyItem[];
 }
 
-/**
- * Pure model of the B7 apply ordering + FULL-CHAIN orphan-defer the live `applyIdbItem` path enforces
- * per item. Stable-sorts practice items into lesson→decision→leaf order, then defers any child upsert
- * whose dependency chain is not available after this batch. The chain is the full one §14.1 implies:
- *  - a decision defers unless its owning lesson is available (known locally OR upserted earlier here);
- *  - an srs/attempt leaf defers unless BOTH its lesson AND its `targetId` decision are available;
- *  - a session leaf defers on its lesson alone (it embeds many decisions, no single `targetId`);
- *  - a tombstone delete NEVER defers (a delete must always land; no reanimation risk), and a deleted
- *    parent never satisfies a child (a deleted row is not "available").
- * Availability is seeded from the caller's local sets (rows already present in IndexedDB) and grown by
- * each applied — not deferred — parent UPSERT in this batch. The stable rank sort guarantees lessons
- * are resolved before decisions and decisions before leaves in the single forward pass. Mirrors the
- * memo B7 attack-surface requirements "child apply before parent" and "orphan child … defers"; the
- * live loop consumes `ordered` for its apply sequence and reaches the same defer outcome via a
- * per-child parent-existence read plus server-version ordering.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function planPracticeApplyOrder(
   items: readonly PracticeApplyItem[],
   knownLessonIds: ReadonlySet<string>,
@@ -208,9 +245,12 @@ export function planPracticeApplyOrder(
       applied.push(item);
       continue;
     }
-    // Leaf (srs/attempts/sessions): needs its lesson AND, when it names one, its targetId decision.
-    const decisionAvailable = !item.decisionId || availableDecisions.has(item.decisionId);
-    if (!lessonAvailable || !decisionAvailable) { deferred.push(item); continue; }
+
+
+
+    const requiredDecisions = item.decisionId ? [item.decisionId, ...(item.decisionIds ?? [])] : (item.decisionIds ?? []);
+    const decisionsAvailable = requiredDecisions.every(id => availableDecisions.has(id));
+    if (!lessonAvailable || !decisionsAvailable) { deferred.push(item); continue; }
     applied.push(item);
   }
   return { ordered: applied, deferred };
