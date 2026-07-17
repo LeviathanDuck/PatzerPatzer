@@ -22,11 +22,13 @@ export interface TreeEvalEntry {
 }
 
 export type TreeEvalResult = Pick<TreeEvalEntry, 'cp' | 'mate'>;
-export type TreeEvalPhase = 'idle' | 'evaluating' | 'refining';
+export type TreeEvalPhase = 'idle' | 'waiting-for-engine' | 'evaluating' | 'refining';
+export type TreeEvalWaitReason = 'observer' | 'bulk-review';
 
 export interface TreeEvalStatus {
   enabled: boolean;
   phase: TreeEvalPhase;
+  waitReason: TreeEvalWaitReason | null;
   inProgress: boolean;
 }
 
@@ -56,6 +58,7 @@ let activeRun: TreeEvalRun | null = null;
 let runSerial = 0;
 let activeSweepSerial = 0;
 let treeEvalPhase: TreeEvalPhase = 'idle';
+let treeEvalWaitReason: TreeEvalWaitReason | null = null;
 
 const treeEvalCache = new Map<string, TreeEvalEntry>();
 const TREE_EVAL_REDRAW_THROTTLE_MS = 250;
@@ -101,7 +104,8 @@ export function getTreeEvalStatus(): TreeEvalStatus {
   return {
     enabled: treeEvalEnabled,
     phase: treeEvalPhase,
-    inProgress: treeEvalEnabled && treeEvalPhase !== 'idle',
+    waitReason: treeEvalWaitReason,
+    inProgress: treeEvalEnabled && (treeEvalPhase === 'evaluating' || treeEvalPhase === 'refining'),
   };
 }
 
@@ -114,6 +118,21 @@ export function cancelTreeEval(): void {
   activeSweepSerial++;
   setTreeEvalPhase('idle');
   cancelActiveRun();
+}
+
+/** Preserve enabled user intent while the shared review engine is unavailable. */
+export function waitForTreeEvalEngine(reason: TreeEvalWaitReason): void {
+  if (treeEvalPhase === 'waiting-for-engine') {
+    if (treeEvalWaitReason !== reason) {
+      treeEvalWaitReason = reason;
+      scheduleTreeEvalRedraw();
+    }
+    return;
+  }
+  activeSweepSerial++;
+  cancelActiveRun();
+  treeEvalWaitReason = reason;
+  setTreeEvalPhase('waiting-for-engine');
 }
 
 export async function evaluateFen(fen: string, depth: number): Promise<TreeEvalResult | null> {
@@ -306,6 +325,7 @@ function isSweepCurrent(sweepSerial: number): boolean {
 }
 
 function setTreeEvalPhase(phase: TreeEvalPhase): void {
+  if (phase !== 'waiting-for-engine') treeEvalWaitReason = null;
   if (treeEvalPhase === phase) return;
   treeEvalPhase = phase;
   scheduleTreeEvalRedraw();

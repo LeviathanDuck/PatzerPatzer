@@ -45,6 +45,7 @@ import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
   flipStudyBoard, studyDetailRouteSnapshot, detailOrientation, mountStudyWorkspace,
+  rememberStudyDetailRouteQuery,
 } from './studyDetailCtrl';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
@@ -128,11 +129,14 @@ function writeStudyDetailRoute(): void {
   const study = studyDetail();
   if (!study) return;
   const snapshot = studyDetailRouteSnapshot();
-  writeHashRoute(serializeStudyDetailRouteState(study.id, {
+  const route = serializeStudyDetailRouteState(study.id, {
     ...snapshot,
     tools: _toolsOpen,
     toolTab: _toolsOpen ? _activeToolTab : '',
-  }), { mode: 'replace' });
+  });
+  const query = route.includes('?') ? route.slice(route.indexOf('?') + 1) : '';
+  rememberStudyDetailRouteQuery(study.id, query);
+  writeHashRoute(route, { mode: 'replace' });
 }
 
 function toggleManualReview(redraw: () => void): void {
@@ -778,9 +782,10 @@ function syncStudyShapeDrawable(): void {
 // while Analysis is mounted would stomp Analysis's board with Study's stale node/shapes.
 export function syncStudyBoard(redraw?: () => void): void {
   if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
-  if (redraw) syncStudyEngine(redraw);
+  // P0 first: apply the visible position and authored shapes before any main-thread engine work.
   syncBoard();
   syncStudyShapeDrawable();
+  if (redraw) scheduleStudyEngineSync(redraw);
 }
 
 // Re-syncs the shared board after ANY committed board move while Study is mounted — covers both
@@ -806,6 +811,18 @@ const ICON_FLIP = ''; // licon.ChasingArrows — flip board
 
 
 let _studyEngineOn = false;
+let _studyEngineSyncGeneration = 0;
+let _studyEngineSyncTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleStudyEngineSync(redraw: () => void): void {
+  const generation = ++_studyEngineSyncGeneration;
+  clearTimeout(_studyEngineSyncTimer);
+  _studyEngineSyncTimer = setTimeout(() => {
+    if (generation !== _studyEngineSyncGeneration) return;
+    if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
+    syncStudyEngine(redraw);
+  }, 120);
+}
 
 // Prior main-surface live-eval save callback, captured when the Study Detail engine starts and
 // RESTORED when it stops, so the main analysis board keeps auto-persisting live-eval improvements
@@ -847,6 +864,8 @@ function startStudyEngine(redraw: () => void): void {
 }
 
 function stopStudyEngine(redraw: () => void): void {
+  ++_studyEngineSyncGeneration;
+  clearTimeout(_studyEngineSyncTimer);
   _studyEngineOn = false;
   protocol.stop();
   clearEvalPositionOverride('study-detail');
@@ -1568,6 +1587,11 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
   const hydrationKey = `${id}?${hydrationQuery}`;
   if (coreLoadRouteKey(detailLoadRouteKey()) !== hydrationKey) {
     hydrateStudyDetailRoute(id, routeQuery, redraw);
+  } else {
+    // Tools-only route updates deliberately skip hydration but still become rollback truth.
+    // Update the retained query only after the core comparison so a path/orientation change
+    // cannot hide the hydration it requires.
+    rememberStudyDetailRouteQuery(id, routeQuery);
   }
   if (!detailLoaded()) {
     return h('div.study-detail', h('div.study-detail__loading', 'Loading…'));

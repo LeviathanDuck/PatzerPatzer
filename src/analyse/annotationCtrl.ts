@@ -6,14 +6,14 @@
 import type { GlyphId, TreeNode, TreePath } from '../tree/types';
 import { setCommentAt, deleteCommentAt, setGlyphsAt, nodeAtPath } from '../tree/ops';
 import { toggleGlyph } from '../tree/glyphs';
+import { LOCAL_COMMENT_BY, LOCAL_COMMENT_ID } from '../tree/commentIdentity';
+
+export { LOCAL_COMMENT_BY, LOCAL_COMMENT_ID } from '../tree/commentIdentity';
 
 export type AnnotationPanel = 'comments' | 'glyphs';
 
 // Comment identity for locally authored comments. The board is single-author, so one
 // stable id per node keeps setCommentAt in upsert mode (matches the Study convention).
-export const LOCAL_COMMENT_ID = 'user';
-export const LOCAL_COMMENT_BY = 'user';
-
 let _openPanel: AnnotationPanel | null = null;
 let _saveTimer: ReturnType<typeof setTimeout> | undefined;
 

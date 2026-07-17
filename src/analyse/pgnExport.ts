@@ -18,6 +18,7 @@ import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { Shape, TreeNode, TreePath } from '../tree/types';
+import { encodeLocalPgnComment, LOCAL_COMMENT_ID, sanitizePgnCommentText } from '../tree/commentIdentity';
 import { buildQuestionnaireSummaryComment, serializeQuestionnaireTags } from './questionnaire/model';
 import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
@@ -52,11 +53,6 @@ function renderNagTokens(node: TreeNode): string[] {
     tokens.push(`$${id}`);
   }
   return tokens;
-}
-
-// PGN comment text must not contain braces — strip them like lila's PgnDump sanitizer.
-function sanitizeCommentText(text: string): string {
-  return text.replace(/[{}]/g, '').trim();
 }
 
 // Chessops' 4 standard drawable colors — matches the brush values written by both the
@@ -104,10 +100,10 @@ function renderShapeTokens(shapes: Shape[] | undefined): string {
  * exports in plain mode); [%eval]/[%clk] synthesis is annotated-mode only.
  */
 function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boolean): string | null {
-  const commentParts: string[] = [];
+  const metadataParts: string[] = [];
 
   const shapeToken = renderShapeTokens(node.shapes);
-  if (shapeToken) commentParts.push(shapeToken);
+  if (shapeToken) metadataParts.push(shapeToken);
 
   if (annotated) {
     const ev = evalCache.get(path);
@@ -120,21 +116,26 @@ function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boole
       node.importedEval;
     if (evaluation) {
       const evalToken = makeComment({ evaluation });
-      if (evalToken) commentParts.push(evalToken);
+      if (evalToken) metadataParts.push(evalToken);
     }
     if (node.clock !== undefined) {
       const total = Math.round(node.clock / 100);
       const hrs = Math.floor(total / 3600);
       const m   = Math.floor((total % 3600) / 60);
       const s   = total % 60;
-      commentParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
+      metadataParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
     }
   }
+
+  const commentBlocks: string[] = [];
+  if (metadataParts.length > 0) commentBlocks.push(`{ ${metadataParts.join(' ')} }`);
   for (const c of node.comments ?? []) {
-    const text = sanitizeCommentText(c.text);
-    if (text) commentParts.push(text);
+    const text = sanitizePgnCommentText(c.text);
+    if (!text) continue;
+    const persistedText = c.id === LOCAL_COMMENT_ID ? encodeLocalPgnComment(text) : text;
+    commentBlocks.push(`{ ${persistedText} }`);
   }
-  return commentParts.length > 0 ? `{ ${commentParts.join(' ')} }` : null;
+  return commentBlocks.length > 0 ? commentBlocks.join(' ') : null;
 }
 
 function renderPgnLine(

@@ -1927,6 +1927,14 @@ export function addStudy(item: StudyItem): void {
   _studyNavigationIndex.noteItemsLoaded([item]);
 }
 
+/** Keep the library cache coherent after Study Detail writes a newer annotated PGN. */
+export function syncStudyDetailItemToLibraryCache(item: StudyItem): void {
+  const idx = _studies.findIndex(study => study.id === item.id);
+  if (idx === -1) return;
+  _studies = [..._studies.slice(0, idx), item, ..._studies.slice(idx + 1)];
+  _studyNavigationIndex.noteItemsLoaded([item]);
+}
+
 // --- PGN import ---
 
 /**

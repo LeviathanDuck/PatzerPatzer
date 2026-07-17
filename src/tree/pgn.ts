@@ -10,6 +10,11 @@ import { parseComment, parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
 import type { Glyph, ImportedEval, Shape, TimeControl, TreeComment, TreeNode } from './types';
+import {
+  decodeLocalPgnComment,
+  LOCAL_COMMENT_BY,
+  LOCAL_COMMENT_ID,
+} from './commentIdentity';
 
 // Standard NAG (Numeric Annotation Glyph) → Glyph mapping.
 // Adapted from lichess-org/lila: modules/tree/src/main/TreeBuilder.scala glyphs()
@@ -90,9 +95,12 @@ function parseTreeComments(rawComments: readonly string[] | undefined): {
   let clockCentis: number | undefined;
   let moveTimeCentis: number | undefined;
   let evaluation: ImportedEval | undefined;
+  let foundLocalComment = false;
   const shapes: Shape[] = [];
   const comments = (rawComments ?? []).map((raw, i) => {
-    const parsed = parseComment(raw);
+    const localText = foundLocalComment ? null : decodeLocalPgnComment(raw);
+    if (localText !== null) foundLocalComment = true;
+    const parsed = parseComment(localText ?? raw);
     if (parsed.clock !== undefined && clockCentis === undefined) {
       // chessops returns seconds; store as centiseconds to match Lichess Clock type
       clockCentis = Math.round(parsed.clock * 100);
@@ -111,7 +119,9 @@ function parseTreeComments(rawComments: readonly string[] | undefined): {
     for (const shape of parsed.shapes) {
       shapes.push(chessopsShapeToTreeShape(shape));
     }
-    return { id: String(i), by: 'pgn' as const, text: parsed.text };
+    return localText !== null
+      ? { id: LOCAL_COMMENT_ID, by: LOCAL_COMMENT_BY, text: parsed.text }
+      : { id: String(i), by: 'pgn' as const, text: parsed.text };
   }).filter(c => c.text.trim().length > 0);
 
   return {

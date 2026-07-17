@@ -112,6 +112,7 @@ let silentEvalCancelStopFailureLogAt = 0;
 // throws synchronously. Kept separate from the LFYM silent-eval diagnostic because the two
 // cancellation paths have independent owners and recovery semantics.
 let foregroundCancelStopFailureLogAt = 0;
+let forceClearOverrideStopFailureLogAt = 0;
 
 export function isSilentEvalActive(): boolean {
   return silentEvalActive;
@@ -175,9 +176,36 @@ export function forceClearEvalPositionOverride(_reason: string): void {
   if (hadOverride) {
     invalidateForegroundSearchIdentity();
     if (engineEnabled && engineReady && engineMode === 'analysis' && protocol.isAnalyzing()) {
-      pendingStopCount++;
-      protocol.stop();
+      // Publish the successor and its single predecessor credit BEFORE stop. The engine module may
+      // synchronously deliver the owed bestmove from inside stop(); that re-entrant drain must see
+      // pendingEval and start the normal Analysis successor immediately. Nothing follows a
+      // successful stop in this branch.
       pendingEval = true;
+      pendingStopCount++;
+      const creditsBeforeStop = pendingStopCount;
+      try {
+        protocol.stop();
+      } catch (error) {
+        if (pendingStopCount === creditsBeforeStop) pendingStopCount--;
+        if (!protocol.isAnalyzing() && pendingEval) {
+          engineSearchActive = false;
+          dispatchPendingEval();
+        }
+        const now = Date.now();
+        if (now - forceClearOverrideStopFailureLogAt >= SILENT_EVAL_FEN_GUARD_DROP_THROTTLE_MS) {
+          forceClearOverrideStopFailureLogAt = now;
+          record({
+            kind: 'engine', severity: Severity.Warn, source: 'engine.ctrl', sourceTag: 'engine',
+            message: 'force-clear-override-stop-failed',
+            metadata: {
+              eventType: 'force-clear-override-stop-failed',
+              reason: _reason,
+              errorName: error instanceof Error ? error.name : 'UnknownError',
+            },
+            redactionClass: 'safe',
+          });
+        }
+      }
     }
   }
 }
@@ -279,6 +307,19 @@ let pendingStopCount = 0;
  * Mirrors the "don't interrupt, queue" pattern from Lichess's ceval ctrl.
  */
 let pendingEval = false;
+
+/** Consume one queued latest-position evaluation before dispatching it.
+ *
+ * The cached-hit branch of evalCurrentPosition() intentionally returns without touching queue
+ * bookkeeping. Every predecessor-drain caller must therefore consume pendingEval first, or a
+ * cache-satisfied successor remains permanently marked pending and poisons later stop ownership.
+ */
+function dispatchPendingEval(): boolean {
+  if (!pendingEval) return false;
+  pendingEval = false;
+  evalCurrentPosition();
+  return true;
+}
 
 // --- Engine settings ---
 // Mirrors lichess-org/lila: ui/lib/src/ceval/view/settings.ts
@@ -1014,7 +1055,7 @@ function parseEngineLine(line: string): void {
     if (pendingStopCount === 0 && dispatchPendingForegroundDestination()) {
       // The exclusive foreground destination owns the now-idle protocol.
     } else if (pendingEval) {
-      evalCurrentPosition();
+      dispatchPendingEval();
     }
     return;
   }
@@ -1159,7 +1200,7 @@ function parseEngineLine(line: string): void {
     engineSearchActive = false;
     if (!parts[1] || parts[1] === '(none)') {
       if (isSilentEvalActive()) onSilentEvalBestmove?.();
-      else if (pendingEval) evalCurrentPosition();
+      else if (pendingEval) dispatchPendingEval();
       return;
     }
     if (evalIsThreat) {
@@ -1195,7 +1236,7 @@ function parseEngineLine(line: string): void {
         });
 
         pendingLines = [];
-        if (pendingEval) evalCurrentPosition();
+        if (pendingEval) dispatchPendingEval();
         else if (threatMode) evalThreatPosition();
         return;
       }
@@ -1221,7 +1262,7 @@ function parseEngineLine(line: string): void {
         syncArrowDebounced();
         _redraw();
         if (pendingEval) {
-          evalCurrentPosition();
+          dispatchPendingEval();
         } else if (threatMode) {
           evalThreatPosition();
         }
@@ -1262,6 +1303,11 @@ protocol.onMessage(handleEngineMessage);
 
 export function __ingestEngineLineForTests(line: string): void {
   handleEngineMessage(line);
+}
+
+/** Test-only protocol-faithful UCI ingress, including protocol phase transitions. */
+export function __ingestProtocolLineForTests(line: string): void {
+  protocol.__ingestLineForTests(line);
 }
 
 // --- Flip FEN color (null-move trick for threat analysis) ---
@@ -1745,7 +1791,7 @@ export function cancelSilentEval(): boolean {
       // parseEngineLine and fire pendingEval via the existing path.
       if (!protocol.isAnalyzing() && pendingEval) {
         engineSearchActive = false;
-        evalCurrentPosition();
+        dispatchPendingEval();
       }
     }
     return true;

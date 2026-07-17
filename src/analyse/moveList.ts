@@ -22,26 +22,113 @@ function activateOnKeyboard(event: KeyboardEvent, action: () => void): void {
 // Mirrors lichess-org/lila: ui/lib/src/device.ts isTouchDevice()
 const isTouchDevice = (): boolean => window.matchMedia('(hover: none)').matches;
 
-// Build context-menu event handlers for a move element.
-// Desktop: right-click (contextmenu event).
-// Touch:   long-press (pointerdown hold ≥ 400ms) + double-tap (dblclick).
-// Adapted from lichess-org/lila: ui/analyse/src/treeView/treeView.ts touch handler block.
-function buildContextHandlers(
-  path: string,
-  onContextMenu: (path: string, e: MouseEvent) => void,
-): Record<string, (e: Event) => void> {
-  const handlers: Record<string, (e: Event) => void> = {
-    contextmenu: (e) => { e.preventDefault(); onContextMenu(path, e as MouseEvent); },
+const BOOKMARK_ACTION = '[data-move-list-action="bookmark"]';
+
+interface TouchHoldState {
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const touchHoldByContainer = new WeakMap<HTMLElement, TouchHoldState>();
+
+function eventContainer(event: Event): HTMLElement | null {
+  return event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+}
+
+function eventTargetElement(event: Event): HTMLElement | null {
+  return event.target instanceof HTMLElement ? event.target : null;
+}
+
+function containedMovePath(container: HTMLElement, move: HTMLElement | null): TreePath | null {
+  if (!move || !container.contains(move)) return null;
+  const path = move.getAttribute('p');
+  return path && path.length > 0 ? path : null;
+}
+
+function movePathFromEvent(event: Event): TreePath | null {
+  const container = eventContainer(event);
+  const target = eventTargetElement(event);
+  if (!container || !target) return null;
+  return containedMovePath(container, target.closest<HTMLElement>('move[p]'));
+}
+
+function bookmarkPathFromEvent(event: Event): TreePath | null {
+  const container = eventContainer(event);
+  const target = eventTargetElement(event);
+  if (!container || !target) return null;
+  const action = target.closest<HTMLElement>(BOOKMARK_ACTION);
+  if (!action || !container.contains(action)) return null;
+  const moveWrap = action.closest<HTMLElement>('move-wrap');
+  return containedMovePath(container, moveWrap?.querySelector<HTMLElement>('move[p]') ?? null);
+}
+
+function clearTouchHold(container: HTMLElement | null): void {
+  if (!container) return;
+  const hold = touchHoldByContainer.get(container);
+  if (hold) clearTimeout(hold.timer);
+  touchHoldByContainer.delete(container);
+}
+
+function buildDelegatedMoveListHandlers(
+  navigate:          (path: string) => void,
+  onContextMenu:     ((path: string, event: MouseEvent) => void) | undefined,
+  onToggleBookmark:  ((path: string) => void) | undefined,
+): Record<string, (event: Event) => void> {
+  const handlers: Record<string, (event: Event) => void> = {
+    click: event => {
+      const bookmarkPath = bookmarkPathFromEvent(event);
+      if (bookmarkPath) {
+        event.preventDefault();
+        event.stopPropagation();
+        onToggleBookmark?.(bookmarkPath);
+        return;
+      }
+      if (event instanceof MouseEvent && event.button !== 0) return;
+      const path = movePathFromEvent(event);
+      if (path) navigate(path);
+    },
+    keydown: event => {
+      if (!(event instanceof KeyboardEvent)) return;
+      if (eventTargetElement(event)?.closest(BOOKMARK_ACTION)) return;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const path = movePathFromEvent(event);
+      if (!path) return;
+      event.preventDefault();
+      event.stopPropagation();
+      navigate(path);
+    },
   };
+
+  if (!onContextMenu) return handlers;
+
+  const openContextMenu = (event: Event): void => {
+    const path = movePathFromEvent(event);
+    if (!path) return;
+    event.preventDefault();
+    onContextMenu(path, event as MouseEvent);
+  };
+  handlers.contextmenu = openContextMenu;
+
   if (isTouchDevice()) {
-    let holdTimer: ReturnType<typeof setTimeout> | undefined;
-    handlers['dblclick'] = (e) => { e.preventDefault(); onContextMenu(path, e as MouseEvent); };
-    handlers['pointerdown'] = (e) => {
-      holdTimer = setTimeout(() => { onContextMenu(path, e as MouseEvent); }, 400);
+    handlers.dblclick = openContextMenu;
+    handlers.pointerdown = event => {
+      const container = eventContainer(event);
+      const path = movePathFromEvent(event);
+      clearTouchHold(container);
+      if (!container || !path) return;
+      const hold: TouchHoldState = {
+        timer: setTimeout(() => {
+          if (touchHoldByContainer.get(container) !== hold) return;
+          touchHoldByContainer.delete(container);
+          onContextMenu(path, event as MouseEvent);
+        }, 400),
+      };
+      touchHoldByContainer.set(container, hold);
     };
-    handlers['pointerup']    = () => clearTimeout(holdTimer);
-    handlers['pointerleave'] = () => clearTimeout(holdTimer);
+    handlers.pointerup = event => clearTouchHold(eventContainer(event));
+    handlers.pointercancel = event => clearTouchHold(eventContainer(event));
+    handlers.pointerleave = event => clearTouchHold(eventContainer(event));
   }
+
   return handlers;
 }
 
@@ -95,14 +182,12 @@ function renderMoveSpan(
   showIndex:            boolean,
   isActive:             boolean,
   getEval:              EvalLookup,
-  navigate:             (p: string) => void,
   userColor:            'white' | 'black' | null,
   userOnly:             boolean,
   isContextActive:      boolean,
-  onContextMenu:        ((path: string, e: MouseEvent) => void) | undefined,
   isWorstMiss:          boolean,
   bookmarkedPaths:      Set<string> | undefined,
-  onToggleBookmark:     ((path: string) => void) | undefined,
+  bookmarksEnabled:     boolean,
   showReviewLabelsFlag: boolean,
   missedMateMaxN:       number,
   renderRawNags:        boolean | undefined,
@@ -173,26 +258,27 @@ function renderMoveSpan(
       'worst-miss':     isWorstMiss,
       bookmarked:       isBookmarked,
     },
-    attrs: { p: path, role: 'button', tabindex: '0', ...iconControlExplainerAttrs({
-      label: `Go to ${node.san ?? 'move'}`,
-      description: 'Jump to this position in the move tree.',
-    }) },
-    on: {
-      click: () => navigate(path),
-      keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => navigate(path)),
-      ...(onContextMenu ? buildContextHandlers(path, onContextMenu) : {}),
+    attrs: {
+      p: path,
+      role: 'button',
+      tabindex: '0',
+      ...iconControlExplainerAttrs({
+        label: `Go to ${node.san ?? 'move'}`,
+        description: 'Jump to this position in the move tree.',
+      }),
     },
   }, inner);
 
-  if (!onToggleBookmark) return moveVnode;
+  if (!bookmarksEnabled) return moveVnode;
 
   // Wrap move + bookmark toggle in a move-wrap element.
   // Bookmark button is shown on hover via CSS.
   return h('move-wrap', [
     moveVnode,
     h('button.bookmark-btn', {
-      class:  { 'bookmark-btn--active': isBookmarked },
-      attrs:  {
+      class: { 'bookmark-btn--active': isBookmarked },
+      attrs: {
+        'data-move-list-action': 'bookmark',
         ...iconControlExplainerAttrs({
           label: isBookmarked ? 'Remove bookmark' : 'Bookmark this position',
           description: isBookmarked
@@ -200,10 +286,10 @@ function renderMoveSpan(
             : 'Bookmark this move-tree position for quick reference.',
         }),
       },
-      on:     { click: (e: MouseEvent) => { e.stopPropagation(); onToggleBookmark(path); } },
     }, '★'),
   ]);
 }
+
 
 
 
@@ -229,14 +315,12 @@ function renderMoveSpanMemo(
   showIndex:         boolean,
   currentPath:       string,
   getEval:           EvalLookup,
-  navigate:          (p: string) => void,
   userColor:         'white' | 'black' | null,
   userOnly:          boolean,
   contextMenuPath:   string | null | undefined,
-  onContextMenu:     ((path: string, e: MouseEvent) => void) | undefined,
   worstMissPath:     string | undefined,
   bookmarkedPaths:   Set<string> | undefined,
-  onToggleBookmark:  ((path: string) => void) | undefined,
+  bookmarksEnabled:  boolean,
   options:           MoveListRenderOptions | undefined,
   evalCacheRevision: number,
 ): VNode {
@@ -247,7 +331,7 @@ function renderMoveSpanMemo(
 
 
   const glyphKey = node.glyphs ? node.glyphs.map(g => g.id).join(',') : '';
-  const sel = onToggleBookmark ? 'move-wrap' : 'move';
+  const sel = bookmarksEnabled ? 'move-wrap' : 'move';
   // No explicit key: these rows sit in a flat children array alongside unkeyed siblings
   // (index/interrupt/move.empty placeholders emitted by renderColumnNodes/renderInlineNodes).
   // Keeping these thunks unkeyed reconciles them the same (purely positional) way the unthunked
@@ -255,8 +339,8 @@ function renderMoveSpanMemo(
   // never keyed before — the memoization win comes entirely from the thunk's args-equality check
   // in prepatch, not from a key, so there's no reason to add one here.
   return thunk(sel, renderMoveSpan, [
-    node, path, parent, showIndex, isActive, getEval, navigate, userColor, userOnly,
-    isContextActive, onContextMenu, isWorstMiss, bookmarkedPaths, onToggleBookmark,
+    node, path, parent, showIndex, isActive, getEval, userColor, userOnly,
+    isContextActive, isWorstMiss, bookmarkedPaths, bookmarksEnabled,
     showReviewLabels, missedMomentConfig.missedMateMaxN,
     options?.renderRawNags, options?.reviewEngine,
     evalCacheRevision, glyphKey,
@@ -283,14 +367,12 @@ function renderInlineNodes(
   needsMoveNum:       boolean,
   currentPath:        string,
   getEval:            EvalLookup,
-  navigate:           (p: string) => void,
   userColor:          'white' | 'black' | null,
   userOnly:           boolean,
   contextMenuPath:    string | null | undefined,
-  onContextMenu:      ((path: string, e: MouseEvent) => void) | undefined,
   worstMissPath:      string | undefined,
   bookmarkedPaths:    Set<string> | undefined,
-  onToggleBookmark:   ((path: string) => void) | undefined,
+  bookmarksEnabled:   boolean,
   options:            MoveListRenderOptions | undefined,
   evalCacheRevision:  number,
 ): VNode[] {
@@ -298,7 +380,7 @@ function renderInlineNodes(
   if (nodes.length > 1) {
     return [
       h('lines', nodes.map(node => (
-        h('line', renderInlineNodes([node], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision))
+        h('line', renderInlineNodes([node], parentPath, parent, true, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision))
       ))),
     ];
   }
@@ -308,13 +390,13 @@ function renderInlineNodes(
   const out: VNode[] = [];
 
   const showIndex = needsMoveNum || main.ply % 2 === 1;
-  out.push(renderMoveSpanMemo(main, mainPath, parent, showIndex, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
+  out.push(renderMoveSpanMemo(main, mainPath, parent, showIndex, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision));
   out.push(...renderCommentNodes(main, options));
 
   if (main.children.length > 1) {
-    out.push(...renderInlineNodes(main.children, mainPath, main, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
+    out.push(...renderInlineNodes(main.children, mainPath, main, true, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision));
   } else {
-    out.push(...renderInlineNodes(main.children, mainPath, main, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
+    out.push(...renderInlineNodes(main.children, mainPath, main, false, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision));
   }
 
   return out;
@@ -337,17 +419,15 @@ function renderColumnNodes(
   out:                VNode[],
   currentPath:        string,
   getEval:            EvalLookup,
-  navigate:           (p: string) => void,
   userColor:          'white' | 'black' | null,
   userOnly:           boolean,
   deleteVariation:    ((path: string) => void) | undefined,
   contextMenuPath:    string | null | undefined,
-  onContextMenu:      ((path: string, e: MouseEvent) => void) | undefined,
   worstMissPath:      string | undefined,
   foldedVariations:   Set<string> | undefined,
   onToggleFold:       ((path: string) => void) | undefined,
   bookmarkedPaths:    Set<string> | undefined,
-  onToggleBookmark:   ((path: string) => void) | undefined,
+  bookmarksEnabled:   boolean,
   options:            MoveListRenderOptions | undefined,
   evalCacheRevision:  number,
 ): void {
@@ -362,7 +442,7 @@ function renderColumnNodes(
   if (isWhite) out.push(h('index', String(Math.ceil(main.ply / 2))));
 
   // The move — no embedded index for column view.
-  out.push(renderMoveSpanMemo(main, mainPath, parent, false, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision));
+  out.push(renderMoveSpanMemo(main, mainPath, parent, false, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision));
   const comments = renderCommentNodes(main, options);
 
   // Variations — emit as full-width interrupt block.
@@ -397,7 +477,7 @@ function renderColumnNodes(
       interruptChildren.push(...comments);
       const varLines = variations.map(v => {
         const varPath = parentPath + v.id;
-        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, navigate, userColor, userOnly, contextMenuPath, onContextMenu, worstMissPath, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
+        const lineNodes = renderInlineNodes([v], parentPath, parent, true, currentPath, getEval, userColor, userOnly, contextMenuPath, worstMissPath, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision);
         // Variation remove affordance: small × button at start of each non-mainline line.
         // Mirrors lichess-org/lila: ui/analyse/src/treeView/contextMenu.ts deleteNode action.
         if (deleteVariation) {
@@ -428,7 +508,7 @@ function renderColumnNodes(
     }
   }
 
-  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
+  renderColumnNodes(main.children, mainPath, main, out, currentPath, getEval, userColor, userOnly, deleteVariation, contextMenuPath, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, bookmarksEnabled, options, evalCacheRevision);
 }
 
 /**
@@ -504,6 +584,9 @@ export function renderMoveList(
   // Adapted from lichess-org/lila: ui/analyse/src/treeView/columnView.ts renderColumnView
   const rootComments = renderCommentNodes(root, options);
   const nodes: VNode[] = rootComments.length > 0 ? [h('interrupt', rootComments)] : [];
-  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, navigate, userColor, userOnly, deleteVariation, contextMenuPath, onContextMenu, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark, options, evalCacheRevision);
-  return h('div.move-list-inner', [h('div.tview2.tview2-column', nodes)]);
+  renderColumnNodes(root.children, '', root, nodes, currentPath, getEval, userColor, userOnly, deleteVariation, contextMenuPath, worstMissPath, foldedVariations, onToggleFold, bookmarkedPaths, onToggleBookmark !== undefined, options, evalCacheRevision);
+  const handlers = buildDelegatedMoveListHandlers(navigate, onContextMenu, onToggleBookmark);
+  return h('div.move-list-inner', { on: handlers }, [
+    h('div.tview2.tview2-column', nodes),
+  ]);
 }

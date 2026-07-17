@@ -1188,14 +1188,12 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
     attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({
       label: rowLabel, description: 'Open this game on the Analysis Board.',
     }) },
-    on: { click: (e: MouseEvent) => deps.onSelectRow?.(game, e) },
-    hook: {
-      insert: vnode => {
-        (vnode.elm as HTMLElement).addEventListener('keydown', e => {
-          if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ') || e.repeat) return;
-          e.preventDefault();
-          deps.onSelectRow?.(game, e);
-        });
+    on: {
+      click: (e: MouseEvent) => deps.onSelectRow?.(game, e),
+      keydown: (e: KeyboardEvent) => {
+        if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ') || e.repeat) return;
+        e.preventDefault();
+        deps.onSelectRow?.(game, e);
       },
     },
   }, children);

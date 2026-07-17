@@ -10,8 +10,11 @@ import {
   setCommentDraft, commitCommentEdit, cancelCommentEdit,
   setActiveGlyph, activeGlyph,
 } from './annotationCtrl';
-import { detailNode, updateCurrentNodeComments, updateCurrentNodeGlyphs } from './studyDetailCtrl';
-import type { Glyph, TreeComment } from '../tree/types';
+import {
+  detailNode, detailPath, studyDetail, studyPersistenceError,
+  updateCommentAtTarget, updateCurrentNodeGlyphs,
+} from './studyDetailCtrl';
+import type { Glyph } from '../tree/types';
 
 
 
@@ -44,6 +47,7 @@ export function renderCommentPanel(redraw: () => void): VNode {
         h('button.study-btn', { attrs: controlExplainerAttrs({ label: 'Save comment' }), on: { click: () => saveComment(redraw) } }, 'Save'),
         h('button.study-btn', { attrs: controlExplainerAttrs({ label: 'Cancel comment editing' }), on: { mousedown: (e: MouseEvent) => { e.preventDefault(); cancelCommentEdit(); redraw(); } } }, 'Cancel'),
       ]),
+      renderPersistenceStatus(),
     ]);
   }
 
@@ -53,37 +57,42 @@ export function renderCommentPanel(redraw: () => void): VNode {
       ? h('div.annotation-panel__text', {
           attrs: { role: 'button', tabindex: '0', ...controlExplainerAttrs({ label: 'Edit move comment', description: 'Opens the current move comment for editing.' }) },
           on:    {
-            click: () => { startCommentEdit(currentComment); redraw(); },
+            click: () => { beginCommentEdit(currentComment); redraw(); },
             keydown: (e: KeyboardEvent) => {
               if (e.key !== 'Enter' && e.key !== ' ') return;
               e.preventDefault();
-              startCommentEdit(currentComment);
+              beginCommentEdit(currentComment);
               redraw();
             },
           },
         }, currentComment)
       : h('button.annotation-panel__add', {
           attrs: controlExplainerAttrs({ label: 'Add move comment' }),
-          on: { click: () => { startCommentEdit(''); redraw(); } },
+          on: { click: () => { beginCommentEdit(''); redraw(); } },
         }, '+ Add comment'),
+    renderPersistenceStatus(),
   ]);
 }
 
+function renderPersistenceStatus(): VNode | null {
+  return studyPersistenceError()
+    ? h('p.annotation-panel__save-error', { attrs: { role: 'status' } }, 'Couldn’t save this comment. Your edit is still here; try again before leaving the study.')
+    : null;
+}
+
+function beginCommentEdit(currentText: string): void {
+  const study = studyDetail();
+  if (!study) return;
+  startCommentEdit(currentText, { studyId: study.id, path: detailPath() });
+}
+
 function saveComment(redraw: () => void): void {
-  const node = detailNode();
-  if (!node) { cancelCommentEdit(); redraw(); return; }
-  const text = commitCommentEdit();
-  const existing = node.comments ?? [];
-  let updated: TreeComment[];
-  if (text === '') {
-    // Remove comment
-    updated = existing.filter(c => c.id !== 'user');
-  } else if (existing.some(c => c.id === 'user')) {
-    updated = existing.map(c => c.id === 'user' ? { ...c, text } : c);
-  } else {
-    updated = [...existing, { id: 'user', by: 'user', text }];
-  }
-  updateCurrentNodeComments(updated, redraw);
+  // Clicking Save blurs the textarea before the button's click handler runs. The blur commits and
+  // clears the draft, so the following click must be an idempotent no-op instead of treating the
+  // cleared draft as an intentional deletion.
+  if (!isEditingComment()) return;
+  const committed = commitCommentEdit();
+  if (!committed || !updateCommentAtTarget(committed.target, committed.text, redraw)) redraw();
 }
 
 
