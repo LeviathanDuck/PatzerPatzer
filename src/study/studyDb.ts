@@ -32,7 +32,7 @@ import {
   transitionSchedule,
 } from './practice/scheduler';
 import { revalidateTraversalPlan } from './practice/sessionBuilder';
-import { planLegacyMigration } from './practice/migration';
+import { planLegacyMigration, validateReviewedPathMappingEntries } from './practice/migration';
 import type {
   LegacyReviewedPathMapping,
   LegacyMigrationPlanResult,
@@ -1691,8 +1691,23 @@ export async function planStudyPracticeMigration(
     return { ok: false, failure: { code: 'not-an-array', path: 'mapping.entries', reason: 'mapping.entries is not an array' } };
   }
 
-  // Capture succeeded — only now perform the bounded legacy/authority/enrollment reads, using EXCLUSIVELY
-  // the canonical getter-free capture.
+
+
+
+
+
+
+
+
+
+
+
+
+  const structuralRes = validateReviewedPathMappingEntries(capturedEntries, 'mapping', null);
+  if (!structuralRes.ok) return { ok: false, failure: structuralRes.failure };
+
+  // Capture + structural validation succeeded — only now perform the bounded legacy/authority/enrollment
+  // reads, using EXCLUSIVELY the canonical getter-free capture.
   const legacyRecords = await listAllPositionProgress();
   // Bounded probe over exactly the explicitly-mapped decision ids (mapping-sized, indexed primary-key
   // gets), never an unbounded SRS/decisions scan. One pass builds both the already-enrolled set and the

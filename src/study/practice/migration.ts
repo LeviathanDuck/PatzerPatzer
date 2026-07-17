@@ -504,6 +504,95 @@ function canonicalizeMappingEntry(
   return { ok: true, entry };
 }
 
+
+
+
+
+/** Successful mapping validation output: the authoritative legacyKey index + the advisory equivalence index. */
+export interface ReviewedPathMappingValidation {
+  readonly ok: true;
+  readonly byLegacyKey: Map<string, CanonicalMappingEntry>;
+  readonly equivalenceIndex: Map<string, string[]>;
+}
+
+export type ReviewedPathMappingValidationResult =
+  | ReviewedPathMappingValidation
+  | { readonly ok: false; readonly failure: LegacyMigrationFailure };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function validateReviewedPathMappingEntries(
+  entries: readonly unknown[],
+  pathBase: string,
+  authorityLessonByDecisionId: ReadonlyMap<string, string> | null,
+): ReviewedPathMappingValidationResult {
+  // legacyKey -> mapping entry (authoritative). equivalence key -> set of decision ids (advisory).
+  const byLegacyKey = new Map<string, CanonicalMappingEntry>();
+  const equivalenceIndex = new Map<string, string[]>();
+  const mappedDecisionIds = new Set<string>();
+  for (let i = 0; i < entries.length; i += 1) {
+    const res = canonicalizeMappingEntry(entries[i], `${pathBase}.entries[${i}]`);
+    if (!res.ok) return { ok: false, failure: res.failure };
+    const entry = res.entry;
+    if (byLegacyKey.has(entry.legacyKey)) {
+      return { ok: false, failure: fail('duplicate-identity', `${pathBase}.entries[${i}].legacyKey`, `duplicate mapping legacyKey "${safeDiag(entry.legacyKey)}"`) };
+    }
+    // Referential integrity (finding 2): the mapped decision must EXIST in the authority and its declared
+    // lessonId must match the authority's owning lesson. Skipped when the authority is not yet available
+    // (the seam's pre-I/O structural pass) — those checks re-run in the authenticated planner pass.
+    if (authorityLessonByDecisionId !== null) {
+      const owningLesson = authorityLessonByDecisionId.get(entry.decisionId);
+      if (owningLesson === undefined) {
+        return { ok: false, failure: fail('unknown-decision', `${pathBase}.entries[${i}].decisionId`, `mapping targets decisionId "${safeDiag(entry.decisionId)}" which does not exist in the decision authority`) };
+      }
+      if (owningLesson !== entry.lessonId) {
+        return { ok: false, failure: fail('lesson-mismatch', `${pathBase}.entries[${i}].lessonId`, `mapping declares lessonId "${safeDiag(entry.lessonId)}" for decision "${safeDiag(entry.decisionId)}" but the authority's owning lesson is "${safeDiag(owningLesson)}"`) };
+      }
+    }
+    if (mappedDecisionIds.has(entry.decisionId)) {
+      return { ok: false, failure: fail('duplicate-identity', `${pathBase}.entries[${i}].decisionId`, `decisionId "${safeDiag(entry.decisionId)}" is targeted by more than one mapping entry (at-most-one-mapping-per-decision)`) };
+    }
+    mappedDecisionIds.add(entry.decisionId);
+    byLegacyKey.set(entry.legacyKey, entry);
+    for (const eq of entry.equivalentPositionKeys) {
+      const list = equivalenceIndex.get(eq);
+      if (list) {
+        if (!list.includes(entry.decisionId)) list.push(entry.decisionId);
+      } else {
+        equivalenceIndex.set(eq, [entry.decisionId]);
+      }
+    }
+  }
+  return { ok: true, byLegacyKey, equivalenceIndex };
+}
+
 // ===========================================================================
 // The pure planner
 // ===========================================================================
@@ -611,50 +700,15 @@ export function planLegacyMigration(rawInput: LegacyMigrationInput): LegacyMigra
   if (!Array.isArray(mapping.entries)) {
     return { ok: false, failure: fail('not-an-array', 'input.mapping.entries', 'mapping.entries is not an array') };
   }
-  // legacyKey -> mapping entry (authoritative). equivalence key -> set of decision ids (advisory).
-  const byLegacyKey = new Map<string, CanonicalMappingEntry>();
-  const equivalenceIndex = new Map<string, string[]>();
-  // Referential integrity (finding 2): each decisionId may be targeted by AT MOST ONE mapping entry.
-  // CHOICE 1 (documented): a two-keys-one-decision collision is a TYPED classification failure that
-  // fails the whole plan (`duplicate-identity`), NOT a dedicated "conflict" bucket. Rationale: the
-  // mapping is authored upstream (D1) as one authoritative unit; an internally self-contradictory
-  // mapping (two legacy keys claiming the same durable decision identity) is a data-integrity defect of
-  // the same class as the existing duplicate-legacyKey rejection, and a plan built on a contradictory
-  // authority is not trustworthy. Failing fast keeps the plan DETERMINISTIC (a plan is either fully
-  // valid or a typed failure — never a partial plan silently dropping conflicted entries) and HONEST
-  // (the exact colliding entry + decisionId is surfaced on the typed path). No proposal is emitted.
-  const mappedDecisionIds = new Set<string>();
-  for (let i = 0; i < mapping.entries.length; i += 1) {
-    const res = canonicalizeMappingEntry(mapping.entries[i], `input.mapping.entries[${i}]`);
-    if (!res.ok) return { ok: false, failure: res.failure };
-    const entry = res.entry;
-    if (byLegacyKey.has(entry.legacyKey)) {
-      return { ok: false, failure: fail('duplicate-identity', `input.mapping.entries[${i}].legacyKey`, `duplicate mapping legacyKey "${safeDiag(entry.legacyKey)}"`) };
-    }
-    // Referential integrity: the mapped decision must EXIST in the authority and its declared lessonId
-    // must match the authority's owning lesson — a mapping to a nonexistent or mis-attributed decision
-    // never produces a proposal (it fails the whole plan).
-    const owningLesson = authorityLessonByDecisionId.get(entry.decisionId);
-    if (owningLesson === undefined) {
-      return { ok: false, failure: fail('unknown-decision', `input.mapping.entries[${i}].decisionId`, `mapping targets decisionId "${safeDiag(entry.decisionId)}" which does not exist in the decision authority`) };
-    }
-    if (owningLesson !== entry.lessonId) {
-      return { ok: false, failure: fail('lesson-mismatch', `input.mapping.entries[${i}].lessonId`, `mapping declares lessonId "${safeDiag(entry.lessonId)}" for decision "${safeDiag(entry.decisionId)}" but the authority's owning lesson is "${safeDiag(owningLesson)}"`) };
-    }
-    if (mappedDecisionIds.has(entry.decisionId)) {
-      return { ok: false, failure: fail('duplicate-identity', `input.mapping.entries[${i}].decisionId`, `decisionId "${safeDiag(entry.decisionId)}" is targeted by more than one mapping entry (at-most-one-mapping-per-decision)`) };
-    }
-    mappedDecisionIds.add(entry.decisionId);
-    byLegacyKey.set(entry.legacyKey, entry);
-    for (const eq of entry.equivalentPositionKeys) {
-      const list = equivalenceIndex.get(eq);
-      if (list) {
-        if (!list.includes(entry.decisionId)) list.push(entry.decisionId);
-      } else {
-        equivalenceIndex.set(eq, [entry.decisionId]);
-      }
-    }
-  }
+
+
+
+
+
+  const mappingRes = validateReviewedPathMappingEntries(mapping.entries, 'input.mapping', authorityLessonByDecisionId);
+  if (!mappingRes.ok) return { ok: false, failure: mappingRes.failure };
+  const byLegacyKey = mappingRes.byLegacyKey;
+  const equivalenceIndex = mappingRes.equivalenceIndex;
 
   // --- canonicalize the already-enrolled set (rerun / partial-apply stability, rule 1) ------------
   if (!Array.isArray(alreadyEnrolledTargetIds)) {
