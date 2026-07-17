@@ -121,6 +121,24 @@ function classifyStudyError(error: unknown): string {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+function safeDiag(v: unknown): string {
+  try {
+    return String(v);
+  } catch {
+    return `<uncoercible ${typeof v}>`;
+  }
+}
+
 function studyRouteLabel(): string {
   if (typeof window === 'undefined') return 'unknown';
   const hash = window.location.hash;
@@ -1581,7 +1599,7 @@ export async function listDuePracticeSrs(params: {
 
 
   if (!Number.isFinite(now)) {
-    return { ok: false, failure: mkFail('non-finite-number', 'listDuePracticeSrs.now', `due-query clock \`now\` must be finite, got ${String(now)}`) };
+    return { ok: false, failure: mkFail('non-finite-number', 'listDuePracticeSrs.now', `due-query clock \`now\` must be finite, got ${safeDiag(now)}`) };
   }
   const db = await openDb();
   const acceptActiveDue = (r: SrsScheduleRecord): boolean =>
@@ -1613,7 +1631,7 @@ export async function savePracticeAttempt(
 ): Promise<SrsPersistenceResult<SrsAttemptRecord>> {
   const { duplicate } = await practiceAdd('study-practice-attempts', asPersistableAttemptRecord(attempt));
   if (duplicate) {
-    return { ok: false, failure: mkFail('duplicate-identity', 'attempt.attemptId', `attempt "${attempt.attemptId}" already exists; append-only store never overwrites`) };
+    return { ok: false, failure: mkFail('duplicate-identity', 'attempt.attemptId', `attempt "${safeDiag(attempt.attemptId)}" already exists; append-only store never overwrites`) };
   }
   return { ok: true, value: attempt };
 }
@@ -1749,11 +1767,11 @@ function validateSourceVersion(v: unknown, path: string): SrsPersistenceFailure 
 
 
     if (v.origin !== undefined && (typeof v.origin !== 'string' || !UNLINKED_ORIGINS.has(v.origin))) {
-      return mkFail('invalid-status', `${path}.origin`, `unlinked origin must be manual|snapshot-import|unlinked-from-source, got ${String(v.origin)}`);
+      return mkFail('invalid-status', `${path}.origin`, `unlinked origin must be manual|snapshot-import|unlinked-from-source, got ${safeDiag(v.origin)}`);
     }
     return null;
   }
-  return mkFail('invalid-source-discriminant', `${path}.kind`, `unknown source discriminant: ${String(v.kind)}`);
+  return mkFail('invalid-source-discriminant', `${path}.kind`, `unknown source discriminant: ${safeDiag(v.kind)}`);
 }
 
 /** Validate an `SrsDisplaySnapshot` (source-side snapshot). Requires a non-empty `label` (residual c). */
@@ -1780,7 +1798,7 @@ function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure
   if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'frozen targetId is missing/empty');
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'frozen lessonId is missing/empty');
   if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', `${path}.configId`, 'frozen configId is missing/empty');
-  if (v.status !== 'active') return mkFail('invalid-status', `${path}.status`, `frozen schedule must be active, got ${String(v.status)}`);
+  if (v.status !== 'active') return mkFail('invalid-status', `${path}.status`, `frozen schedule must be active, got ${safeDiag(v.status)}`);
   for (const f of FROZEN_SCHEDULE_NUMERIC_FIELDS) {
     if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `non-finite ${f}`);
   }
@@ -1796,7 +1814,7 @@ function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | nu
   if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', `${path}.targetId`, 'entry targetId is missing/empty');
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'entry lessonId is missing/empty');
   if (v.reviewKind !== 'due' && v.reviewKind !== 'early') {
-    return mkFail('invalid-status', `${path}.reviewKind`, `entry reviewKind must be due|early, got ${String(v.reviewKind)}`);
+    return mkFail('invalid-status', `${path}.reviewKind`, `entry reviewKind must be due|early, got ${safeDiag(v.reviewKind)}`);
   }
   const sched = validateFrozenSchedule(v.frozenSchedule, `${path}.frozenSchedule`);
   if (sched) return sched;
@@ -1813,10 +1831,10 @@ function validatePlanEntry(v: unknown, path: string): SrsPersistenceFailure | nu
 
   const frozen = v.frozenSchedule as { targetId: unknown; lessonId: unknown };
   if (frozen.targetId !== v.targetId) {
-    return mkFail('identity-mismatch', `${path}.frozenSchedule.targetId`, `frozen targetId "${String(frozen.targetId)}" != entry targetId "${String(v.targetId)}"`);
+    return mkFail('identity-mismatch', `${path}.frozenSchedule.targetId`, `frozen targetId "${safeDiag(frozen.targetId)}" != entry targetId "${safeDiag(v.targetId)}"`);
   }
   if (frozen.lessonId !== v.lessonId) {
-    return mkFail('identity-mismatch', `${path}.frozenSchedule.lessonId`, `frozen lessonId "${String(frozen.lessonId)}" != entry lessonId "${String(v.lessonId)}"`);
+    return mkFail('identity-mismatch', `${path}.frozenSchedule.lessonId`, `frozen lessonId "${safeDiag(frozen.lessonId)}" != entry lessonId "${safeDiag(v.lessonId)}"`);
   }
   return null;
 }
@@ -1859,7 +1877,7 @@ export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResu
     if (planExtra) return { ok: false, failure: planExtra };
     // (b) recognized version only — reject missing/unknown, never coerce.
     if (raw.planVersion !== 1) {
-      return { ok: false, failure: mkFail('unrecognized-plan-version', 'plan.planVersion', `unrecognized plan version: ${String(raw.planVersion)}`) };
+      return { ok: false, failure: mkFail('unrecognized-plan-version', 'plan.planVersion', `unrecognized plan version: ${safeDiag(raw.planVersion)}`) };
     }
     if (!isNonEmptyString(raw.sessionId)) return { ok: false, failure: mkFail('missing-required-string', 'plan.sessionId', 'plan sessionId is missing/empty') };
     if (!isNonEmptyString(raw.traversalId)) return { ok: false, failure: mkFail('missing-required-string', 'plan.traversalId', 'plan traversalId is missing/empty') };
@@ -1935,7 +1953,7 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     if (!isNonEmptyString(raw.sessionId)) return { ok: false, failure: mkFail('missing-required-string', 'session.sessionId', 'sessionId is missing/empty') };
     if (!isNonEmptyString(raw.lessonId)) return { ok: false, failure: mkFail('missing-required-string', 'session.lessonId', 'lessonId is missing/empty') };
     if (typeof raw.state !== 'string' || !SESSION_STATES.has(raw.state as SrsSessionState)) {
-      return { ok: false, failure: mkFail('invalid-status', 'session.state', `state must be active|partial|completed, got ${String(raw.state)}`) };
+      return { ok: false, failure: mkFail('invalid-status', 'session.state', `state must be active|partial|completed, got ${safeDiag(raw.state)}`) };
     }
     if (!isFiniteNumber(raw.updatedAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.updatedAt', 'updatedAt is non-finite') };
     if (!isFiniteNumber(raw.createdAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.createdAt', 'createdAt is non-finite') };
@@ -2023,7 +2041,7 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     for (let i = 0; i < entryCursor; i++) {
       const expected = plan.entries[i]?.targetId;
       if (completedTargetIds[i] !== expected) {
-        return { ok: false, failure: mkFail('checkpoint-invariant', `session.progress.completedTargetIds[${i}]`, `completedTargetIds[${i}] "${String(completedTargetIds[i])}" must equal plan.entries[${i}].targetId "${String(expected)}" (cursor–ledger prefix)`) };
+        return { ok: false, failure: mkFail('checkpoint-invariant', `session.progress.completedTargetIds[${i}]`, `completedTargetIds[${i}] "${safeDiag(completedTargetIds[i])}" must equal plan.entries[${i}].targetId "${safeDiag(expected)}" (cursor–ledger prefix)`) };
       }
     }
 
@@ -2150,10 +2168,10 @@ function validateAttemptRecordShape(raw: unknown): SrsPersistenceFailure | null 
     const sched = validateAttemptScheduledSnapshot(raw.scheduled, 'attempt.scheduled');
     if (sched) return sched;
     if (typeof raw.reviewKind !== 'string' || !ATTEMPT_REVIEW_KINDS.has(raw.reviewKind)) {
-      return mkFail('invalid-status', 'attempt.reviewKind', `reviewKind must be due|early, got ${String(raw.reviewKind)}`);
+      return mkFail('invalid-status', 'attempt.reviewKind', `reviewKind must be due|early, got ${safeDiag(raw.reviewKind)}`);
     }
     if (typeof raw.firstAttemptResult !== 'string' || !ATTEMPT_FIRST_RESULTS.has(raw.firstAttemptResult)) {
-      return mkFail('invalid-status', 'attempt.firstAttemptResult', `firstAttemptResult must be clean|failed, got ${String(raw.firstAttemptResult)}`);
+      return mkFail('invalid-status', 'attempt.firstAttemptResult', `firstAttemptResult must be clean|failed, got ${safeDiag(raw.firstAttemptResult)}`);
     }
     const assist = validateAttemptStringArray(raw.assistanceTypes, 'attempt.assistanceTypes');
     if (assist) return assist;
@@ -2262,7 +2280,7 @@ function validateServiceConfigShape(config: unknown): string | null {
     return 'ladder config configId must be a non-empty string';
   }
   if (!isFiniteNumber(config.configVersion)) {
-    return `ladder config configVersion must be a finite number, got ${String(config.configVersion)}`;
+    return `ladder config configVersion must be a finite number, got ${safeDiag(config.configVersion)}`;
   }
   const memberFailure = validateLadderConfigMembers(config);
   if (memberFailure) {
@@ -2306,7 +2324,7 @@ function validateStoredScheduleRow(v: unknown): SrsPersistenceFailure | null {
     if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', 'srs.lessonId', 'lessonId is missing/empty');
     if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', 'srs.configId', 'configId is missing/empty');
     if (typeof v.status !== 'string' || !SCHEDULE_STATUSES.has(v.status)) {
-      return mkFail('invalid-status', 'srs.status', `status must be active|graduated|suspended|archived, got ${String(v.status)}`);
+      return mkFail('invalid-status', 'srs.status', `status must be active|graduated|suspended|archived, got ${safeDiag(v.status)}`);
     }
     for (const f of SCHEDULE_ROW_NUMERIC_FIELDS) {
       if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `srs.${f}`, `non-finite ${f}`);
@@ -2451,7 +2469,7 @@ function canonicalizeSourceById(
   const rebuilt = new Map<string, SrsSourceVersion>();
   for (const [key, value] of entryList) {
     if (typeof key !== 'string' || key.length === 0) {
-      return { ok: false, reason: `currentSourceById key must be a non-empty target id, got ${String(key)}` };
+      return { ok: false, reason: `currentSourceById key must be a non-empty target id, got ${safeDiag(key)}` };
     }
     const failure = validateSourceVersion(value, `currentSourceById[${key}]`);
     if (failure) {
@@ -2543,7 +2561,7 @@ function canonicalizeCompleteInput(input: CompleteStudySrsAttemptInput): Canonic
     return { ok: false, rejection: rejectedService('non-finite-clock', `session checkpoint clock \`now\` threw: ${classifyStudyError(e)}`) };
   }
   if (!Number.isFinite(now)) {
-    return { ok: false, rejection: rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${String(now)}`) };
+    return { ok: false, rejection: rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${safeDiag(now)}`) };
   }
 
   return { ok: true, canonical: { attempt, config, now, sourceById: sourceResult.map } };
