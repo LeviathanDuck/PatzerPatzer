@@ -1109,7 +1109,17 @@ function renderStudyBoardArea(): VNode {
 
 
 
-    hook: { insert: () => { if (isOrdinaryStudyBoardActive()) syncStudyShapeDrawable(); } },
+
+
+
+
+
+
+
+    hook: { insert: () => {
+      if (isOrdinaryStudyBoardActive()) syncStudyShapeDrawable();
+      else if (isStudyWorkspaceActive()) neutralizeStudyShapeDrawable();
+    } },
   }, [renderBoard(), renderPromotionDialog()]);
 }
 
