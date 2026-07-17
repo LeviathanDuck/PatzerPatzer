@@ -2892,3 +2892,350 @@ export async function completeStudySrsAttempt(
     }
   });
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Input to the atomic enrollment service. All rows are caller-supplied and validated internally; the
+ *  initial SRS rows carry their own enrollment state (see the block comment's rule-4 note). */
+export interface EnrollStudyPracticeLessonInput {
+  readonly lesson: StudyPracticeLessonRow;
+  readonly decisions: readonly StudyPracticeDecisionRow[];
+  readonly srsRows: readonly SrsScheduleRecord[];
+}
+
+export type EnrollStudyPracticeLessonOutcome =
+  /** Lesson row + all decision rows + all initial SRS rows committed together in one transaction. */
+  | 'enrolled'
+  /** Pre-DB canonical validation or cross-row coherence failed. Zero writes — no transaction opened. */
+  | 'invalid'
+  /** A lessonId/decisionId/targetId already existed (append-only ConstraintError). Whole transaction
+   *  aborted: NOTHING committed in any store (a partial enrollment is impossible). */
+  | 'duplicate'
+  /** The IndexedDB database could not be opened/upgraded BEFORE any transaction was created. Zero writes. */
+  | 'db-open-failed'
+  /** The IndexedDB transaction errored/aborted (raw storage failure). Zero committed writes. */
+  | 'transaction-failed';
+
+export interface EnrollStudyPracticeLessonResult {
+  readonly outcome: EnrollStudyPracticeLessonOutcome;
+  readonly reason?: string;
+}
+
+function rejectedEnrollment(
+  outcome: Exclude<EnrollStudyPracticeLessonOutcome, 'enrolled'>,
+  reason: string,
+): EnrollStudyPracticeLessonResult {
+  return { outcome, reason };
+}
+
+const LESSON_ROW_KEYS = ['lessonId', 'studyItemId', 'chapterId', 'updatedAt'] as const;
+
+/** Total service-side shape validator for a caller-supplied `study-practice-lessons` row: closed record,
+ *  non-empty identity strings, optional `chapterId` string, finite `updatedAt`. Reuses the shared B4a
+ *  read-boundary helpers so there is one rule set; never throws (a defensive catch converts any
+ *  unexpected error). */
+function validateLessonRowShape(v: unknown): SrsPersistenceFailure | null {
+  try {
+    if (!isPlainObject(v)) return mkFail('not-an-object', 'lesson', 'lesson row is not a plain object');
+    const extra = rejectUnknownKeys(v, LESSON_ROW_KEYS, 'lesson');
+    if (extra) return extra;
+    if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', 'lesson.lessonId', 'lessonId is missing/empty');
+    if (!isNonEmptyString(v.studyItemId)) return mkFail('missing-required-string', 'lesson.studyItemId', 'studyItemId is missing/empty');
+    if (v.chapterId !== undefined && !isNonEmptyString(v.chapterId)) {
+      return mkFail('missing-required-string', 'lesson.chapterId', 'chapterId, when present, must be a non-empty string');
+    }
+    if (!isFiniteNumber(v.updatedAt)) return mkFail('non-finite-number', 'lesson.updatedAt', 'updatedAt must be a finite number');
+    return null;
+  } catch (e) {
+    return mkFail('not-an-object', 'lesson', `unexpected lesson validation error: ${classifyStudyError(e)}`);
+  }
+}
+
+const DECISION_ROW_KEYS = ['decisionId', 'lessonId', 'chapterId', 'sourceLineageId', 'status', 'updatedAt'] as const;
+
+/** Total service-side shape validator for a caller-supplied `study-practice-decisions` row: closed
+ *  record, non-empty identity/lineage/status strings, optional `chapterId` string, optional finite
+ *  `updatedAt`. Same helper set as the lesson/schedule validators; never throws. */
+function validateDecisionRowShape(v: unknown, path: string): SrsPersistenceFailure | null {
+  try {
+    if (!isPlainObject(v)) return mkFail('not-an-object', path, 'decision row is not a plain object');
+    const extra = rejectUnknownKeys(v, DECISION_ROW_KEYS, path);
+    if (extra) return extra;
+    if (!isNonEmptyString(v.decisionId)) return mkFail('missing-required-string', `${path}.decisionId`, 'decisionId is missing/empty');
+    if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'lessonId is missing/empty');
+    if (v.chapterId !== undefined && !isNonEmptyString(v.chapterId)) {
+      return mkFail('missing-required-string', `${path}.chapterId`, 'chapterId, when present, must be a non-empty string');
+    }
+    if (!isNonEmptyString(v.sourceLineageId)) return mkFail('missing-required-string', `${path}.sourceLineageId`, 'sourceLineageId is missing/empty');
+    if (!isNonEmptyString(v.status)) return mkFail('missing-required-string', `${path}.status`, 'status is missing/empty');
+    if (v.updatedAt !== undefined && !isFiniteNumber(v.updatedAt)) {
+      return mkFail('non-finite-number', `${path}.updatedAt`, 'updatedAt, when present, must be a finite number');
+    }
+    return null;
+  } catch (e) {
+    return mkFail('not-an-object', path, `unexpected decision validation error: ${classifyStudyError(e)}`);
+  }
+}
+
+/** Getter-free canonical capture of every enrollment input, or a typed pre-DB rejection. */
+interface CanonicalEnrollInput {
+  readonly lesson: StudyPracticeLessonRow;
+  readonly decisions: readonly StudyPracticeDecisionRow[];
+  readonly srsRows: readonly SrsScheduleRecord[];
+}
+type EnrollCanonicalizeResult =
+  | { readonly ok: true; readonly canonical: CanonicalEnrollInput }
+  | { readonly ok: false; readonly rejection: EnrollStudyPracticeLessonResult };
+
+/**
+ * The ONE synchronous canonicalization seam for enrollment (mirrors `canonicalizeCompleteInput`). Reads
+ * each outer property in the fixed order lesson → decisions → srsRows, AT MOST ONCE each, cloning
+ * composites immediately so a later outer getter cannot mutate an earlier still-raw object; validates
+ * ONLY the canonical captures with the shared validator families; deep-freezes the accepted graphs; and
+ * enforces cross-row coherence. Any failure resolves a typed pre-DB `invalid` rejection — never a raw
+ * throw. Its successful return is the proof boundary: the service consumes only `canonical`.
+ */
+function canonicalizeEnrollInput(input: EnrollStudyPracticeLessonInput): EnrollCanonicalizeResult {
+  // (1) lesson — read once, clone immediately, validate the clone, deep-freeze.
+  let lesson: StudyPracticeLessonRow;
+  try {
+    lesson = structuredClone(input.lesson) as StudyPracticeLessonRow;
+  } catch (e) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `lesson could not be snapshotted: ${classifyStudyError(e)}`) };
+  }
+  const lessonFailure = validateLessonRowShape(lesson);
+  if (lessonFailure) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `lesson failed validation at ${lessonFailure.path}: ${lessonFailure.reason}`) };
+  }
+  deepFreeze(lesson);
+
+  // (2) decisions — read once, clone the WHOLE array as ONE graph, own-key-exact + per-element valid.
+  let decisions: StudyPracticeDecisionRow[];
+  try {
+    decisions = structuredClone(input.decisions) as StudyPracticeDecisionRow[];
+  } catch (e) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `decisions could not be snapshotted: ${classifyStudyError(e)}`) };
+  }
+  if (!Array.isArray(decisions)) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', 'decisions must be an array') };
+  }
+  const decisionsKeyFail = rejectNonIndexArrayKeys(decisions, 'decisions');
+  if (decisionsKeyFail) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `decisions array invalid at ${decisionsKeyFail.path}: ${decisionsKeyFail.reason}`) };
+  }
+  for (let i = 0; i < decisions.length; i++) {
+    const f = validateDecisionRowShape(decisions[i], `decisions[${i}]`);
+    if (f) return { ok: false, rejection: rejectedEnrollment('invalid', `decision failed validation at ${f.path}: ${f.reason}`) };
+  }
+  deepFreeze(decisions);
+
+  // (3) srsRows — read once, clone the WHOLE array as ONE graph, own-key-exact + per-element valid via
+  //     the SAME total stored-schedule validator the completion read boundary uses (rule-4: validate
+  //     caller-supplied enrollment state; never fabricate it).
+  let srsRows: SrsScheduleRecord[];
+  try {
+    srsRows = structuredClone(input.srsRows) as SrsScheduleRecord[];
+  } catch (e) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `initial SRS rows could not be snapshotted: ${classifyStudyError(e)}`) };
+  }
+  if (!Array.isArray(srsRows)) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', 'srsRows must be an array') };
+  }
+  const srsKeyFail = rejectNonIndexArrayKeys(srsRows, 'srsRows');
+  if (srsKeyFail) {
+    return { ok: false, rejection: rejectedEnrollment('invalid', `srsRows array invalid at ${srsKeyFail.path}: ${srsKeyFail.reason}`) };
+  }
+  for (let i = 0; i < srsRows.length; i++) {
+    const f = validateStoredScheduleRow(srsRows[i]);
+    if (f) return { ok: false, rejection: rejectedEnrollment('invalid', `initial SRS row [${i}] failed validation at ${f.path}: ${f.reason}`) };
+  }
+  deepFreeze(srsRows);
+
+  // (4) Cross-row coherence (pre-transaction): every decision belongs to this lesson; every initial SRS
+  //     row's targetId is one of the decisions' ids AND its lessonId matches the lesson (so the
+  //     `lessonId`/`lessonId_dueAt` indexes are coherent). Duplicate ids WITHIN the input are caught at
+  //     the add() append boundary (whole-transaction abort), so this stays a pure identity-linkage check.
+  const decisionIds = new Set<string>();
+  for (const d of decisions) {
+    if (d.lessonId !== lesson.lessonId) {
+      return { ok: false, rejection: rejectedEnrollment('invalid', `decision "${safeDiag(d.decisionId)}" lessonId "${safeDiag(d.lessonId)}" does not match lesson "${safeDiag(lesson.lessonId)}"`) };
+    }
+    decisionIds.add(d.decisionId);
+  }
+  for (const row of srsRows) {
+    if (!decisionIds.has(row.targetId)) {
+      return { ok: false, rejection: rejectedEnrollment('invalid', `initial SRS row targetId "${safeDiag(row.targetId)}" is not one of the enrolled decisions`) };
+    }
+    if (row.lessonId !== lesson.lessonId) {
+      return { ok: false, rejection: rejectedEnrollment('invalid', `initial SRS row "${safeDiag(row.targetId)}" lessonId "${safeDiag(row.lessonId)}" does not match lesson "${safeDiag(lesson.lessonId)}"`) };
+    }
+  }
+
+  return { ok: true, canonical: { lesson, decisions, srsRows } };
+}
+
+/**
+ * Atomically enroll one lesson: its lesson row, decision-identity rows, and initial SRS schedule rows,
+ * ALL in one IndexedDB transaction. See the block comment above for the full contract. Returns a typed
+ * `EnrollStudyPracticeLessonResult`: exactly `enrolled` mutates storage; every other outcome leaves all
+ * three practice stores byte-identical (a partial enrollment is impossible).
+ */
+export async function enrollStudyPracticeLesson(
+  input: EnrollStudyPracticeLessonInput,
+): Promise<EnrollStudyPracticeLessonResult> {
+  // --- Single synchronous canonicalization seam. Reads each outer property at most once, clones + deep-
+  //     freezes the captures, validates ONLY the getter-free canonical graphs and their cross-row
+  //     coherence, all BEFORE the sole `await openDb()`. Any malformed/incoherent input resolves a typed
+  //     pre-DB `invalid`, never a raw throw. Past this point the service consults ONLY `canonical`. ---
+  const canonicalization = canonicalizeEnrollInput(input);
+  if (!canonicalization.ok) {
+    return canonicalization.rejection;
+  }
+  const { lesson, decisions, srsRows } = canonicalization.canonical;
+
+  // openDb() is the ONLY await, BEFORE the transaction is created. A DB open/upgrade failure resolves a
+  // typed `db-open-failed` result rather than rejecting raw.
+  let db: IDBDatabase;
+  try {
+    db = await openDb();
+  } catch (e) {
+    return rejectedEnrollment('db-open-failed', `could not open study database: ${classifyStudyError(e)}`);
+  }
+
+  return new Promise<EnrollStudyPracticeLessonResult>((resolve) => {
+    // A DECIDED rejection (from abortWith on a synchronous issuance throw) resolves from the terminal
+    // event. A `duplicateKey` (first ConstraintError) resolves a typed `duplicate` from onabort/onerror.
+    // Success resolves 'enrolled' ONLY from tx.oncomplete — all three stores committed together.
+    let decided: EnrollStudyPracticeLessonResult | null = null;
+    let duplicateKey: string | null = null;
+
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(
+        ['study-practice-lessons', 'study-practice-decisions', 'study-practice-srs'],
+        'readwrite',
+      );
+    } catch (e) {
+      resolve(rejectedEnrollment('transaction-failed', `could not open transaction: ${classifyStudyError(e)}`));
+      return;
+    }
+    const lessonsStore = tx.objectStore('study-practice-lessons');
+    const decisionsStore = tx.objectStore('study-practice-decisions');
+    const srsStore = tx.objectStore('study-practice-srs');
+
+    const duplicateResult = (): EnrollStudyPracticeLessonResult =>
+      rejectedEnrollment('duplicate', `${duplicateKey} already exists; nothing committed (append-only enrollment)`);
+
+    // Abort the WHOLE transaction (rolls back every add issued so far) and remember the typed rejection
+    // so tx.onabort resolves it — a partial enrollment can never survive.
+    const abortWith = (r: EnrollStudyPracticeLessonResult): void => {
+      decided = r;
+      try { tx.abort(); } catch { /* transaction may already be inactive */ }
+    };
+
+    tx.oncomplete = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicateKey) { resolve(duplicateResult()); return; }
+      resolve({ outcome: 'enrolled' });
+    };
+    tx.onerror = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicateKey) { resolve(duplicateResult()); return; }
+      recordStudyTxFail(tx, 'onerror', 'srs-enroll');
+      resolve(rejectedEnrollment('transaction-failed', `transaction failed: ${tx.error?.name ?? 'UnknownError'}`));
+    };
+    tx.onabort = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicateKey) { resolve(duplicateResult()); return; }
+      recordStudyTxFail(tx, 'onabort', 'srs-enroll');
+      resolve(rejectedEnrollment('transaction-failed', `transaction aborted: ${tx.error?.name ?? 'AbortError'}`));
+    };
+
+    // add()-only append: a duplicate key raises a ConstraintError that is NOT preventDefault()'d, so it
+    // aborts the WHOLE transaction (rolling back any rows already added) — the first duplicate's label is
+    // remembered so tx.onabort resolves a typed `duplicate`. A synchronous issuance throw aborts likewise
+    // as `transaction-failed`. Returns false when it aborted so the caller stops issuing further writes.
+    const addGuarded = (store: IDBObjectStore, value: unknown, label: string): boolean => {
+      let req: IDBRequest;
+      try {
+        req = store.add(value);
+      } catch (e) {
+        abortWith(rejectedEnrollment('transaction-failed', `${label} add threw: ${classifyStudyError(e)}`));
+        return false;
+      }
+      req.onerror = () => {
+        const err = req.error;
+        if (err && err.name === 'ConstraintError' && duplicateKey === null) {
+          // Remember the duplicate; do NOT preventDefault => the ConstraintError aborts the whole tx.
+          duplicateKey = label;
+        }
+        // Any non-duplicate request error is left to abort the transaction (tx.onabort/onerror handle it).
+      };
+      return true;
+    };
+
+    // Issue every add inside the single transaction, in a fixed order (lesson → decisions → SRS). The
+    // SRS rows funnel through the closed-record persistence guard so no chess material can be smuggled on.
+    if (!addGuarded(lessonsStore, lesson, `lesson "${lesson.lessonId}"`)) return;
+    for (const d of decisions) {
+      if (!addGuarded(decisionsStore, d, `decision "${d.decisionId}"`)) return;
+    }
+    for (const row of srsRows) {
+      if (!addGuarded(srsStore, asPersistableScheduleRecord(row), `srs "${row.targetId}"`)) return;
+    }
+  });
+}
