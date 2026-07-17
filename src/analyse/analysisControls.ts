@@ -42,6 +42,13 @@ import {
   stopPractice,
 } from './practice/practiceCtrl';
 import { requestSelectedGameAnalysis } from './pgnExport';
+import {
+  unmountWorkspace,
+  type WorkspaceCursor,
+  type WorkspaceInstance,
+} from './workspaceCore';
+import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
+import type { TreeNode } from '../tree/types';
 
 // --- Action-menu open/close state ---
 // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts actionMenu() reactive field.
@@ -115,6 +122,95 @@ let _deps: AnalysisControlsDeps | null = null;
 
 export function initAnalysisControls(deps: AnalysisControlsDeps): void {
   _deps = deps;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface AnalysisPracticeSlotDeps {
+  /** Live Analysis cursor read — the SAME AnalyseCtrl session Analysis's own mount reads. */
+  getCursor: () => WorkspaceCursor;
+  /** Live Analysis orientation read — the shared board orientation (no duplicate snapshot). */
+  getOrientation: () => Color;
+  /** Analysis shell redraw. */
+  redraw: () => void;
+  /** Analysis shared-tree navigation (existing-child follow) the module's placeholder dispatch uses. */
+  navigate: (path: string) => void;
+  /** Analysis's own add-and-navigate tree commit for board-created nodes. */
+  handleUserMove: (parentPath: string, node: TreeNode) => void;
+  /**
+   * Re-mount the module-less `analysis/free-analysis` fallback (main.ts's mountAnalysisWorkspace).
+   * Injected so this coordinator holds NO knowledge of how the fallback is built — main.ts owns that
+   * mechanics, keeping feature policy out of the bootstrap.
+   */
+  remountFreeAnalysis: () => void;
+}
+
+let _practiceSlotDeps: AnalysisPracticeSlotDeps | null = null;
+
+// The single Practice WorkspaceInstance this coordinator most recently mounted, or null when Analysis
+// is in its normal module-less state. Retained so deactivation guard-closes EXACTLY that instance and
+// can never tear down a newer (e.g. Study excursion) workspace.
+let _practiceSlotInstance: WorkspaceInstance | null = null;
+
+export function initAnalysisPracticeSlot(deps: AnalysisPracticeSlotDeps): void {
+  _practiceSlotDeps = deps;
+}
+
+/** Whether the Analysis slot is currently hosting the shared study-practice module. */
+export function isAnalysisPracticeSlotActive(): boolean {
+  return _practiceSlotInstance !== null;
+}
+
+/**
+ * Activate the in-place Practice takeover: mount the shared `study-practice` module (a FRESH instance
+ * via the host-neutral factory) into the single Analysis workspace slot as `practice-grading`. No-op
+ * if the coordinator is not initialized or Practice is already active. Synchronous/bounded (P0).
+ *
+ * Fail-closed is provided by the core: mountWorkspace validates mode BEFORE allocating/mutating the
+ * slot, so a rejected Practice mount leaves the current free-analysis workspace alive.
+ */
+export function activateAnalysisPracticeSlot(): void {
+  const deps = _practiceSlotDeps;
+  if (!deps || _practiceSlotInstance) return;
+  _practiceSlotInstance = mountStudyPracticeWorkspace({
+    hostId: 'analysis',
+    getCursor: deps.getCursor,
+    getOrientation: deps.getOrientation,
+    redraw: deps.redraw,
+    navigate: deps.navigate,
+    handleUserMove: deps.handleUserMove,
+  });
+}
+
+/**
+ * Deactivate the Practice takeover with the guarded stale-owner rule: unmount EXACTLY the instance
+ * this coordinator mounted, then remount the module-less `analysis/free-analysis` fallback ONLY when
+ * that unmount returned `true` (i.e. the Practice instance was still the active workspace). When it
+ * returns `false` the instance was already superseded by a newer workspace (e.g. a Study excursion),
+ * so restoring the fallback would clobber it — do NOT. No-op when Practice is not active.
+ */
+export function deactivateAnalysisPracticeSlot(reason: string): void {
+  const instance = _practiceSlotInstance;
+  if (!instance) return;
+  _practiceSlotInstance = null;
+  const wasActive = unmountWorkspace(instance, reason);
+  if (wasActive) _practiceSlotDeps?.remountFreeAnalysis();
 }
 
 // --- Render helpers ---

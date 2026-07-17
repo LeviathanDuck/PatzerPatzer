@@ -18,9 +18,13 @@
 
 
 
-import type { TreePath } from '../../tree/types';
+import type { Color } from 'chessops/types';
+import type { TreeNode, TreePath } from '../../tree/types';
+import { mountWorkspace } from '../../analyse/workspaceCore';
 import type {
   WorkspaceBoardInputModule,
+  WorkspaceCursor,
+  WorkspaceInstance,
   WorkspaceShapeOwnership,
   WorkspaceSessionOwnership,
 } from '../../analyse/workspaceCore';
@@ -104,4 +108,65 @@ export function createStudyPracticeWorkspaceModule(
       /* non-scoring host scaffolding — no resources to release (Package D wires real detach) */
     },
   };
+}
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Host-neutral mount inputs for the shared Study-Practice workspace. A host supplies its OWN adapter
+ * identity plus the live board mechanics it already owns (cursor/orientation/redraw + the shared-tree
+ * navigation and tree-commit the module's placeholder dispatch flows through). The factory owns the
+ * fixed module/mode composition; the host owns everything host-specific.
+ */
+export interface StudyPracticeWorkspaceHost {
+  /**
+   * The MOUNTING HOST's adapter identity (Analysis's `'analysis'`, or the Study host's own id) — NOT
+   * the module id. The adapter id names the host; the module id (`study-practice`) names the feature.
+   * The core enforces board-input MODE equality only, never `adapter.id === module.id`.
+   */
+  readonly hostId: string;
+  /** Live tree-cursor read (the host's own AnalyseCtrl / study session — the SAME cursor its normal
+   *  mount reads; there is no second cursor). */
+  getCursor: () => WorkspaceCursor;
+  /** Live board orientation read (the host's shared orientation — no second/duplicate snapshot). */
+  getOrientation: () => Color;
+  /** Host shell redraw/sync. */
+  redraw: () => void;
+  /** Shared-tree navigation (existing-child follow) the C1 module's placeholder move dispatch flows
+   *  through until Package D supplies the module-owned grader dispatch. */
+  navigate: (path: TreePath) => void;
+  /** Host tree-commit for a board-created node (Analysis's add-and-navigate). */
+  handleUserMove: (parentPath: TreePath, node: TreeNode) => void;
+}
+
+/**
+ * Mount the shared `study-practice` module into the caller's single workspace slot as an in-place
+ * `practice-grading` takeover, returning the mounted `WorkspaceInstance` for the host to own and
+ * later guard-unmount. Each call builds a FRESH module instance from
+ * `createStudyPracticeWorkspaceModule` (never a shared mutable singleton) and fixes
+ * `boardInputMode: 'practice-grading'` so the core's mode-equality mount validation passes.
+ *
+ * Purely synchronous and bounded (P0 — board navigation wins the frame): it constructs the module and
+ * calls `mountWorkspace`; no engine, persistence, scheduling, tree scan, or async. Hosting only — no
+ * grading, session, SRS, route, or UI behavior (that is Package D).
+ */
+export function mountStudyPracticeWorkspace(host: StudyPracticeWorkspaceHost): WorkspaceInstance {
+  const module = createStudyPracticeWorkspaceModule({ navigate: host.navigate });
+  return mountWorkspace({
+    id: host.hostId,
+    boardInputMode: 'practice-grading',
+    boardInputModule: module,
+    getCursor: host.getCursor,
+    getOrientation: host.getOrientation,
+    redraw: host.redraw,
+    handleUserMove: host.handleUserMove,
+  });
 }
