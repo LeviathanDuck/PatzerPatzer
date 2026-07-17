@@ -733,9 +733,11 @@ export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () =
 
 
 
+
+
 function renderPracticeToolPanel(): VNode {
   return h('div.study-tools-col__panel.study-tools-col__practice', [
-    h('div.study-tools-col__practice-lead', 'This game’s board and move tree are now hosting Practice.'),
+    h('div.study-tools-col__practice-lead', 'Practice uses this Study’s existing board and move tree.'),
     h('div.study-tools-col__empty',
       'Guided practice sessions are not available yet — no session, grading, or review has started. Use the board and move list as usual.'),
   ]);
@@ -795,6 +797,18 @@ function syncStudyShapeDrawable(): void {
 
 
 
+
+
+
+
+function neutralizeStudyShapeDrawable(): void {
+  cgInstance?.set({ drawable: { enabled: false, onChange: () => {}, shapes: [] } });
+}
+
+
+
+
+
 function isOrdinaryStudyBoardActive(): boolean {
   return isStudyWorkspaceActive() && activeWorkspace()?.boardInputMode === 'always-new-variation';
 }
@@ -811,7 +825,13 @@ export function syncStudyBoard(redraw?: () => void): void {
   if (!isStudyWorkspaceActive()) return;
   // P0 first: apply the visible position for either Study sibling before any lower-priority work.
   syncBoard();
-  if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
+  if (activeWorkspace()?.boardInputMode !== 'always-new-variation') {
+
+
+
+    neutralizeStudyShapeDrawable();
+    return;
+  }
   syncStudyShapeDrawable();
   if (redraw) scheduleStudyEngineSync(redraw);
 }

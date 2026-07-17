@@ -479,7 +479,9 @@ export function isStudyPracticeSlotActive(): boolean {
 export function reconcileStudyPracticeSlot(requested: boolean, redraw: () => void): void {
   if (!_session) return; // session not loaded yet — hydration's completion redraw retries
   const active = _practiceWorkspaceInstance !== null;
-  if (requested === active) return; // idempotent no-op (also: no remount per redraw)
+  if (requested === active) return; // idempotent no-op (also: no remount per redraw). Returning here
+  // BEFORE any transition is what keeps the post-transition board sync below off the no-op path — a
+  // stable requested state never resyncs the board.
   if (requested) {
     const instance = mountStudyPracticeWorkspace({
       hostId: 'study-detail',
@@ -491,12 +493,22 @@ export function reconcileStudyPracticeSlot(requested: boolean, redraw: () => voi
     });
     _practiceWorkspaceInstance = instance;
     _workspaceInstance = instance;
+
+
+
+
+
+    syncStudyBoard(redraw);
   } else {
     const instance = _practiceWorkspaceInstance;
     _practiceWorkspaceInstance = null;
     if (_workspaceInstance === instance) _workspaceInstance = null;
     if (instance && unmountWorkspace(instance, 'study-practice-deactivate')) {
       mountStudyWorkspace(redraw);
+
+
+
+      syncStudyBoard(redraw);
     }
   }
 }
