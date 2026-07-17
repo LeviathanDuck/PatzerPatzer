@@ -125,10 +125,57 @@ export interface WorkspaceBoardPort {
   move(orig: Key, dest: Key): void;
 }
 
-/**
- * A surface's board-input module: the complete, mode-named ownership of board config, move dispatch,
- * and keyboard policy for one mount. Supplied to `mountWorkspace` via `WorkspaceAdapter`.
- */
+
+
+
+
+
+
+
+export interface WorkspaceShapeOwnership {
+  /**
+   * Who owns the MEANING of any shapes for this mount. `core` = only the shared core contributes
+   * shapes; `module` = the module owns the semantics (e.g. Practice hints/feedback later).
+   */
+  readonly owner: 'core' | 'module';
+  /** How shapes reach the board. Modules may apply shapes ONLY through the shared sink. */
+  readonly application: 'shared-sink';
+  /**
+   * Whether the module registers a shape provider at this slice. C1 registers none — shape data is
+   * a Package D concern; C1 declares the ownership boundary only.
+   */
+  readonly registersProvider: boolean;
+}
+
+
+
+
+
+
+
+export interface WorkspaceSessionOwnership {
+  /** Owner of board cursor/FEN/orientation/lifecycle. Always the shared core. */
+  readonly cursor: 'core';
+  /**
+   * Owner of feature-session state (e.g. Practice lesson/target/traversal). `module` means the
+   * module owns it conceptually; the actual data shape may be deferred (see `featureStateDeferred`).
+   */
+  readonly featureState: 'core' | 'module';
+  /**
+   * Whether the feature-session DATA SHAPE is still deferred. C1 declares module ownership but
+   * defers the shape to Package D — no lesson/target/traversal type exists at this slice.
+   */
+  readonly featureStateDeferred: boolean;
+}
+
+
+
+
+
+
+
+
+
 export interface WorkspaceBoardInputModule {
   readonly id: string;
   readonly mode: BoardInputMode;
@@ -136,6 +183,8 @@ export interface WorkspaceBoardInputModule {
   readonly configPolicy: WorkspaceBoardConfigPolicy;
   readonly moveDispatch: WorkspaceBoardMoveDispatch;
   readonly keyboardPolicy: WorkspaceKeyboardPolicy;
+  readonly shapeOwnership?: WorkspaceShapeOwnership;
+  readonly sessionOwnership?: WorkspaceSessionOwnership;
 
   attach(port: WorkspaceBoardPort, boardEl: HTMLElement): void;
   detach(reason: string): void;
@@ -308,6 +357,11 @@ function guardBoardInputModule(
     configPolicy,
     moveDispatch,
     keyboardPolicy,
+
+
+
+    ...(raw.shapeOwnership !== undefined ? { shapeOwnership: raw.shapeOwnership } : {}),
+    ...(raw.sessionOwnership !== undefined ? { sessionOwnership: raw.sessionOwnership } : {}),
     attach(port: WorkspaceBoardPort, boardEl: HTMLElement): void {
       if (isLive()) raw.attach(port, boardEl);
     },
