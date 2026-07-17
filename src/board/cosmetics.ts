@@ -11,8 +11,9 @@ import {
   setChessBoardAnimationSpeed,
   setPuzzleBoardAnimationSpeed,
   type BoardAnimationSpeed,
+  reloadBoardAnimationPreferences,
 } from './animation';
-import { resetBoardSoundRuntimeForDataManagement } from './sound';
+import { reloadBoardSoundPreferences, resetBoardSoundRuntimeForDataManagement } from './sound';
 import { renderToggleRow } from '../ui';
 import {
   controlExplainerAttrs,
@@ -228,6 +229,52 @@ export function resetBoardSettingsRuntimeForDataManagement(): void {
   document.body.classList.toggle('simple-board', filtersAtDefault());
   clearBoardAnimationLocalData();
   resetBoardSoundRuntimeForDataManagement();
+}
+
+export function resetBoardAppearancePreferences(): void {
+  localStorage.removeItem(ZOOM_KEY);
+  localStorage.removeItem(BOARD_THEME_KEY);
+  localStorage.removeItem(PIECE_SET_KEY);
+  localStorage.removeItem(GAMES_LIST_PREVIEW_ENABLED_KEY);
+  localStorage.removeItem(GAMES_LIST_PREVIEW_SIZE_KEY);
+  clearBoardAnimationLocalData();
+  for (const prop of Object.keys(FILTER_DEFAULTS)) localStorage.removeItem(FILTER_LS_PREFIX + prop);
+  boardZoom = ZOOM_DEFAULT;
+  applyBoardZoom(boardZoom);
+  applyBoardThemeRuntimeOnly(BOARD_THEME_DEFAULT);
+  applyPieceSetRuntimeOnly(PIECE_SET_DEFAULT);
+  gamesListBoardPreviewEnabled = true;
+  gamesListBoardPreviewSize = GAMES_LIST_PREVIEW_SIZE_DEFAULT;
+  applyGamesListBoardPreview(gamesListBoardPreviewEnabled, gamesListBoardPreviewSize);
+  for (const [prop, value] of Object.entries(FILTER_DEFAULTS)) {
+    boardFilters[prop] = value;
+    document.body.style.setProperty(`---${prop}`, String(value));
+  }
+  document.body.classList.toggle('simple-board', true);
+}
+
+export function reloadBoardAppearancePreferences(): void {
+  const storedWheel = localStorage.getItem(BOARD_WHEEL_NAV_KEY);
+  boardWheelNavEnabled = storedWheel === null ? BOARD_WHEEL_NAV_DEFAULT : storedWheel === 'true';
+  const storedZoom = Number.parseInt(localStorage.getItem(ZOOM_KEY) ?? '', 10);
+  boardZoom = Number.isFinite(storedZoom) && storedZoom >= 0 && storedZoom <= 100 ? storedZoom : ZOOM_DEFAULT;
+  applyBoardZoom(boardZoom);
+  applyBoardThemeRuntimeOnly(localStorage.getItem(BOARD_THEME_KEY) ?? BOARD_THEME_DEFAULT);
+  applyPieceSetRuntimeOnly(localStorage.getItem(PIECE_SET_KEY) ?? PIECE_SET_DEFAULT);
+  for (const [prop, fallback] of Object.entries(FILTER_DEFAULTS)) {
+    const stored = Number.parseInt(localStorage.getItem(FILTER_LS_PREFIX + prop) ?? '', 10);
+    boardFilters[prop] = Number.isFinite(stored) ? stored : fallback;
+    document.body.style.setProperty(`---${prop}`, String(boardFilters[prop]));
+  }
+  gamesListBoardPreviewEnabled = localStorage.getItem(GAMES_LIST_PREVIEW_ENABLED_KEY) !== 'false';
+  const storedPreviewSize = Number.parseInt(localStorage.getItem(GAMES_LIST_PREVIEW_SIZE_KEY) ?? '', 10);
+  gamesListBoardPreviewSize = Number.isFinite(storedPreviewSize)
+    ? Math.min(GAMES_LIST_PREVIEW_SIZE_MAX, Math.max(GAMES_LIST_PREVIEW_SIZE_MIN, storedPreviewSize))
+    : GAMES_LIST_PREVIEW_SIZE_DEFAULT;
+  applyGamesListBoardPreview(gamesListBoardPreviewEnabled, gamesListBoardPreviewSize);
+  document.body.classList.toggle('simple-board', filtersAtDefault());
+  reloadBoardAnimationPreferences();
+  reloadBoardSoundPreferences();
 }
 
 // --- Board settings UI helpers ---

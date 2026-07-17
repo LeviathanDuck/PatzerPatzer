@@ -24,7 +24,10 @@ function normalizedExplainer(explainer: ControlExplainer): ControlExplainer {
   const label = explainer.label.trim();
   if (!label) throw new TypeError('A control explainer label must not be blank.');
   const description = explainer.description?.trim();
-  const tier = explainer.tier ?? 'essential';
+  // Text controls with authored explanations belong to the opt-in richer-help layer by default.
+  // Icon-only and disabled controls override this below because their essential meaning/reason
+  // must remain discoverable without making ordinary navigation chatter on hover.
+  const tier = explainer.tier ?? 'more-help';
   if (tier !== 'essential' && tier !== 'more-help') {
     throw new TypeError('A control explainer tier must be essential or more-help.');
   }
@@ -187,7 +190,11 @@ export function renderDisabledControlExplainer(explainer: ControlExplainer, cont
     'span.control-explainer-disabled',
     {
       attrs: {
-        ...controlExplainerAttrs(normalized),
+        ...controlExplainerAttrs({
+          label: normalized.label,
+          description: normalized.description,
+          tier: 'essential',
+        }),
         tabindex: '0',
         role,
         'aria-disabled': 'true',
@@ -208,7 +215,7 @@ export function renderDisabledControlExplainer(explainer: ControlExplainer, cont
 
 function targetTier(target: HTMLElement): ControlHelpTier | null {
   const tier = target.getAttribute(TIER_ATTR)?.trim();
-  if (!tier) return 'essential'; // Compatibility while existing controls migrate to explicit tiers.
+  if (!tier) return 'more-help'; // Compatibility for pre-tier authored explainers.
   return tier === 'essential' || tier === 'more-help' ? tier : null;
 }
 
@@ -279,9 +286,15 @@ export function initControlExplainers(helpController?: Pick<ControlHelpControlle
 
   const currentMode = (): ControlHelpMode => helpController?.getState().mode ?? 'essential';
   const currentHoverDelay = (): number => helpController?.getState().hoverDelayMs ?? FALLBACK_HOVER_DELAY_MS;
+  const repeatsVisibleLabel = (target: HTMLElement): boolean => {
+    if (target.getAttribute(DESCRIPTION_ATTR)?.trim()) return false;
+    const label = target.getAttribute(LABEL_ATTR)?.trim().replace(/\s+/g, ' ') ?? '';
+    const visibleText = target.textContent?.trim().replace(/\s+/g, ' ') ?? '';
+    return Boolean(label && visibleText && label.localeCompare(visibleText, undefined, { sensitivity: 'accent' }) === 0);
+  };
   const eligible = (target: HTMLElement): boolean => {
     const tier = targetTier(target);
-    return tier !== null && tierVisible(currentMode(), tier);
+    return tier !== null && tierVisible(currentMode(), tier) && !repeatsVisibleLabel(target);
   };
 
   const cancelPending = (): void => {

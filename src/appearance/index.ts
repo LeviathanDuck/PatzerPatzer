@@ -36,6 +36,7 @@ export interface AppearanceControllerDependencies {
 export interface AppearanceController {
   getState(): AppearanceState;
   setPreference(preference: AppearancePreference): void;
+  reloadPreference(): void;
   clearPreference(): void;
   subscribe(subscriber: (state: AppearanceState) => void): () => void;
   destroy(): void;
@@ -124,6 +125,16 @@ export function createAppearanceController({
       };
       if (nextState.preference === state.preference && nextState.theme === state.theme) return;
 
+      state = nextState;
+      syncSystemListener();
+      apply();
+      notify();
+    },
+
+    reloadPreference(): void {
+      const preference = readPreference(storage);
+      const nextState: AppearanceState = { preference, theme: resolveTheme(preference, mediaQuery) };
+      if (nextState.preference === state.preference && nextState.theme === state.theme) return;
       state = nextState;
       syncSystemListener();
       apply();

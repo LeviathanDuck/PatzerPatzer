@@ -21,26 +21,6 @@ const DEFINITIONS: readonly TeachingTipDefinition[] = [
     completionEvent: 'patzer:teaching:games-filter-applied',
     eligible: context => context.route === '/games',
   },
-  {
-    featureId: 'study-save',
-    tipVersion: 1,
-    targetId: 'study-save-control',
-    title: 'Keep this work',
-    body: 'Save the current position or game to Study so you can return to it later.',
-    route: '/analysis',
-    completionEvent: 'patzer:teaching:study-saved',
-    eligible: context => context.route === '/analysis',
-  },
-  {
-    featureId: 'opening-explorer',
-    tipVersion: 1,
-    targetId: 'opening-explorer-control',
-    title: 'Compare real games',
-    body: 'Open the explorer with a database selected to compare what players chose here.',
-    route: '/analysis',
-    completionEvent: 'patzer:teaching:opening-explorer-ready',
-    eligible: context => context.route === '/analysis',
-  },
 ];
 
 export const TEACHING_TIPS = validateTeachingRegistry(DEFINITIONS);
