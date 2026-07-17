@@ -1723,9 +1723,38 @@ export function getSettingsResetGroupKeysForTest(groupId: string): string[] | nu
 
 
 
+
+
+
+
+
+
+
+const STUDY_PRACTICE_STORES = [
+  'study-practice-lessons',
+  'study-practice-decisions',
+  'study-practice-srs',
+  'study-practice-attempts',
+  'study-practice-sessions',
+] as const;
+
+async function clearStudyPracticeStores(): Promise<void> {
+  const db = await openMainDb();
+  try {
+    const present = STUDY_PRACTICE_STORES.filter(name => db.objectStoreNames.contains(name));
+    if (present.length === 0) return;
+    const tx = db.transaction(present, 'readwrite');
+    for (const name of present) tx.objectStore(name).clear();
+    await txDone(tx);
+  } finally {
+    db.close();
+  }
+}
+
 export async function clearLocalDataForTokenLogout(): Promise<void> {
   const steps: Array<[string, () => Promise<unknown> | void]> = [
     ['main-idb', () => clearAllIdbData()],
+    ['study-practice', () => clearStudyPracticeStores()],
     ['puzzles', () => clearAllPuzzleV1Data()],
     ['openings', () => clearAllOpeningsData()],
     ['pgn-cache', () => clearPuzzlePgnCache()],

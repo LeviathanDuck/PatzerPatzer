@@ -6,6 +6,7 @@
 
 
 import { DB_NAME as MAIN_DB_NAME, DB_VERSION as MAIN_DB_VERSION, upgradeGameDbSchema } from '../idb/index';
+import { isPracticeChildStore, practiceParentLessonId } from './runtimeApply';
 import type { SyncResult } from './client';
 import {
   drainDurableVersionedOutbox,
@@ -1483,6 +1484,61 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
     keyForRecord: record => stringField(record, 'runId'),
     updatedAt: record => numberField(record, 'updatedAt'),
   },
+  // --- Study-owned SRS practice stores (ORP V2 Package B / Hardened Contract §14.1, slice B7) -----
+  // The five durable Study-practice stores. All live in the MAIN patzer-pro DB (v27, built additively
+  // in idb/index.ts) and carry a stable caller-generated per-record UUID key — mirroring the existing
+  // keyPath stores above. The manifest (B6) allowlists these exact names with `serverVersionCasWholeRecord`;
+  // the per-item CAS/outbox and generic apply path (applyIdbItem) handle them like any other keyPath
+  // store, with two B7-specific behaviors wired into applyIdbItem: append-only attempt dedupe and
+  // parent-before-child (orphan-defer) apply. `decisionId`→`targetId` mapping preserved: the SRS store
+  // keys on `targetId` (== the Required-decision `decisionId`), never a `decisionId` payload field.
+  {
+    store: 'study-practice-lessons',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'study-practice-lessons',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'lessonId'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
+  {
+    store: 'study-practice-decisions',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'study-practice-decisions',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'decisionId'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
+  {
+    store: 'study-practice-srs',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'study-practice-srs',
+    keyMode: 'keyPath',
+    // Key path is `targetId` (== decisionId; see idb/index.ts NOTE) — never a `decisionId` payload field.
+    keyForRecord: record => stringField(record, 'targetId'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
+  {
+    store: 'study-practice-attempts',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'study-practice-attempts',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'attemptId'),
+    // Attempts are immutable append-only history: `completedAt` is the row's only mutation instant.
+    updatedAt: record => numberField(record, 'completedAt'),
+  },
+  {
+    store: 'study-practice-sessions',
+    dbName: MAIN_DB_NAME,
+    dbVersion: MAIN_DB_VERSION,
+    objectStore: 'study-practice-sessions',
+    keyMode: 'keyPath',
+    keyForRecord: record => stringField(record, 'sessionId'),
+    updatedAt: record => numberField(record, 'updatedAt'),
+  },
 ];
 
 const IDB_SPECS_BY_STORE = new Map<RemoteSyncStoreName, IdbStoreSpec>(
@@ -2858,7 +2914,16 @@ type RemoteSyncApplySkipReason =
   | 'unknown-store'
   | 'missing-payload'
   | 'merge-failed'
-  | 'invalid-payload';
+  | 'invalid-payload'
+  // B7 (ORP V2 Package B): an incoming attempt whose immutable `attemptId` already exists locally.
+  // Append-only dedupe: the first-write row is authoritative and is NEVER overwritten. Benign — the
+  // row IS represented locally, so re-pulling can never change the outcome; the cursor may advance.
+  | 'append-only-duplicate'
+  // B7: a practice CHILD (decision/srs/attempt/session) whose owning lesson is not yet present
+  // locally — an orphan that must DEFER to a later pull once the lesson lands. BLOCKING: the row is
+  // not represented locally and needs re-application, so it keeps full-pull-required and does not
+  // silently advance the cursor past itself.
+  | 'orphan-deferred';
 
 interface RemoteSyncSkippedApplyResult {
   skipped: RemoteSyncApplySkipReason;
@@ -2868,6 +2933,7 @@ const BENIGN_SKIP_COUNT_KEYS: Partial<Record<RemoteSyncApplySkipReason, string>>
   'stale-remote': 'skippedStaleRemote',
   'suppressed-upsert': 'skippedSuppressedUpsert',
   'disallowed-setting': 'skippedDisallowedSetting',
+  'append-only-duplicate': 'skippedAppendOnlyDuplicate',
 };
 
 const UNSAFE_SKIP_DETAIL_COUNT_KEYS: Partial<Record<RemoteSyncApplySkipReason, string>> = {
@@ -2875,6 +2941,7 @@ const UNSAFE_SKIP_DETAIL_COUNT_KEYS: Partial<Record<RemoteSyncApplySkipReason, s
   'missing-payload': 'skippedMissingPayload',
   'merge-failed': 'skippedMergeFailed',
   'invalid-payload': 'skippedInvalidPayload',
+  'orphan-deferred': 'skippedOrphanDeferred',
 };
 
 function countSkippedApplyResult(counts: Record<string, number>, reason: RemoteSyncApplySkipReason): void {
@@ -5483,6 +5550,30 @@ async function applyIdbItem(
     await rememberItemUpdatedAt(spec.store, item.itemKey, maxTimestamp(item.updatedAt, accountUpdatedAt(merged)), applyIdentity);
     await clearItemDeletedAt(spec.store, item.itemKey, applyIdentity);
     return 'applied';
+  }
+
+  // --- B7 (ORP V2 Package B) Study-practice apply semantics ------------------------------------
+  // Append-only attempt dedupe: an incoming attempt whose immutable `attemptId` already exists
+  // locally is an idempotent no-op. The first-write row is authoritative and is NEVER overwritten
+  // (memo B7 attack: "attempt replacement instead of dedupe"). A tombstone delete still flows
+  // through the generic delete path below.
+  if (item.store === 'study-practice-attempts' && !isDeletedItem(item) && existing !== undefined) {
+    return { skipped: 'append-only-duplicate' };
+  }
+  // Parent-before-child apply: a practice CHILD (decision/srs/attempt/session) upsert whose owning
+  // lesson row is not yet present locally is an orphan — DEFER it (memo B7 attack: "child apply
+  // before parent") so a later pull re-applies it once the lesson lands. Server version ordering
+  // applies the parent lesson first within a batch; a genuine orphan (parent in a later page / never
+  // synced) blocks the cursor via the 'orphan-deferred' skip. A tombstone delete is never deferred —
+  // a delete must always land, and it carries no reanimation risk.
+  if (isPracticeChildStore(item.store) && !isDeletedItem(item)) {
+    const parentLessonId = practiceParentLessonId(item.store, item.payload);
+    if (!parentLessonId) return { skipped: 'invalid-payload' };
+    const lessonsSpec = IDB_SPECS_BY_STORE.get('study-practice-lessons');
+    if (lessonsSpec) {
+      const parentLesson = await readRecordByItemKey(db, lessonsSpec, parentLessonId);
+      if (parentLesson === undefined) return { skipped: 'orphan-deferred' };
+    }
   }
 
   const existingUpdatedAt = localVersionForItem(spec, item.itemKey, existing);

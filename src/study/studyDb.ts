@@ -221,6 +221,75 @@ function enqueueStudyDelete(storeName: RemoteSyncStoreName, itemKey: string): vo
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface SrsCompletionApplied {
+  readonly nextSchedule: SrsScheduleRecord;
+  readonly nextSession: SrsPracticeSessionRow;
+}
+
+interface StudyPracticeOutboxItem {
+  readonly store: RemoteSyncStoreName;
+  readonly itemKey: string;
+  readonly payload: unknown;
+  readonly updatedAt: number;
+}
+
+/** The outbox upserts a committed completion produces: the appended attempt, the advanced SRS row,
+ *  and the advanced session checkpoint. Keys mirror the durable store key paths exactly
+ *  (attemptId / targetId / sessionId); `targetId` is the decision UUID (never a `decisionId` field). */
+export function buildSrsCompletionOutboxItems(
+  applied: SrsCompletionApplied,
+  attempt: SrsAttemptRecord,
+): readonly StudyPracticeOutboxItem[] {
+  return [
+    { store: 'study-practice-attempts', itemKey: attempt.attemptId, payload: attempt, updatedAt: attempt.completedAt },
+    { store: 'study-practice-srs', itemKey: applied.nextSchedule.targetId, payload: applied.nextSchedule, updatedAt: applied.nextSchedule.updatedAt },
+    { store: 'study-practice-sessions', itemKey: applied.nextSession.sessionId, payload: applied.nextSession, updatedAt: applied.nextSession.updatedAt },
+  ];
+}
+
+/** The outbox upserts a committed enrollment produces: the lesson, each decision-identity row, and
+ *  each initial SRS schedule row, in parent-before-child order (lesson → decisions → srs). */
+export function buildEnrollmentOutboxItems(
+  lesson: StudyPracticeLessonRow,
+  decisions: readonly StudyPracticeDecisionRow[],
+  srsRows: readonly SrsScheduleRecord[],
+): readonly StudyPracticeOutboxItem[] {
+  const items: StudyPracticeOutboxItem[] = [
+    { store: 'study-practice-lessons', itemKey: lesson.lessonId, payload: lesson, updatedAt: lesson.updatedAt },
+  ];
+  for (const decision of decisions) {
+    items.push({
+      store: 'study-practice-decisions',
+      itemKey: decision.decisionId,
+      payload: decision,
+      updatedAt: decision.updatedAt ?? lesson.updatedAt,
+    });
+  }
+  for (const row of srsRows) {
+    items.push({ store: 'study-practice-srs', itemKey: row.targetId, payload: row, updatedAt: row.updatedAt });
+  }
+  return items;
+}
+
+function enqueueStudyPracticeOutboxItems(items: readonly StudyPracticeOutboxItem[]): void {
+  for (const item of items) {
+    enqueueStudyPut(item.store, item.itemKey, item.payload, item.updatedAt);
+  }
+}
+
 function drillAttemptSyncKey(attempt: DrillAttempt): string {
   return `${attempt.positionKey}::${attempt.sequenceId}::${attempt.timestamp}`;
 }
@@ -2890,7 +2959,7 @@ export async function completeStudySrsAttempt(
     return rejectedService('db-open-failed', `could not open study database: ${classifyStudyError(e)}`);
   }
 
-  return new Promise<SrsAttemptServiceResult>((resolve) => {
+  const result = await new Promise<SrsAttemptServiceResult>((resolve) => {
     // A DECIDED rejection (from abortWith) resolves from any terminal event. The APPLIED result is
     // kept separate and resolves ONLY from tx.oncomplete (a successful commit) — so if the SRS/session
     // writes are issued but the transaction later aborts, the applied result is discarded and the
@@ -3193,6 +3262,14 @@ export async function completeStudySrsAttempt(
       }
     }
   });
+
+  // B7 enqueue-after-commit (binding rule 1): the applied result resolves ONLY from tx.oncomplete, so
+  // this enqueue runs strictly after the attempt/SRS/session writes are durably committed. Any
+  // non-applied outcome enqueues nothing.
+  if (result.outcome === 'applied') {
+    enqueueStudyPracticeOutboxItems(buildSrsCompletionOutboxItems(result, attempt));
+  }
+  return result;
 }
 
 
@@ -3471,7 +3548,7 @@ export async function enrollStudyPracticeLesson(
     return rejectedEnrollment('db-open-failed', `could not open study database: ${classifyStudyError(e)}`);
   }
 
-  return new Promise<EnrollStudyPracticeLessonResult>((resolve) => {
+  const result = await new Promise<EnrollStudyPracticeLessonResult>((resolve) => {
     // A DECIDED rejection (from abortWith on a synchronous issuance throw) resolves from the terminal
     // event. A `duplicateKey` (first ConstraintError) resolves a typed `duplicate` from onabort/onerror.
     // Success resolves 'enrolled' ONLY from tx.oncomplete — all three stores committed together.
@@ -3565,4 +3642,12 @@ export async function enrollStudyPracticeLesson(
       if (!addGuarded(srsStore, asPersistableScheduleRecord(row), `srs "${row.targetId}"`)) return;
     }
   });
+
+  // B7 enqueue-after-commit (binding rule 1): 'enrolled' resolves ONLY from tx.oncomplete, so this
+  // enqueue runs strictly after the lesson/decision/SRS rows are durably committed. A duplicate or
+  // failed enrollment enqueues nothing.
+  if (result.outcome === 'enrolled') {
+    enqueueStudyPracticeOutboxItems(buildEnrollmentOutboxItems(lesson, decisions, srsRows));
+  }
+  return result;
 }
