@@ -33,6 +33,20 @@ export interface StudyDetailRouteState {
  */
 export const STUDY_DETAIL_PRACTICE_TOOL_TAB = 'practice';
 
+/**
+ * Canonical "this Study route selects Practice" predicate (ORP V2 Package C, slice C5). A Study detail
+ * route selects the Practice tool iff its tools rail is open AND the active tab is the Practice entry.
+ * Exposed here so the route lifecycle (src/study/practice/routeState.ts) references ONE derivation of
+ * `tools === true && toolTab === 'practice'` instead of duplicating it. Pure and stateless: it reads
+ * only the parsed route state and carries NO session/lesson/target/scheduling semantics — like the
+ * token above, "selects Practice" means only that the Practice tool entry is chosen, never that a
+ * Practice session has started. The parser/serializer above are unchanged: no resume-token field is
+ * added (current C3 writers would silently drop it) and the serializer stays pure.
+ */
+export function studyDetailRouteSelectsPractice(state: StudyDetailRouteState): boolean {
+  return state.tools === true && state.toolTab === STUDY_DETAIL_PRACTICE_TOOL_TAB;
+}
+
 export interface StudyDetailRouteInvalidParam {
   field: StudyDetailRouteField;
   value: string;
