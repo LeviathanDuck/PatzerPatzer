@@ -192,14 +192,30 @@ export function commitWithPracticeLease(lease: PracticeLease, commit: () => void
 
 // --- Bootstrap + route transitions -----------------------------------------------------------------
 
-/**
- * Initial-load reconciliation: `hashchange` does not fire for the first URL, so orchestration calls
- * this once after C4 initialization to record the bootstrap route's Practice owner. Synchronous.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function bootstrapPracticeRouteState(route: Route): void {
-  _owner = practiceRouteOwnerFromRoute(route);
   _resumeRef = null;
   _phase = 'active';
+  // Start from a clean null owner so a non-null owner stays deferred (establishRouteDestination leaves
+  // `_owner` untouched for a deferred non-null owner), then fail closed through the host-ready gate.
+  _owner = null;
+  establishRouteDestination(route, false);
 }
 
 
