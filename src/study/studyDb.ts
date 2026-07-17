@@ -1667,6 +1667,27 @@ function isFiniteNumber(v: unknown): boolean {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+
+
+
+
+
+
+
+
+
+function rejectNonIndexArrayKeys(arr: readonly unknown[], path: string): SrsPersistenceFailure | null {
+  const len = arr.length;
+  for (const key of Object.getOwnPropertyNames(arr)) {
+    if (key === 'length') continue;
+    const idx = Number(key);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= len || String(idx) !== key) {
+      return mkFail('unknown-key', `${path}.${key}`, `${path} carries a non-index own property "${key}"`);
+    }
+  }
+  return null;
+}
+
 const SOURCE_LINKED_KEYS = ['kind', 'sourceRevision'] as const;
 const SOURCE_UNLINKED_KEYS = ['kind', 'origin'] as const;
 
@@ -1789,6 +1810,9 @@ function validateNeutralEntry(v: unknown, path: string, isRepair: boolean): SrsP
   if (disp) return disp;
   if (isRepair && v.failedMoveKeys !== undefined) {
     if (!Array.isArray(v.failedMoveKeys)) return mkFail('not-an-array', `${path}.failedMoveKeys`, 'failedMoveKeys must be an array when present');
+
+    const keyFail = rejectNonIndexArrayKeys(v.failedMoveKeys, `${path}.failedMoveKeys`);
+    if (keyFail) return keyFail;
     for (let i = 0; i < v.failedMoveKeys.length; i++) {
       if (typeof v.failedMoveKeys[i] !== 'string') {
         return mkFail('missing-required-string', `${path}.failedMoveKeys[${i}]`, 'failedMoveKeys entries must be strings');
@@ -1820,6 +1844,15 @@ export function validatePersistedTraversalPlan(raw: unknown): SrsPersistenceResu
     if (!Array.isArray(raw.entries)) return { ok: false, failure: mkFail('not-an-array', 'plan.entries', 'plan.entries is not an array') };
     if (!Array.isArray(raw.context)) return { ok: false, failure: mkFail('not-an-array', 'plan.context', 'plan.context is not an array') };
     if (!Array.isArray(raw.repair)) return { ok: false, failure: mkFail('not-an-array', 'plan.repair', 'plan.repair is not an array') };
+
+
+
+    for (const [arr, listPath] of [
+      [raw.entries, 'plan.entries'], [raw.context, 'plan.context'], [raw.repair, 'plan.repair'],
+    ] as const) {
+      const keyFail = rejectNonIndexArrayKeys(arr, listPath);
+      if (keyFail) return { ok: false, failure: keyFail };
+    }
 
     const seen = new Set<string>();
     const checkDup = (targetId: string, path: string): SrsPersistenceFailure | null => {
@@ -1893,6 +1926,10 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     for (const listName of ['completedTargetIds', 'appliedAttemptIds'] as const) {
       const list = progress[listName];
       if (!Array.isArray(list)) return { ok: false, failure: mkFail('not-an-array', `session.progress.${listName}`, `${listName} is not an array`) };
+
+
+      const keyFail = rejectNonIndexArrayKeys(list, `session.progress.${listName}`);
+      if (keyFail) return { ok: false, failure: keyFail };
       for (let i = 0; i < list.length; i++) {
         if (typeof list[i] !== 'string') return { ok: false, failure: mkFail('missing-required-string', `session.progress.${listName}[${i}]`, `${listName} entries must be strings`) };
       }
@@ -2051,21 +2088,11 @@ function validateAttemptScheduledSnapshot(v: unknown, path: string): SrsPersiste
  *  elements. */
 function validateAttemptStringArray(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!Array.isArray(v)) return mkFail('not-an-array', path, `${path} must be an array`);
-
-
-
-
-
-
-  const len = v.length;
-  for (const key of Object.getOwnPropertyNames(v)) {
-    if (key === 'length') continue;
-    const idx = Number(key);
-    if (!Number.isInteger(idx) || idx < 0 || idx >= len || String(idx) !== key) {
-      return mkFail('unknown-key', `${path}.${key}`, `${path} carries a non-index own property "${key}"`);
-    }
-  }
-  for (let i = 0; i < len; i++) {
+  // Own-key exactness via the shared F4 helper (a clone-preserved `assistanceTypes.pgn = "1. e4"` is
+  // rejected before it can reach the kernel-`applied` path), then the string-element check on top.
+  const keyFail = rejectNonIndexArrayKeys(v, path);
+  if (keyFail) return keyFail;
+  for (let i = 0; i < v.length; i++) {
     if (typeof v[i] !== 'string') return mkFail('missing-required-string', `${path}[${i}]`, `${path} entries must be strings`);
   }
   return null;
@@ -2133,6 +2160,64 @@ const LADDER_CONFIG_KEYS = [
   'configId', 'configVersion', 'intervalsMs', 'resetStep', 'advanceBy',
   'requiredConsecutiveClean', 'graduation', 'presentationGroups',
 ] as const;
+
+
+
+
+
+
+
+
+
+const GRADUATION_POLICY_KEYS = ['afterConsecutiveClean'] as const;
+const PRESENTATION_GROUP_KEYS = ['id', 'label', 'stepIndexes'] as const;
+
+function validateLadderConfigMembers(config: Record<string, unknown>): SrsPersistenceFailure | null {
+  // intervalsMs: a plain (own-key-exact) array of finite numbers. Mechanics (positivity / strict
+  // increase) remain the sealed validator's job — this is the structural-shape guard.
+  if (!Array.isArray(config.intervalsMs)) return mkFail('not-an-array', 'config.intervalsMs', 'intervalsMs must be an array');
+  const intervalsKeyFail = rejectNonIndexArrayKeys(config.intervalsMs, 'config.intervalsMs');
+  if (intervalsKeyFail) return intervalsKeyFail;
+  for (let i = 0; i < config.intervalsMs.length; i++) {
+    if (!isFiniteNumber(config.intervalsMs[i])) return mkFail('non-finite-number', `config.intervalsMs[${i}]`, 'intervalsMs entries must be finite numbers');
+  }
+  if (!isFiniteNumber(config.resetStep)) return mkFail('non-finite-number', 'config.resetStep', 'resetStep must be a finite number');
+  if (!isFiniteNumber(config.advanceBy)) return mkFail('non-finite-number', 'config.advanceBy', 'advanceBy must be a finite number');
+  if (config.requiredConsecutiveClean !== undefined && !isFiniteNumber(config.requiredConsecutiveClean)) {
+    return mkFail('non-finite-number', 'config.requiredConsecutiveClean', 'requiredConsecutiveClean must be a finite number when present');
+  }
+  // graduation: an optional closed-record `{ afterConsecutiveClean: finite }`.
+  if (config.graduation !== undefined) {
+    if (!isPlainObject(config.graduation)) return mkFail('not-an-object', 'config.graduation', 'graduation must be a plain object when present');
+    const gradExtra = rejectUnknownKeys(config.graduation, GRADUATION_POLICY_KEYS, 'config.graduation');
+    if (gradExtra) return gradExtra;
+    if (!isFiniteNumber(config.graduation.afterConsecutiveClean)) {
+      return mkFail('non-finite-number', 'config.graduation.afterConsecutiveClean', 'graduation.afterConsecutiveClean must be a finite number');
+    }
+  }
+  // presentationGroups: an optional (own-key-exact) array of closed-record SrsPresentationGroup records.
+  if (config.presentationGroups !== undefined) {
+    if (!Array.isArray(config.presentationGroups)) return mkFail('not-an-array', 'config.presentationGroups', 'presentationGroups must be an array when present');
+    const groupsKeyFail = rejectNonIndexArrayKeys(config.presentationGroups, 'config.presentationGroups');
+    if (groupsKeyFail) return groupsKeyFail;
+    for (let i = 0; i < config.presentationGroups.length; i++) {
+      const group = config.presentationGroups[i];
+      const groupPath = `config.presentationGroups[${i}]`;
+      if (!isPlainObject(group)) return mkFail('not-an-object', groupPath, 'presentation group must be a plain object');
+      const groupExtra = rejectUnknownKeys(group, PRESENTATION_GROUP_KEYS, groupPath);
+      if (groupExtra) return groupExtra;
+      if (!isNonEmptyString(group.id)) return mkFail('missing-required-string', `${groupPath}.id`, 'presentation group id is missing/empty');
+      if (typeof group.label !== 'string') return mkFail('missing-required-string', `${groupPath}.label`, 'presentation group label must be a string');
+      if (!Array.isArray(group.stepIndexes)) return mkFail('not-an-array', `${groupPath}.stepIndexes`, 'stepIndexes must be an array');
+      const stepKeyFail = rejectNonIndexArrayKeys(group.stepIndexes, `${groupPath}.stepIndexes`);
+      if (stepKeyFail) return stepKeyFail;
+      for (let j = 0; j < group.stepIndexes.length; j++) {
+        if (!isFiniteNumber(group.stepIndexes[j])) return mkFail('non-finite-number', `${groupPath}.stepIndexes[${j}]`, 'stepIndexes entries must be finite numbers');
+      }
+    }
+  }
+  return null;
+}
 
 
 
@@ -2280,6 +2365,14 @@ export async function completeStudySrsAttempt(
     }
     if (!isFiniteNumber(input.config.configVersion)) {
       return rejectedService('invalid-config', `ladder config configVersion must be a finite number, got ${String(input.config.configVersion)}`);
+    }
+
+
+
+
+    const memberFailure = validateLadderConfigMembers(input.config);
+    if (memberFailure) {
+      return rejectedService('invalid-config', `ladder config invalid at ${memberFailure.path}: ${memberFailure.reason}`);
     }
     configValidation = validateLadderConfig(input.config);
   } catch (e) {
