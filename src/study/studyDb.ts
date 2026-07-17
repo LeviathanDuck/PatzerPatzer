@@ -2227,6 +2227,35 @@ function validateLadderConfigMembers(config: Record<string, unknown>): SrsPersis
 
 
 
+function validateServiceConfigShape(config: unknown): string | null {
+  if (!isPlainObject(config)) {
+    return 'ladder config must be a plain object';
+  }
+  const extraConfigKey = rejectUnknownKeys(config, LADDER_CONFIG_KEYS, 'config');
+  if (extraConfigKey) {
+    return `ladder config ${extraConfigKey.reason}`;
+  }
+  if (!isNonEmptyString(config.configId)) {
+    return 'ladder config configId must be a non-empty string';
+  }
+  if (!isFiniteNumber(config.configVersion)) {
+    return `ladder config configVersion must be a finite number, got ${String(config.configVersion)}`;
+  }
+  const memberFailure = validateLadderConfigMembers(config);
+  if (memberFailure) {
+    return `ladder config invalid at ${memberFailure.path}: ${memberFailure.reason}`;
+  }
+  return null;
+}
+
+
+
+
+
+
+
+
+
 const SCHEDULE_ROW_KEYS = [
   'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
   'stepIndex', 'cleanStreak', 'status', 'dueAt', 'enrolledAt', 'lastCompletedAt', 'lastAttemptId',
@@ -2353,26 +2382,16 @@ export async function completeStudySrsAttempt(
 
   let configValidation: ReturnType<typeof validateLadderConfig>;
   try {
-    if (!isPlainObject(input.config)) {
-      return rejectedService('invalid-config', 'ladder config must be a plain object');
-    }
-    const extraConfigKey = rejectUnknownKeys(input.config, LADDER_CONFIG_KEYS, 'config');
-    if (extraConfigKey) {
-      return rejectedService('invalid-config', `ladder config ${extraConfigKey.reason}`);
-    }
-    if (!isNonEmptyString(input.config.configId)) {
-      return rejectedService('invalid-config', 'ladder config configId must be a non-empty string');
-    }
-    if (!isFiniteNumber(input.config.configVersion)) {
-      return rejectedService('invalid-config', `ladder config configVersion must be a finite number, got ${String(input.config.configVersion)}`);
-    }
 
 
 
 
-    const memberFailure = validateLadderConfigMembers(input.config);
-    if (memberFailure) {
-      return rejectedService('invalid-config', `ladder config invalid at ${memberFailure.path}: ${memberFailure.reason}`);
+
+
+
+    const originalShapeFailure = validateServiceConfigShape(input.config);
+    if (originalShapeFailure) {
+      return rejectedService('invalid-config', originalShapeFailure);
     }
     configValidation = validateLadderConfig(input.config);
   } catch (e) {
@@ -2418,11 +2437,35 @@ export async function completeStudySrsAttempt(
   } catch (e) {
     return rejectedService('invalid', `attempt could not be snapshotted: ${classifyStudyError(e)}`);
   }
+
+
+
+
+
+
+
+
+
+  const attemptSnapshotFailure = validateAttemptRecordShape(attempt);
+  if (attemptSnapshotFailure) {
+    return rejectedService('invalid', `attempt snapshot failed validation at ${attemptSnapshotFailure.path}: ${attemptSnapshotFailure.reason}`);
+  }
   let configSnapshot: SrsLadderConfig;
   try {
     configSnapshot = structuredClone(input.config);
   } catch (e) {
     return rejectedService('invalid-config', `ladder config could not be snapshotted: ${classifyStudyError(e)}`);
+  }
+
+
+
+
+
+
+
+  const configSnapshotShapeFailure = validateServiceConfigShape(configSnapshot);
+  if (configSnapshotShapeFailure) {
+    return rejectedService('invalid-config', `snapshot ${configSnapshotShapeFailure}`);
   }
   // Re-brand the config snapshot through the sole brand producer (respecting the "validateLadderConfig is
   // the only constructor of the branded type" contract) — this also revalidates the snapshot's mechanics.
