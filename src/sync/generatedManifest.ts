@@ -25,6 +25,11 @@ export const SYNC_MANIFEST_STORE_NAMES = [
   "repertoire-sources",
   "repertoire-match-records",
   "repertoire-scan-runs",
+  "study-practice-lessons",
+  "study-practice-decisions",
+  "study-practice-srs",
+  "study-practice-attempts",
+  "study-practice-sessions",
   "settings",
 ] as const;
 export const SYNC_ACCOUNT_IDENTITY_FIELDS = [
