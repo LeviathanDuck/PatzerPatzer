@@ -93,6 +93,7 @@ function buildDelegatedMoveListHandlers(
       const path = movePathFromEvent(event);
       if (!path) return;
       event.preventDefault();
+      event.stopPropagation();
       navigate(path);
     },
   };
