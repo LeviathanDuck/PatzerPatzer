@@ -2010,6 +2010,99 @@ export async function listPracticeSessionsByState(
 
 
 
+const ATTEMPT_SCHEDULED_KEYS = ['scheduleRevision', 'configVersion', 'stepIndex', 'dueAt'] as const;
+const ATTEMPT_RECORD_KEYS = [
+  'attemptId', 'targetId', 'lessonId', 'targetRevision', 'sessionId', 'traversalId', 'mode',
+  'scheduled', 'completedAt', 'reviewKind', 'firstAttemptResult', 'assistanceTypes', 'failedMoveKeys',
+  'forceAddedAt', 'snapshot',
+] as const;
+const ATTEMPT_REVIEW_KINDS: ReadonlySet<string> = new Set(['due', 'early']);
+const ATTEMPT_FIRST_RESULTS: ReadonlySet<string> = new Set(['clean', 'failed']);
+
+/** Validate the frozen `SrsScheduledSnapshot` on an attempt: a closed record of four finite numerics. */
+function validateAttemptScheduledSnapshot(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!isPlainObject(v)) return mkFail('not-an-object', path, 'scheduled snapshot is not an object');
+  const extra = rejectUnknownKeys(v, ATTEMPT_SCHEDULED_KEYS, path);
+  if (extra) return extra;
+  for (const f of ATTEMPT_SCHEDULED_KEYS) {
+    if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `non-finite ${f}`);
+  }
+  return null;
+}
+
+/** Validate a required array-of-strings field (`assistanceTypes`/`failedMoveKeys`): it must be an ARRAY
+ *  (never a bare object) of string elements. */
+function validateAttemptStringArray(v: unknown, path: string): SrsPersistenceFailure | null {
+  if (!Array.isArray(v)) return mkFail('not-an-array', path, `${path} must be an array`);
+  for (let i = 0; i < v.length; i++) {
+    if (typeof v[i] !== 'string') return mkFail('missing-required-string', `${path}[${i}]`, `${path} entries must be strings`);
+  }
+  return null;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+function validateAttemptRecordShape(raw: unknown): SrsPersistenceFailure | null {
+  try {
+    if (!isPlainObject(raw)) return mkFail('not-an-object', 'attempt', 'attempt is not a plain object');
+    const extra = rejectUnknownKeys(raw, ATTEMPT_RECORD_KEYS, 'attempt');
+    if (extra) return extra;
+    if (!isNonEmptyString(raw.attemptId)) return mkFail('missing-required-string', 'attempt.attemptId', 'attemptId is missing/empty');
+    if (!isNonEmptyString(raw.targetId)) return mkFail('missing-required-string', 'attempt.targetId', 'targetId is missing/empty');
+    if (!isNonEmptyString(raw.lessonId)) return mkFail('missing-required-string', 'attempt.lessonId', 'lessonId is missing/empty');
+    if (!isNonEmptyString(raw.sessionId)) return mkFail('missing-required-string', 'attempt.sessionId', 'sessionId is missing/empty');
+    if (!isNonEmptyString(raw.traversalId)) return mkFail('missing-required-string', 'attempt.traversalId', 'traversalId is missing/empty');
+    // `mode` is a domain-neutral opaque string (SrsTraversalMode); the kernel treats it as opaque, so the
+    // boundary validates it as a non-empty string rather than against an invented closed set.
+    if (!isNonEmptyString(raw.mode)) return mkFail('missing-required-string', 'attempt.mode', 'mode must be a non-empty string');
+    if (!isFiniteNumber(raw.targetRevision)) return mkFail('non-finite-number', 'attempt.targetRevision', 'targetRevision is non-finite');
+    if (!isFiniteNumber(raw.completedAt)) return mkFail('non-finite-number', 'attempt.completedAt', 'completedAt is non-finite');
+    const sched = validateAttemptScheduledSnapshot(raw.scheduled, 'attempt.scheduled');
+    if (sched) return sched;
+    if (typeof raw.reviewKind !== 'string' || !ATTEMPT_REVIEW_KINDS.has(raw.reviewKind)) {
+      return mkFail('invalid-status', 'attempt.reviewKind', `reviewKind must be due|early, got ${String(raw.reviewKind)}`);
+    }
+    if (typeof raw.firstAttemptResult !== 'string' || !ATTEMPT_FIRST_RESULTS.has(raw.firstAttemptResult)) {
+      return mkFail('invalid-status', 'attempt.firstAttemptResult', `firstAttemptResult must be clean|failed, got ${String(raw.firstAttemptResult)}`);
+    }
+    const assist = validateAttemptStringArray(raw.assistanceTypes, 'attempt.assistanceTypes');
+    if (assist) return assist;
+    const failed = validateAttemptStringArray(raw.failedMoveKeys, 'attempt.failedMoveKeys');
+    if (failed) return failed;
+    if (raw.forceAddedAt !== undefined && !isFiniteNumber(raw.forceAddedAt)) {
+      return mkFail('non-finite-number', 'attempt.forceAddedAt', 'forceAddedAt must be finite when present');
+    }
+    const snap = validateDisplaySnapshot(raw.snapshot, 'attempt.snapshot');
+    if (snap) return snap;
+    return null;
+  } catch (e) {
+    return mkFail('not-an-object', 'attempt', `unexpected attempt validation error: ${classifyStudyError(e)}`);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2061,7 +2154,19 @@ export async function completeStudySrsAttempt(
   if (!Number.isFinite(now)) {
     return rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${String(now)}`);
   }
-  const configValidation = validateLadderConfig(input.config);
+
+
+
+
+  if (input.config === null || typeof input.config !== 'object' || Array.isArray(input.config)) {
+    return rejectedService('invalid-config', `ladder config must be an object, got ${input.config === null ? 'null' : typeof input.config}`);
+  }
+  let configValidation: ReturnType<typeof validateLadderConfig>;
+  try {
+    configValidation = validateLadderConfig(input.config);
+  } catch (e) {
+    return rejectedService('invalid-config', `ladder config validation threw: ${classifyStudyError(e)}`);
+  }
   if (!configValidation.ok) {
     return rejectedService('invalid-config', `ladder config invalid: ${configValidation.reason}`);
   }
@@ -2071,15 +2176,13 @@ export async function completeStudySrsAttempt(
 
 
 
-  const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
-  if (!nonEmptyString(attempt?.attemptId)) {
-    return rejectedService('invalid', 'attempt.attemptId must be a non-empty string');
-  }
-  if (!nonEmptyString(attempt?.targetId)) {
-    return rejectedService('invalid', 'attempt.targetId must be a non-empty string');
-  }
-  if (!nonEmptyString(attempt?.sessionId)) {
-    return rejectedService('invalid', 'attempt.sessionId must be a non-empty string');
+
+
+
+
+  const attemptFailure = validateAttemptRecordShape(attempt);
+  if (attemptFailure) {
+    return rejectedService('invalid', `attempt failed validation at ${attemptFailure.path}: ${attemptFailure.reason}`);
   }
 
 
@@ -2232,10 +2335,17 @@ export async function completeStudySrsAttempt(
         return;
       }
 
-      // --- Sealed pure transition kernel (synchronous by contract). The completing target's schedule
-      //     decision is authoritative here: any non-applied outcome aborts with zero writes. Although the
-      //     kernel is contracted total, a defensive guard turns any synchronous throw into a typed abort
-      //     (rolling back the queued attempt append) rather than an escaping raw rejection (F1 1b). ---
+
+
+
+
+
+
+
+
+
+
+
       let transition: ReturnType<typeof transitionSchedule>;
       try {
         transition = transitionSchedule(current, attempt, config);
@@ -2263,6 +2373,11 @@ export async function completeStudySrsAttempt(
 
       const finishApply = (): void => {
         if (decided) return;
+
+
+
+
+
 
 
         let revalidation: ReturnType<typeof revalidateTraversalPlan>;
