@@ -1341,7 +1341,19 @@ function recordPracticeIdbReadFail(storeName: StudyPracticeStoreName, error: unk
   });
 }
 
-// --- Generic per-store plumbing --------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 async function practicePut(storeName: StudyPracticeStoreName, value: unknown): Promise<void> {
   const db = await openDb();
@@ -2396,6 +2408,112 @@ function validateStoredScheduleRow(v: unknown): SrsPersistenceFailure | null {
 
 
 
+function validateInitialEnrollmentRow(v: unknown): SrsPersistenceFailure | null {
+  try {
+    // (0) General stored-row shape first (closed keys, plain prototype, finite numerics, closed status
+    //     set with neutral diagnostics, nullable-field typing). Reused verbatim — one shape rule set.
+    const shape = validateStoredScheduleRow(v);
+    if (shape) return shape;
+    // Past the shape gate `v` is a plain object with exactly the closed schedule-row key set and every
+    // numeric field finite; read own fields directly.
+    const row = v as Record<string, unknown>;
+
+    // (1) status — MUST be 'active'. srsTypes.ts:28-30 ("`active` targets participate in due queries;
+    //     the three non-active statuses are the only states in which `dueAt` may be null") + :84
+    //     ("Enrollment creates the initial row; 'no row' is never due") + scheduler.ts step 6
+    //     (`current.status !== 'active'` → `inactive`, never re-advances). A freshly enrolled target
+    //     must be schedulable, so its initial status is active; any non-active initial row is
+    //     un-schedulable on its first attempt. [FIRM]
+    if (row.status !== 'active') {
+      return mkFail('invalid-status', 'srs.status', `initial enrollment row status must be 'active', got ${safeDiag(row.status)}`);
+    }
+    // (2) stepIndex — MUST be 0. srsTypes.ts:82 ("Current ladder position (index into the config's
+    //     `intervalsMs`)"): a never-reviewed target sits at the BOTTOM of the ladder, index 0.
+    //     scheduler.ts step 3 requires an in-range integer; enrollment pins the initial position to the
+    //     ladder floor. [FIRM — the kernel would accept any in-range integer for a first transition, so
+    //     "exactly 0" is the initial-ladder-position reading of a never-reviewed target; noted for D1.]
+    if (row.stepIndex !== 0) {
+      return mkFail('checkpoint-invariant', 'srs.stepIndex', `initial enrollment row stepIndex must be 0 (ladder floor), got ${safeDiag(row.stepIndex)}`);
+    }
+    // (3) cleanStreak — MUST be 0. srsTypes.ts:83 ("Generic consecutive-clean counter; zero for
+    //     configurations that do not use graduation"): a target with no completion history has zero
+    //     consecutive clean results. scheduler.ts `buildActiveNext` computes `current.cleanStreak + 1`
+    //     on the first clean, so a non-zero initial streak fabricates progress toward graduation. [FIRM]
+    if (row.cleanStreak !== 0) {
+      return mkFail('checkpoint-invariant', 'srs.cleanStreak', `initial enrollment row cleanStreak must be 0, got ${safeDiag(row.cleanStreak)}`);
+    }
+    // (4) scheduleRevision / targetRevision / configVersion — MUST be non-negative integers. srsTypes.ts
+    //     :73 ("Monotonic local/CAS revision"), :72-73 ("Identity/source revision … append-only …
+    //     advances this"), :81 ("Configuration applied at the last scheduling event"): all three are
+    //     monotonic whole-number counters that only ever advance (scheduler.ts `buildActiveNext` does
+    //     `scheduleRevision + 1`). A negative or fractional value is not a valid counter state; the
+    //     reviewer's `scheduleRevision:-9` probe lives here. [AMBIGUOUS base: the contracts do NOT pin
+    //     the exact initial base — scheduler.ts step 8 requires only that a first attempt's frozen
+    //     snapshot match the row, so the kernel accepts any finite base — therefore the strictest
+    //     kernel-accepted reading (a non-negative integer counter) is enforced rather than a specific
+    //     base; flagged for D1.]
+    for (const f of ['scheduleRevision', 'targetRevision', 'configVersion'] as const) {
+      const n = row[f] as number; // finite number guaranteed by the shape validator above
+      if (!Number.isInteger(n) || n < 0) {
+        return mkFail('checkpoint-invariant', `srs.${f}`, `initial enrollment row ${f} must be a non-negative integer, got ${safeDiag(row[f])}`);
+      }
+    }
+    // (5) lastCompletedAt — MUST be null. srsTypes.ts:86-87 ("Last completed scored attempt … or null
+    //     before the first completion"): a brand-new enrollment has completed no attempt, so non-null
+    //     prior-completion history on an "initial" row is fabricated (the reviewer's arbitrary-dueAt-
+    //     with-history and prior-completion probes). [FIRM]
+    if (row.lastCompletedAt !== null) {
+      return mkFail('checkpoint-invariant', 'srs.lastCompletedAt', `initial enrollment row lastCompletedAt must be null (no completion precedes enrollment), got ${safeDiag(row.lastCompletedAt)}`);
+    }
+    // (6) lastAttemptId — MUST be null. srsTypes.ts:88-95 ("The idempotency key of the last attempt
+    //     applied to this row … or null before the first applied completion"): no attempt has been
+    //     applied to a brand-new row. scheduler.ts step 5 keys the idempotent-duplicate check on
+    //     `lastAttemptId`, so a fabricated non-null id could mis-mark the first genuine attempt. [FIRM]
+    if (row.lastAttemptId !== null) {
+      return mkFail('checkpoint-invariant', 'srs.lastAttemptId', `initial enrollment row lastAttemptId must be null (no attempt applied before enrollment), got ${safeDiag(row.lastAttemptId)}`);
+    }
+    // (7) dueAt — active rows carry a concrete finite instant (srsTypes.ts:100-105 "Non-null for active
+    //     rows"), already enforced by the shape validator for the active status above. NO initial-VALUE
+    //     constraint is imposed: scheduler.ts step 8 requires only that a first attempt's frozen snapshot
+    //     dueAt EQUAL the row's dueAt, so the kernel accepts ANY finite initial dueAt (a caller may
+    //     schedule a fresh target due-now or into the future). [GENUINELY AMBIGUOUS — whether enrollment
+    //     may caller-schedule the initial dueAt is a product-contract question the sealed contracts do
+    //     not answer; the strictest kernel-accepted reading is "finite" (already enforced); NOT invented
+    //     as a value rule; flagged for D1.] enrolledAt/updatedAt finiteness is likewise already enforced
+    //     by the shape validator (srsTypes.ts:84, :97) with no further sealed-contract initial constraint.
+    return null;
+  } catch (e) {
+    return mkFail('not-an-object', 'srs', `unexpected initial enrollment validation error: ${classifyStudyError(e)}`);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2641,9 +2759,20 @@ export async function completeStudySrsAttempt(
       resolve(rejectedService('transaction-failed', `could not open transaction: ${classifyStudyError(e)}`));
       return;
     }
-    const attemptsStore = tx.objectStore('study-practice-attempts');
-    const srsStore = tx.objectStore('study-practice-srs');
-    const sessionsStore = tx.objectStore('study-practice-sessions');
+    // Guard the object-store acquisitions (B4BF11 LOW sweep — same class as the enrollment seam). A
+    // missing/renamed expected store makes `tx.objectStore()` throw NotFoundError; convert it to a typed
+    // `transaction-failed` instead of a raw reject. No request has been issued yet, so nothing committed.
+    let attemptsStore: IDBObjectStore;
+    let srsStore: IDBObjectStore;
+    let sessionsStore: IDBObjectStore;
+    try {
+      attemptsStore = tx.objectStore('study-practice-attempts');
+      srsStore = tx.objectStore('study-practice-srs');
+      sessionsStore = tx.objectStore('study-practice-sessions');
+    } catch (e) {
+      resolve(rejectedService('transaction-failed', `could not acquire a practice object store: ${classifyStudyError(e)}`));
+      return;
+    }
 
     const duplicateResult = (): SrsAttemptServiceResult =>
       rejectedService('duplicate', `attempt "${attempt.attemptId}" already exists; nothing changed`);
@@ -3083,9 +3212,14 @@ function canonicalizeEnrollInput(input: EnrollStudyPracticeLessonInput): EnrollC
   }
   deepFreeze(decisions);
 
-  // (3) srsRows — read once, clone the WHOLE array as ONE graph, own-key-exact + per-element valid via
-  //     the SAME total stored-schedule validator the completion read boundary uses (rule-4: validate
-  //     caller-supplied enrollment state; never fabricate it).
+
+
+
+
+
+
+
+
   let srsRows: SrsScheduleRecord[];
   try {
     srsRows = structuredClone(input.srsRows) as SrsScheduleRecord[];
@@ -3100,15 +3234,23 @@ function canonicalizeEnrollInput(input: EnrollStudyPracticeLessonInput): EnrollC
     return { ok: false, rejection: rejectedEnrollment('invalid', `srsRows array invalid at ${srsKeyFail.path}: ${srsKeyFail.reason}`) };
   }
   for (let i = 0; i < srsRows.length; i++) {
-    const f = validateStoredScheduleRow(srsRows[i]);
+    const f = validateInitialEnrollmentRow(srsRows[i]);
     if (f) return { ok: false, rejection: rejectedEnrollment('invalid', `initial SRS row [${i}] failed validation at ${f.path}: ${f.reason}`) };
   }
   deepFreeze(srsRows);
 
-  // (4) Cross-row coherence (pre-transaction): every decision belongs to this lesson; every initial SRS
-  //     row's targetId is one of the decisions' ids AND its lessonId matches the lesson (so the
-  //     `lessonId`/`lessonId_dueAt` indexes are coherent). Duplicate ids WITHIN the input are caught at
-  //     the add() append boundary (whole-transaction abort), so this stays a pure identity-linkage check.
+
+
+
+
+
+
+
+
+
+
+
+
   const decisionIds = new Set<string>();
   for (const d of decisions) {
     if (d.lessonId !== lesson.lessonId) {
@@ -3173,9 +3315,21 @@ export async function enrollStudyPracticeLesson(
       resolve(rejectedEnrollment('transaction-failed', `could not open transaction: ${classifyStudyError(e)}`));
       return;
     }
-    const lessonsStore = tx.objectStore('study-practice-lessons');
-    const decisionsStore = tx.objectStore('study-practice-decisions');
-    const srsStore = tx.objectStore('study-practice-srs');
+    // Guard the object-store acquisitions (B4BF11 LOW). A missing/renamed expected store makes
+    // `tx.objectStore()` throw NotFoundError; outside a guard that raw-rejects the enrollment promise
+    // instead of the service's typed result. Convert it to a typed `transaction-failed` — no add() has
+    // been issued yet, so nothing committed.
+    let lessonsStore: IDBObjectStore;
+    let decisionsStore: IDBObjectStore;
+    let srsStore: IDBObjectStore;
+    try {
+      lessonsStore = tx.objectStore('study-practice-lessons');
+      decisionsStore = tx.objectStore('study-practice-decisions');
+      srsStore = tx.objectStore('study-practice-srs');
+    } catch (e) {
+      resolve(rejectedEnrollment('transaction-failed', `could not acquire a practice object store: ${classifyStudyError(e)}`));
+      return;
+    }
 
     const duplicateResult = (): EnrollStudyPracticeLessonResult =>
       rejectedEnrollment('duplicate', `${duplicateKey} already exists; nothing committed (append-only enrollment)`);
