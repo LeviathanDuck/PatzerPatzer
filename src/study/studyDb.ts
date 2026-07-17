@@ -2067,9 +2067,30 @@ export async function completeStudySrsAttempt(
   }
   const config = configValidation.config;
 
-  // openDb() is the ONLY await, and it happens BEFORE the transaction is created (memo risk 3: no
-  // unrelated promise is awaited once the transaction is live).
-  const db = await openDb();
+
+
+
+
+  const nonEmptyString = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+  if (!nonEmptyString(attempt?.attemptId)) {
+    return rejectedService('invalid', 'attempt.attemptId must be a non-empty string');
+  }
+  if (!nonEmptyString(attempt?.targetId)) {
+    return rejectedService('invalid', 'attempt.targetId must be a non-empty string');
+  }
+  if (!nonEmptyString(attempt?.sessionId)) {
+    return rejectedService('invalid', 'attempt.sessionId must be a non-empty string');
+  }
+
+
+
+
+  let db: IDBDatabase;
+  try {
+    db = await openDb();
+  } catch (e) {
+    return rejectedService('db-open-failed', `could not open study database: ${classifyStudyError(e)}`);
+  }
 
   return new Promise<SrsAttemptServiceResult>((resolve) => {
     // A DECIDED rejection (from abortWith) resolves from any terminal event. The APPLIED result is
@@ -2160,11 +2181,20 @@ export async function completeStudySrsAttempt(
       proceed();
     };
 
-    const getSrsReq = srsStore.get(attempt.targetId);
+
+
+
+    let getSrsReq: IDBRequest;
+    let getSessReq: IDBRequest;
+    try {
+      getSrsReq = srsStore.get(attempt.targetId);
+      getSessReq = sessionsStore.get(attempt.sessionId);
+    } catch (e) {
+      abortWith(rejectedService('transaction-failed', `read issuance threw: ${classifyStudyError(e)}`));
+      return;
+    }
     getSrsReq.onsuccess = () => { current = getSrsReq.result as SrsScheduleRecord | undefined; pendingReads -= 1; maybeProceed(); };
     getSrsReq.onerror = () => abortWith(rejectedService('transaction-failed', `srs read failed: ${getSrsReq.error?.name ?? 'UnknownError'}`));
-
-    const getSessReq = sessionsStore.get(attempt.sessionId);
     getSessReq.onsuccess = () => { sessionRaw = getSessReq.result; pendingReads -= 1; maybeProceed(); };
     getSessReq.onerror = () => abortWith(rejectedService('transaction-failed', `session read failed: ${getSessReq.error?.name ?? 'UnknownError'}`));
 
@@ -2203,8 +2233,16 @@ export async function completeStudySrsAttempt(
       }
 
       // --- Sealed pure transition kernel (synchronous by contract). The completing target's schedule
-      //     decision is authoritative here: any non-applied outcome aborts with zero writes. ---
-      const transition = transitionSchedule(current, attempt, config);
+      //     decision is authoritative here: any non-applied outcome aborts with zero writes. Although the
+      //     kernel is contracted total, a defensive guard turns any synchronous throw into a typed abort
+      //     (rolling back the queued attempt append) rather than an escaping raw rejection (F1 1b). ---
+      let transition: ReturnType<typeof transitionSchedule>;
+      try {
+        transition = transitionSchedule(current, attempt, config);
+      } catch (e) {
+        abortWith(rejectedService('transaction-failed', `kernel threw: ${classifyStudyError(e)}`));
+        return;
+      }
       if (transition.outcome !== 'applied') {
         // 'duplicate' here is the in-record lastAttemptId signal (the attempt row was somehow missing
         // yet the SRS already names it) — still a no-op; 'stale'/'inactive'/'invalid' reject likewise.
@@ -2225,7 +2263,15 @@ export async function completeStudySrsAttempt(
 
       const finishApply = (): void => {
         if (decided) return;
-        const revalidation = revalidateTraversalPlan(plan, liveMap, currentSourceById);
+
+
+        let revalidation: ReturnType<typeof revalidateTraversalPlan>;
+        try {
+          revalidation = revalidateTraversalPlan(plan, liveMap, currentSourceById);
+        } catch (e) {
+          abortWith(rejectedService('transaction-failed', `plan revalidation threw: ${classifyStudyError(e)}`));
+          return;
+        }
         const staleForCompleting = revalidation.invalidEntries.filter(e => e.targetId === attempt.targetId);
         if (staleForCompleting.length > 0) {
           abortWith(rejectedService('plan-stale', `plan revalidation invalidated completing target: ${staleForCompleting.map(e => e.reason).join('; ')}`, {
@@ -2234,46 +2280,56 @@ export async function completeStudySrsAttempt(
           return;
         }
 
-        // Advance the checkpoint: cursor + one, append the scored target, append the applied attempt id.
-        const progress = session.progress;
-        const nextProgress: SrsSessionProgress = {
-          entryCursor: progress.entryCursor + 1,
-          completedTargetIds: [...progress.completedTargetIds, attempt.targetId],
-          appliedAttemptIds: [...progress.appliedAttemptIds, attempt.attemptId],
-        };
-        const allDone = nextProgress.entryCursor === session.targetCount;
-        const nextSession: SrsPracticeSessionRow = {
-          ...session,
-          state: allDone ? 'completed' : 'active',
-          updatedAt: now,
-          progress: nextProgress,
-        };
 
-        // Same-transaction writes: advanced SRS row + advanced session checkpoint. The attempt was
-        // already appended in step 1. tx.oncomplete resolves the applied result once all three commit.
+
+
+
         try {
+          const progress = session.progress;
+          const nextProgress: SrsSessionProgress = {
+            entryCursor: progress.entryCursor + 1,
+            completedTargetIds: [...progress.completedTargetIds, attempt.targetId],
+            appliedAttemptIds: [...progress.appliedAttemptIds, attempt.attemptId],
+          };
+          const allDone = nextProgress.entryCursor === session.targetCount;
+          const nextSession: SrsPracticeSessionRow = {
+            ...session,
+            state: allDone ? 'completed' : 'active',
+            updatedAt: now,
+            progress: nextProgress,
+          };
+
+          // Same-transaction writes: advanced SRS row + advanced session checkpoint. The attempt was
+          // already appended in step 1. tx.oncomplete resolves the applied result once all three commit.
           srsStore.put(asPersistableScheduleRecord(next));
           sessionsStore.put(nextSession);
+          // Stage (do not resolve) the applied result: tx.oncomplete resolves it only if BOTH writes
+          // commit; a later abort discards it and yields 'transaction-failed'.
+          appliedResult = { outcome: 'applied', nextSchedule: next, nextSession };
         } catch (e) {
-          abortWith(rejectedService('transaction-failed', `checkpoint write threw: ${classifyStudyError(e)}`));
+          abortWith(rejectedService('transaction-failed', `checkpoint construction/write threw: ${classifyStudyError(e)}`));
           return;
         }
-        // Stage (do not resolve) the applied result: tx.oncomplete resolves it only if BOTH writes
-        // commit; a later abort discards it and yields 'transaction-failed'.
-        appliedResult = { outcome: 'applied', nextSchedule: next, nextSession };
       };
 
       if (otherTargetIds.length === 0) { finishApply(); return; }
       let pendingOther = otherTargetIds.length;
-      for (const id of otherTargetIds) {
-        const req = srsStore.get(id);
-        req.onsuccess = () => {
-          const row = req.result as SrsScheduleRecord | undefined;
-          if (row) liveMap.set(id, row);
-          pendingOther -= 1;
-          if (pendingOther === 0) finishApply();
-        };
-        req.onerror = () => abortWith(rejectedService('transaction-failed', `live schedule read failed for "${id}": ${req.error?.name ?? 'UnknownError'}`));
+
+
+      try {
+        for (const id of otherTargetIds) {
+          const req = srsStore.get(id);
+          req.onsuccess = () => {
+            const row = req.result as SrsScheduleRecord | undefined;
+            if (row) liveMap.set(id, row);
+            pendingOther -= 1;
+            if (pendingOther === 0) finishApply();
+          };
+          req.onerror = () => abortWith(rejectedService('transaction-failed', `live schedule read failed for "${id}": ${req.error?.name ?? 'UnknownError'}`));
+        }
+      } catch (e) {
+        abortWith(rejectedService('transaction-failed', `live schedule read issuance threw: ${classifyStudyError(e)}`));
+        return;
       }
     }
   });

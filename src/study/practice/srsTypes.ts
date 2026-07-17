@@ -762,6 +762,9 @@ export type SrsAttemptServiceOutcome =
   /** Service: the sealed B3 real-map revalidation invalidated the completing target's plan entry (the
    *  frozen plan no longer matches the live schedule/source). Zero writes. */
   | 'plan-stale'
+  /** Service: the IndexedDB database could not be opened/upgraded (open or versionchange failure) BEFORE
+   *  any transaction was created. Zero writes — no transaction ever existed. */
+  | 'db-open-failed'
   /** Service: the IndexedDB transaction errored/aborted (raw storage failure). Zero committed writes. */
   | 'transaction-failed';
 
