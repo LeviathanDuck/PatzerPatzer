@@ -1390,6 +1390,14 @@ async function practiceAdd(
     };
     tx.oncomplete = () => resolve({ duplicate });
     tx.onerror = () => {
+
+
+
+
+
+
+
+      if (duplicate) return;
       recordStudyTxFail(tx, 'onerror', 'add');
       reject(tx.error);
     };
@@ -1629,9 +1637,23 @@ export async function listDuePracticeSrs(params: {
 export async function savePracticeAttempt(
   attempt: SrsAttemptRecord,
 ): Promise<SrsPersistenceResult<SrsAttemptRecord>> {
-  const { duplicate } = await practiceAdd('study-practice-attempts', asPersistableAttemptRecord(attempt));
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const { attemptId, ...rest } = asPersistableAttemptRecord(attempt);
+  const { duplicate } = await practiceAdd('study-practice-attempts', { attemptId, ...rest });
   if (duplicate) {
-    return { ok: false, failure: mkFail('duplicate-identity', 'attempt.attemptId', `attempt "${safeDiag(attempt.attemptId)}" already exists; append-only store never overwrites`) };
+    return { ok: false, failure: mkFail('duplicate-identity', 'attempt.attemptId', `attempt "${safeDiag(attemptId)}" already exists; append-only store never overwrites`) };
   }
   return { ok: true, value: attempt };
 }
