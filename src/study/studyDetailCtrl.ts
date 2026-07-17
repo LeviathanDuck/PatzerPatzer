@@ -12,21 +12,23 @@
 
 import { pgnToTree } from '../tree/pgn';
 import { nodeAtPath, addNode, pathInit, pathLast } from '../tree/ops';
-import { getStudy, saveStudy } from './studyDb';
+import { getStudy, saveStudyStrict } from './studyDb';
 import { replaceHashRoute } from '../router';
 import { setOrientation } from '../board/index';
 import {
+  activeWorkspace,
   mountWorkspace,
   unmountWorkspace,
   type WorkspaceAdapter,
   type WorkspaceInstance,
 } from '../analyse/workspaceCore';
 import { createStudyBoardInputModule } from './studyBoardInput';
+import { syncStudyDetailItemToLibraryCache } from './studyCtrl';
 // studyBoardNavigate is a hoisted function declaration in studyDetailView.ts (which already imports
 // from this file). Importing it back completes a module cycle, but that is safe here: it is only
 // READ at move-dispatch call time, never during module evaluation, and function bindings are
 // initialized during ESM instantiation (no TDZ).
-import { studyBoardNavigate } from './studyDetailView';
+import { studyBoardNavigate, syncStudyBoard } from './studyDetailView';
 import {
   parseStudyDetailRouteState,
   resolveStudyDetailPath,
@@ -36,7 +38,8 @@ import {
 } from './detailRouteState';
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
-import { encodeLocalPgnComment, LOCAL_COMMENT_ID } from '../tree/commentIdentity';
+import { encodeLocalPgnComment, LOCAL_COMMENT_ID, sanitizePgnCommentText } from '../tree/commentIdentity';
+import type { CommentEditTarget } from './annotationCtrl';
 import { record, Severity } from '../diagnostics';
 import { WorkspaceSession } from '../analyse/workspaceSession';
 import { INITIAL_FEN } from 'chessops/fen';
@@ -97,6 +100,10 @@ let _loaded       = false;
 let _loadTargetId: string | null = null;
 let _loadRouteKey: string | null = null;
 let _autoSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let _changeRevision = 0;
+let _persistTail: Promise<void> = Promise.resolve();
+let _pendingPersist: Promise<void> | null = null;
+let _persistenceError: string | null = null;
 
 // --- Accessors ---
 
@@ -111,6 +118,11 @@ export function detailOrientation(): 'white' | 'black' { return _orientation; }
 export function detailLoaded(): boolean { return _loaded; }
 export function detailLoadTargetId(): string | null { return _loadTargetId; }
 export function detailLoadRouteKey(): string | null { return _loadRouteKey; }
+export function studyPersistenceError(): string | null { return _persistenceError; }
+
+export function rememberStudyDetailRouteQuery(id: string, query: string): void {
+  if (_study?.id === id) _loadRouteKey = `${id}?${query}`;
+}
 
 export function studyDetailRouteSnapshot(): StudyDetailRouteState {
   return { path: _session?.path ?? '', orientation: _orientation };
@@ -170,19 +182,47 @@ export function cancelStudyDetailRouteHydration(): void {
 export function hydrateStudyDetailRoute(id: string, query: string, redraw: () => void): void {
   const run = ++_studyDetailHydrationRun;
   const parsed = parseStudyDetailRouteState(query);
-  // A local move-navigation route write can arrive before the debounced annotation autosave.
-  // Flush the current tree first so rehydration cannot replace a freshly edited comment/glyph
-  // with the older IndexedDB copy.
-  const pendingPersist = persistStudy();
-  _loaded = false;
+  const retainedRouteQuery = _loadRouteKey?.includes('?')
+    ? _loadRouteKey.slice(_loadRouteKey.indexOf('?') + 1)
+    : '';
+  const retainedRouteState = parseStudyDetailRouteState(retainedRouteQuery).state;
   _loadTargetId = id;
   _loadRouteKey = `${id}?${query}`;
-  _study   = null;
-  _session = null;
-  _dirty   = false;
+
+  // Path/orientation changes within the mounted Study are P0 navigation. Apply them directly to
+  // the live session; never reload the same PGN from IDB or wait for persistence.
+  if (_study?.id === id && _session) {
+    // SPA route exit can leave this Study session retained while Analysis supersedes the shared
+    // workspace. Re-entering the same Study must re-mount its adapter before touching the board.
+    if (!_workspaceInstance || activeWorkspace() !== _workspaceInstance) mountStudyWorkspace(redraw);
+    const recovery = resolveStudyDetailPath(_session.root, parsed.state.path);
+    _session.setPath(recovery.resolvedPath);
+    setStudyDetailOrientation(parsed.state.orientation);
+    syncStudyBoard(redraw);
+    _loaded = true;
+    const canonicalState = { ...studyDetailRouteSnapshot(), tools: parsed.state.tools ?? false, toolTab: parsed.state.toolTab ?? '' };
+    const canonicalRoute = serializeStudyDetailRouteState(id, canonicalState);
+    const needsCanonicalCleanup = parsed.canonical.hadUnknownParams || parsed.canonical.hadDuplicateParams || parsed.canonical.hadInvalidParams || recovery.status === 'deepest-valid' || recovery.status === 'invalid' || (parsed.state.path && recovery.resolvedPath !== parsed.state.path) || window.location.hash !== canonicalRoute;
+    if (needsCanonicalCleanup && window.location.hash.startsWith(`#/study/${encodeURIComponent(id)}`)) replaceHashRoute(canonicalRoute);
+    redraw();
+    return;
+  }
+
+  // A real source replacement waits for any dirty predecessor to commit. The old live session is
+  // retained until that succeeds, so a failed IDB write cannot erase the user's edit.
+  const pendingPersist = flushStudyDetailPersistence();
+  _loaded = false;
   clearTimeout(_autoSaveTimer);
 
-  void pendingPersist.then(() => getStudy(id)).then(item => {
+  void pendingPersist.then(() => {
+    if (run !== _studyDetailHydrationRun) return undefined;
+    _study = null;
+    _session = null;
+    _dirty = false;
+    _changeRevision = 0;
+    _persistenceError = null;
+    return getStudy(id);
+  }).then(item => {
     if (run !== _studyDetailHydrationRun) return;
     if (!item) {
       recordStudyRouteEmpty();
@@ -226,6 +266,22 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
     redraw();
   }).catch(e => {
     if (run !== _studyDetailHydrationRun) return;
+    if (_study && _session && _persistenceError) {
+      // Fail closed on source replacement: keep the dirty Study and restore its own URL. Never
+      // render/edit Study A under Study B's route after B could not safely replace A.
+      const retainedRoute = serializeStudyDetailRouteState(_study.id, {
+        ...studyDetailRouteSnapshot(),
+        tools: retainedRouteState.tools ?? false,
+        toolTab: retainedRouteState.toolTab ?? '',
+      });
+      const retainedQuery = retainedRoute.includes('?') ? retainedRoute.slice(retainedRoute.indexOf('?') + 1) : '';
+      _loadTargetId = _study.id;
+      _loadRouteKey = `${_study.id}?${retainedQuery}`;
+      _loaded = true;
+      if (window.location.hash !== retainedRoute) replaceHashRoute(retainedRoute);
+      redraw();
+      return;
+    }
     recordStudyLoadFail(e);
     recordStudyRouteEmpty();
     _loaded = true;
@@ -366,20 +422,59 @@ export function flipStudyBoard(redraw: () => void): void {
 
 function scheduleAutoSave(): void {
   clearTimeout(_autoSaveTimer);
-  _autoSaveTimer = setTimeout(() => { void persistStudy(); }, 500);
+  _autoSaveTimer = setTimeout(() => { void persistStudy().catch(() => {}); }, 500);
 }
 
 export function markDirty(): void {
   _dirty = true;
+  ++_changeRevision;
+  _persistenceError = null;
   scheduleAutoSave();
 }
 
+function recordStudySaveFail(error: unknown): void {
+  record({
+    kind: 'idb', severity: Severity.Error, source: 'study/studyDetailCtrl',
+    sourceTag: 'study-save-fail', message: 'study-save-fail',
+    metadata: { errorClass: classifyStudyError(error), route: 'study-detail' },
+    redactionClass: 'safe',
+  });
+}
+
 async function persistStudy(): Promise<void> {
-  if (!_study || !_session || !_dirty) return;
+  if (!_study || !_session || !_dirty) return _pendingPersist ?? Promise.resolve();
+  clearTimeout(_autoSaveTimer);
+  const studyId = _study.id;
+  const revision = _changeRevision;
   const updated: StudyItem = { ..._study, pgn: buildStudyPgn(), updatedAt: Date.now() };
   _study = updated;
-  _dirty = false;
-  await saveStudy(updated);
+  // Publish the whole-record PGN to the library cache before any async boundary. Organize actions
+  // that run immediately after comment Save must merge their metadata into this newest PGN rather
+  // than cloning a stale cached StudyItem and overwriting the annotation transaction.
+  syncStudyDetailItemToLibraryCache(updated);
+  const operation = _persistTail.catch(() => {}).then(() => saveStudyStrict(updated)).then(() => {
+    if (_study?.id === studyId && _changeRevision === revision) _dirty = false;
+    if (_study?.id === studyId) _persistenceError = null;
+  }).catch(error => {
+    if (_study?.id === studyId) {
+      _dirty = true;
+      _persistenceError = classifyStudyError(error);
+    }
+    recordStudySaveFail(error);
+    throw error;
+  });
+  _persistTail = operation.catch(() => {});
+  _pendingPersist = operation;
+  void operation.then(
+    () => { if (_pendingPersist === operation) _pendingPersist = null; },
+    () => { if (_pendingPersist === operation) _pendingPersist = null; },
+  );
+  return operation;
+}
+
+export function flushStudyDetailPersistence(): Promise<void> {
+  clearTimeout(_autoSaveTimer);
+  return persistStudy();
 }
 
 
@@ -398,6 +493,22 @@ export function updateCurrentNodeComments(comments: import('../tree/types').Tree
   node.comments = comments;
   markDirty();
   redraw();
+}
+
+export function updateCommentAtTarget(target: CommentEditTarget, text: string, redraw: () => void): boolean {
+  if (!_study || !_session || _study.id !== target.studyId) return false;
+  const node = nodeAtPath(_session.root, target.path);
+  if (!node) return false;
+  const existing = node.comments ?? [];
+  node.comments = text === ''
+    ? existing.filter(comment => comment.id !== LOCAL_COMMENT_ID)
+    : existing.some(comment => comment.id === LOCAL_COMMENT_ID)
+      ? existing.map(comment => comment.id === LOCAL_COMMENT_ID ? { ...comment, text } : comment)
+      : [...existing, { id: LOCAL_COMMENT_ID, by: 'user', text }];
+  markDirty();
+  redraw();
+  void flushStudyDetailPersistence().then(redraw, redraw);
+  return true;
 }
 
 export function updateCurrentNodeShapes(shapes: import('../tree/types').Shape[], redraw: () => void): void {
@@ -444,6 +555,17 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean, pendingVariat
   const isWhite = node.ply % 2 === 1;
   let hasOwnAnnotation = false;
 
+  // Root-position comments belong before move 1. They are standard PGN initial comments and must
+  // not be hidden behind the move-only `node.san` branch.
+  if (!node.san) {
+    for (const c of node.comments ?? []) {
+      const text = sanitizePgnCommentText(c.text);
+      if (!text) continue;
+      const persistedText = c.id === LOCAL_COMMENT_ID ? encodeLocalPgnComment(text) : text;
+      parts.push(`{ ${persistedText} }`);
+    }
+  }
+
   if (node.san) {
     const moveNum = Math.ceil(node.ply / 2);
     if (isWhite || needsMoveNum) {
@@ -472,7 +594,7 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean, pendingVariat
     }
     if (metadataParts.length > 0) parts.push(`{ ${metadataParts.join(' ')} }`);
     for (const c of (node.comments ?? [])) {
-      const text = c.text.trim();
+      const text = sanitizePgnCommentText(c.text);
       if (!text) continue;
       const persistedText = c.id === LOCAL_COMMENT_ID ? encodeLocalPgnComment(text) : text;
       parts.push(`{ ${persistedText} }`);

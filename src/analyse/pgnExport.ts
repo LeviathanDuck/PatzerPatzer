@@ -18,7 +18,7 @@ import { clearPuzzleCandidates } from '../puzzles/extract';
 import type { ImportedGame } from '../import/types';
 import { nodeListAt, pathIsMainline } from '../tree/ops';
 import type { Shape, TreeNode, TreePath } from '../tree/types';
-import { encodeLocalPgnComment, LOCAL_COMMENT_ID } from '../tree/commentIdentity';
+import { encodeLocalPgnComment, LOCAL_COMMENT_ID, sanitizePgnCommentText } from '../tree/commentIdentity';
 import { buildQuestionnaireSummaryComment, serializeQuestionnaireTags } from './questionnaire/model';
 import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
 
@@ -53,11 +53,6 @@ function renderNagTokens(node: TreeNode): string[] {
     tokens.push(`$${id}`);
   }
   return tokens;
-}
-
-// PGN comment text must not contain braces — strip them like lila's PgnDump sanitizer.
-function sanitizeCommentText(text: string): string {
-  return text.replace(/[{}]/g, '').trim();
 }
 
 // Chessops' 4 standard drawable colors — matches the brush values written by both the
@@ -135,7 +130,7 @@ function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boole
   const commentBlocks: string[] = [];
   if (metadataParts.length > 0) commentBlocks.push(`{ ${metadataParts.join(' ')} }`);
   for (const c of node.comments ?? []) {
-    const text = sanitizeCommentText(c.text);
+    const text = sanitizePgnCommentText(c.text);
     if (!text) continue;
     const persistedText = c.id === LOCAL_COMMENT_ID ? encodeLocalPgnComment(text) : text;
     commentBlocks.push(`{ ${persistedText} }`);

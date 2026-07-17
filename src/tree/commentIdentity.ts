@@ -9,6 +9,16 @@ export const LOCAL_COMMENT_ID = 'user';
 export const LOCAL_COMMENT_BY = 'user';
 export const LOCAL_PGN_COMMENT_PREFIX = 'Patzer user comment:';
 
+/** PGN comment bodies cannot contain braces; match lila's dump sanitizer. */
+export function sanitizePgnCommentText(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[{}]/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .trim();
+}
+
 export function encodeLocalPgnComment(text: string): string {
   return `${LOCAL_PGN_COMMENT_PREFIX} ${text}`;
 }

@@ -572,6 +572,11 @@ export class StockfishProtocol {
    * Handle a raw UCI line from the engine.
    * Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts received
    */
+  /** Test-only public ingress used by controller harnesses that must preserve protocol phase. */
+  __ingestLineForTests(line: string): void {
+    this.received(line);
+  }
+
   private received(line: string): void {
     const parts = line.trim().split(/\s+/);
 
