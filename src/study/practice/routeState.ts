@@ -284,6 +284,56 @@ export function establishRouteDestination(route: Route, hostActive: boolean): vo
   _owner = destOwner;
 }
 
+/**
+ * Shared owner-invalidation primitive: invalidate every outstanding lease (bump generation) and drop
+ * the suspended ref/phase, then publish `nextOwner` (null clears ownership). The render-time reconciler
+ * below uses it for its owner-change / clear branches so the 4-way guarded commit rejects every lease
+ * captured against the previous owner. Synchronous/bounded.
+ */
+function invalidateAndPublishOwner(nextOwner: PracticeRouteOwner | null): void {
+  _generation += 1;
+  _owner = nextOwner;
+  _resumeRef = null;
+  _phase = 'active';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function reconcileRouteDestination(route: Route, exactHostReady: boolean): void {
+  const readyOwner = exactHostReady ? practiceRouteOwnerFromRoute(route) : null;
+  if (ownerKey(_owner) === ownerKey(readyOwner)) return;
+  if (_owner === null) {
+    _owner = readyOwner;
+    return;
+  }
+  invalidateAndPublishOwner(readyOwner);
+}
+
 // --- In-place Analysis interruption ----------------------------------------------------------------
 //
 // "Explore in Analysis" interrupts Practice WITHOUT leaving the Analysis route. This is NOT a route
