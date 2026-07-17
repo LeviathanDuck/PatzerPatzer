@@ -32,6 +32,8 @@ import {
   transitionSchedule,
 } from './practice/scheduler';
 import { revalidateTraversalPlan } from './practice/sessionBuilder';
+import { planLegacyMigration } from './practice/migration';
+import type { LegacyReviewedPathMapping, LegacyMigrationPlanResult } from './practice/migration';
 
 type StudyStoreName =
   | 'studies'
@@ -1636,6 +1638,40 @@ export async function listDuePracticeSrs(params: {
     db, 'study-practice-srs', 'dueAt', range, 'next', limit, acceptActiveDue,
   );
   return { ok: true, value };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function planStudyPracticeMigration(
+  mapping: LegacyReviewedPathMapping,
+): Promise<LegacyMigrationPlanResult> {
+  const legacyRecords = await listAllPositionProgress();
+  // Bounded existence probe over exactly the explicitly-mapped decision ids (mapping-sized, indexed
+  // primary-key gets), never an unbounded SRS scan.
+  const mappedTargetIds = new Set<string>();
+  for (const entry of mapping.entries) {
+    if (typeof entry?.decisionId === 'string' && entry.decisionId.length > 0) {
+      mappedTargetIds.add(entry.decisionId);
+    }
+  }
+  const alreadyEnrolledTargetIds: string[] = [];
+  for (const targetId of mappedTargetIds) {
+    const existing = await getPracticeSrs(targetId);
+    if (existing !== undefined) alreadyEnrolledTargetIds.push(targetId);
+  }
+  return planLegacyMigration({ legacyRecords, mapping, alreadyEnrolledTargetIds });
 }
 
 // --- study-practice-attempts (append-only) ---------------------------------
