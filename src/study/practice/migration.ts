@@ -22,6 +22,9 @@
 
 
 
+
+
+
 import type { PositionProgress } from '../types';
 
 // ===========================================================================
@@ -41,7 +44,13 @@ export interface LegacyReviewedPathEntry {
   readonly decisionId: string;
   /** Owning V2 lesson scope (the SRS `lessonId`). */
   readonly lessonId: string;
-  /** Explicit source/identity revision, when the mapping knows it. Absent → the base is deferred (0). */
+
+
+
+
+
+
+
   readonly targetRevision?: number;
   /**
    * NON-authoritative alternate position identities this decision is also known to match (a transposed
@@ -55,6 +64,32 @@ export interface LegacyReviewedPathEntry {
 /** The explicit reviewed-path mapping: the authoritative legacy-key -> V2-decision identity source. */
 export interface LegacyReviewedPathMapping {
   readonly entries: readonly LegacyReviewedPathEntry[];
+}
+
+
+
+
+
+/**
+ * One canonical V2 decision identity as it actually EXISTS in the decision store: the durable
+ * `decisionId` and its OWNING `lessonId`. This is the referential-integrity authority — the mapping is
+ * validated against it so no proposal is ever emitted for a decision that does not exist or that a
+ * mapping entry mis-attributes to the wrong lesson.
+ */
+export interface LegacyMigrationDecisionAuthorityEntry {
+  readonly decisionId: string;
+  readonly lessonId: string;
+}
+
+
+
+
+
+
+
+
+export interface LegacyMigrationDecisionAuthority {
+  readonly decisions: readonly LegacyMigrationDecisionAuthorityEntry[];
 }
 
 // ===========================================================================
@@ -72,6 +107,12 @@ export interface LegacyMigrationInput {
   readonly legacyRecords: readonly PositionProgress[];
   readonly mapping: LegacyReviewedPathMapping;
   readonly alreadyEnrolledTargetIds: readonly string[];
+
+
+
+
+
+  readonly decisionAuthority: LegacyMigrationDecisionAuthority;
 }
 
 // ===========================================================================
@@ -86,28 +127,35 @@ export type LegacyMigrationClassification =
   | 'reset'
   | 'already-migrated';
 
-/**
- * The proposed V2 enrollment shape for an exact/reset record. Deliberately a PARTIAL, planner-local
- * shape — NOT an `SrsScheduleRecord`. The planner constructs no full SRS row: it pins only the
- * legacy-INDEPENDENT, deterministic enrollment fields and DEFERS every clock/config-derived field to
- * the enrollment service at apply time. This is the F12 precedent's per-field reading:
- *
- *   status      = 'active'  [FIRM]  srsTypes.ts:30/:84 + scheduler.ts step 6 — a fresh target must be
- *                                   schedulable; a non-active initial row never advances.
- *   stepIndex   = 0         [FIRM]  srsTypes.ts:82 — a never-reviewed target sits at the ladder floor.
- *   cleanStreak = 0         [FIRM]  srsTypes.ts:83 — no completion history ⇒ no consecutive-clean count;
- *                                   scheduler.ts buildActiveNext does `current.cleanStreak + 1`.
- *   lastCompletedAt = null  [FIRM, rule 3]  srsTypes.ts:86-87 — no attempt completed; a legacy
- *                                   `lastAttemptAt` is NOT carried (no fabricated completion history).
- *   lastAttemptId   = null  [FIRM]  srsTypes.ts:88-95 — no attempt applied; scheduler.ts step 5 keys
- *                                   idempotency on `lastAttemptId`.
- *
- * DEFERRED fields (rule 3, F12): `scheduleRevision`/`targetRevision`/`configVersion` bases, `configId`,
- * `dueAt`, `enrolledAt`, `updatedAt` are NOT emitted. scheduler.ts step 8 requires only that a first
- * attempt's frozen snapshot equal the row, so the kernel accepts any finite base/dueAt — therefore the
- * planner refuses to pick one from a legacy timestamp and leaves them to the apply clock/config. This
- * is what makes `dueAt` provably un-fabricated: the plan carries no legacy-derived due instant at all.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export interface LegacyEnrollmentProposal {
   readonly targetId: string;
   readonly lessonId: string;
@@ -232,8 +280,12 @@ export type LegacyMigrationFailureCode =
   | 'not-an-object'
   | 'missing-required-string'
   | 'non-finite-number'
+  | 'out-of-domain'
   | 'duplicate-identity'
-  | 'invalid-mapping';
+  | 'invalid-mapping'
+  | 'capture-failed'
+  | 'unknown-decision'
+  | 'lesson-mismatch';
 
 export interface LegacyMigrationFailure {
   readonly code: LegacyMigrationFailureCode;
@@ -277,6 +329,55 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+
+
+
+
+
+
+
+function isNonNegativeSafeInteger(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+}
+
+/** Legacy `PositionProgress.level` domain ceiling (types.ts: `level: number; // 0–6`). */
+const LEGACY_LEVEL_MAX = 6;
+
+type LegacyNumericDomain = 'counter' | 'level' | 'timestamp';
+
+
+
+
+
+
+
+
+
+
+function validateLegacyNumeric(v: unknown, domain: LegacyNumericDomain, path: string): LegacyMigrationFailure | null {
+  if (!isFiniteNumber(v)) {
+    return fail('non-finite-number', path, `legacy record ${path} must be a finite number, got ${safeDiag(v)}`);
+  }
+  switch (domain) {
+    case 'counter':
+      if (!isNonNegativeSafeInteger(v)) {
+        return fail('out-of-domain', path, `legacy counter must be a non-negative safe integer, got ${safeDiag(v)}`);
+      }
+      break;
+    case 'level':
+      if (!isNonNegativeSafeInteger(v) || v > LEGACY_LEVEL_MAX) {
+        return fail('out-of-domain', path, `legacy level must be an integer within 0..${LEGACY_LEVEL_MAX}, got ${safeDiag(v)}`);
+      }
+      break;
+    case 'timestamp':
+      if (v < 0) {
+        return fail('out-of-domain', path, `legacy timestamp (epoch ms) must be non-negative, got ${safeDiag(v)}`);
+      }
+      break;
+  }
+  return null;
+}
+
 /** Byte-stable code-unit string comparison (locale-independent, unlike `localeCompare`). */
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -298,15 +399,21 @@ interface CanonicalLegacyRecord {
   readonly lastAttemptAt: number;
 }
 
-const LEGACY_NUMERIC_FIELDS = [
-  'level',
-  'nextDueAt',
-  'attempts',
-  'correct',
-  'incorrect',
-  'streak',
-  'lastAttemptAt',
-] as const;
+const LEGACY_NUMERIC_FIELDS: ReadonlyArray<readonly [keyof CanonicalLegacyRecord, LegacyNumericDomain]> = [
+  ['level', 'level'],
+  ['nextDueAt', 'timestamp'],
+  ['attempts', 'counter'],
+  ['correct', 'counter'],
+  ['incorrect', 'counter'],
+  ['streak', 'counter'],
+  ['lastAttemptAt', 'timestamp'],
+];
+
+
+
+
+
+
 
 function canonicalizeLegacyRecord(
   raw: unknown,
@@ -320,12 +427,11 @@ function canonicalizeLegacyRecord(
     return { ok: false, failure: fail('missing-required-string', `${path}.key`, 'legacy record key (normalized FEN) is missing/empty') };
   }
   const nums: Record<string, number> = {};
-  for (const f of LEGACY_NUMERIC_FIELDS) {
+  for (const [f, domain] of LEGACY_NUMERIC_FIELDS) {
     const v = raw[f];
-    if (!isFiniteNumber(v)) {
-      return { ok: false, failure: fail('non-finite-number', `${path}.${f}`, `legacy record ${f} must be a finite number, got ${safeDiag(v)}`) };
-    }
-    nums[f] = v;
+    const failure = validateLegacyNumeric(v, domain, `${path}.${f}`);
+    if (failure) return { ok: false, failure };
+    nums[f] = v as number;
   }
   const record: CanonicalLegacyRecord = Object.freeze({
     key,
@@ -366,8 +472,11 @@ function canonicalizeMappingEntry(
   }
   let targetRevision: number | null = null;
   if (raw.targetRevision !== undefined) {
-    if (!isFiniteNumber(raw.targetRevision)) {
-      return { ok: false, failure: fail('non-finite-number', `${path}.targetRevision`, `targetRevision, when set, must be a finite number, got ${safeDiag(raw.targetRevision)}`) };
+
+
+
+    if (!isNonNegativeSafeInteger(raw.targetRevision)) {
+      return { ok: false, failure: fail('out-of-domain', `${path}.targetRevision`, `targetRevision, when set, must be a non-negative safe integer (B4 counter domain), got ${safeDiag(raw.targetRevision)}`) };
     }
     targetRevision = raw.targetRevision;
   }
@@ -421,14 +530,17 @@ function buildProposal(entry: CanonicalMappingEntry): LegacyEnrollmentProposal {
   });
 }
 
-/**
- * A legacy record "carries learned progress" — and therefore cannot migrate losslessly — when it shows
- * ANY evidence of prior mastery or scheduling: a non-floor ladder level, a positive consecutive-clean
- * streak, any attempt/correct/incorrect count, or a set next-due instant. Such a record's identity may
- * migrate (via the explicit mapping) but its state is dropped and the target is RESET. A pristine
- * record (all zero) migrates EXACT because there is no learned state to lose. This is the sole
- * exact-vs-reset discriminator; it never transfers mastery either way (rule 2/3).
- */
+
+
+
+
+
+
+
+
+
+
+
 function carriesLearnedProgress(r: CanonicalLegacyRecord): boolean {
   return (
     r.level > 0 ||
@@ -436,7 +548,8 @@ function carriesLearnedProgress(r: CanonicalLegacyRecord): boolean {
     r.attempts > 0 ||
     r.correct > 0 ||
     r.incorrect > 0 ||
-    r.nextDueAt > 0
+    r.nextDueAt > 0 ||
+    r.lastAttemptAt > 0
   );
 }
 
@@ -445,11 +558,51 @@ function carriesLearnedProgress(r: CanonicalLegacyRecord): boolean {
  * yields a byte-identical plan (entries are sorted by `legacyKey`). Zero writes. Every failure is
  * typed (rule 6).
  */
-export function planLegacyMigration(input: LegacyMigrationInput): LegacyMigrationPlanResult {
+export function planLegacyMigration(rawInput: LegacyMigrationInput): LegacyMigrationPlanResult {
+
+
+
+
+
+
+  let input: LegacyMigrationInput;
+  try {
+    input = structuredClone(rawInput);
+  } catch (e) {
+    return { ok: false, failure: fail('capture-failed', 'input', `migration input could not be snapshotted (hostile getter / uncloneable value): ${safeDiag(e)}`) };
+  }
   if (!isPlainObject(input)) {
     return { ok: false, failure: fail('not-an-object', 'input', 'migration input is not a plain object') };
   }
-  const { legacyRecords, mapping, alreadyEnrolledTargetIds } = input;
+  const { legacyRecords, mapping, alreadyEnrolledTargetIds, decisionAuthority } = input;
+
+  // --- canonicalize the decision/lesson referential-integrity authority (finding 2) ---------------
+  // decisionId -> owning lessonId. The mapping is validated against this: a mapping target must EXIST
+  // and its declared lessonId must match the authority's owning lesson before any proposal is emitted.
+  if (!isPlainObject(decisionAuthority)) {
+    return { ok: false, failure: fail('not-an-object', 'input.decisionAuthority', 'decisionAuthority is required and must be a plain object') };
+  }
+  if (!Array.isArray(decisionAuthority.decisions)) {
+    return { ok: false, failure: fail('not-an-array', 'input.decisionAuthority.decisions', 'decisionAuthority.decisions is not an array') };
+  }
+  const authorityLessonByDecisionId = new Map<string, string>();
+  for (let i = 0; i < decisionAuthority.decisions.length; i += 1) {
+    const rawDecision = decisionAuthority.decisions[i];
+    const path = `input.decisionAuthority.decisions[${i}]`;
+    if (!isPlainObject(rawDecision)) {
+      return { ok: false, failure: fail('not-an-object', path, 'authority decision is not a plain object') };
+    }
+    if (!isNonEmptyString(rawDecision.decisionId)) {
+      return { ok: false, failure: fail('missing-required-string', `${path}.decisionId`, 'authority decisionId is missing/empty') };
+    }
+    if (!isNonEmptyString(rawDecision.lessonId)) {
+      return { ok: false, failure: fail('missing-required-string', `${path}.lessonId`, 'authority lessonId is missing/empty') };
+    }
+    if (authorityLessonByDecisionId.has(rawDecision.decisionId)) {
+      return { ok: false, failure: fail('duplicate-identity', `${path}.decisionId`, `duplicate authority decisionId "${safeDiag(rawDecision.decisionId)}" (the decision store's primary key must be unique)`) };
+    }
+    authorityLessonByDecisionId.set(rawDecision.decisionId, rawDecision.lessonId);
+  }
 
   // --- canonicalize the explicit mapping (authoritative identity source) --------------------------
   if (!isPlainObject(mapping)) {
@@ -461,6 +614,16 @@ export function planLegacyMigration(input: LegacyMigrationInput): LegacyMigratio
   // legacyKey -> mapping entry (authoritative). equivalence key -> set of decision ids (advisory).
   const byLegacyKey = new Map<string, CanonicalMappingEntry>();
   const equivalenceIndex = new Map<string, string[]>();
+  // Referential integrity (finding 2): each decisionId may be targeted by AT MOST ONE mapping entry.
+  // CHOICE 1 (documented): a two-keys-one-decision collision is a TYPED classification failure that
+  // fails the whole plan (`duplicate-identity`), NOT a dedicated "conflict" bucket. Rationale: the
+  // mapping is authored upstream (D1) as one authoritative unit; an internally self-contradictory
+  // mapping (two legacy keys claiming the same durable decision identity) is a data-integrity defect of
+  // the same class as the existing duplicate-legacyKey rejection, and a plan built on a contradictory
+  // authority is not trustworthy. Failing fast keeps the plan DETERMINISTIC (a plan is either fully
+  // valid or a typed failure — never a partial plan silently dropping conflicted entries) and HONEST
+  // (the exact colliding entry + decisionId is surfaced on the typed path). No proposal is emitted.
+  const mappedDecisionIds = new Set<string>();
   for (let i = 0; i < mapping.entries.length; i += 1) {
     const res = canonicalizeMappingEntry(mapping.entries[i], `input.mapping.entries[${i}]`);
     if (!res.ok) return { ok: false, failure: res.failure };
@@ -468,6 +631,20 @@ export function planLegacyMigration(input: LegacyMigrationInput): LegacyMigratio
     if (byLegacyKey.has(entry.legacyKey)) {
       return { ok: false, failure: fail('duplicate-identity', `input.mapping.entries[${i}].legacyKey`, `duplicate mapping legacyKey "${safeDiag(entry.legacyKey)}"`) };
     }
+    // Referential integrity: the mapped decision must EXIST in the authority and its declared lessonId
+    // must match the authority's owning lesson — a mapping to a nonexistent or mis-attributed decision
+    // never produces a proposal (it fails the whole plan).
+    const owningLesson = authorityLessonByDecisionId.get(entry.decisionId);
+    if (owningLesson === undefined) {
+      return { ok: false, failure: fail('unknown-decision', `input.mapping.entries[${i}].decisionId`, `mapping targets decisionId "${safeDiag(entry.decisionId)}" which does not exist in the decision authority`) };
+    }
+    if (owningLesson !== entry.lessonId) {
+      return { ok: false, failure: fail('lesson-mismatch', `input.mapping.entries[${i}].lessonId`, `mapping declares lessonId "${safeDiag(entry.lessonId)}" for decision "${safeDiag(entry.decisionId)}" but the authority's owning lesson is "${safeDiag(owningLesson)}"`) };
+    }
+    if (mappedDecisionIds.has(entry.decisionId)) {
+      return { ok: false, failure: fail('duplicate-identity', `input.mapping.entries[${i}].decisionId`, `decisionId "${safeDiag(entry.decisionId)}" is targeted by more than one mapping entry (at-most-one-mapping-per-decision)`) };
+    }
+    mappedDecisionIds.add(entry.decisionId);
     byLegacyKey.set(entry.legacyKey, entry);
     for (const eq of entry.equivalentPositionKeys) {
       const list = equivalenceIndex.get(eq);
@@ -492,7 +669,16 @@ export function planLegacyMigration(input: LegacyMigrationInput): LegacyMigratio
     enrolled.add(t);
   }
 
-  // --- classify every legacy record ---------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
   if (!Array.isArray(legacyRecords)) {
     return { ok: false, failure: fail('not-an-array', 'input.legacyRecords', 'legacyRecords is not an array') };
   }

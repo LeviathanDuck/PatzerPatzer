@@ -33,7 +33,11 @@ import {
 } from './practice/scheduler';
 import { revalidateTraversalPlan } from './practice/sessionBuilder';
 import { planLegacyMigration } from './practice/migration';
-import type { LegacyReviewedPathMapping, LegacyMigrationPlanResult } from './practice/migration';
+import type {
+  LegacyReviewedPathMapping,
+  LegacyMigrationPlanResult,
+  LegacyMigrationDecisionAuthorityEntry,
+} from './practice/migration';
 
 type StudyStoreName =
   | 'studies'
@@ -1654,12 +1658,20 @@ export async function listDuePracticeSrs(params: {
 
 
 
+
+
+
+
+
+
+
 export async function planStudyPracticeMigration(
   mapping: LegacyReviewedPathMapping,
 ): Promise<LegacyMigrationPlanResult> {
   const legacyRecords = await listAllPositionProgress();
-  // Bounded existence probe over exactly the explicitly-mapped decision ids (mapping-sized, indexed
-  // primary-key gets), never an unbounded SRS scan.
+  // Bounded probe over exactly the explicitly-mapped decision ids (mapping-sized, indexed primary-key
+  // gets), never an unbounded SRS/decisions scan. One pass builds both the already-enrolled set and the
+  // decision/lesson authority.
   const mappedTargetIds = new Set<string>();
   for (const entry of mapping.entries) {
     if (typeof entry?.decisionId === 'string' && entry.decisionId.length > 0) {
@@ -1667,11 +1679,23 @@ export async function planStudyPracticeMigration(
     }
   }
   const alreadyEnrolledTargetIds: string[] = [];
+  const authorityDecisions: LegacyMigrationDecisionAuthorityEntry[] = [];
   for (const targetId of mappedTargetIds) {
     const existing = await getPracticeSrs(targetId);
     if (existing !== undefined) alreadyEnrolledTargetIds.push(targetId);
+    // Referential-integrity authority: the canonical decision row's owning lessonId (bounded get). A
+    // decisionId with no row is omitted, so the planner fails the mapping with `unknown-decision`.
+    const decisionRow = await getPracticeDecision(targetId);
+    if (decisionRow !== undefined) {
+      authorityDecisions.push({ decisionId: decisionRow.decisionId, lessonId: decisionRow.lessonId });
+    }
   }
-  return planLegacyMigration({ legacyRecords, mapping, alreadyEnrolledTargetIds });
+  return planLegacyMigration({
+    legacyRecords,
+    mapping,
+    alreadyEnrolledTargetIds,
+    decisionAuthority: { decisions: authorityDecisions },
+  });
 }
 
 // --- study-practice-attempts (append-only) ---------------------------------
