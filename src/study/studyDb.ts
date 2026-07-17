@@ -1750,6 +1750,26 @@ function isFiniteNumber(v: unknown): boolean {
 
 
 
+function isSafeCounter(v: unknown): boolean {
+  return typeof v === 'number' && Number.isSafeInteger(v);
+}
+// Fields the sealed scheduler actually increments by +1 — `scheduleRevision` and `cleanStreak`
+// (scheduler.ts `transitionSchedule`/`buildActiveNext`/`buildGraduatedNext`). These additionally reject
+// the MAX_SAFE_INTEGER boundary itself so the applied transition's `+1` stays a representable safe integer
+// and the token genuinely advances. MAX_SAFE_INTEGER adjudication: ACCEPT it for compared-only counters
+// (`isSafeCounter`), REJECT it for incremented counters (this helper) — the reading that keeps `+1` sound.
+function isIncrementableSafeCounter(v: unknown): boolean {
+  return typeof v === 'number' && Number.isSafeInteger(v) && v < Number.MAX_SAFE_INTEGER;
+}
+
+
+
+
+
+
+
+
+
 
 function rejectNonIndexArrayKeys(arr: readonly unknown[], path: string): SrsPersistenceFailure | null {
   const len = arr.length;
@@ -1786,8 +1806,8 @@ function validateSourceVersion(v: unknown, path: string): SrsPersistenceFailure 
   if (v.kind === 'linked') {
     const extra = rejectUnknownKeys(v, SOURCE_LINKED_KEYS, path);
     if (extra) return extra;
-    if (!isFiniteNumber(v.sourceRevision)) {
-      return mkFail('non-finite-number', `${path}.sourceRevision`, 'linked sourceRevision must be finite');
+    if (!isSafeCounter(v.sourceRevision)) {
+      return mkFail('non-finite-number', `${path}.sourceRevision`, 'linked sourceRevision must be a safe-integer revision counter');
     }
     return null;
   }
@@ -1820,9 +1840,11 @@ function validateDisplaySnapshot(v: unknown, path: string): SrsPersistenceFailur
   return validateSourceVersion(v.source, `${path}.source`);
 }
 
-const FROZEN_SCHEDULE_NUMERIC_FIELDS = [
-  'targetRevision', 'scheduleRevision', 'configVersion', 'stepIndex', 'dueAt', 'capturedAt',
-] as const;
+// Counter-semantics fields (safe-integer) vs timestamps (finite-only). scheduleRevision here is a FROZEN
+// snapshot value compared for equality against the current row (scheduler.ts step 8), never incremented,
+// so `isSafeCounter` (accepts MAX_SAFE_INTEGER) is correct — not the incrementable guard.
+const FROZEN_SCHEDULE_COUNTER_FIELDS = ['targetRevision', 'scheduleRevision', 'configVersion', 'stepIndex'] as const;
+const FROZEN_SCHEDULE_TIMESTAMP_FIELDS = ['dueAt', 'capturedAt'] as const;
 
 /** Validate a frozen schedule snapshot: required strings, active-only status, and finite numerics. */
 function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure | null {
@@ -1833,7 +1855,10 @@ function validateFrozenSchedule(v: unknown, path: string): SrsPersistenceFailure
   if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', `${path}.lessonId`, 'frozen lessonId is missing/empty');
   if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', `${path}.configId`, 'frozen configId is missing/empty');
   if (v.status !== 'active') return mkFail('invalid-status', `${path}.status`, `frozen schedule must be active, got ${safeDiag(v.status)}`);
-  for (const f of FROZEN_SCHEDULE_NUMERIC_FIELDS) {
+  for (const f of FROZEN_SCHEDULE_COUNTER_FIELDS) {
+    if (!isSafeCounter(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `${f} must be a safe-integer counter`);
+  }
+  for (const f of FROZEN_SCHEDULE_TIMESTAMP_FIELDS) {
     if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `non-finite ${f}`);
   }
   return validateSourceVersion(v.source, `${path}.source`);
@@ -1991,7 +2016,7 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     }
     if (!isFiniteNumber(raw.updatedAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.updatedAt', 'updatedAt is non-finite') };
     if (!isFiniteNumber(raw.createdAt)) return { ok: false, failure: mkFail('non-finite-number', 'session.createdAt', 'createdAt is non-finite') };
-    if (!isFiniteNumber(raw.targetCount)) return { ok: false, failure: mkFail('non-finite-number', 'session.targetCount', 'targetCount is non-finite') };
+    if (!isSafeCounter(raw.targetCount)) return { ok: false, failure: mkFail('non-finite-number', 'session.targetCount', 'targetCount must be a safe-integer count') };
 
     const progress = raw.progress;
     if (!isPlainObject(progress)) return { ok: false, failure: mkFail('not-an-object', 'session.progress', 'progress is not an object') };
@@ -2042,8 +2067,9 @@ export function validatePersistedSessionRow(raw: unknown): SrsPersistenceResult<
     if (targetCount !== plan.entries.length) {
       return { ok: false, failure: mkFail('checkpoint-invariant', 'session.targetCount', `targetCount ${targetCount} != plan.entries.length ${plan.entries.length}`) };
     }
-    // S4: cursor is an integer within [0, targetCount] (rejects negative, fractional, past-end).
-    if (!Number.isInteger(entryCursor) || entryCursor < 0 || entryCursor > targetCount) {
+
+
+    if (!Number.isSafeInteger(entryCursor) || entryCursor < 0 || entryCursor > targetCount) {
       return { ok: false, failure: mkFail('checkpoint-invariant', 'session.progress.entryCursor', `entryCursor ${entryCursor} must be an integer in [0, ${targetCount}]`) };
     }
     // S5/S6: every completed target is a known scored target, with no duplicates.
@@ -2152,9 +2178,12 @@ function validateAttemptScheduledSnapshot(v: unknown, path: string): SrsPersiste
   if (!isPlainObject(v)) return mkFail('not-an-object', path, 'scheduled snapshot is not an object');
   const extra = rejectUnknownKeys(v, ATTEMPT_SCHEDULED_KEYS, path);
   if (extra) return extra;
-  for (const f of ATTEMPT_SCHEDULED_KEYS) {
-    if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `non-finite ${f}`);
+  // scheduleRevision/configVersion/stepIndex are CAS counters compared for equality against the current
+  // row (scheduler.ts step 8) — safe integers. dueAt is a timestamp — finite-only.
+  for (const f of ['scheduleRevision', 'configVersion', 'stepIndex'] as const) {
+    if (!isSafeCounter(v[f])) return mkFail('non-finite-number', `${path}.${f}`, `${f} must be a safe-integer counter`);
   }
+  if (!isFiniteNumber(v.dueAt)) return mkFail('non-finite-number', `${path}.dueAt`, 'non-finite dueAt');
   return null;
 }
 
@@ -2197,7 +2226,7 @@ function validateAttemptRecordShape(raw: unknown): SrsPersistenceFailure | null 
     // `mode` is a domain-neutral opaque string (SrsTraversalMode); the kernel treats it as opaque, so the
     // boundary validates it as a non-empty string rather than against an invented closed set.
     if (!isNonEmptyString(raw.mode)) return mkFail('missing-required-string', 'attempt.mode', 'mode must be a non-empty string');
-    if (!isFiniteNumber(raw.targetRevision)) return mkFail('non-finite-number', 'attempt.targetRevision', 'targetRevision is non-finite');
+    if (!isSafeCounter(raw.targetRevision)) return mkFail('non-finite-number', 'attempt.targetRevision', 'targetRevision must be a safe-integer counter');
     if (!isFiniteNumber(raw.completedAt)) return mkFail('non-finite-number', 'attempt.completedAt', 'completedAt is non-finite');
     const sched = validateAttemptScheduledSnapshot(raw.scheduled, 'attempt.scheduled');
     if (sched) return sched;
@@ -2313,8 +2342,8 @@ function validateServiceConfigShape(config: unknown): string | null {
   if (!isNonEmptyString(config.configId)) {
     return 'ladder config configId must be a non-empty string';
   }
-  if (!isFiniteNumber(config.configVersion)) {
-    return `ladder config configVersion must be a finite number, got ${safeDiag(config.configVersion)}`;
+  if (!isSafeCounter(config.configVersion)) {
+    return `ladder config configVersion must be a safe-integer version counter, got ${safeDiag(config.configVersion)}`;
   }
   const memberFailure = validateLadderConfigMembers(config);
   if (memberFailure) {
@@ -2337,9 +2366,14 @@ const SCHEDULE_ROW_KEYS = [
   'updatedAt',
 ] as const;
 const SCHEDULE_STATUSES: ReadonlySet<string> = new Set(['active', 'graduated', 'suspended', 'archived']);
-const SCHEDULE_ROW_NUMERIC_FIELDS = [
-  'targetRevision', 'scheduleRevision', 'configVersion', 'stepIndex', 'cleanStreak', 'enrolledAt', 'updatedAt',
-] as const;
+// Counter-semantics fields (safe-integer) vs incremented CAS counters (safe-integer below MAX_SAFE_INTEGER,
+// since the kernel reads this row then does `scheduleRevision + 1`/`cleanStreak + 1`) vs timestamps
+// (finite-only). This general validator keeps its lifecycle-permissive contract — it does NOT impose
+// non-negativity (a stored row may be in any lifecycle state; the tighter initial-enrollment validator
+// adds the non-negativity these counters require at the ENROLLMENT seam).
+const SCHEDULE_ROW_COUNTER_FIELDS = ['targetRevision', 'configVersion', 'stepIndex'] as const;
+const SCHEDULE_ROW_INCREMENTED_FIELDS = ['scheduleRevision', 'cleanStreak'] as const;
+const SCHEDULE_ROW_TIMESTAMP_FIELDS = ['enrolledAt', 'updatedAt'] as const;
 
 
 
@@ -2360,7 +2394,13 @@ function validateStoredScheduleRow(v: unknown): SrsPersistenceFailure | null {
     if (typeof v.status !== 'string' || !SCHEDULE_STATUSES.has(v.status)) {
       return mkFail('invalid-status', 'srs.status', `status must be active|graduated|suspended|archived, got ${safeDiag(v.status)}`);
     }
-    for (const f of SCHEDULE_ROW_NUMERIC_FIELDS) {
+    for (const f of SCHEDULE_ROW_COUNTER_FIELDS) {
+      if (!isSafeCounter(v[f])) return mkFail('non-finite-number', `srs.${f}`, `${f} must be a safe-integer counter`);
+    }
+    for (const f of SCHEDULE_ROW_INCREMENTED_FIELDS) {
+      if (!isIncrementableSafeCounter(v[f])) return mkFail('non-finite-number', `srs.${f}`, `${f} must be a safe-integer counter below MAX_SAFE_INTEGER (the kernel advances it by +1)`);
+    }
+    for (const f of SCHEDULE_ROW_TIMESTAMP_FIELDS) {
       if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `srs.${f}`, `non-finite ${f}`);
     }
     // `dueAt` is a concrete number for active rows, number|null for non-active (SrsScheduleRecord union).
@@ -2454,8 +2494,17 @@ function validateInitialEnrollmentRow(v: unknown): SrsPersistenceFailure | null 
     //     base; flagged for D1.]
     for (const f of ['scheduleRevision', 'targetRevision', 'configVersion'] as const) {
       const n = row[f] as number; // finite number guaranteed by the shape validator above
-      if (!Number.isInteger(n) || n < 0) {
-        return mkFail('checkpoint-invariant', `srs.${f}`, `initial enrollment row ${f} must be a non-negative integer, got ${safeDiag(row[f])}`);
+      // Safe-integer (NOT merely Number.isInteger, which accepts float-saturating magnitudes such as
+      // `1e100`) + non-negative (the non-negativity these counters already required). scheduleRevision is
+      // incremented by the FIRST applied transition (scheduler.ts `scheduleRevision + 1`), so it must also
+      // sit strictly below MAX_SAFE_INTEGER for that `+1` to remain representable and actually advance
+      // (B4BF12 HIGH: 1e100 enrolled, then 1e100 + 1 === 1e100 => advanced=false). targetRevision and
+      // configVersion are compared/stamped here, not incremented, so MAX_SAFE_INTEGER itself is acceptable.
+      const okCounter = f === 'scheduleRevision'
+        ? isIncrementableSafeCounter(n) && n >= 0
+        : isSafeCounter(n) && n >= 0;
+      if (!okCounter) {
+        return mkFail('checkpoint-invariant', `srs.${f}`, `initial enrollment row ${f} must be a non-negative safe integer${f === 'scheduleRevision' ? ' below MAX_SAFE_INTEGER (it is incremented on the first applied transition)' : ''}, got ${safeDiag(row[f])}`);
       }
     }
     // (5) lastCompletedAt — MUST be null. srsTypes.ts:86-87 ("Last completed scored attempt … or null
