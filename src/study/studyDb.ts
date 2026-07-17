@@ -1669,6 +1669,9 @@ function isFiniteNumber(v: unknown): boolean {
 
 const SOURCE_LINKED_KEYS = ['kind', 'sourceRevision'] as const;
 const SOURCE_UNLINKED_KEYS = ['kind', 'origin'] as const;
+
+
+const UNLINKED_ORIGINS: ReadonlySet<string> = new Set(['manual', 'snapshot-import', 'unlinked-from-source']);
 const DISPLAY_SNAPSHOT_KEYS = ['label', 'sourceLabel', 'source'] as const;
 const FROZEN_SCHEDULE_KEYS = [
   'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
@@ -1692,7 +1695,20 @@ function validateSourceVersion(v: unknown, path: string): SrsPersistenceFailure 
     }
     return null;
   }
-  if (v.kind === 'unlinked') return rejectUnknownKeys(v, SOURCE_UNLINKED_KEYS, path);
+  if (v.kind === 'unlinked') {
+    const extra = rejectUnknownKeys(v, SOURCE_UNLINKED_KEYS, path);
+    if (extra) return extra;
+
+
+
+
+
+
+    if (v.origin !== undefined && (typeof v.origin !== 'string' || !UNLINKED_ORIGINS.has(v.origin))) {
+      return mkFail('invalid-status', `${path}.origin`, `unlinked origin must be manual|snapshot-import|unlinked-from-source, got ${String(v.origin)}`);
+    }
+    return null;
+  }
   return mkFail('invalid-source-discriminant', `${path}.kind`, `unknown source discriminant: ${String(v.kind)}`);
 }
 
@@ -2031,10 +2047,25 @@ function validateAttemptScheduledSnapshot(v: unknown, path: string): SrsPersiste
 }
 
 /** Validate a required array-of-strings field (`assistanceTypes`/`failedMoveKeys`): it must be an ARRAY
- *  (never a bare object) of string elements. */
+ *  (never a bare object) whose OWN property names are exactly its indices (+`length`), with string
+ *  elements. */
 function validateAttemptStringArray(v: unknown, path: string): SrsPersistenceFailure | null {
   if (!Array.isArray(v)) return mkFail('not-an-array', path, `${path} must be an array`);
-  for (let i = 0; i < v.length; i++) {
+
+
+
+
+
+
+  const len = v.length;
+  for (const key of Object.getOwnPropertyNames(v)) {
+    if (key === 'length') continue;
+    const idx = Number(key);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= len || String(idx) !== key) {
+      return mkFail('unknown-key', `${path}.${key}`, `${path} carries a non-index own property "${key}"`);
+    }
+  }
+  for (let i = 0; i < len; i++) {
     if (typeof v[i] !== 'string') return mkFail('missing-required-string', `${path}[${i}]`, `${path} entries must be strings`);
   }
   return null;
@@ -2086,6 +2117,78 @@ function validateAttemptRecordShape(raw: unknown): SrsPersistenceFailure | null 
     return null;
   } catch (e) {
     return mkFail('not-an-object', 'attempt', `unexpected attempt validation error: ${classifyStudyError(e)}`);
+  }
+}
+
+
+
+
+
+
+
+
+
+
+const LADDER_CONFIG_KEYS = [
+  'configId', 'configVersion', 'intervalsMs', 'resetStep', 'advanceBy',
+  'requiredConsecutiveClean', 'graduation', 'presentationGroups',
+] as const;
+
+
+
+
+
+
+
+
+
+const SCHEDULE_ROW_KEYS = [
+  'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
+  'stepIndex', 'cleanStreak', 'status', 'dueAt', 'enrolledAt', 'lastCompletedAt', 'lastAttemptId',
+  'updatedAt',
+] as const;
+const SCHEDULE_STATUSES: ReadonlySet<string> = new Set(['active', 'graduated', 'suspended', 'archived']);
+const SCHEDULE_ROW_NUMERIC_FIELDS = [
+  'targetRevision', 'scheduleRevision', 'configVersion', 'stepIndex', 'cleanStreak', 'enrolledAt', 'updatedAt',
+] as const;
+
+
+
+
+
+
+
+
+
+function validateStoredScheduleRow(v: unknown): SrsPersistenceFailure | null {
+  try {
+    if (!isPlainObject(v)) return mkFail('not-an-object', 'srs', 'stored SRS row is not a plain object');
+    const extra = rejectUnknownKeys(v, SCHEDULE_ROW_KEYS, 'srs');
+    if (extra) return extra;
+    if (!isNonEmptyString(v.targetId)) return mkFail('missing-required-string', 'srs.targetId', 'targetId is missing/empty');
+    if (!isNonEmptyString(v.lessonId)) return mkFail('missing-required-string', 'srs.lessonId', 'lessonId is missing/empty');
+    if (!isNonEmptyString(v.configId)) return mkFail('missing-required-string', 'srs.configId', 'configId is missing/empty');
+    if (typeof v.status !== 'string' || !SCHEDULE_STATUSES.has(v.status)) {
+      return mkFail('invalid-status', 'srs.status', `status must be active|graduated|suspended|archived, got ${String(v.status)}`);
+    }
+    for (const f of SCHEDULE_ROW_NUMERIC_FIELDS) {
+      if (!isFiniteNumber(v[f])) return mkFail('non-finite-number', `srs.${f}`, `non-finite ${f}`);
+    }
+    // `dueAt` is a concrete number for active rows, number|null for non-active (SrsScheduleRecord union).
+    if (v.status === 'active') {
+      if (!isFiniteNumber(v.dueAt)) return mkFail('non-finite-number', 'srs.dueAt', 'active row dueAt must be finite');
+    } else if (v.dueAt !== null && !isFiniteNumber(v.dueAt)) {
+      return mkFail('non-finite-number', 'srs.dueAt', 'dueAt must be finite or null');
+    }
+    if (v.lastCompletedAt !== null && !isFiniteNumber(v.lastCompletedAt)) {
+      return mkFail('non-finite-number', 'srs.lastCompletedAt', 'lastCompletedAt must be finite or null');
+    }
+    if (v.lastAttemptId !== null && !isNonEmptyString(v.lastAttemptId)) {
+      return mkFail('missing-required-string', 'srs.lastAttemptId', 'lastAttemptId must be a non-empty string or null');
+    }
+    return null;
+  } catch (e) {
+    return mkFail('not-an-object', 'srs', `unexpected stored SRS validation error: ${classifyStudyError(e)}`);
   }
 }
 
@@ -2158,11 +2261,26 @@ export async function completeStudySrsAttempt(
 
 
 
-  if (input.config === null || typeof input.config !== 'object' || Array.isArray(input.config)) {
-    return rejectedService('invalid-config', `ladder config must be an object, got ${input.config === null ? 'null' : typeof input.config}`);
-  }
+
+
+
+
+
   let configValidation: ReturnType<typeof validateLadderConfig>;
   try {
+    if (!isPlainObject(input.config)) {
+      return rejectedService('invalid-config', 'ladder config must be a plain object');
+    }
+    const extraConfigKey = rejectUnknownKeys(input.config, LADDER_CONFIG_KEYS, 'config');
+    if (extraConfigKey) {
+      return rejectedService('invalid-config', `ladder config ${extraConfigKey.reason}`);
+    }
+    if (!isNonEmptyString(input.config.configId)) {
+      return rejectedService('invalid-config', 'ladder config configId must be a non-empty string');
+    }
+    if (!isFiniteNumber(input.config.configVersion)) {
+      return rejectedService('invalid-config', `ladder config configVersion must be a finite number, got ${String(input.config.configVersion)}`);
+    }
     configValidation = validateLadderConfig(input.config);
   } catch (e) {
     return rejectedService('invalid-config', `ladder config validation threw: ${classifyStudyError(e)}`);
@@ -2317,6 +2435,18 @@ export async function completeStudySrsAttempt(
       if (current === undefined) { abortWith(rejectedService('schedule-not-found', `no enrolled SRS row for target "${attempt.targetId}"`)); return; }
       if (sessionRaw === undefined) { abortWith(rejectedService('session-not-found', `no session row for "${attempt.sessionId}"`)); return; }
 
+
+
+
+
+
+
+      const storedFailure = validateStoredScheduleRow(current);
+      if (storedFailure) {
+        abortWith(rejectedService('invalid', `stored SRS row failed validation at ${storedFailure.path}: ${storedFailure.reason}`));
+        return;
+      }
+
       // Untrusted persisted session goes through the B4a read-boundary validator (typed, never throws).
       const sessionResult = validatePersistedSessionRow(sessionRaw);
       if (!sessionResult.ok) {
@@ -2334,6 +2464,9 @@ export async function completeStudySrsAttempt(
         abortWith(rejectedService('session-cursor-mismatch', `completing target "${attempt.targetId}" is not the session's next entry (cursor ${cursor} expects "${expectedEntry?.targetId ?? '<end>'}")`));
         return;
       }
+
+
+
 
 
 
