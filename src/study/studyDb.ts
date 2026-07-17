@@ -15,11 +15,22 @@ import type {
   SrsTraversalPlan,
   SrsPracticeSessionRow,
   SrsSessionState,
+  SrsSessionProgress,
   SrsPersistenceResult,
   SrsPersistenceFailure,
   SrsPersistenceFailureCode,
+  SrsLadderConfig,
+  SrsSourceVersion,
+  SrsAttemptServiceResult,
+  SrsAttemptServiceRejected,
 } from './practice/srsTypes';
-import { asPersistableScheduleRecord, asPersistableAttemptRecord } from './practice/scheduler';
+import {
+  asPersistableScheduleRecord,
+  asPersistableAttemptRecord,
+  validateLadderConfig,
+  transitionSchedule,
+} from './practice/scheduler';
+import { revalidateTraversalPlan } from './practice/sessionBuilder';
 
 type StudyStoreName =
   | 'studies'
@@ -1983,4 +1994,287 @@ export async function listPracticeSessionsByState(
     db, 'study-practice-sessions', 'state', IDBKeyRange.only(state), 'next', limit,
   );
   return rows.map(validatePersistedSessionRow);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Input to the atomic completion service. `config` is the RAW ladder config — the service validates
+ *  it internally (the branded validated type is unforgeable outside `scheduler.ts`). `now` is the
+ *  explicit session-checkpoint clock (finite; no wall-clock default). `currentSourceById` is the
+ *  optional REAL live source-version map used for the sealed B3 plan revalidation composition. */
+export interface CompleteStudySrsAttemptInput {
+  readonly attempt: SrsAttemptRecord;
+  readonly config: SrsLadderConfig;
+  readonly now: number;
+  readonly currentSourceById?: ReadonlyMap<string, SrsSourceVersion>;
+}
+
+function rejectedService(
+  outcome: SrsAttemptServiceRejected['outcome'],
+  reason: string,
+  extra?: Pick<SrsAttemptServiceRejected, 'sessionFailure' | 'staleTargetIds'>,
+): SrsAttemptServiceRejected {
+  return { outcome, reason, ...(extra ?? {}) };
+}
+
+/**
+ * Atomically score one completed due target. See the block comment above for the full contract.
+ * Returns a typed `SrsAttemptServiceResult`: exactly `applied` mutates storage (carrying the next
+ * schedule row and advanced session checkpoint); every other outcome leaves all three practice stores
+ * byte-identical.
+ */
+export async function completeStudySrsAttempt(
+  input: CompleteStudySrsAttemptInput,
+): Promise<SrsAttemptServiceResult> {
+  const { attempt, now, currentSourceById } = input;
+
+  // --- Pre-transaction fail-closed validation (no DB touched yet). ---
+  if (!Number.isFinite(now)) {
+    return rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${String(now)}`);
+  }
+  const configValidation = validateLadderConfig(input.config);
+  if (!configValidation.ok) {
+    return rejectedService('invalid-config', `ladder config invalid: ${configValidation.reason}`);
+  }
+  const config = configValidation.config;
+
+  // openDb() is the ONLY await, and it happens BEFORE the transaction is created (memo risk 3: no
+  // unrelated promise is awaited once the transaction is live).
+  const db = await openDb();
+
+  return new Promise<SrsAttemptServiceResult>((resolve) => {
+    // A DECIDED rejection (from abortWith) resolves from any terminal event. The APPLIED result is
+    // kept separate and resolves ONLY from tx.oncomplete (a successful commit) — so if the SRS/session
+    // writes are issued but the transaction later aborts, the applied result is discarded and the
+    // caller sees 'transaction-failed', never a false 'applied' (the atomicity guarantee).
+    let decided: SrsAttemptServiceRejected | null = null;
+    let appliedResult: SrsAttemptServiceResult | null = null;
+    let duplicate = false;
+
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(
+        ['study-practice-attempts', 'study-practice-srs', 'study-practice-sessions'],
+        'readwrite',
+      );
+    } catch (e) {
+      resolve(rejectedService('transaction-failed', `could not open transaction: ${classifyStudyError(e)}`));
+      return;
+    }
+    const attemptsStore = tx.objectStore('study-practice-attempts');
+    const srsStore = tx.objectStore('study-practice-srs');
+    const sessionsStore = tx.objectStore('study-practice-sessions');
+
+    const duplicateResult = (): SrsAttemptServiceResult =>
+      rejectedService('duplicate', `attempt "${attempt.attemptId}" already exists; nothing changed`);
+
+    // Abort the WHOLE transaction (rolls back every write issued so far) and remember the typed
+    // rejection so tx.onabort resolves it.
+    const abortWith = (r: SrsAttemptServiceRejected): void => {
+      decided = r;
+      try { tx.abort(); } catch { /* transaction may already be inactive */ }
+    };
+
+    tx.oncomplete = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicate) { resolve(duplicateResult()); return; }
+      if (appliedResult) { resolve(appliedResult); return; }
+      // The transaction committed but no outcome was recorded — a coding invariant violation.
+      resolve(rejectedService('transaction-failed', 'transaction completed before an outcome was decided'));
+    };
+    tx.onerror = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicate) { resolve(duplicateResult()); return; }
+      // A write that was issued but never committed (appliedResult set, then the tx failed) MUST NOT
+      // report 'applied' — fall through to transaction-failed.
+      recordStudyTxFail(tx, 'onerror', 'srs-complete');
+      resolve(rejectedService('transaction-failed', `transaction failed: ${tx.error?.name ?? 'UnknownError'}`));
+    };
+    tx.onabort = () => {
+      if (decided) { resolve(decided); return; }
+      if (duplicate) { resolve(duplicateResult()); return; }
+      recordStudyTxFail(tx, 'onabort', 'srs-complete');
+      resolve(rejectedService('transaction-failed', `transaction aborted: ${tx.error?.name ?? 'AbortError'}`));
+    };
+
+    // --- Step 1: append-only attempt write FIRST (memo item 1). A ConstraintError = duplicate key =
+    //     idempotent no-op: preventDefault keeps the transaction alive, we issue NO further writes, and
+    //     the original row survives byte-identical. Any other add error / a synchronous throw aborts. ---
+    let addReq: IDBRequest;
+    try {
+      addReq = attemptsStore.add(asPersistableAttemptRecord(attempt));
+    } catch (e) {
+      abortWith(rejectedService('transaction-failed', `attempt add threw: ${classifyStudyError(e)}`));
+      return;
+    }
+    addReq.onerror = (event: Event) => {
+      const err = addReq.error;
+      if (err && err.name === 'ConstraintError') {
+        duplicate = true;
+        event.preventDefault(); // keep the tx alive; it will complete having written nothing
+        return;
+      }
+      // A non-duplicate request error is left to abort the transaction (tx.onabort/onerror handle it).
+    };
+
+    // --- Step 2 (issued in parallel with the add): read the current SRS row + the session row. ---
+    let current: SrsScheduleRecord | undefined;
+    let sessionRaw: unknown;
+    let pendingReads = 2;
+    let addSettled = false;
+    let addSucceeded = false;
+
+    const maybeProceed = (): void => {
+      if (decided || duplicate) return;         // duplicate short-circuits: never advance SRS/session
+      if (!addSettled || pendingReads > 0) return;
+      if (!addSucceeded) return;                 // a non-duplicate add failure already aborted
+      proceed();
+    };
+
+    const getSrsReq = srsStore.get(attempt.targetId);
+    getSrsReq.onsuccess = () => { current = getSrsReq.result as SrsScheduleRecord | undefined; pendingReads -= 1; maybeProceed(); };
+    getSrsReq.onerror = () => abortWith(rejectedService('transaction-failed', `srs read failed: ${getSrsReq.error?.name ?? 'UnknownError'}`));
+
+    const getSessReq = sessionsStore.get(attempt.sessionId);
+    getSessReq.onsuccess = () => { sessionRaw = getSessReq.result; pendingReads -= 1; maybeProceed(); };
+    getSessReq.onerror = () => abortWith(rejectedService('transaction-failed', `session read failed: ${getSessReq.error?.name ?? 'UnknownError'}`));
+
+    addReq.onsuccess = () => { addSettled = true; addSucceeded = true; maybeProceed(); };
+    // If the add errors, addReq.onerror above runs first; mark it settled (non-success) so maybeProceed
+    // does not advance. A ConstraintError sets duplicate=true (handled by maybeProceed's early return).
+    const originalOnError = addReq.onerror;
+    addReq.onerror = (event: Event) => {
+      addSettled = true;
+      addSucceeded = false;
+      (originalOnError as (e: Event) => void).call(addReq, event);
+      maybeProceed();
+    };
+
+    function proceed(): void {
+      // Enrollment + session existence (memo: "no row" is never a valid completion target).
+      if (current === undefined) { abortWith(rejectedService('schedule-not-found', `no enrolled SRS row for target "${attempt.targetId}"`)); return; }
+      if (sessionRaw === undefined) { abortWith(rejectedService('session-not-found', `no session row for "${attempt.sessionId}"`)); return; }
+
+      // Untrusted persisted session goes through the B4a read-boundary validator (typed, never throws).
+      const sessionResult = validatePersistedSessionRow(sessionRaw);
+      if (!sessionResult.ok) {
+        abortWith(rejectedService('session-invalid', `persisted session failed validation: ${sessionResult.failure.reason}`, { sessionFailure: sessionResult.failure }));
+        return;
+      }
+      const session = sessionResult.value;
+      const plan = session.plan;
+
+      // The completing target must be the session's NEXT unattempted scored entry, or advancing the
+      // checkpoint would break the S10 cursor–ledger prefix invariant.
+      const cursor = session.progress.entryCursor;
+      const expectedEntry = plan.entries[cursor];
+      if (!expectedEntry || expectedEntry.targetId !== attempt.targetId) {
+        abortWith(rejectedService('session-cursor-mismatch', `completing target "${attempt.targetId}" is not the session's next entry (cursor ${cursor} expects "${expectedEntry?.targetId ?? '<end>'}")`));
+        return;
+      }
+
+      // --- Sealed pure transition kernel (synchronous by contract). The completing target's schedule
+      //     decision is authoritative here: any non-applied outcome aborts with zero writes. ---
+      const transition = transitionSchedule(current, attempt, config);
+      if (transition.outcome !== 'applied') {
+        // 'duplicate' here is the in-record lastAttemptId signal (the attempt row was somehow missing
+        // yet the SRS already names it) — still a no-op; 'stale'/'inactive'/'invalid' reject likewise.
+        abortWith(rejectedService(transition.outcome, `kernel rejected completion: ${transition.outcome}${'reason' in transition && transition.reason ? ` (${transition.reason})` : ''}`));
+        return;
+      }
+      const next = transition.next;
+
+      // --- Real-map B3 composition: build a LIVE schedule map from actual current SRS rows for every
+      //     plan entry (NOT from the plan's own frozen snapshots — that made the read-boundary
+      //     composition tautological/dead), then revalidate. Gate on the completing target only: a
+      //     stale unrelated entry is revalidated when it is itself reached, not here. ---
+      const liveMap = new Map<string, SrsScheduleRecord>();
+      liveMap.set(current.targetId, current);
+      const otherTargetIds = plan.entries
+        .map(e => e.targetId)
+        .filter(id => id !== current!.targetId);
+
+      const finishApply = (): void => {
+        if (decided) return;
+        const revalidation = revalidateTraversalPlan(plan, liveMap, currentSourceById);
+        const staleForCompleting = revalidation.invalidEntries.filter(e => e.targetId === attempt.targetId);
+        if (staleForCompleting.length > 0) {
+          abortWith(rejectedService('plan-stale', `plan revalidation invalidated completing target: ${staleForCompleting.map(e => e.reason).join('; ')}`, {
+            staleTargetIds: revalidation.invalidEntries.map(e => e.targetId),
+          }));
+          return;
+        }
+
+        // Advance the checkpoint: cursor + one, append the scored target, append the applied attempt id.
+        const progress = session.progress;
+        const nextProgress: SrsSessionProgress = {
+          entryCursor: progress.entryCursor + 1,
+          completedTargetIds: [...progress.completedTargetIds, attempt.targetId],
+          appliedAttemptIds: [...progress.appliedAttemptIds, attempt.attemptId],
+        };
+        const allDone = nextProgress.entryCursor === session.targetCount;
+        const nextSession: SrsPracticeSessionRow = {
+          ...session,
+          state: allDone ? 'completed' : 'active',
+          updatedAt: now,
+          progress: nextProgress,
+        };
+
+        // Same-transaction writes: advanced SRS row + advanced session checkpoint. The attempt was
+        // already appended in step 1. tx.oncomplete resolves the applied result once all three commit.
+        try {
+          srsStore.put(asPersistableScheduleRecord(next));
+          sessionsStore.put(nextSession);
+        } catch (e) {
+          abortWith(rejectedService('transaction-failed', `checkpoint write threw: ${classifyStudyError(e)}`));
+          return;
+        }
+        // Stage (do not resolve) the applied result: tx.oncomplete resolves it only if BOTH writes
+        // commit; a later abort discards it and yields 'transaction-failed'.
+        appliedResult = { outcome: 'applied', nextSchedule: next, nextSession };
+      };
+
+      if (otherTargetIds.length === 0) { finishApply(); return; }
+      let pendingOther = otherTargetIds.length;
+      for (const id of otherTargetIds) {
+        const req = srsStore.get(id);
+        req.onsuccess = () => {
+          const row = req.result as SrsScheduleRecord | undefined;
+          if (row) liveMap.set(id, row);
+          pendingOther -= 1;
+          if (pendingOther === 0) finishApply();
+        };
+        req.onerror = () => abortWith(rejectedService('transaction-failed', `live schedule read failed for "${id}": ${req.error?.name ?? 'UnknownError'}`));
+      }
+    }
+  });
 }

@@ -716,6 +716,74 @@ export type SrsPersistenceResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly failure: SrsPersistenceFailure };
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type SrsAttemptServiceOutcome =
+  /** Attempt appended + SRS advanced + session checkpoint advanced together in one transaction. */
+  | 'applied'
+  /** `attemptId` already persisted (store-level append-only ConstraintError, or the row's
+   *  `lastAttemptId` already names it): idempotent no-op, nothing in any store changed. */
+  | 'duplicate'
+  /** Kernel: the attempt was frozen against a superseded schedule snapshot/target revision. Zero writes. */
+  | 'stale'
+  /** Kernel: the target is graduated/suspended/archived and no longer scheduled. Zero writes. */
+  | 'inactive'
+  /** Kernel: malformed completion (non-finite `completedAt`, wrong `targetId`, out-of-range record). */
+  | 'invalid'
+  /** Service: the session-checkpoint clock `now` is not finite — fail closed, zero writes. */
+  | 'non-finite-clock'
+  /** Service: the supplied ladder config failed `validateLadderConfig`. Zero writes. */
+  | 'invalid-config'
+  /** Service: no enrolled SRS row exists for the target ("no row" is never due). Zero writes. */
+  | 'schedule-not-found'
+  /** Service: no session row exists for the attempt's `sessionId`. Zero writes. */
+  | 'session-not-found'
+  /** Service: the persisted session row failed the B4a untrusted-read boundary validator. Zero writes. */
+  | 'session-invalid'
+  /** Service: the completing target is not the session's NEXT unattempted scored entry (would break the
+   *  S10 cursor–ledger prefix). Zero writes. */
+  | 'session-cursor-mismatch'
+  /** Service: the sealed B3 real-map revalidation invalidated the completing target's plan entry (the
+   *  frozen plan no longer matches the live schedule/source). Zero writes. */
+  | 'plan-stale'
+  /** Service: the IndexedDB transaction errored/aborted (raw storage failure). Zero committed writes. */
+  | 'transaction-failed';
+
+/** The single mutating outcome: the next schedule row and the advanced session checkpoint the
+ *  transaction committed. */
+export interface SrsAttemptServiceApplied {
+  readonly outcome: 'applied';
+  readonly nextSchedule: SrsScheduleRecord;
+  readonly nextSession: SrsPracticeSessionRow;
+}
+
+/** Any non-mutating outcome. `sessionFailure` is present only for `session-invalid`; `staleTargetIds`
+ *  only for `plan-stale` (the plan entries the real-map revalidation rejected). */
+export interface SrsAttemptServiceRejected {
+  readonly outcome: Exclude<SrsAttemptServiceOutcome, 'applied'>;
+  readonly reason: string;
+  readonly sessionFailure?: SrsPersistenceFailure;
+  readonly staleTargetIds?: readonly string[];
+}
+
+export type SrsAttemptServiceResult = SrsAttemptServiceApplied | SrsAttemptServiceRejected;
+
 // Contracts ONLY — this module now contains no runtime values (finding B1-5). The compile-time
 // contract fixtures (positive inhabitability, negative chess-material rejection, the opaque-brand
 // forgery proof, the widened-`fen` boundary proof, and the active-implies-`dueAt` snapshot proof)
