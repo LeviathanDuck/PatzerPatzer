@@ -2981,6 +2981,29 @@ export async function completeStudySrsAttempt(
       }
       const next = transition.next;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      const derivedFailure = validateStoredScheduleRow(next);
+      if (derivedFailure) {
+        abortWith(rejectedService('invalid', `kernel-derived SRS row failed validation at ${derivedFailure.path}: ${derivedFailure.reason}`));
+        return;
+      }
+
       // --- Real-map B3 composition: build a LIVE schedule map from actual current SRS rows for every
       //     plan entry (NOT from the plan's own frozen snapshots — that made the read-boundary
       //     composition tautological/dead), then revalidate. Gate on the completing target only: a
