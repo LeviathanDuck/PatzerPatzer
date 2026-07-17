@@ -80,6 +80,7 @@ import {
   iconControlExplainerAttrs,
   renderDisabledControlExplainer,
 } from '../ui/controlExplainer';
+import { STUDY_DETAIL_PRACTICE_TOOL_TAB } from './detailRouteState';
 import { showHiddenItems, toggleShowHidden } from './hiddenItems';
 import {
   advAddedFrom,
@@ -594,22 +595,79 @@ const ITEM_LIST_DENSITY: ItemListDensity = 'full';
 
 
 
-type RailSurface = { id: string; label: string; icon: NavIconName; active: boolean; disabled: boolean };
+type RailSurface = {
+  id: string;
+  label: string;
+  icon: NavIconName;
+  active: boolean;
+  disabled: boolean;
+  /** Essential help text for the enabled control. */
+  description: string;
+  /** Essential disabled-reason (required by renderDisabledControlExplainer when `disabled`). */
+  disabledReason: string;
+  /** Single synchronous route-write callback for an enabled control (no SRS/session action). */
+  onClick?: (() => void) | undefined;
+};
 
-function railSurfaces(): RailSurface[] {
+/**
+ * ORP V2 Package C, slice C2 — the rail becomes context-aware for the permanent Practice entry.
+ * The `orp` "coming soon" placeholder is REPLACED by a stable `practice` surface (the `orp` TOOL
+ * TAB in `STUDY_TOOL_TABS` below is a DIFFERENT authoring action and is intentionally kept). C2 is
+ * pure navigation scaffolding: `onClick` only writes the route — no due queries, session builders,
+ * scheduler, workspace mount, or C1 factory import (that is C3). Active state and enablement are
+ * derived from the parsed detail route on every render, never a module-level boolean.
+ */
+interface RailContext {
+  /** A Study detail workspace is open (game-open shell). Practice is enabled only then. */
+  studyOpen: boolean;
+  /** The Practice tool route is active (`toolsOpen && activeToolTab === 'practice'`). */
+  practiceActive: boolean;
+  /** Opens the Practice tool route for the current Study (writes tools=1&toolTab=practice). */
+  onSelectPractice?: () => void;
+  /** Returns to the ordinary Study detail surface by clearing the Practice tool route. */
+  onLeavePractice?: () => void;
+}
+
+const DEFAULT_RAIL_CONTEXT: RailContext = { studyOpen: false, practiceActive: false };
+
+function railSurfaces(ctx: RailContext): RailSurface[] {
+  const { practiceActive } = ctx;
   return [
-    { id: 'library', label: 'Library', icon: 'library', active: true, disabled: false },
-    { id: 'repertoire-builder', label: 'Repertoire Builder', icon: 'hammer', active: false, disabled: true },
-    { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: 'shield-check', active: false, disabled: true },
-    { id: 'orp', label: 'Opening Repetition Practice', icon: 'repeat', active: false, disabled: true },
+    {
+      id: 'library',
+      label: 'Library',
+      icon: 'library',
+      // When Practice is active the Library rail becomes the "return to Study detail" control and
+      // is no longer the active surface; otherwise it is the current surface (existing behavior).
+      active: !practiceActive,
+      disabled: false,
+      description: practiceActive
+        ? 'Returns to the ordinary Study detail surface by clearing the Practice tool route.'
+        : 'Shows the Study Library surface.',
+      disabledReason: 'Library is coming soon.',
+      onClick: practiceActive ? ctx.onLeavePractice : undefined,
+    },
+    { id: 'repertoire-builder', label: 'Repertoire Builder', icon: 'hammer', active: false, disabled: true, description: 'Repertoire Builder is coming soon.', disabledReason: 'Repertoire Builder is coming soon.' },
+    { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: 'shield-check', active: false, disabled: true, description: 'Repertoire Compliance Toolkit is coming soon.', disabledReason: 'Repertoire Compliance Toolkit is coming soon.' },
+    {
+      id: 'practice',
+      label: 'Practice',
+      icon: 'repeat',
+      active: practiceActive,
+      // Permanent entry: always present, but only usable when a Study workspace exists to host it.
+      disabled: !ctx.studyOpen,
+      description: 'Opens Practice tools for the current Study without starting a session.',
+      disabledReason: 'Open a Study to use Practice.',
+      onClick: ctx.studyOpen ? ctx.onSelectPractice : undefined,
+    },
   ];
 }
 
-function renderRail(): VNode {
+function renderRail(ctx: RailContext = DEFAULT_RAIL_CONTEXT): VNode {
   return h('div.lib-rail', { attrs: { role: 'toolbar', 'aria-label': 'Study Navigator tools', 'aria-orientation': 'vertical' } },
-    railSurfaces().map(surface => surface.disabled
+    railSurfaces(ctx).map(surface => surface.disabled
       ? renderDisabledControlExplainer(
-          { label: surface.label, description: `${surface.label} is coming soon.` },
+          { label: surface.label, description: surface.disabledReason },
           h('button.lib-rail__btn', {
             key: `rail-${surface.id}`,
             attrs: { type: 'button', disabled: true },
@@ -618,7 +676,8 @@ function renderRail(): VNode {
       : h('button.lib-rail__btn', {
           key: `rail-${surface.id}`,
           class: { '--active': surface.active },
-          attrs: { type: 'button', 'aria-pressed': String(surface.active), ...iconControlExplainerAttrs({ label: surface.label, description: 'Shows the Study Library surface.' }) },
+          attrs: { type: 'button', 'aria-pressed': String(surface.active), ...iconControlExplainerAttrs({ label: surface.label, description: surface.description }) },
+          on: surface.onClick ? { click: surface.onClick } : {},
         }, [navIcon(surface.icon, { size: 18, className: 'lib-rail__icon' })])),
   );
 }
@@ -1485,13 +1544,18 @@ function armGameOpenEscape(onExit: () => void): void {
 
 
 
-export type StudyToolTabId = 'comments' | 'questionnaire' | 'organize' | 'orp';
+// `practice` (ORP V2 Package C, slice C2) is the permanent Practice tool entry, DISTINCT from the
+// existing `orp` ORP-flag authoring tab which is intentionally retained. Adding it here also adds it
+// to `normalizeStudyToolTab` below (that function derives from this list), so a deep link to
+// `toolTab=practice` normalizes to `practice` instead of silently falling back to `comments`.
+export type StudyToolTabId = 'comments' | 'questionnaire' | 'organize' | 'orp' | 'practice';
 
 const STUDY_TOOL_TABS: ReadonlyArray<{ id: StudyToolTabId; label: string }> = [
   { id: 'comments', label: 'Comments' },
   { id: 'questionnaire', label: 'Questionnaire' },
   { id: 'organize', label: 'Organize' },
   { id: 'orp', label: 'ORP' },
+  { id: STUDY_DETAIL_PRACTICE_TOOL_TAB, label: 'Practice' },
 ];
 
 export function normalizeStudyToolTab(value: string | undefined): StudyToolTabId {
@@ -1506,6 +1570,9 @@ const STUDY_TOOL_TAB_PLACEHOLDER: Readonly<Record<StudyToolTabId, string>> = {
   questionnaire: 'Questionnaire answers — coming soon.',
   organize:      'Title / Organize / Assign to Study — coming soon.',
   orp:           'ORP flag — coming soon.',
+  // Honest inert C2 placeholder: the real Practice workspace panel mounts in C3. C2 must not imply
+  // Learn/Review is operational, so this stays a plain "coming soon" line with no session controls.
+  practice:      'Practice workspace — coming soon.',
 };
 
 function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
@@ -1522,7 +1589,14 @@ function renderStudyToolsColumn(opts: GameOpenShellOptions): VNode {
           type: 'button',
           role: 'tab',
           'aria-selected': String(tab.id === opts.activeToolTab),
-          ...controlExplainerAttrs({ label: `${tab.label} tools`, description: `Shows the ${tab.label.toLowerCase()} panel for this Study game.` }),
+          ...controlExplainerAttrs({
+            label: `${tab.label} tools`,
+            // Practice (C2) is a permanent tool entry, not a per-game panel — its More Help must be
+            // honest that opening it does not auto-start a session (no SRS policy on this path).
+            description: tab.id === STUDY_DETAIL_PRACTICE_TOOL_TAB
+              ? 'Opens the Practice workspace entry. It does not automatically start a session.'
+              : `Shows the ${tab.label.toLowerCase()} panel for this Study game.`,
+          }),
         },
         on: { click: () => opts.onSelectToolTab(tab.id) },
       }, tab.label))),
@@ -1552,10 +1626,16 @@ export interface GameOpenShellOptions {
 
   toolPanelContent?: VNode;
   /** Clears `tools` → State 2. Wired to the tools column's "Back to game list" affordance AND
-   * (below) State 3's first Escape step. */
+   * (below) State 3's first Escape step. C2 also reuses it as the Library-rail "leave Practice"
+   * action (clears `tools`/`toolTab`). */
   onCloseTools: () => void;
   /** Writes `toolTab` (and ensures `tools=1`) for the clicked tab. */
   onSelectToolTab: (tab: StudyToolTabId) => void;
+  /** ORP V2 Package C, slice C2: opens the permanent Practice tool entry from the rail — a single
+   * synchronous route write (`tools=1&toolTab=practice`) with NO SRS/session action. Distinct rail
+   * surface from the Practice text tab (which routes through `onSelectToolTab`), passed explicitly
+   * by `libraryView.ts` so the SRS-free route-write boundary stays visible at the wiring point. */
+  onSelectPractice: () => void;
 }
 
 
@@ -1655,10 +1735,19 @@ function renderGameOpenShell(
         ];
       })();
 
+  // C2: a Study detail workspace is open here, so Practice is enabled; its active state is derived
+  // from the parsed route (`toolsOpen && activeToolTab === 'practice'`), never a rail-local boolean.
+  const railContext: RailContext = {
+    studyOpen: true,
+    practiceActive: opts.toolsOpen && opts.activeToolTab === STUDY_DETAIL_PRACTICE_TOOL_TAB,
+    onSelectPractice: opts.onSelectPractice,
+    onLeavePractice: opts.onCloseTools,
+  };
+
   return h('div.lib-shell.lib-shell--game-open', {
     attrs: { style: _itemListDivider.styleDeclaration() },
   }, [
-    renderRail(),
+    renderRail(railContext),
     h('div.lib-items-wrap', {
       attrs: { 'aria-label': 'Study item-list pane', ...controlExplainerAttrs({ label: 'Study item-list pane' }) },
       class: { 'lib-items-wrap--tools': opts.toolsOpen },

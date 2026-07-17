@@ -41,7 +41,7 @@ import {
 } from './studyCtrl';
 import { renderNavigatorShell, normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { renderStudyDetail, renderStudyToolPanel } from './studyDetailView';
-import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
+import { parseStudyDetailRouteState, serializeStudyDetailRouteState, STUDY_DETAIL_PRACTICE_TOOL_TAB } from './detailRouteState';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
 import {
@@ -2315,6 +2315,11 @@ export function renderStudyDetailShell(id: string, redraw: () => void, routeQuer
       ...(toolPanelContent ? { toolPanelContent } : {}),
       onCloseTools: () => writeToolsRoute({ tools: false, toolTab: '' }),
       onSelectToolTab: (tab) => writeToolsRoute({ tools: true, toolTab: tab }),
+      // ORP V2 Package C, slice C2: the permanent Practice rail entry performs ONE synchronous
+      // action — write `tools=1&toolTab=practice` through the existing replace-mode `writeToolsRoute`
+      // (preserving `path`/`orientation`). No due queries, session builders, scheduler, drill launch,
+      // or workspace mount on this path; the real Practice panel host is C3.
+      onSelectPractice: () => writeToolsRoute({ tools: true, toolTab: STUDY_DETAIL_PRACTICE_TOOL_TAB }),
     }),
     _showImportModal ? renderImportModal(redraw) : null,
   ]);

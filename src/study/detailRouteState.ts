@@ -24,6 +24,15 @@ export interface StudyDetailRouteState {
   toolTab?: string;
 }
 
+/**
+ * Canonical `toolTab` token for the permanent Practice tool entry (ORP V2 Package C, slice C2).
+ * The defensive `toolTab` parser/serializer above already round-trips this value unchanged — this
+ * export exists so the rail/tab wiring references ONE stable identity instead of repeating a bare
+ * `'practice'` string. It carries NO session/lesson/target/scheduling semantics: `toolTab=practice`
+ * means only that the Practice tool entry is selected, never that a Practice session has started.
+ */
+export const STUDY_DETAIL_PRACTICE_TOOL_TAB = 'practice';
+
 export interface StudyDetailRouteInvalidParam {
   field: StudyDetailRouteField;
   value: string;
