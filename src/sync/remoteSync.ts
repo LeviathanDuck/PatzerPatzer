@@ -14,6 +14,7 @@ import {
   readPracticeSessionDecisionIds,
   planPracticeApplyOrder,
   type PracticeApplyItem,
+  type PracticeSessionDecisionSet,
 } from './runtimeApply';
 import type { SyncResult } from './client';
 import {
@@ -5578,6 +5579,7 @@ async function applyIdbItem(
   spec: IdbStoreSpec,
   db: IDBDatabase,
   applyIdentity: string,
+  capturedSessionDecisions?: PracticeSessionDecisionSet,
 ): Promise<'applied' | 'deleted' | RemoteSyncSkippedApplyResult> {
   const existing = await readRecordByItemKey(db, spec, item.itemKey);
 
@@ -5643,7 +5645,14 @@ async function applyIdbItem(
 
 
 
-    const sessionDecisions = readPracticeSessionDecisionIds(item.store, item.payload);
+
+
+
+
+
+
+    const sessionDecisions = capturedSessionDecisions ?? readPracticeSessionDecisionIds(item.store, item.payload);
+
 
 
 
@@ -5729,11 +5738,19 @@ async function readExistingPracticeParentIds(
 async function planPracticeApplyBatch(
   practiceItems: readonly NormalizedSyncItem[],
   connectionForSpec: (spec: IdbStoreSpec) => Promise<IDBDatabase>,
-): Promise<{ ordered: NormalizedSyncItem[]; deferred: NormalizedSyncItem[] }> {
+): Promise<{
+  ordered: NormalizedSyncItem[];
+  deferred: NormalizedSyncItem[];
+  sessionDecisionsByKey: Map<string, PracticeSessionDecisionSet>;
+}> {
   const byKey = new Map<string, NormalizedSyncItem>();
   const applyItems: PracticeApplyItem[] = [];
   const referencedLessonIds = new Set<string>();
   const referencedDecisionIds = new Set<string>();
+
+
+
+  const sessionDecisionsByKey = new Map<string, PracticeSessionDecisionSet>();
   for (const item of practiceItems) {
     byKey.set(`${item.store}::${item.itemKey}`, item);
     const lessonId = practiceParentLessonId(item.store, item.payload);
@@ -5744,7 +5761,10 @@ async function planPracticeApplyBatch(
 
 
 
-    const decisionIds = readPracticeSessionDecisionIds(item.store, item.payload).ids;
+
+    const sessionDecisions = readPracticeSessionDecisionIds(item.store, item.payload);
+    sessionDecisionsByKey.set(`${item.store}::${item.itemKey}`, sessionDecisions);
+    const decisionIds = sessionDecisions.ids;
     applyItems.push({ store: item.store, itemKey: item.itemKey, lessonId, decisionId, decisionIds, deleted: isDeletedItem(item) });
     if (lessonId) referencedLessonIds.add(lessonId);
     if (decisionId) referencedDecisionIds.add(decisionId);
@@ -5761,7 +5781,7 @@ async function planPracticeApplyBatch(
     }
     return out;
   };
-  return { ordered: mapBack(plan.ordered), deferred: mapBack(plan.deferred) };
+  return { ordered: mapBack(plan.ordered), deferred: mapBack(plan.deferred), sessionDecisionsByKey };
 }
 
 export async function applyRemoteSyncItems(
@@ -5804,7 +5824,7 @@ export async function applyRemoteSyncItems(
 
 
 
-  const applyOne = async (item: NormalizedSyncItem): Promise<void> => {
+  const applyOne = async (item: NormalizedSyncItem, capturedSessionDecisions?: PracticeSessionDecisionSet): Promise<void> => {
     try {
       let result: 'applied' | 'deleted' | RemoteSyncSkippedApplyResult;
       if (item.store === 'settings') {
@@ -5815,7 +5835,7 @@ export async function applyRemoteSyncItems(
           result = { skipped: 'unknown-store' };
         } else {
           const db = await connectionForSpec(spec);
-          result = await applyIdbItem(item, spec, db, applyIdentity);
+          result = await applyIdbItem(item, spec, db, applyIdentity, capturedSessionDecisions);
         }
       }
       if (item.store === 'analysis' && (result === 'applied' || result === 'deleted')) {
@@ -5863,8 +5883,10 @@ export async function applyRemoteSyncItems(
       reportProgress(index);
     }
 
-    // Phase 2: ordered practice apply. planPracticeApplyBatch owns the ordering + full-chain defer;
-    // applyIdbItem re-checks per item as the authoritative backstop.
+
+
+
+
     if (!cancelled && practiceItems.length > 0) {
       const plan = await planPracticeApplyBatch(practiceItems, connectionForSpec);
       for (const item of plan.ordered) {
@@ -5873,7 +5895,7 @@ export async function applyRemoteSyncItems(
           cancelled = true;
           break;
         }
-        await applyOne(item);
+        await applyOne(item, plan.sessionDecisionsByKey.get(`${item.store}::${item.itemKey}`));
       }
       // A batch-level orphan (parent absent locally and not upserted this batch) blocks the cursor so
       // a later pull re-applies it once its parent lands — the same 'orphan-deferred' blocking skip
