@@ -285,7 +285,8 @@ export type LegacyMigrationFailureCode =
   | 'invalid-mapping'
   | 'capture-failed'
   | 'unknown-decision'
-  | 'lesson-mismatch';
+  | 'lesson-mismatch'
+  | 'unknown-key';
 
 export interface LegacyMigrationFailure {
   readonly code: LegacyMigrationFailureCode;
@@ -338,6 +339,30 @@ function isFiniteNumber(v: unknown): v is number {
 
 function isNonNegativeSafeInteger(v: unknown): v is number {
   return typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function rejectNonIndexArrayKeys(arr: readonly unknown[], path: string): LegacyMigrationFailure | null {
+  const len = arr.length;
+  for (const key of Object.getOwnPropertyNames(arr)) {
+    if (key === 'length') continue;
+    const idx = Number(key);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= len || String(idx) !== key) {
+      return fail('unknown-key', `${path}.${key}`, `${path} carries a non-index own property "${key}"`);
+    }
+  }
+  return null;
 }
 
 /** Legacy `PositionProgress.level` domain ceiling (types.ts: `level: number; // 0–6`). */
@@ -486,6 +511,13 @@ function canonicalizeMappingEntry(
     if (!Array.isArray(rawEquiv)) {
       return { ok: false, failure: fail('not-an-array', `${path}.equivalentPositionKeys`, 'equivalentPositionKeys, when set, must be an array') };
     }
+    // Own-key exactness (family precedent studyDb.ts:rejectNonIndexArrayKeys). A structuredClone-preserved
+    // named own property (`equivalentPositionKeys.namedOwn = "smuggled"`) is a mapping defect, not silently
+    // droppable content — reject it with a typed failure and ZERO downstream reads. ONE rule source: both
+    // the seam's pre-I/O pass (null authority) and the planner's authority-backed pass call this via the
+    // shared validator, so both inherit the exactness rule identically.
+    const equivKeyFail = rejectNonIndexArrayKeys(rawEquiv, `${path}.equivalentPositionKeys`);
+    if (equivKeyFail) return { ok: false, failure: equivKeyFail };
     for (let i = 0; i < rawEquiv.length; i += 1) {
       const k = rawEquiv[i];
       if (!isNonEmptyString(k)) {
