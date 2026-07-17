@@ -36,6 +36,7 @@ import {
 } from './detailRouteState';
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
+import { encodeLocalPgnComment, LOCAL_COMMENT_ID } from '../tree/commentIdentity';
 import { record, Severity } from '../diagnostics';
 import { WorkspaceSession } from '../analyse/workspaceSession';
 import { INITIAL_FEN } from 'chessops/fen';
@@ -169,6 +170,10 @@ export function cancelStudyDetailRouteHydration(): void {
 export function hydrateStudyDetailRoute(id: string, query: string, redraw: () => void): void {
   const run = ++_studyDetailHydrationRun;
   const parsed = parseStudyDetailRouteState(query);
+  // A local move-navigation route write can arrive before the debounced annotation autosave.
+  // Flush the current tree first so rehydration cannot replace a freshly edited comment/glyph
+  // with the older IndexedDB copy.
+  const pendingPersist = persistStudy();
   _loaded = false;
   _loadTargetId = id;
   _loadRouteKey = `${id}?${query}`;
@@ -177,7 +182,7 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
   _dirty   = false;
   clearTimeout(_autoSaveTimer);
 
-  void getStudy(id).then(item => {
+  void pendingPersist.then(() => getStudy(id)).then(item => {
     if (run !== _studyDetailHydrationRun) return;
     if (!item) {
       recordStudyRouteEmpty();
@@ -451,23 +456,26 @@ function serializeStudyNode(node: TreeNode, needsMoveNum: boolean, pendingVariat
       parts.push(`$${g.id}`);
     }
 
-    // Comment block: shapes + user comments
-    const commentParts: string[] = [];
+    // Metadata and authored comments use separate standard PGN blocks. The local comment carries
+    // Patzer's readable ownership prefix so pgnToTree can restore its editable identity after a
+    // route rehydrate; imported comments remain distinct and read-only.
+    const metadataParts: string[] = [];
     const arrows   = (node.shapes ?? []).filter(s => s.dest);
     const squares  = (node.shapes ?? []).filter(s => !s.dest);
     if (arrows.length > 0) {
       const cal = arrows.map(s => `${brushCode(s.brush)}${s.orig}${s.dest ?? ''}`).join(',');
-      commentParts.push(`[%cal ${cal}]`);
+      metadataParts.push(`[%cal ${cal}]`);
     }
     if (squares.length > 0) {
       const csl = squares.map(s => `${brushCode(s.brush)}${s.orig}`).join(',');
-      commentParts.push(`[%csl ${csl}]`);
+      metadataParts.push(`[%csl ${csl}]`);
     }
+    if (metadataParts.length > 0) parts.push(`{ ${metadataParts.join(' ')} }`);
     for (const c of (node.comments ?? [])) {
-      if (c.text.trim()) commentParts.push(c.text.trim());
-    }
-    if (commentParts.length > 0) {
-      parts.push(`{ ${commentParts.join(' ')} }`);
+      const text = c.text.trim();
+      if (!text) continue;
+      const persistedText = c.id === LOCAL_COMMENT_ID ? encodeLocalPgnComment(text) : text;
+      parts.push(`{ ${persistedText} }`);
     }
 
     hasOwnAnnotation = (node.glyphs?.length ?? 0) > 0 || (node.comments?.length ?? 0) > 0 || (node.shapes?.length ?? 0) > 0;

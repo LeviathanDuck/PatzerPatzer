@@ -70,6 +70,10 @@ export function renderCommentPanel(redraw: () => void): VNode {
 }
 
 function saveComment(redraw: () => void): void {
+  // Clicking Save blurs the textarea before the button's click handler runs. The blur commits and
+  // clears the draft, so the following click must be an idempotent no-op instead of treating the
+  // cleared draft as an intentional deletion.
+  if (!isEditingComment()) return;
   const node = detailNode();
   if (!node) { cancelCommentEdit(); redraw(); return; }
   const text = commitCommentEdit();
