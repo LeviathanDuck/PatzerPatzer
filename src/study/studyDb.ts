@@ -94,9 +94,31 @@ const INDEXED_STUDY_SOURCES: ReadonlySet<StudyItem['source']> = new Set([
 ]);
 
 function classifyStudyError(error: unknown): string {
-  if (error instanceof DOMException) return error.name || 'DOMException';
-  if (error instanceof Error) return error.name || error.constructor.name || 'Error';
-  return typeof error;
+
+
+
+
+
+
+
+  try {
+    if (error instanceof DOMException) {
+      try { return error.name || 'DOMException'; } catch { return 'DOMException'; }
+    }
+    if (error instanceof Error) {
+      try {
+        if (error.name) return error.name;
+      } catch { /* hostile `name` accessor — fall through to the constructor name */ }
+      try {
+        const ctorName = error.constructor?.name;
+        if (ctorName) return ctorName;
+      } catch { /* hostile `constructor` accessor — fall through to the neutral fallback */ }
+      return 'Error';
+    }
+    return typeof error;
+  } catch {
+    return 'UnknownError';
+  }
 }
 
 function studyRouteLabel(): string {
@@ -2220,14 +2242,14 @@ function validateLadderConfigMembers(config: Record<string, unknown>): SrsPersis
   return null;
 }
 
-
-
-
-
-
-
-
-
+/**
+ * Complete SERVICE-SIDE config shape validation — plain-object + closed-record + identity + version +
+ * deep members — i.e. everything the sealed `validateLadderConfig` (scheduler.ts) does NOT check (it
+ * validates ladder MECHANICS only). Returns a human-readable reason on failure, or null when the shape is
+ * valid. Runs ONCE, on the getter-free post-`structuredClone` config snapshot only — the dual original-object
+ * pass was removed with the F7 single-canonicalization seam, since all config use is now confined to that
+ * private clone. The mechanics brand (`validateLadderConfig`) runs separately, on the same snapshot.
+ */
 function validateServiceConfigShape(config: unknown): string | null {
   if (!isPlainObject(config)) {
     return 'ladder config must be a plain object';
