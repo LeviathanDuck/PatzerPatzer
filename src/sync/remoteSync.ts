@@ -11,7 +11,7 @@ import {
   isPracticeStore,
   practiceParentLessonId,
   practiceDecisionDependencyId,
-  practiceSessionDecisionIds,
+  readPracticeSessionDecisionIds,
   planPracticeApplyOrder,
   type PracticeApplyItem,
 } from './runtimeApply';
@@ -4643,7 +4643,7 @@ async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Pro
 
 
 type VersionedPullCursorMode = 'set' | 'advance' | 'none';
-async function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): Promise<number> {
+export async function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): Promise<number> {
   const latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
     ? Math.floor(latestVersion)
     : 0;
@@ -4665,7 +4665,24 @@ async function rememberVersionedPullMetadata(items: readonly unknown[], latestVe
 
 
   const identity = await ensureRemoteSyncItemStateActive(storedServerIdentity());
-  await recordRemoteSyncItemStateVersions(identity, records);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const practiceRecords = records.filter(record => isPracticeStore(record.store));
+  const legacyRecords = records.filter(record => !isPracticeStore(record.store));
+  if (legacyRecords.length > 0) await recordRemoteSyncItemStateVersions(identity, legacyRecords);
+  if (practiceRecords.length > 0) await recordRemoteSyncItemStateVersions(identity, practiceRecords, { mode: 'max' });
   const recordMax = records.reduce((max, record) => Math.max(max, record.version), latest);
   const latestRecorded = recordRemoteSyncItemVersions(localStorage, identity, [], recordMax);
   if (cursorMode === 'set') {
@@ -5626,7 +5643,12 @@ async function applyIdbItem(
 
 
 
-    const sessionDecisionIds = practiceSessionDecisionIds(item.store, item.payload);
+    const sessionDecisions = readPracticeSessionDecisionIds(item.store, item.payload);
+
+
+
+    if (!sessionDecisions.readable) return { skipped: 'invalid-payload' };
+    const sessionDecisionIds = sessionDecisions.ids;
     if (sessionDecisionIds.length > 0) {
       const decisionsSpec = IDB_SPECS_BY_STORE.get('study-practice-decisions');
       if (decisionsSpec) {
@@ -5718,7 +5740,11 @@ async function planPracticeApplyBatch(
     const decisionId = practiceDecisionDependencyId(item.store, item.payload);
 
 
-    const decisionIds = practiceSessionDecisionIds(item.store, item.payload);
+
+
+
+
+    const decisionIds = readPracticeSessionDecisionIds(item.store, item.payload).ids;
     applyItems.push({ store: item.store, itemKey: item.itemKey, lessonId, decisionId, decisionIds, deleted: isDeletedItem(item) });
     if (lessonId) referencedLessonIds.add(lessonId);
     if (decisionId) referencedDecisionIds.add(decisionId);

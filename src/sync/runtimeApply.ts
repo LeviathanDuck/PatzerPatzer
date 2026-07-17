@@ -140,27 +140,60 @@ export function practiceDecisionDependencyId(store: string, payload: unknown): s
 
 
 
-export function practiceSessionDecisionIds(store: string, payload: unknown): string[] {
-  if (store !== 'study-practice-sessions') return [];
-  const record = payload && typeof payload === 'object' && !Array.isArray(payload)
-    ? payload as Record<string, unknown>
-    : null;
-  const plan = record && record.plan && typeof record.plan === 'object' && !Array.isArray(record.plan)
-    ? record.plan as Record<string, unknown>
-    : null;
-  if (!plan) return [];
-  const ids = new Set<string>();
-  for (const listName of ['entries', 'context', 'repair'] as const) {
-    const list = plan[listName];
-    if (!Array.isArray(list)) continue;
-    for (const entry of list) {
-      const targetId = entry && typeof entry === 'object' && !Array.isArray(entry)
-        ? (entry as Record<string, unknown>).targetId
-        : undefined;
-      if (typeof targetId === 'string' && targetId.trim()) ids.add(targetId);
+
+
+
+
+
+export interface PracticeSessionDecisionSet {
+  readonly ids: string[];
+  readonly readable: boolean;
+}
+
+
+
+
+
+
+
+
+
+
+export function readPracticeSessionDecisionIds(store: string, payload: unknown): PracticeSessionDecisionSet {
+  if (store !== 'study-practice-sessions') return { ids: [], readable: true };
+  try {
+    const record = payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : null;
+    const plan = record && record.plan && typeof record.plan === 'object' && !Array.isArray(record.plan)
+      ? record.plan as Record<string, unknown>
+      : null;
+    if (!plan) return { ids: [], readable: true };
+    const ids = new Set<string>();
+    for (const listName of ['entries', 'context', 'repair'] as const) {
+      const list = plan[listName];
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        const targetId = entry && typeof entry === 'object' && !Array.isArray(entry)
+          ? (entry as Record<string, unknown>).targetId
+          : undefined;
+        if (typeof targetId === 'string' && targetId.trim()) ids.add(targetId);
+      }
     }
+    return { ids: Array.from(ids), readable: true };
+  } catch {
+    // Hostile accessor-bearing payload (Proxy/throwing getter on plan/lists/targetId). Classify it as
+    // unreadable so the caller skips just this row instead of the planner rejecting the whole batch.
+    return { ids: [], readable: false };
   }
-  return Array.from(ids);
+}
+
+/** Back-compat array view of {@link readPracticeSessionDecisionIds}: the deduped decision-set ids, or
+ *  `[]` for a non-session store, a benign absent/malformed plan, OR an unreadable hostile payload.
+ *  Callers that must DISTINGUISH the hostile case (a per-item skip) from a benign empty set use
+ *  {@link readPracticeSessionDecisionIds} and its `readable` flag. Total — never throws. */
+export function practiceSessionDecisionIds(store: string, payload: unknown): string[] {
+  return readPracticeSessionDecisionIds(store, payload).ids;
 }
 
 export interface PracticeApplyItem {
