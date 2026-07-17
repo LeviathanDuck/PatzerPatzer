@@ -2336,7 +2336,7 @@ function rejectedService(
 export async function completeStudySrsAttempt(
   input: CompleteStudySrsAttemptInput,
 ): Promise<SrsAttemptServiceResult> {
-  const { attempt, now, currentSourceById } = input;
+  const { now, currentSourceById } = input;
 
   // --- Pre-transaction fail-closed validation (no DB touched yet). ---
   if (!Number.isFinite(now)) {
@@ -2381,7 +2381,6 @@ export async function completeStudySrsAttempt(
   if (!configValidation.ok) {
     return rejectedService('invalid-config', `ladder config invalid: ${configValidation.reason}`);
   }
-  const config = configValidation.config;
 
 
 
@@ -2391,10 +2390,49 @@ export async function completeStudySrsAttempt(
 
 
 
-  const attemptFailure = validateAttemptRecordShape(attempt);
+
+  const attemptFailure = validateAttemptRecordShape(input.attempt);
   if (attemptFailure) {
     return rejectedService('invalid', `attempt failed validation at ${attemptFailure.path}: ${attemptFailure.reason}`);
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  let attempt: SrsAttemptRecord;
+  try {
+    attempt = structuredClone(input.attempt);
+  } catch (e) {
+    return rejectedService('invalid', `attempt could not be snapshotted: ${classifyStudyError(e)}`);
+  }
+  let configSnapshot: SrsLadderConfig;
+  try {
+    configSnapshot = structuredClone(input.config);
+  } catch (e) {
+    return rejectedService('invalid-config', `ladder config could not be snapshotted: ${classifyStudyError(e)}`);
+  }
+  // Re-brand the config snapshot through the sole brand producer (respecting the "validateLadderConfig is
+  // the only constructor of the branded type" contract) — this also revalidates the snapshot's mechanics.
+  // A faithful clone of the already-validated config always revalidates; a failure here is fail-closed
+  // defense, never a reachable path.
+  const configSnapshotValidation = validateLadderConfig(configSnapshot);
+  if (!configSnapshotValidation.ok) {
+    return rejectedService('invalid-config', `ladder config snapshot failed revalidation: ${configSnapshotValidation.reason}`);
+  }
+  const config = configSnapshotValidation.config;
 
 
 
