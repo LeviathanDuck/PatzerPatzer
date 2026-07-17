@@ -125,3 +125,19 @@ export function resetEvalGraphSettingsRuntimeForDataManagement(): void {
   evalGraphGuides      = true;
   evalGraphRingMarker  = true;
 }
+
+export function resetEvalGraphAppearancePreferences(): void {
+  localStorage.removeItem(THEME_KEY);
+  localStorage.removeItem(TOOLTIP_KEY);
+  localStorage.removeItem(GUIDES_KEY);
+  localStorage.removeItem(RING_MARKER_KEY);
+  resetEvalGraphSettingsRuntimeForDataManagement();
+}
+
+export function reloadEvalGraphAppearancePreferences(): void {
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  evalGraphTheme = isEvalGraphTheme(storedTheme) ? storedTheme : THEME_DEFAULT;
+  evalGraphTooltip = readBoolSetting(TOOLTIP_KEY, true);
+  evalGraphGuides = readBoolSetting(GUIDES_KEY, true);
+  evalGraphRingMarker = readBoolSetting(RING_MARKER_KEY, true);
+}

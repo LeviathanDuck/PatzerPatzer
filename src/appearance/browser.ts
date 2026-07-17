@@ -5,8 +5,14 @@ import {
   type AppearanceStorage,
   type ResolvedAppearanceTheme,
 } from './index';
+import {
+  createInterfaceMotionController,
+  type InterfaceMotionController,
+  type InterfaceMotionMediaQuery,
+} from './model';
 
 const LIGHT_QUERY = '(prefers-color-scheme: light)';
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 const THEME_COLORS: Record<ResolvedAppearanceTheme, string> = {
   dark: '#101212',
   light: '#f3efe6',
@@ -42,7 +48,7 @@ export interface BrowserAppearanceEnvironment {
   document?: BrowserDocument;
 }
 
-function createLazyMediaQuery(win: BrowserWindow): AppearanceMediaQuery {
+function createLazyMediaQuery(win: BrowserWindow, queryText = LIGHT_QUERY): AppearanceMediaQuery & InterfaceMotionMediaQuery {
   let initialized = false;
   let mediaQuery: BrowserMediaQueryList | null = null;
   const listenerAdapters = new Map<(matches: boolean) => void, (event: { matches: boolean }) => void>();
@@ -51,7 +57,7 @@ function createLazyMediaQuery(win: BrowserWindow): AppearanceMediaQuery {
     if (initialized) return mediaQuery;
     initialized = true;
     try {
-      if (typeof win.matchMedia === 'function') mediaQuery = win.matchMedia(LIGHT_QUERY);
+      if (typeof win.matchMedia === 'function') mediaQuery = win.matchMedia(queryText);
     } catch {
       mediaQuery = null;
     }
@@ -79,6 +85,22 @@ function createLazyMediaQuery(win: BrowserWindow): AppearanceMediaQuery {
       listenerAdapters.delete(listener);
     },
   };
+}
+
+export function createBrowserInterfaceMotionController(
+  environment: BrowserAppearanceEnvironment = {},
+): InterfaceMotionController {
+  const win = environment.window ?? (window as unknown as BrowserWindow);
+  const doc = environment.document ?? (document as unknown as BrowserDocument);
+  return createInterfaceMotionController({
+    storage: {
+      getItem: key => win.localStorage.getItem(key),
+      setItem: (key, value) => win.localStorage.setItem(key, value),
+      removeItem: key => win.localStorage.removeItem?.(key),
+    },
+    mediaQuery: createLazyMediaQuery(win, REDUCED_MOTION_QUERY),
+    apply: state => { doc.documentElement.dataset.motion = state.reduced ? 'reduced' : 'full'; },
+  });
 }
 
 export function createBrowserAppearanceController(

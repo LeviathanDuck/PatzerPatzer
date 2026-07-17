@@ -74,10 +74,11 @@ import {
   iconControlExplainerAttrs,
   renderDisabledControlExplainer,
 } from '../ui/controlExplainer';
+import { requestAdvancedAppearance } from '../appearance/entryPoints';
 
 const NEW_IMPORT_WINDOW_MS = 60 * 60 * 1000;
 const GAME_LIST_PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
-type GameListPageSize = typeof GAME_LIST_PAGE_SIZE_OPTIONS[number];
+export type GameListPageSize = typeof GAME_LIST_PAGE_SIZE_OPTIONS[number];
 const GAME_LIST_PAGE_SIZE_STORAGE_KEY = 'patzer.games.underboardPageSize.v1';
 
 // ---------------------------------------------------------------------------
@@ -458,7 +459,7 @@ let gameListMorePillsOpen = false;
 
 
 
-type UnderboardDensity = 'compact' | 'rich';
+export type UnderboardDensity = 'compact' | 'rich';
 const GAME_LIST_DENSITY_STORAGE_KEY = 'patzer.games.underboardDensity.v1';
 let gameListDensity: UnderboardDensity = loadGameListDensity();
 // Measured by a ResizeObserver on the underboard's rendered width (installed in renderGameList's
@@ -632,7 +633,7 @@ function loadGameListPageSize(): GameListPageSize {
   return 50;
 }
 
-function setGameListPageSize(size: GameListPageSize): void {
+export function setGameListPageSize(size: GameListPageSize): void {
   gameListPageSize = size;
   resetGameListPage();
   try {
@@ -652,13 +653,62 @@ function loadGameListDensity(): UnderboardDensity {
   return 'compact';
 }
 
-function setGameListDensity(density: UnderboardDensity): void {
+export function setGameListDensity(density: UnderboardDensity): void {
   gameListDensity = density;
   try {
     localStorage.setItem(GAME_LIST_DENSITY_STORAGE_KEY, density);
   } catch {
     // Non-critical: setting still works for the current session.
   }
+}
+
+export function getGamesAppearanceSnapshot(): { density: UnderboardDensity; pageSize: GameListPageSize } {
+  return { density: gameListDensity, pageSize: gameListPageSize };
+}
+
+export function renderGamesAppearanceSettings(redraw: () => void): VNode {
+  return h('div.board-settings.games-appearance-settings', [
+    h('div.board-settings__label', 'Games lists'),
+    h('div.board-settings__segmented-row', [
+      h('span.board-settings__segmented-label', 'Underboard density'),
+      h('div.board-settings__segmented-control', (['compact', 'rich'] as const).map(density =>
+        h('button.board-settings__segmented-option', {
+          class: { active: gameListDensity === density },
+          attrs: {
+            type: 'button',
+            'aria-pressed': String(gameListDensity === density),
+            ...controlExplainerAttrs({ label: `${density} game-list density`, tier: 'more-help' }),
+          },
+          on: { click: () => { setGameListDensity(density); redraw(); } },
+        }, density === 'compact' ? 'Compact' : 'Rich'),
+      )),
+    ]),
+    h('div.board-settings__slider-row', [
+      h('label', { attrs: { for: 'games-underboard-page-size' } }, 'Games per page'),
+      h('select#games-underboard-page-size', {
+        attrs: controlExplainerAttrs({ label: 'Games per page', tier: 'more-help' }),
+        on: { change: (event: Event) => {
+          setGameListPageSize(Number((event.target as HTMLSelectElement).value) as GameListPageSize);
+          redraw();
+        } },
+      }, GAME_LIST_PAGE_SIZE_OPTIONS.map(size => h('option', { attrs: { value: size }, props: { selected: gameListPageSize === size } }, String(size)))),
+      h('span.board-settings__slider-val', String(gameListPageSize)),
+    ]),
+  ]);
+}
+
+export function resetGamesAppearancePreferences(): void {
+  localStorage.removeItem(GAME_LIST_DENSITY_STORAGE_KEY);
+  localStorage.removeItem(GAME_LIST_PAGE_SIZE_STORAGE_KEY);
+  gameListDensity = 'compact';
+  gameListPageSize = 50;
+  resetGameListPage();
+}
+
+export function reloadGamesAppearancePreferences(): void {
+  gameListDensity = loadGameListDensity();
+  gameListPageSize = loadGameListPageSize();
+  resetGameListPage();
 }
 
 
@@ -810,6 +860,7 @@ export function writeGamesRouteStateFromSnapshotForTests(
 function writeCurrentGamesRouteState(deps: GamesViewDeps): void {
   if (deps.routeQuery === undefined) return;
   writeHashRoute(serializeGamesRouteState(currentGamesRouteStateSnapshot()), { mode: 'replace' });
+  if (gamesFilterActive()) window.dispatchEvent(new CustomEvent('patzer:teaching:games-filter-applied'));
 }
 
 function applyGamesRouteStateForView(state: GamesRouteState): void {
@@ -2013,7 +2064,7 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
 
 
 
-  const filterBar = h('div.games-view__controls', [
+  const filterBar = h('div.games-view__controls', { attrs: { 'data-teaching-target': 'games-filter-controls' } }, [
     // Account lens
     h('div.games-view__filter-group', [
       h('span.games-view__filter-label', 'Account'),
@@ -2035,6 +2086,12 @@ export function renderGamesView(deps: GamesViewDeps): VNode {
 
     // Summary + clear + multi-select review
     h('div.games-view__filter-group.--right', [
+      h('button.games-view__appearance-btn', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Games appearance', description: 'Open Games list settings in Advanced Appearance.',
+        }) },
+        on: { click: (event: Event) => requestAdvancedAppearance('graphs-lists', event.currentTarget as HTMLElement) },
+      }, 'Appearance'),
 
 
       h('div.games-view__density-toggle', [

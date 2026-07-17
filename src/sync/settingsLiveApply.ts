@@ -35,6 +35,41 @@ export interface SettingsLiveApplyResult {
 
 export const SETTINGS_LIVE_APPLY_GROUPS: readonly SettingsLiveApplyGroup[] = Object.freeze([
   {
+    id: 'control-help',
+    label: 'Control help',
+    keys: [
+      'patzer.controlHelp.mode',
+      'patzer.controlHelp.hoverDelayMs',
+      'patzer.controlHelp.teachingCadence',
+      'patzer.controlHelp.learningGeneration',
+    ],
+    prefixes: [
+      'patzer.controlHelp.learned.',
+      'patzer.controlHelp.snoozed.',
+    ],
+    handlerId: 'control-help.runtime-event',
+    status: 'applied',
+  },
+  {
+    id: 'appearance',
+    label: 'Appearance',
+    keys: [
+      'patzer.appearance.v1',
+      'patzer.appearance.motion.v1',
+      'gamesListBoardPreviewEnabled',
+      'gamesListBoardPreviewSize',
+      'patzer.games.underboardDensity.v1',
+      'patzer.games.underboardPageSize.v1',
+      'patzer.studyNavUiScalePct',
+      'patzer.studyNavRowHeightPx',
+      'patzer.studyNavRowHeightScaleText',
+      'patzer.studyItemRowHeightPx',
+      'patzer.studyItemRowHeightScaleText',
+    ],
+    handlerId: 'appearance.runtime-event',
+    status: 'applied',
+  },
+  {
     id: 'board-cosmetics',
     label: 'Board cosmetics',
     keys: [

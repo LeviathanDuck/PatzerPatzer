@@ -3,7 +3,17 @@
 
 import { h, type VNode } from 'snabbdom';
 import type { AppearanceController } from '../appearance';
-import { renderAppearanceSettings } from '../appearance/view';
+import type { InterfaceMotionController } from '../appearance/model';
+import {
+  formatBoardAndPieces,
+  formatBoardSounds,
+  formatHelpMode,
+  formatThemePreference,
+  type AppearanceSection,
+} from '../appearance/model';
+import { renderAdvancedAppearanceModal, type AdvancedAppearanceController } from '../appearance/modal';
+import type { ControlHelpController } from '../ui/controlHelpPreferences';
+import { renderSettingsIcon } from './settingsIcon';
 import { renderToggleRow } from '../ui';
 import {
   controlExplainerAttrs,
@@ -23,6 +33,8 @@ import {
 } from '../import/filters';
 import {
   boardWheelNavEnabled,
+  boardTheme,
+  pieceSet,
   renderBoardSettings,
   setBoardWheelNavEnabled,
 } from '../board/cosmetics';
@@ -615,6 +627,12 @@ export interface HeaderDeps {
   downloadPgn:         (annotated: boolean) => void;
   resetAllData:        () => void;
   appearance:          AppearanceController;
+  motion:              InterfaceMotionController;
+  controlHelp:         ControlHelpController;
+  advancedAppearance:  AdvancedAppearanceController;
+  renderGamesAppearanceSettings: () => VNode;
+  renderNavigatorAppearanceSettings: () => VNode;
+  resetAppearance:     () => void;
   redraw:              () => void;
 }
 
@@ -2721,26 +2739,212 @@ function renderReleaseIdentityFooter(redraw: () => void): VNode {
   ]);
 }
 
+interface SettingsMenuRow {
+  id: string;
+  label: string;
+  value?: string;
+  description?: string;
+  destructive?: boolean;
+  disabledReason?: string;
+  teachingTarget?: string;
+  onSelect(): void;
+}
+
+interface SettingsMenuSection {
+  id: 'appearance' | 'experience' | 'analysis-tools' | 'account-data' | 'support';
+  label: string;
+  rows: Array<SettingsMenuRow | VNode | null>;
+}
+
+function renderSettingsMenuRow(row: SettingsMenuRow): VNode {
+  const button = h('button.global-menu__item.global-menu__row', {
+    class: { 'global-menu__row--destructive': Boolean(row.destructive) },
+    attrs: {
+      type: 'button',
+      disabled: Boolean(row.disabledReason),
+      'data-teaching-target': row.teachingTarget ?? '',
+      ...controlExplainerAttrs({
+        label: row.label,
+        ...(row.description ? { description: row.description } : {}),
+        tier: row.destructive || row.disabledReason ? 'essential' : 'more-help',
+      }),
+    },
+    on: { click: row.onSelect },
+  }, [
+    h('span.global-menu__label', row.label),
+    row.value ? h('span.global-menu__value', row.value) : null,
+    h('span.global-menu__chevron', '›'),
+  ]);
+  return row.disabledReason
+    ? renderDisabledControlExplainer({ label: row.label, description: row.disabledReason }, button)
+    : button;
+}
+
+function renderSettingsSection(section: SettingsMenuSection): VNode | null {
+  const rows = section.rows.filter((row): row is SettingsMenuRow | VNode => row !== null);
+  if (rows.length === 0) return null;
+  return h('section.global-menu__section', { attrs: { 'data-settings-section': section.id } }, [
+    h('h2.global-menu__section-label', section.label),
+    ...rows.map(row => 'id' in row ? renderSettingsMenuRow(row) : row),
+  ]);
+}
+
 function renderGlobalMenu(deps: HeaderDeps): VNode {
   const { downloadPgn, resetAllData, selectedGameId, redraw } = deps;
   const hasGame = selectedGameId !== null;
   const hasVerifiedSyncSession = remoteSyncActive || (remoteSyncChecking && hasRemoteSyncToken());
+  const openAppearance = (section: AppearanceSection, opener?: HTMLElement): void => {
+    showGlobalMenu = false;
+    deps.advancedAppearance.open(section, opener);
+  };
+  const settingsRow = (
+    id: string,
+    label: string,
+    value: string | undefined,
+    section: AppearanceSection,
+    description?: string,
+    teachingTarget?: string,
+  ): SettingsMenuRow => ({
+    id,
+    label,
+    ...(value !== undefined ? { value } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(teachingTarget !== undefined ? { teachingTarget } : {}),
+    onSelect: () => openAppearance(
+      section,
+      document.querySelector<HTMLElement>('.global-menu__trigger') ?? undefined,
+    ),
+  });
+  const sections: SettingsMenuSection[] = [
+    {
+      id: 'appearance',
+      label: 'Appearance',
+      rows: [
+        settingsRow('theme', 'Color theme', formatThemePreference(deps.appearance.getState().preference), 'interface'),
+        settingsRow('help', 'Help & tooltips', formatHelpMode(deps.controlHelp.getState().mode), 'help'),
+        settingsRow('board', 'Board & pieces', formatBoardAndPieces(boardTheme, pieceSet), 'chessboards'),
+        settingsRow(
+          'advanced-appearance',
+          'Advanced Appearance…',
+          'All settings',
+          'interface',
+          'Open every visual and help preference in one place.',
+          'settings-advanced-appearance',
+        ),
+      ],
+    },
+    {
+      id: 'experience',
+      label: 'Experience',
+      rows: [
+        {
+          id: 'board-sounds',
+          label: 'Board sounds',
+          value: formatBoardSounds(boardSoundEnabled, soundVolume),
+          description: 'Turn board move sounds on or off.',
+          onSelect: () => { setBoardSoundEnabled(!boardSoundEnabled); redraw(); },
+        },
+        h('div.global-menu__range-row', [
+          h('label', { attrs: { for: 'global-board-sound-volume' } }, 'Sound volume'),
+          h('input#global-board-sound-volume', {
+            attrs: { type: 'range', min: 0, max: 1, step: 0.05, value: soundVolume, ...controlExplainerAttrs({
+              label: 'Board sound volume', description: 'Set the volume of board move sounds.', tier: 'more-help',
+            }) },
+            on: { input: (event: Event) => { setSoundVolume(Number((event.target as HTMLInputElement).value)); redraw(); } },
+          }),
+          h('output', `${Math.round(soundVolume * 100)}%`),
+        ]),
+        {
+          id: 'board-wheel-navigation',
+          label: 'Board wheel navigation',
+          value: boardWheelNavEnabled ? 'On' : 'Off',
+          description: 'Use the pointer wheel to step through moves while it is over a chessboard.',
+          onSelect: () => { setBoardWheelNavEnabled(!boardWheelNavEnabled); redraw(); },
+        },
+      ],
+    },
+    {
+      id: 'analysis-tools',
+      label: 'Analysis tools',
+      rows: [
+        {
+          id: 'analysis', label: 'Open selected game in Analysis', value: hasGame ? 'Ready' : 'No game selected',
+          ...(!hasGame ? { disabledReason: 'Select a game before opening the Analysis Board.' } : {}),
+          onSelect: () => {
+            if (!hasGame) return;
+            closeGlobalMenu(redraw);
+            writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
+          },
+        },
+        {
+          id: 'detection', label: 'Detection settings', value: 'Configure',
+          description: 'Configure how analyzed moves are classified as missed tactical moments.',
+          onSelect: () => { showDetectionModal = true; showGlobalMenu = false; redraw(); },
+        },
+        {
+          id: 'mistake-detection', label: 'Mistake detection', value: 'Configure',
+          description: 'Configure which mistakes become Learn From Your Mistakes moments.',
+          onSelect: () => { showRetroModal = true; showGlobalMenu = false; redraw(); },
+        },
+        {
+          id: 'export-annotated', label: 'Export PGN', value: 'Annotated',
+          description: 'Download the selected game with Patzer analysis annotations.',
+          onSelect: () => { closeGlobalMenu(redraw); downloadPgn(true); },
+        },
+        {
+          id: 'export-plain', label: 'Export PGN', value: 'Plain',
+          description: 'Download the selected game without Patzer analysis annotations.',
+          onSelect: () => { closeGlobalMenu(redraw); downloadPgn(false); },
+        },
+      ],
+    },
+    {
+      id: 'account-data',
+      label: 'Account & data',
+      rows: [
+        hasVerifiedSyncSession ? {
+          id: 'sync-dashboard', label: 'Sync Dashboard', value: 'Open',
+          description: 'Open detailed sync status, diagnostics, and recovery controls.',
+          onSelect: () => { closeGlobalMenu(redraw); writeHashRoute('#/sync'); },
+        } : null,
+        headerAuthUser ? {
+          id: 'disconnect-lichess', label: 'Disconnect Lichess', value: 'Connected',
+          description: 'Remove the connected Lichess chess identity from this browser.',
+          onSelect: () => { void logout().then(() => {
+            stopAccountSettingsSync();
+            headerAuthUser = null;
+            headerAuthIsAdmin = false;
+            headerAuthProvider = null;
+            closeGlobalMenu(redraw);
+          }); },
+        } : null,
+        {
+          id: 'clear-local-data', label: 'Clear Local Data', value: 'Destructive', destructive: true,
+          description: 'Delete Patzer data stored locally in this browser.',
+          onSelect: () => { closeGlobalMenu(redraw); void resetAllData(); },
+        },
+      ],
+    },
+    {
+      id: 'support',
+      label: 'Support',
+      rows: [{
+        id: 'report-issue', label: 'Report issue', value: 'Diagnostics',
+        description: 'Create a diagnostics report for the current page.',
+        onSelect: () => reportGlobalMenuIssue(deps.route, redraw),
+      }],
+    },
+  ];
   return h('div.global-menu', [
     h('button.global-menu__trigger', {
       class: { active: showGlobalMenu },
-      attrs: iconControlExplainerAttrs({ label: showGlobalMenu ? 'Close settings' : 'Open settings' }),
+      attrs: { type: 'button', ...iconControlExplainerAttrs({ label: showGlobalMenu ? 'Close settings' : 'Open settings' }) },
       on: { click: () => {
-        showGlobalMenu    = !showGlobalMenu;
-        showBoardSettings = false;
-        showEvalGraphSettings = false;
-        if (!showGlobalMenu) {
-          showReleaseDetails = false;
-          releaseCopyMessage = '';
-        }
+        showGlobalMenu = !showGlobalMenu;
+        if (!showGlobalMenu) { showReleaseDetails = false; releaseCopyMessage = ''; }
         redraw();
-      }},
-    }, '⚙'),
-
+      } },
+    }, [renderSettingsIcon()]),
     showGlobalMenu ? h('div.global-menu__backdrop', {
       attrs: { role: 'button', tabindex: '0', ...iconControlExplainerAttrs({ label: 'Close settings' }) },
       on: {
@@ -2748,166 +2952,8 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
         keydown: (event: KeyboardEvent) => activateOnKeyboard(event, () => closeGlobalMenu(redraw)),
       },
     }) : null,
-
-    showGlobalMenu ? h('div.global-menu__dropdown', {
-      class: { 'board-open': showBoardSettings || showEvalGraphSettings },
-    }, [
-      h('button.global-menu__item', {
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Report issue',
-          description: 'Create a diagnostics report for the current page.',
-        }) },
-        on: { click: () => reportGlobalMenuIssue(deps.route, redraw) },
-      }, 'Report issue'),
-
-      h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Clear local data',
-          description: 'Delete Patzer data stored locally in this browser.',
-        }),
-        on: { click: () => {
-          closeGlobalMenu(redraw);
-          void resetAllData();
-        } },
-      }, 'Clear Local Data'),
-
-      // Navigate to the analysis board to review the currently loaded game.
-      // Disabled when no game is selected — nothing to review.
-      renderDisabledControlWhen(
-        hasGame ? null : 'Select a game before opening the Analysis Board.',
-        'Analysis',
-        h('button.global-menu__item', {
-          attrs: { disabled: !hasGame, ...controlExplainerAttrs({
-            label: 'Analysis',
-            description: hasGame
-              ? 'Open the selected game on the Analysis Board.'
-              : 'Select a game before opening the Analysis Board.',
-          }) },
-          on: { click: () => {
-            if (!hasGame) return;
-            closeGlobalMenu(redraw);
-            writeHashRoute(serializeAnalysisSelectedGameRoute(selectedGameId));
-          }},
-        }, 'Analysis'),
-      ),
-
-
-
-
-      h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Export annotated PGN',
-          description: 'Download the selected game with Patzer analysis annotations.',
-        }),
-        on: { click: () => { closeGlobalMenu(redraw); downloadPgn(true); } },
-      }, 'Export PGN (Annotated)'),
-
-      h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Export plain PGN',
-          description: 'Download the selected game without Patzer analysis annotations.',
-        }),
-        on: { click: () => { closeGlobalMenu(redraw); downloadPgn(false); } },
-      }, 'Export PGN (Plain)'),
-
-      renderAppearanceSettings(deps.appearance),
-
-      h('div.global-menu__item.global-menu__item--toggle',
-        renderToggleRow('board-wheel-nav', 'Board Wheel Navigation', boardWheelNavEnabled, (v) => { setBoardWheelNavEnabled(v); redraw(); }),
-      ),
-
-
-
-
-      h('div.global-menu__item.global-menu__item--toggle',
-        renderToggleRow('board-sounds', 'Board Sounds', boardSoundEnabled, (v) => { setBoardSoundEnabled(v); redraw(); }),
-      ),
-
-      h('div.global-menu__item.global-menu__item--slider', [
-        h('span', `Volume: ${Math.round(soundVolume * 100)}%`),
-        h('input', {
-          attrs: { type: 'range', min: 0, max: 1, step: 0.05, value: soundVolume, ...controlExplainerAttrs({
-            label: 'Board sound volume',
-            description: 'Set the volume of board move sounds.',
-          }) },
-          on: {
-            input: (e: Event) => {
-              setSoundVolume(parseFloat((e.target as HTMLInputElement).value));
-              redraw();
-            },
-          },
-        }),
-      ]),
-
-      h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Detection Settings',
-          description: 'Configure how analyzed moves are classified as missed tactical moments.',
-        }),
-        on: { click: () => { showDetectionModal = true; showGlobalMenu = false; redraw(); } },
-      }, 'Detection Settings…'),
-
-      h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Mistake Detection',
-          description: 'Configure which mistakes become Learn From Your Mistakes moments.',
-        }),
-        on: { click: () => { showRetroModal = true; showGlobalMenu = false; redraw(); } },
-      }, 'Mistake Detection…'),
-
-      hasVerifiedSyncSession ? h('button.global-menu__item', {
-        attrs: controlExplainerAttrs({
-          label: 'Sync Dashboard',
-          description: 'Open detailed sync status, diagnostics, and recovery controls.',
-        }),
-        on: { click: () => {
-          closeGlobalMenu(redraw);
-          writeHashRoute('#/sync');
-        } },
-      }, 'Sync Dashboard') : null,
-
-      headerAuthUser ? h('button.global-menu__item.global-menu__item--logout', {
-        attrs: controlExplainerAttrs({
-          label: 'Disconnect Lichess',
-          description: 'Remove the connected Lichess chess identity from this browser.',
-        }),
-        on: { click: () => {
-	          logout().then(() => {
-	            stopAccountSettingsSync();
-	            headerAuthUser = null;
-	            headerAuthIsAdmin = false;
-	            headerAuthProvider = null;
-            closeGlobalMenu(redraw);
-          });
-        }},
-      }, 'Disconnect Lichess') : null,
-
-      h('button.global-menu__item.global-menu__item--has-sub', {
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Board Settings',
-          description: `${showBoardSettings ? 'Close' : 'Open'} board appearance settings.`,
-        }) },
-        on: { click: () => { showBoardSettings = !showBoardSettings; redraw(); } },
-      }, [
-        h('span', 'Board Settings'),
-        h('span.global-menu__arrow', showBoardSettings ? '▾' : '›'),
-      ]),
-
-      showBoardSettings ? renderBoardSettings(redraw) : null,
-
-      h('button.global-menu__item.global-menu__item--has-sub', {
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Evaluation Graph',
-          description: `${showEvalGraphSettings ? 'Close' : 'Open'} evaluation graph settings.`,
-        }) },
-        on: { click: () => { showEvalGraphSettings = !showEvalGraphSettings; redraw(); } },
-      }, [
-        h('span', 'Eval Graph'),
-        h('span.global-menu__arrow', showEvalGraphSettings ? '▾' : '›'),
-      ]),
-
-      showEvalGraphSettings ? renderEvalGraphSettings(redraw) : null,
-
+    showGlobalMenu ? h('div.global-menu__dropdown', [
+      ...sections.map(renderSettingsSection),
       renderSyncIdentityFooter(),
       renderReleaseIdentityFooter(redraw),
     ]) : null,
@@ -3947,6 +3993,20 @@ export function renderHeader(deps: HeaderDeps): VNode {
     renderSyncProgressMenu(redraw),
     renderUserArea(redraw),
     renderGlobalMenu(deps),
+    renderAdvancedAppearanceModal({
+      controller: deps.advancedAppearance,
+      appearance: deps.appearance,
+      motion: deps.motion,
+      help: deps.controlHelp,
+      redraw,
+      renderChessboards: () => renderBoardSettings(redraw),
+      renderGraphsAndLists: () => h('div.advanced-appearance__stack', [
+        renderEvalGraphSettings(redraw),
+        deps.renderGamesAppearanceSettings(),
+        deps.renderNavigatorAppearanceSettings(),
+      ]),
+      resetAppearance: deps.resetAppearance,
+    }),
     showLoginModal     ? renderLoginModal(redraw)     : null,
     showDetectionModal ? renderDetectionModal(redraw) : null,
     showRetroModal     ? renderRetroModal(redraw)     : null,

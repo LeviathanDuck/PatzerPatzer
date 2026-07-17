@@ -72,7 +72,8 @@ import {
 } from './navigationIndexProvider';
 import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
-import { applyNavigatorSettings, renderNavigatorAppearanceSettings } from './navigatorSettings';
+import { applyNavigatorSettings } from './navigatorSettings';
+import { requestAdvancedAppearance } from '../appearance/entryPoints';
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
 import {
   controlExplainerAttrs,
@@ -634,7 +635,6 @@ function renderRail(): VNode {
 
 
 
-let _settingsOpen = false;
 
 
 
@@ -994,15 +994,14 @@ function renderSortMenu(redraw: () => void): VNode | null {
   ]);
 }
 
-function renderAppearanceButton(redraw: () => void): VNode {
+function renderAppearanceButton(_redraw: () => void): VNode {
   // Carries BOTH `.item-toolbar__btn` (this slice's new toolbar styling) and the ORIGINAL
   // `.nav-settings-trigger` class (see the T5-D08 comment block above for why the old class stays).
   return h('button.item-toolbar__btn.nav-settings-trigger', {
-    class: { '--active': _settingsOpen },
     attrs: {
-      type: 'button', 'aria-expanded': String(_settingsOpen), ...iconControlExplainerAttrs({ label: 'Appearance', description: `${_settingsOpen ? 'Closes' : 'Opens'} Study Navigator appearance settings.` }),
+      type: 'button', ...iconControlExplainerAttrs({ label: 'Appearance', description: 'Open Study Navigator settings in Advanced Appearance.' }),
     },
-    on: { click: () => { _settingsOpen = !_settingsOpen; redraw(); } },
+    on: { click: (event: Event) => requestAdvancedAppearance('graphs-lists', event.currentTarget as HTMLElement) },
   }, [navIcon('palette', { size: 16 })]);
 }
 
@@ -1652,7 +1651,6 @@ function renderGameOpenShell(
           renderItemListToolbar(redraw, onImportPgnClick),
           // State 2: no advanced-search toggle (IMP-3) — pass `false`.
           _itemSearchOpen ? renderSearchInputRow(redraw, false) : null,
-          _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
           itemListPane,
         ];
       })();
@@ -1849,7 +1847,6 @@ export function renderNavigatorShell(
       renderItemListToolbar(redraw, onImportPgnClick),
 
       _itemSearchOpen ? renderSearchInputRow(redraw, true) : null,
-      _settingsOpen ? renderNavigatorAppearanceSettings(redraw) : null,
       // Advanced-search panel/chips region — State 1 only (IMP-3), toggle lives in the search row
       // above. State 2's `renderGameOpenShell` omits it entirely: the active advanced query still
       // narrows State 2's list read-only via the plan.

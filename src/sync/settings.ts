@@ -36,6 +36,8 @@ const SETTINGS_KEYS = new Set([
   'patzer.evalGraphTooltip',
   'patzer.evalGraphGuides',
   'patzer.evalGraphRingMarker',
+  'patzer.appearance.v1',
+  'patzer.appearance.motion.v1',
   'missedMomentConfig',
   'retroConfig',
   'boardWheelNavEnabled',
@@ -43,6 +45,8 @@ const SETTINGS_KEYS = new Set([
   'boardZoom',
   'boardTheme',
   'pieceSet',
+  'gamesListBoardPreviewEnabled',
+  'gamesListBoardPreviewSize',
   'chessBoardAnimationSpeed',
   'puzzleBoardAnimationSpeed',
   'boardSoundEnabled',
@@ -51,6 +55,13 @@ const SETTINGS_KEYS = new Set([
   'patzer.openings.targetColors.v1',
   'puzzleAutoNext',
   'patzer.games.accountFilter.v1',
+  'patzer.games.underboardDensity.v1',
+  'patzer.games.underboardPageSize.v1',
+  'patzer.studyNavUiScalePct',
+  'patzer.studyNavRowHeightPx',
+  'patzer.studyNavRowHeightScaleText',
+  'patzer.studyItemRowHeightPx',
+  'patzer.studyItemRowHeightScaleText',
   'analyse.explorer.enabled',
   'explorer.db2.standard',
   'explorer.speed',
@@ -58,12 +69,18 @@ const SETTINGS_KEYS = new Set([
   'explorer.mode',
   'analyse.explorer.player.name',
   'explorer.player.name.previous',
+  'patzer.controlHelp.mode',
+  'patzer.controlHelp.hoverDelayMs',
+  'patzer.controlHelp.teachingCadence',
+  'patzer.controlHelp.learningGeneration',
 ]);
 
 const SETTINGS_PREFIXES = [
   'boardFilter.',
   'analyse.explorer.since-2.',
   'analyse.explorer.until-2.',
+  'patzer.controlHelp.learned.',
+  'patzer.controlHelp.snoozed.',
 ];
 
 let observerInstalled = false;
