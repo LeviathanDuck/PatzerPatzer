@@ -37,6 +37,16 @@ export type RemoteSyncPayloadMigrationResult =
 
 export interface RemoteSyncItemMigrationOptions {
   requireUpdatedAt?: boolean;
+
+
+
+
+
+
+
+
+
+  canonicalizePayload?: (item: RemoteSyncItem) => RemoteSyncItem | null;
 }
 
 const STORE_NAME_SET = new Set<string>(REMOTE_SYNC_STORE_NAMES);
@@ -142,7 +152,19 @@ export function migrateRemoteSyncItem(
   }
 
   if (!('payload' in item)) return { ok: false, reason: 'Upsert sync item is missing payload.', store, itemKey };
-  const migrated = migrateSyncItemPayload(store, itemKey, item.payload);
+
+
+
+
+  let payload = item.payload;
+  if (options.canonicalizePayload) {
+    const canonical = options.canonicalizePayload({ store, itemKey, updatedAt, payload, operation: 'upsert' });
+    if (!canonical) {
+      return { ok: false, reason: 'Practice payload could not be canonicalized to plain data.', store, itemKey };
+    }
+    payload = canonical.payload;
+  }
+  const migrated = migrateSyncItemPayload(store, itemKey, payload);
   if (!migrated.ok) return { ok: false, reason: migrated.reason, store, itemKey };
 
   return {

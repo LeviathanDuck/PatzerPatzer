@@ -3435,22 +3435,18 @@ function normalizeSyncItem(
   item: unknown,
   options: { logInvalid?: boolean; requireUpdatedAt?: boolean; logAction?: RemoteSyncLogAction } = {},
 ): NormalizedSyncItem | null {
+
+
+
+
+
   const migrated = migrateRemoteSyncItem(item, {
     ...(options.requireUpdatedAt !== undefined ? { requireUpdatedAt: options.requireUpdatedAt } : {}),
+    canonicalizePayload: canonicalizePracticePayload,
   });
   if (migrated.ok) {
-
-
-    const canonical = canonicalizePracticePayload(migrated.item);
-    if (!canonical) {
-      if (options.logInvalid) {
-        const target = [migrated.item.store, migrated.item.itemKey].filter(Boolean).join('/') || 'unknown item';
-        recordRemoteSyncLog(options.logAction ?? 'pull', 'error', `Skipped ${target}: practice payload could not be canonicalized to plain data.`);
-      }
-      return null;
-    }
     const serverVersion = rawServerVersion(item);
-    return serverVersion === undefined ? canonical : { ...canonical, serverVersion };
+    return serverVersion === undefined ? migrated.item : { ...migrated.item, serverVersion };
   }
 
   if (options.logInvalid) {
@@ -4475,17 +4471,8 @@ function applySettingsPullLiveIfNeeded(
   });
 }
 
-function maxItemUpdatedAt(items: RemoteSyncItem[]): number {
+function maxItemUpdatedAt(items: readonly RemoteSyncItem[]): number {
   return maxTimestamp(...items.map(item => item.updatedAt));
-}
-
-function maxRawItemUpdatedAt(items: unknown[]): number {
-  return maxTimestamp(
-    ...items.flatMap(item => {
-      const normalized = normalizeSyncItem(item, { requireUpdatedAt: true });
-      return normalized ? [normalized.updatedAt] : [];
-    }),
-  );
 }
 
 function backupCountsForResult(counts: BackupCounts): Record<string, number> {
@@ -4685,22 +4672,22 @@ async function sendVersionedWriteBatch(request: VersionedWriteBatchRequest): Pro
 
 
 type VersionedPullCursorMode = 'set' | 'advance' | 'none';
-export async function rememberVersionedPullMetadata(items: readonly unknown[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): Promise<number> {
+export async function rememberVersionedPullMetadata(items: readonly NormalizedSyncItem[], latestVersion: unknown, cursorMode: VersionedPullCursorMode): Promise<number> {
   const latest = typeof latestVersion === 'number' && Number.isFinite(latestVersion) && latestVersion >= 0
     ? Math.floor(latestVersion)
     : 0;
-  // One metadata write for the whole pull: rewriting the blob per row froze the page at
-  // pull completion once the library passed 10k rows (BUG-2026-07-04-006).
+
+
+
+
+
+
+
   const records: RemoteSyncItemVersionRecord[] = [];
-  for (const raw of items) {
-    const item = objectValue(raw);
-    const store = typeof item?.store === 'string' ? item.store as RemoteSyncStoreName : null;
-    const itemKey = typeof item?.itemKey === 'string' ? item.itemKey : null;
-    const version = typeof item?.version === 'number' && Number.isFinite(item.version) && item.version >= 0
-      ? Math.floor(item.version)
-      : null;
-    if (!store || !itemKey || version === null) continue;
-    records.push({ store, itemKey, version });
+  for (const item of items) {
+    const version = item.serverVersion;
+    if (version === undefined) continue;
+    records.push({ store: item.store, itemKey: item.itemKey, version });
   }
 
 
@@ -4874,7 +4861,10 @@ async function applyVersionedRevalidationPull(
 ): Promise<{ ok: boolean; latestVersion?: number; error?: string }> {
   if (!result.ok) return { ok: false, error: result.error || 'RemoteSync pre-write revalidation failed.' };
   const items = result.items ?? [];
-  const counts = await applyRemoteSyncItems(items, { generation });
+
+
+  const normalized: NormalizedSyncItem[] = [];
+  const counts = await applyRemoteSyncItems(items, { generation, collectNormalized: normalized });
   if ((result.skippedMalformedJson ?? 0) > 0) {
     counts.skippedMalformedJson = (counts.skippedMalformedJson ?? 0) + (result.skippedMalformedJson ?? 0);
     recordRemoteSyncLog('pull', 'error', `Skipped ${result.skippedMalformedJson} malformed database JSON row(s).`);
@@ -4883,7 +4873,7 @@ async function applyVersionedRevalidationPull(
     return { ok: false, error: 'RemoteSync pre-write revalidation was cancelled before cursor metadata advanced.' };
   }
   setRemoteSyncLastCheckedAt();
-  const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
+  const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(normalized);
   if (Object.values(counts).some(value => value > 0) || items.length > 0) {
     if (latestUpdatedAt > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
     applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
@@ -4893,7 +4883,7 @@ async function applyVersionedRevalidationPull(
     markVersionedPullUnsafeSkipped(counts);
     return { ok: false, error: 'RemoteSync pre-write revalidation skipped remote rows; pull the token database before pushing.' };
   }
-  const latestVersion = await rememberVersionedPullMetadata(items, result.latestVersion, forcedFullPull ? 'set' : 'advance');
+  const latestVersion = await rememberVersionedPullMetadata(normalized, result.latestVersion, forcedFullPull ? 'set' : 'advance');
   clearVersionedPullUnsafeSkipped();
   return { ok: true, latestVersion };
 }
@@ -5215,15 +5205,16 @@ async function commitDataManagementDeleteKeys(
 
       const tombstones = (result.items ?? [])
         .map(raw => normalizeSyncItem(raw, { logInvalid: true, requireUpdatedAt: true, logAction: 'data-management' }))
-        .filter((item): item is RemoteSyncItem => item !== null && isDeletedItem(item));
+        .filter((item): item is NormalizedSyncItem => item !== null && isDeletedItem(item));
       if (tombstones.length !== items.length) {
         throw new Error(`RemoteSync data delete confirmed ${tombstones.length} of ${items.length} requested tombstone${items.length === 1 ? '' : 's'}.`);
       }
-      // Accepted-write acknowledgment, not a pull: record tombstone versions for CAS bases but
-      // never move the pull cursor (audit F-1 — advancing here skips rows other browsers wrote
-      // between our last pull and this delete; the next routine pull re-pulls our own tombstones
-      // idempotently and advances the cursor itself).
-      const latestVersion = await rememberVersionedPullMetadata(result.items ?? [], result.latestVersion, 'none');
+
+
+
+
+
+      const latestVersion = await rememberVersionedPullMetadata(tombstones, result.latestVersion, 'none');
       for (const tombstone of tombstones) await rememberItemDeletedAt(tombstone.store, tombstone.itemKey, tombstone.updatedAt);
       await removeOutboxItemsForCommittedDeletes(tombstones);
 
@@ -5827,7 +5818,18 @@ async function planPracticeApplyBatch(
 
 export async function applyRemoteSyncItems(
   items: unknown[],
-  options: { generation?: number; onProgress?: (progress: RemoteSyncApplyProgress) => void } = {},
+  options: {
+    generation?: number;
+    onProgress?: (progress: RemoteSyncApplyProgress) => void;
+
+
+
+
+
+
+
+    collectNormalized?: NormalizedSyncItem[];
+  } = {},
 ): Promise<Record<string, number>> {
 
 
@@ -5915,6 +5917,9 @@ export async function applyRemoteSyncItems(
         reportProgress(index);
         continue;
       }
+
+
+      options.collectNormalized?.push(item);
       if (isPracticeStore(item.store)) {
         practiceItems.push(item);
         reportProgress(index);
@@ -6547,8 +6552,12 @@ async function runRemoteSyncPullOutcome(plan: RemoteSyncPullPlan, options: Remot
       ? versionOrderedRawItems(result.items ?? [])
       : result.items ?? [];
     safeUpdateProgress(opId, { total: items.length, done: 0, phase: 'Applying pulled changes…' });
+
+
+    const normalized: NormalizedSyncItem[] = [];
     const counts = await applyRemoteSyncItems(items, {
       generation,
+      collectNormalized: normalized,
       onProgress: progress => safeUpdateProgress(opId, { done: progress.done, counts: progress.counts }),
     });
     let versionMetadataAdvanced = plan.mode !== 'cursor';
@@ -6566,7 +6575,7 @@ async function runRemoteSyncPullOutcome(plan: RemoteSyncPullPlan, options: Remot
     }
     if (plan.mode === 'cursor') {
       if (canAdvancePullVersionMetadata(counts)) {
-        const latestVersion = await rememberVersionedPullMetadata(items, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
+        const latestVersion = await rememberVersionedPullMetadata(normalized, result.latestVersion, plan.forcedFullPull ? 'set' : 'advance');
         counts.latestVersion = latestVersion;
         if (plan.forcedFullPull) counts.fullVersionPull = 1;
         clearVersionedPullUnsafeSkipped();
@@ -6576,7 +6585,7 @@ async function runRemoteSyncPullOutcome(plan: RemoteSyncPullPlan, options: Remot
         counts.versionMetadataDeferred = 1;
       }
     }
-    const latestUpdatedAt = result.latestUpdatedAt ?? maxRawItemUpdatedAt(items);
+    const latestUpdatedAt = result.latestUpdatedAt ?? maxItemUpdatedAt(normalized);
     if (latestUpdatedAt > 0 || items.length > 0) setRemoteSyncLastSyncedAt(latestUpdatedAt);
     applySettingsPullLiveIfNeeded(counts, latestUpdatedAt, items);
     emitRemoteSyncApplied(counts, latestUpdatedAt);
