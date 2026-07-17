@@ -39,7 +39,12 @@ import {
 import type { StudyItem } from './types';
 import type { TreeNode } from '../tree/types';
 import { encodeLocalPgnComment, LOCAL_COMMENT_ID, sanitizePgnCommentText } from '../tree/commentIdentity';
-import type { CommentEditTarget } from './annotationCtrl';
+import {
+  commentEditTarget,
+  commitCommentEdit,
+  isEditingComment,
+  type CommentEditTarget,
+} from './annotationCtrl';
 import { record, Severity } from '../diagnostics';
 import { WorkspaceSession } from '../analyse/workspaceSession';
 import { INITIAL_FEN } from 'chessops/fen';
@@ -210,7 +215,7 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
 
   // A real source replacement waits for any dirty predecessor to commit. The old live session is
   // retained until that succeeds, so a failed IDB write cannot erase the user's edit.
-  const pendingPersist = flushStudyDetailPersistence();
+  const pendingPersist = flushStudyDetailPersistence(redraw);
   _loaded = false;
   clearTimeout(_autoSaveTimer);
 
@@ -442,7 +447,8 @@ function recordStudySaveFail(error: unknown): void {
 }
 
 async function persistStudy(): Promise<void> {
-  if (!_study || !_session || !_dirty) return _pendingPersist ?? Promise.resolve();
+  if (_pendingPersist) await _pendingPersist;
+  if (!_study || !_session || !_dirty) return;
   clearTimeout(_autoSaveTimer);
   const studyId = _study.id;
   const revision = _changeRevision;
@@ -472,9 +478,50 @@ async function persistStudy(): Promise<void> {
   return operation;
 }
 
-export function flushStudyDetailPersistence(): Promise<void> {
+function applyCommentAtTarget(target: CommentEditTarget, text: string, redraw: () => void): boolean {
+  if (!_study || !_session || _study.id !== target.studyId) return false;
+  const node = nodeAtPath(_session.root, target.path);
+  if (!node) return false;
+  const existing = node.comments ?? [];
+  node.comments = text === ''
+    ? existing.filter(comment => comment.id !== LOCAL_COMMENT_ID)
+    : existing.some(comment => comment.id === LOCAL_COMMENT_ID)
+      ? existing.map(comment => comment.id === LOCAL_COMMENT_ID ? { ...comment, text } : comment)
+      : [...existing, { id: LOCAL_COMMENT_ID, by: 'user', text }];
+  markDirty();
+  redraw();
+  return true;
+}
+
+function settleActiveCommentEdit(redraw: () => void): void {
+  if (!isEditingComment()) return;
+  const target = commentEditTarget();
+  if (!_study || !_session || !target || target.studyId !== _study.id || !nodeAtPath(_session.root, target.path)) {
+    const error = new Error('Active Study comment target is no longer available');
+    _persistenceError = error.name;
+    recordStudySaveFail(error);
+    throw error;
+  }
+  const committed = commitCommentEdit();
+  if (!committed || !applyCommentAtTarget(committed.target, committed.text, redraw)) {
+    const error = new Error('Active Study comment could not be settled');
+    _persistenceError = error.name;
+    recordStudySaveFail(error);
+    throw error;
+  }
+}
+
+export async function flushStudyDetailPersistence(redraw: () => void = () => {}): Promise<void> {
   clearTimeout(_autoSaveTimer);
-  return persistStudy();
+  settleActiveCommentEdit(redraw);
+  const retainedStudyId = _study?.id;
+  if (!retainedStudyId) return;
+  while (_study?.id === retainedStudyId) {
+    const revision = _changeRevision;
+    await persistStudy();
+    if (_study?.id !== retainedStudyId) return;
+    if (!_dirty && _changeRevision === revision && !_pendingPersist) return;
+  }
 }
 
 
@@ -496,18 +543,8 @@ export function updateCurrentNodeComments(comments: import('../tree/types').Tree
 }
 
 export function updateCommentAtTarget(target: CommentEditTarget, text: string, redraw: () => void): boolean {
-  if (!_study || !_session || _study.id !== target.studyId) return false;
-  const node = nodeAtPath(_session.root, target.path);
-  if (!node) return false;
-  const existing = node.comments ?? [];
-  node.comments = text === ''
-    ? existing.filter(comment => comment.id !== LOCAL_COMMENT_ID)
-    : existing.some(comment => comment.id === LOCAL_COMMENT_ID)
-      ? existing.map(comment => comment.id === LOCAL_COMMENT_ID ? { ...comment, text } : comment)
-      : [...existing, { id: LOCAL_COMMENT_ID, by: 'user', text }];
-  markDirty();
-  redraw();
-  void flushStudyDetailPersistence().then(redraw, redraw);
+  if (!applyCommentAtTarget(target, text, redraw)) return false;
+  void flushStudyDetailPersistence(redraw).then(redraw, redraw);
   return true;
 }
 

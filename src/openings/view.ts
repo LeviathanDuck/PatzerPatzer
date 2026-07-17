@@ -3614,6 +3614,13 @@ function renderTreeEvalControls(redraw: () => void): VNode {
   const status = getTreeEvalStatus();
   const active = enabled && status.inProgress;
   const refining = active && status.phase === 'refining';
+  const description = !enabled
+    ? 'Turn on engine evaluation across the opening tree.'
+    : status.waitReason === 'observer'
+      ? 'Another tab currently owns background analysis. Tree eval will continue automatically if this tab becomes the review leader.'
+      : status.waitReason === 'bulk-review'
+        ? 'Bulk analysis currently owns the shared engine. Tree eval will continue automatically when bulk analysis is idle.'
+        : 'Turn off engine evaluation across the opening tree.';
   const thoroughness = treeEvalThoroughness();
   return h('div.openings__tree-eval-controls', [
     h('label.openings__tree-eval-toggle', [
@@ -3622,7 +3629,7 @@ function renderTreeEvalControls(redraw: () => void): VNode {
           type: 'checkbox',
           name: 'opening-tree-eval',
           checked: enabled,
-          ...controlExplainerAttrs({ label: 'Tree eval', description: enabled ? 'Turn off engine evaluation across the opening tree.' : 'Turn on engine evaluation across the opening tree.' }),
+          ...controlExplainerAttrs({ label: 'Tree eval', description }),
         },
         on: {
           change: (event: Event) => {

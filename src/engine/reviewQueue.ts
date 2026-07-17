@@ -614,11 +614,11 @@ export async function acquireTreeEvalLease(options: {
 }): Promise<TreeEvalEngineLease | null> {
   const requestSerial = ++treeEvalLeaseRequestSerial;
   const expectedFen = normalizeEngineFen(options.expectedFen);
-  if (!expectedFen || reviewEngineFailed || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
+  if (!isCurrentLeader || !expectedFen || reviewEngineFailed || isBulkReviewActive() || treeEvalLease || treeEvalPreemptDrainActive) return null;
   if (!reviewEngineReady) {
     if (!reviewEngineInitStarted) void initReviewEngine('/stockfish-web');
     const ready = await waitForReviewEngineReady();
-    if (!ready) return null;
+    if (!ready || !isCurrentLeader) return null;
   }
   // Lichess does not frame successor work until the current work has emitted its terminal
   // bestmove and swapWork() can safely advance. Tree-eval uses the shared reviewProtocol lease,
@@ -628,10 +628,11 @@ export async function acquireTreeEvalLease(options: {
     searchOwnerMarkKindStale(reviewSearchOwner, 'tree-eval');
     if (beginTreeEvalSuccessorDrain()) reviewProtocol.stop();
     const drained = await waitForTreeEvalSuccessorDrain();
-    if (!drained || requestSerial !== treeEvalLeaseRequestSerial) return null;
+    if (!drained || !isCurrentLeader || requestSerial !== treeEvalLeaseRequestSerial) return null;
   }
   if (
-    requestSerial !== treeEvalLeaseRequestSerial
+    !isCurrentLeader
+    || requestSerial !== treeEvalLeaseRequestSerial
     || outstandingTreeEvalSearches() > 0
     || reviewEngineFailed
     || !reviewEngineReady
@@ -656,12 +657,12 @@ export async function acquireTreeEvalLease(options: {
   let stopIssued = false;
   return {
     setPositionContext(context: EnginePositionContext): void {
-      if (!ownsLease()) return;
+      if (!ownsLease() || !isCurrentLeader) return;
       leaseContext = context;
       reviewProtocol.setPositionContext(context);
     },
     go(depth: number, multiPv = 1, movetime?: number): void {
-      if (!ownsLease()) return;
+      if (!ownsLease() || !isCurrentLeader) return;
       const normalizedContextFen = normalizeEngineFen(leaseContext?.currentFen ?? '');
       if (!leaseContext || normalizedContextFen !== expectedFen || treeEvalLease?.activeSearch) {
         record({
@@ -1220,6 +1221,7 @@ let leaderElectionStarted = false;
 let leaderHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let observerPollTimer:    ReturnType<typeof setInterval> | null = null;
 let leaderChannel: BroadcastChannel | null = null;
+const reviewLeadershipListeners = new Set<(isLeader: boolean) => void>();
 
 interface LeaderToken { tabId: string; heartbeatAt: number }
 type ReviewChannelMessage =
@@ -1306,6 +1308,29 @@ function clearLeaderTokenIfOwn(): void {
 /** True when this tab is the elected leader and should drive the queue/engine. */
 export function isLeaderTab(): boolean {
   return isCurrentLeader;
+}
+
+/** Subscribe to review-engine leadership changes; immediately reports the current ownership. */
+export function subscribeReviewLeadershipChange(listener: (isLeader: boolean) => void): () => void {
+  reviewLeadershipListeners.add(listener);
+  try {
+    listener(isCurrentLeader);
+  } catch (error) {
+    console.warn('[review-queue] leadership listener failed', error);
+  }
+  return () => {
+    reviewLeadershipListeners.delete(listener);
+  };
+}
+
+function notifyReviewLeadershipChange(): void {
+  for (const listener of reviewLeadershipListeners) {
+    try {
+      listener(isCurrentLeader);
+    } catch (error) {
+      console.warn('[review-queue] leadership listener failed', error);
+    }
+  }
 }
 
 function isReviewOwnerUnavailableFromToken(): boolean {
@@ -1447,6 +1472,7 @@ function becomeLeader(
 
   anchorReviewEngineLiveness();
   reconcileReviewStaleWatch();
+  notifyReviewLeadershipChange();
 }
 
 function resignLeadership(): void {
@@ -1490,6 +1516,7 @@ function resignLeadership(): void {
   });
 
   startObserverPolling();
+  notifyReviewLeadershipChange();
 }
 
 /** Claim leadership only for an empty local tab; persisted work needs explicit takeover. */
@@ -4569,6 +4596,10 @@ function advanceQueue(): void {
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
   persistManifestEntry(entry);
+  // This is the authoritative idle/pending -> active engine-ownership boundary. Consumers such
+  // as Opening Tree eval must observe the real queue transition rather than infer it from enqueue
+  // intent, because an enqueued run may remain paused or otherwise never become active.
+  notifyReviewQueueStateChanged();
 
   reconcileReviewStaleWatch();
   void startEntryBatch(entry);
@@ -4731,6 +4762,10 @@ function enqueueBulkReviewAsLeader(
     // Start processing if nothing is running (skip if engine failed).
     advanceQueue();
   }
+  // Publish only after a queue row/active slot makes shared bulk ownership authoritative. Tree
+  // eval may already have been preempted by the public enqueue entry point; its availability
+  // subscriber must still observe bulk-active and preserve enabled intent as waiting.
+  if (isBulkReviewActive()) notifyReviewQueueStateChanged();
 }
 
 function appendBulkReviewRunSourceAsLeader(
@@ -4864,6 +4899,7 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
     persistManifestEntry(entry);
     recordReviewGameEnqueued(entry.game.id, insertAt + i);
   }
+  notifyReviewQueueStateChanged();
 
   if (!reviewEngineInitStarted && !reviewEngineFailed) {
     void initReviewEngine('/stockfish-web');

@@ -23,10 +23,18 @@ import { OpeningTreeBuilder, nodeAtMoves, findSampleGames, type OpeningTreeNode,
 import type { ImportSpeed, ImportDateRange } from '../import/filters';
 import {
   cancelTreeEval,
+  getTreeEvalStatus,
   isTreeEvalEnabled,
   startTreeEvalDeepening,
   startTreeEvalPass1,
+  waitForTreeEvalEngine,
 } from './treeEval';
+import {
+  isBulkReviewActive,
+  isLeaderTab,
+  subscribeReviewLeadershipChange,
+  subscribeReviewQueueState,
+} from '../engine/reviewQueue';
 import { SETTLE_QUIET_MS } from './scheduler';
 import type { OpponentsTreeUrlState, OpponentsUrlRange, OpponentsUrlSpeed, OpponentsUrlTarget } from './urlState';
 import { filterGamesByDateCutoff, filterGamesByCustomRange } from './dateFilter';
@@ -243,6 +251,7 @@ let _importProgress = 0;
 let _importAbort: AbortController | null = null;
 let _importMonth: string | null = null;
 let _lastCreatedCollection: ResearchCollection | null = null;
+let _treeEvalAvailabilitySubscriptionsStarted = false;
 
 // --- Import filter state (mirrors header import filters) ---
 let _importSpeeds = new Set<ImportSpeed>();
@@ -254,6 +263,7 @@ let _importMaxGames = Infinity;
 
 /** Initialize the openings page state. Call once on route entry, not on every render. */
 export function initOpeningsPage(page: OpeningsPage = 'library'): void {
+  ensureTreeEvalAvailabilitySubscriptions();
   _currentPage = page;
 }
 
@@ -721,12 +731,45 @@ export function setTreeEvalThoroughness(level: TreeEvalThoroughness, redraw: () 
   redraw();
 }
 
+function treeEvalUnavailableReason(): 'observer' | 'bulk-review' | null {
+  if (!isLeaderTab()) return 'observer';
+  if (isBulkReviewActive()) return 'bulk-review';
+  return null;
+}
+
+function reconcileTreeEvalAvailability(): void {
+  if (!_sessionNode || !isTreeEvalEnabled()) return;
+  const unavailableReason = treeEvalUnavailableReason();
+  const status = getTreeEvalStatus();
+  if (unavailableReason) {
+    if (status.phase !== 'waiting-for-engine' || status.waitReason !== unavailableReason) {
+      cancelTreeEvalDwellTimer();
+      cancelTreeEvalPass1SettleTimer();
+      waitForTreeEvalEngine(unavailableReason);
+    }
+    return;
+  }
+  if (status.phase === 'waiting-for-engine') triggerTreeEvalForCurrentNode();
+}
+
+function ensureTreeEvalAvailabilitySubscriptions(): void {
+  if (_treeEvalAvailabilitySubscriptionsStarted) return;
+  _treeEvalAvailabilitySubscriptionsStarted = true;
+  subscribeReviewLeadershipChange(reconcileTreeEvalAvailability);
+  subscribeReviewQueueState(reconcileTreeEvalAvailability);
+}
+
 export function triggerTreeEvalForCurrentNode(): void {
   cancelTreeEvalDwellTimer();
   // Cancel any pending pass-1 settle (this nav event supersedes the previous one).
   cancelTreeEvalPass1SettleTimer();
   if (!_sessionNode || !isTreeEvalEnabled()) {
     cancelTreeEval();
+    return;
+  }
+  const unavailableReason = treeEvalUnavailableReason();
+  if (unavailableReason) {
+    waitForTreeEvalEngine(unavailableReason);
     return;
   }
 
