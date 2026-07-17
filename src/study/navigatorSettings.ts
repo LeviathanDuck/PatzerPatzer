@@ -297,6 +297,31 @@ export function renderNavigatorAppearanceSettings(redraw: () => void): VNode {
     )),
 
     h('div.nav-appearance-settings__note',
-      'Per-device only — these settings are stored on this device and do not sync across devices.'),
+      'These appearance settings sync with your Patzer account.'),
   ]);
+}
+
+export function resetNavigatorAppearancePreferences(): void {
+  for (const key of [
+    UI_SCALE_KEY,
+    NAV_ROW_HEIGHT_KEY,
+    NAV_SCALE_TEXT_KEY,
+    ITEM_ROW_HEIGHT_KEY,
+    ITEM_SCALE_TEXT_KEY,
+  ]) localStorage.removeItem(key);
+  uiScalePct = UI_SCALE_DEFAULT;
+  navRowHeightPx = ROW_HEIGHT_DEFAULT;
+  navScaleTextWithHeight = SCALE_TEXT_DEFAULT;
+  itemRowHeightPx = ROW_HEIGHT_DEFAULT;
+  itemScaleTextWithHeight = SCALE_TEXT_DEFAULT;
+  applyNavigatorSettings();
+}
+
+export function reloadNavigatorAppearancePreferences(): void {
+  uiScalePct = clampRangeInt(Number.parseInt(localStorage.getItem(UI_SCALE_KEY) ?? '', 10), UI_SCALE_MIN, UI_SCALE_MAX, UI_SCALE_DEFAULT);
+  navRowHeightPx = clampRangeInt(Number.parseInt(localStorage.getItem(NAV_ROW_HEIGHT_KEY) ?? '', 10), ROW_HEIGHT_MIN, ROW_HEIGHT_MAX, ROW_HEIGHT_DEFAULT);
+  navScaleTextWithHeight = readBoolSetting(NAV_SCALE_TEXT_KEY, SCALE_TEXT_DEFAULT);
+  itemRowHeightPx = clampRangeInt(Number.parseInt(localStorage.getItem(ITEM_ROW_HEIGHT_KEY) ?? '', 10), ROW_HEIGHT_MIN, ROW_HEIGHT_MAX, ROW_HEIGHT_DEFAULT);
+  itemScaleTextWithHeight = readBoolSetting(ITEM_SCALE_TEXT_KEY, SCALE_TEXT_DEFAULT);
+  applyNavigatorSettings();
 }

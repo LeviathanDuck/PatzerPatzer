@@ -81,3 +81,10 @@ export function clearBoardAnimationLocalData(): void {
   chessBoardAnimationSpeed = DEFAULT_ANIMATION_SPEED;
   puzzleBoardAnimationSpeed = DEFAULT_ANIMATION_SPEED;
 }
+
+export function reloadBoardAnimationPreferences(): void {
+  chessBoardAnimationSpeed = readAnimationSpeed(CHESS_BOARD_ANIMATION_KEY);
+  puzzleBoardAnimationSpeed = readAnimationSpeed(PUZZLE_BOARD_ANIMATION_KEY);
+  notifyBoardAnimationChange('chess');
+  notifyBoardAnimationChange('puzzle');
+}

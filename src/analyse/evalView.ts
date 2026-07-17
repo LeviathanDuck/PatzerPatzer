@@ -16,6 +16,7 @@ import {
 import type { TreeNode } from '../tree/types';
 import type { ReviewEngineMetadata } from '../idb/index';
 import { controlExplainerAttrs } from '../ui/controlExplainer';
+import { requestAdvancedAppearance } from '../appearance/entryPoints';
 
 // Local structural type for evalCache entries — matches PositionEval shape.
 // Using a structural type keeps this module free of the PositionEval declaration
@@ -989,6 +990,12 @@ export function renderEvalGraph(
       mouseleave: (e: MouseEvent) => hideHover(e.currentTarget as Element),
     },
   }, [
+    h('button.eval-graph__appearance', {
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: 'Evaluation graph appearance', description: 'Open evaluation graph settings in Advanced Appearance.',
+      }) },
+      on: { click: (event: Event) => requestAdvancedAppearance('graphs-lists', event.currentTarget as HTMLElement) },
+    }, 'Appearance'),
     h('svg', { attrs: {
       // viewBox matches the rendered pixel height so scaleY = 1, keeping circle
       // markers circular at any graph height. scaleX still stretches to fill

@@ -38,6 +38,15 @@ export function resetBoardSoundRuntimeForDataManagement(): void {
   soundVolume = SOUND_VOLUME_DEFAULT;
 }
 
+export function reloadBoardSoundPreferences(): void {
+  const storedEnabled = localStorage.getItem(SOUND_ENABLED_KEY);
+  boardSoundEnabled = storedEnabled === null ? SOUND_ENABLED_DEFAULT : storedEnabled === 'true';
+  const storedVolume = Number(localStorage.getItem(SOUND_VOLUME_KEY));
+  soundVolume = Number.isFinite(storedVolume) && storedVolume >= 0 && storedVolume <= 1
+    ? storedVolume
+    : SOUND_VOLUME_DEFAULT;
+}
+
 // --- AudioContext + buffer loading ---
 // Adapted from lichess-org/lila: ui/site/src/sound.ts makeAudioContext + Sound class
 
