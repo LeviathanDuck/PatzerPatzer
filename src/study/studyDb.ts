@@ -20,6 +20,7 @@ import type {
   SrsPersistenceFailure,
   SrsPersistenceFailureCode,
   SrsLadderConfig,
+  SrsValidatedLadderConfig,
   SrsSourceVersion,
   SrsAttemptServiceResult,
   SrsAttemptServiceRejected,
@@ -2356,6 +2357,176 @@ function rejectedService(
   return { outcome, reason, ...(extra ?? {}) };
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Recursively freeze a plain-data graph produced by `structuredClone`, so an accepted canonical capture
+ * cannot be mutated after validation. A structured clone has no getters, no prototype-chain state, and
+ * (for a valid record) no non-index array keys, so a recurse over own property names covers the graph.
+ */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const key of Object.getOwnPropertyNames(value)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/**
+ * Canonicalize an optional caller `currentSourceById` (memo §6) into a PRIVATE fresh Map of frozen
+ * exact `SrsSourceVersion` records. `undefined` stays the explicit "skip live source comparison" value.
+ * Otherwise a genuine Map internal slot is required via a built-in Map operation (`Map.prototype.forEach`
+ * bypasses caller-overridable `.get`/`.entries`/`[Symbol.iterator]`; a non-Map receiver throws typed).
+ * The whole captured entry list is cloned as ONE graph (each source value's accessors read exactly once),
+ * every key is validated as a non-empty target ID, and every value is validated against the exact
+ * `SrsSourceVersion` rules, then rebuilt as a frozen exact record. The sealed revalidators receive only
+ * this private map, so their repeated `.get`/`.kind` reads are harmless.
+ */
+function canonicalizeSourceById(
+  raw: unknown,
+):
+  | { readonly ok: true; readonly map: ReadonlyMap<string, SrsSourceVersion> | undefined }
+  | { readonly ok: false; readonly reason: string } {
+  if (raw === undefined) return { ok: true, map: undefined };
+  let entryList: Array<[unknown, unknown]>;
+  try {
+    const collected: Array<[unknown, unknown]> = [];
+    // Built-in internal iteration: requires a real [[MapData]] slot (a fake/poisoned non-Map container
+    // throws here) and hands each stored VALUE reference to the callback WITHOUT reading its members, so
+    // an accessor on a source value (e.g. an alternating `kind` getter) is untouched until the single
+    // structuredClone below reads it exactly once.
+    Map.prototype.forEach.call(raw as Map<unknown, unknown>, (value: unknown, key: unknown) => {
+      collected.push([key, value]);
+    });
+    entryList = structuredClone(collected);
+  } catch (e) {
+    return { ok: false, reason: `currentSourceById is not a usable source map: ${classifyStudyError(e)}` };
+  }
+  const rebuilt = new Map<string, SrsSourceVersion>();
+  for (const [key, value] of entryList) {
+    if (typeof key !== 'string' || key.length === 0) {
+      return { ok: false, reason: `currentSourceById key must be a non-empty target id, got ${String(key)}` };
+    }
+    const failure = validateSourceVersion(value, `currentSourceById[${key}]`);
+    if (failure) {
+      return { ok: false, reason: `currentSourceById value invalid at ${failure.path}: ${failure.reason}` };
+    }
+    const v = value as { kind: 'linked' | 'unlinked'; sourceRevision?: number; origin?: 'manual' | 'snapshot-import' | 'unlinked-from-source' };
+    const rebuiltValue: SrsSourceVersion = v.kind === 'linked'
+      ? Object.freeze({ kind: 'linked' as const, sourceRevision: v.sourceRevision as number })
+      : v.origin !== undefined
+        ? Object.freeze({ kind: 'unlinked' as const, origin: v.origin })
+        : Object.freeze({ kind: 'unlinked' as const });
+    rebuilt.set(key, rebuiltValue);
+  }
+  return { ok: true, map: rebuilt };
+}
+
+/** Getter-free canonical capture of every service input, or a typed pre-DB rejection. */
+interface CanonicalCompleteInput {
+  readonly attempt: SrsAttemptRecord;
+  readonly config: SrsValidatedLadderConfig;
+  readonly now: number;
+  readonly sourceById: ReadonlyMap<string, SrsSourceVersion> | undefined;
+}
+type CanonicalizeResult =
+  | { readonly ok: true; readonly canonical: CanonicalCompleteInput }
+  | { readonly ok: false; readonly rejection: SrsAttemptServiceRejected };
+
+/**
+ * The ONE synchronous canonicalization seam (memo §1–§8). Reads each outer property in the fixed order
+ * attempt → config → currentSourceById → now, AT MOST ONCE each, cloning composites immediately so a
+ * later outer getter cannot mutate an earlier still-raw object; validates ONLY the canonical captures;
+ * brands the config exactly once from the same snapshot whose shape was validated; deep-freezes the
+ * accepted attempt/config graphs; and rebuilds the source map as a private fresh Map. Any failure
+ * resolves a typed pre-DB rejection (`invalid`/`invalid-config`/`non-finite-clock`) — never a raw throw.
+ * Its successful return is the proof boundary: the service consumes only `canonical`, so no caller-
+ * observable read can occur afterwards.
+ */
+function canonicalizeCompleteInput(input: CompleteStudySrsAttemptInput): CanonicalizeResult {
+  // (1) attempt — read once, clone immediately, validate the clone, deep-freeze.
+  let attempt: SrsAttemptRecord;
+  try {
+    attempt = structuredClone(input.attempt);
+  } catch (e) {
+    return { ok: false, rejection: rejectedService('invalid', `attempt could not be snapshotted: ${classifyStudyError(e)}`) };
+  }
+  const attemptFailure = validateAttemptRecordShape(attempt);
+  if (attemptFailure) {
+    return { ok: false, rejection: rejectedService('invalid', `attempt failed validation at ${attemptFailure.path}: ${attemptFailure.reason}`) };
+  }
+  deepFreeze(attempt);
+
+  // (2) config — read once, clone immediately, validate shape on the clone, then brand ONCE from that
+  //     same snapshot so identity/version/members and the mechanics brand describe one closed object.
+  let clonedConfig: SrsLadderConfig;
+  try {
+    clonedConfig = structuredClone(input.config);
+  } catch (e) {
+    return { ok: false, rejection: rejectedService('invalid-config', `ladder config could not be snapshotted: ${classifyStudyError(e)}`) };
+  }
+  const configShapeFailure = validateServiceConfigShape(clonedConfig);
+  if (configShapeFailure) {
+    return { ok: false, rejection: rejectedService('invalid-config', configShapeFailure) };
+  }
+  const branded = validateLadderConfig(clonedConfig);
+  if (!branded.ok) {
+    return { ok: false, rejection: rejectedService('invalid-config', `ladder config invalid: ${branded.reason}`) };
+  }
+  deepFreeze(clonedConfig);
+  const config = branded.config;
+
+  // (3) currentSourceById — read once (a throwing outer getter resolves typed `invalid`, never a raw
+  //     throw), canonicalize into a private fresh Map of frozen exact records.
+  let sourceResult: ReturnType<typeof canonicalizeSourceById>;
+  try {
+    sourceResult = canonicalizeSourceById(input.currentSourceById);
+  } catch (e) {
+    return { ok: false, rejection: rejectedService('invalid', `currentSourceById could not be read: ${classifyStudyError(e)}`) };
+  }
+  if (!sourceResult.ok) {
+    return { ok: false, rejection: rejectedService('invalid', sourceResult.reason) };
+  }
+
+  // (4) now — read once into a scalar local; a throwing clock accessor or non-finite value resolves
+  //     typed `non-finite-clock` before any DB access, never a raw throw.
+  let now: number;
+  try {
+    now = input.now;
+  } catch (e) {
+    return { ok: false, rejection: rejectedService('non-finite-clock', `session checkpoint clock \`now\` threw: ${classifyStudyError(e)}`) };
+  }
+  if (!Number.isFinite(now)) {
+    return { ok: false, rejection: rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${String(now)}`) };
+  }
+
+  return { ok: true, canonical: { attempt, config, now, sourceById: sourceResult.map } };
+}
+
 /**
  * Atomically score one completed due target. See the block comment above for the full contract.
  * Returns a typed `SrsAttemptServiceResult`: exactly `applied` mutates storage (carrying the next
@@ -2365,117 +2536,19 @@ function rejectedService(
 export async function completeStudySrsAttempt(
   input: CompleteStudySrsAttemptInput,
 ): Promise<SrsAttemptServiceResult> {
-  const { now, currentSourceById } = input;
 
-  // --- Pre-transaction fail-closed validation (no DB touched yet). ---
-  if (!Number.isFinite(now)) {
-    return rejectedService('non-finite-clock', `session checkpoint clock \`now\` must be finite, got ${String(now)}`);
+
+
+
+
+
+
+
+  const canonicalization = canonicalizeCompleteInput(input);
+  if (!canonicalization.ok) {
+    return canonicalization.rejection;
   }
-
-
-
-
-
-
-
-
-
-  let configValidation: ReturnType<typeof validateLadderConfig>;
-  try {
-
-
-
-
-
-
-
-    const originalShapeFailure = validateServiceConfigShape(input.config);
-    if (originalShapeFailure) {
-      return rejectedService('invalid-config', originalShapeFailure);
-    }
-    configValidation = validateLadderConfig(input.config);
-  } catch (e) {
-    return rejectedService('invalid-config', `ladder config validation threw: ${classifyStudyError(e)}`);
-  }
-  if (!configValidation.ok) {
-    return rejectedService('invalid-config', `ladder config invalid: ${configValidation.reason}`);
-  }
-
-
-
-
-
-
-
-
-
-
-  const attemptFailure = validateAttemptRecordShape(input.attempt);
-  if (attemptFailure) {
-    return rejectedService('invalid', `attempt failed validation at ${attemptFailure.path}: ${attemptFailure.reason}`);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  let attempt: SrsAttemptRecord;
-  try {
-    attempt = structuredClone(input.attempt);
-  } catch (e) {
-    return rejectedService('invalid', `attempt could not be snapshotted: ${classifyStudyError(e)}`);
-  }
-
-
-
-
-
-
-
-
-
-  const attemptSnapshotFailure = validateAttemptRecordShape(attempt);
-  if (attemptSnapshotFailure) {
-    return rejectedService('invalid', `attempt snapshot failed validation at ${attemptSnapshotFailure.path}: ${attemptSnapshotFailure.reason}`);
-  }
-  let configSnapshot: SrsLadderConfig;
-  try {
-    configSnapshot = structuredClone(input.config);
-  } catch (e) {
-    return rejectedService('invalid-config', `ladder config could not be snapshotted: ${classifyStudyError(e)}`);
-  }
-
-
-
-
-
-
-
-  const configSnapshotShapeFailure = validateServiceConfigShape(configSnapshot);
-  if (configSnapshotShapeFailure) {
-    return rejectedService('invalid-config', `snapshot ${configSnapshotShapeFailure}`);
-  }
-  // Re-brand the config snapshot through the sole brand producer (respecting the "validateLadderConfig is
-  // the only constructor of the branded type" contract) — this also revalidates the snapshot's mechanics.
-  // A faithful clone of the already-validated config always revalidates; a failure here is fail-closed
-  // defense, never a reachable path.
-  const configSnapshotValidation = validateLadderConfig(configSnapshot);
-  if (!configSnapshotValidation.ok) {
-    return rejectedService('invalid-config', `ladder config snapshot failed revalidation: ${configSnapshotValidation.reason}`);
-  }
-  const config = configSnapshotValidation.config;
+  const { attempt, config, now, sourceById } = canonicalization.canonical;
 
 
 
@@ -2687,9 +2760,10 @@ export async function completeStudySrsAttempt(
 
 
 
+
         let revalidation: ReturnType<typeof revalidateTraversalPlan>;
         try {
-          revalidation = revalidateTraversalPlan(plan, liveMap, currentSourceById);
+          revalidation = revalidateTraversalPlan(plan, liveMap, sourceById);
         } catch (e) {
           abortWith(rejectedService('transaction-failed', `plan revalidation threw: ${classifyStudyError(e)}`));
           return;
