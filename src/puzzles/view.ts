@@ -291,6 +291,7 @@ function renderLibrarySidebar(redraw: () => void): VNode {
 }
 
 export function renderPuzzleLibrary(redraw: () => void): VNode {
+  retirePuzzleSolveWorkspace('library-render');
   // Clear puzzle engine position override when back on library page.
   clearCevalPositionOverride('puzzle-post-solve');
   _lastPuzzleEngineFen = '';
