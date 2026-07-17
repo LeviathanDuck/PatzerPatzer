@@ -45,7 +45,7 @@ import {
   studyDetail, detailRoot, detailPath, detailNode, detailLoaded,
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
   flipStudyBoard, studyDetailRouteSnapshot, detailOrientation, mountStudyWorkspace,
-  rememberStudyDetailRouteQuery,
+  rememberStudyDetailRouteQuery, isStudyWorkspaceActive, reconcileStudyPracticeSlot,
 } from './studyDetailCtrl';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
@@ -723,7 +723,22 @@ export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () =
   if (activeToolTab === 'questionnaire') return renderQuestionnaireToolPanel(redraw);
   if (activeToolTab === 'organize') return renderOrganizeToolPanel(redraw);
   if (activeToolTab === 'orp') return renderOrpToolPanel(redraw);
+  if (activeToolTab === 'practice') return renderPracticeToolPanel();
   return null;
+}
+
+
+
+
+
+
+
+function renderPracticeToolPanel(): VNode {
+  return h('div.study-tools-col__panel.study-tools-col__practice', [
+    h('div.study-tools-col__practice-lead', 'This game’s board and move tree are now hosting Practice.'),
+    h('div.study-tools-col__empty',
+      'Guided practice sessions are not available yet — no session, grading, or review has started. Use the board and move list as usual.'),
+  ]);
 }
 
 // Defined at module scope so it survives the shared board's insert hook closure and any hook
@@ -776,14 +791,27 @@ function syncStudyShapeDrawable(): void {
   cgInstance?.set({ drawable: { enabled: true, onChange: onStudyShapesChange, shapes: currentStudyNodeShapes() } });
 }
 
-// --- Board sync ---
-// Guarded on Study actually being the mounted workspace: this touches the SHARED cgInstance, and
-// (unlike the retired standalone board) that instance is also used by Analysis — calling this
-// while Analysis is mounted would stomp Analysis's board with Study's stale node/shapes.
+
+
+
+
+function isOrdinaryStudyBoardActive(): boolean {
+  return isStudyWorkspaceActive() && activeWorkspace()?.boardInputMode === 'always-new-variation';
+}
+
+
+
+
+
+
+
+
+
 export function syncStudyBoard(redraw?: () => void): void {
-  if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
-  // P0 first: apply the visible position and authored shapes before any main-thread engine work.
+  if (!isStudyWorkspaceActive()) return;
+  // P0 first: apply the visible position for either Study sibling before any lower-priority work.
   syncBoard();
+  if (activeWorkspace()?.boardInputMode !== 'always-new-variation') return;
   syncStudyShapeDrawable();
   if (redraw) scheduleStudyEngineSync(redraw);
 }
@@ -1058,7 +1086,10 @@ function renderStudyBoardRegion(study: StudyItem, redraw: () => void): VNode {
 function renderStudyBoardArea(): VNode {
   return h('div.study-board-wrap', {
     key: 'study-board-wrap',
-    hook: { insert: () => syncStudyShapeDrawable() },
+
+
+
+    hook: { insert: () => { if (isOrdinaryStudyBoardActive()) syncStudyShapeDrawable(); } },
   }, [renderBoard(), renderPromotionDialog()]);
 }
 
@@ -1614,6 +1645,16 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
   const root = detailRoot();
   const path = detailPath();
+
+
+
+
+
+
+
+
+  const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary();
+  reconcileStudyPracticeSlot(practiceRequested, redraw);
 
 
   if (isDrillActive() || isDrillSummary()) {

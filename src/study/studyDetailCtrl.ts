@@ -20,9 +20,11 @@ import {
   mountWorkspace,
   unmountWorkspace,
   type WorkspaceAdapter,
+  type WorkspaceCursor,
   type WorkspaceInstance,
 } from '../analyse/workspaceCore';
 import { createStudyBoardInputModule } from './studyBoardInput';
+import { mountStudyPracticeWorkspace } from './practice/workspaceModule';
 import { syncStudyDetailItemToLibraryCache } from './studyCtrl';
 // studyBoardNavigate is a hoisted function declaration in studyDetailView.ts (which already imports
 // from this file). Importing it back completes a module cycle, but that is safe here: it is only
@@ -353,6 +355,35 @@ export function navigateNext(redraw: () => void): void {
 // consistency fix), which is a behavior change from the old san-based ids. Existing-child
 // following in the shared board's move pipeline is UCI-based (`node.uci === normUci`), not
 // id-based, so it is unaffected by this id-scheme change.
+// Live tree-cursor read shared by BOTH Study workspace siblings (the ordinary `always-new-variation`
+// mount and the C3 Practice `practice-grading` takeover). Both read the SAME `_session` — there is
+// no second cursor or cloned tree. Null-safe via EMPTY_STUDY_TREE for the brief window between a load
+// reset and the next mount (see the const's own note above).
+function studyWorkspaceCursor(): WorkspaceCursor {
+  return {
+    root:     _session?.root     ?? EMPTY_STUDY_TREE,
+    path:     _session?.path     ?? '',
+    node:     _session?.node     ?? EMPTY_STUDY_TREE,
+    nodeList: _session?.nodeList ?? [EMPTY_STUDY_TREE],
+    mainline: _session?.mainline ?? [EMPTY_STUDY_TREE],
+  };
+}
+
+// Study's tree-commit for a board-created node, shared by BOTH siblings (mirrors the retired
+// handleStudyMove): addNode → setPath → markDirty → redraw against the SAME `_session`. markDirty()
+// already calls scheduleAutoSave() internally, so no separate scheduleAutoSave() call is needed.
+// `redraw()` is required here (unlike Analysis's handleUserMove, which gets a redraw for free from
+// its own navigate() call) — Study has no equivalent navigation primitive yet. The Practice module's
+// placeholder move dispatch flows through this exact commit so both siblings write the one Study tree
+// identically (no parallel Practice copy).
+function commitStudyUserMove(parentPath: string, node: TreeNode, redraw: () => void): void {
+  if (!_session) return;
+  addNode(_session.root, parentPath, node);
+  _session.setPath(parentPath + node.id);
+  markDirty();
+  redraw();
+}
+
 function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
   return {
     id: 'study-detail',
@@ -362,28 +393,10 @@ function buildStudyWorkspaceAdapter(redraw: () => void): WorkspaceAdapter {
     // no behavior this slice — src/board/index.ts does not read `boardInputModule` yet (H03a-3), and
     // main.ts still special-cases 'always-new-variation'. `navigate` is Study's existing-child follow.
     boardInputModule: createStudyBoardInputModule(path => studyBoardNavigate(path, redraw)),
-    getCursor: () => ({
-      root:     _session?.root     ?? EMPTY_STUDY_TREE,
-      path:     _session?.path     ?? '',
-      node:     _session?.node     ?? EMPTY_STUDY_TREE,
-      nodeList: _session?.nodeList ?? [EMPTY_STUDY_TREE],
-      mainline: _session?.mainline ?? [EMPTY_STUDY_TREE],
-    }),
+    getCursor: studyWorkspaceCursor,
     getOrientation: () => _orientation,
     redraw,
-    // Study's existing side effects (mirrors the retired handleStudyMove), taking the
-    // board-computed node instead of re-deriving san/uci/fen locally. markDirty() already calls
-    // scheduleAutoSave() internally (see below), so a separate scheduleAutoSave() call here would
-    // be redundant. `redraw()` is required here (unlike Analysis's handleUserMove, which gets a
-    // redraw for free from its own navigate() call) — Study has no equivalent navigation
-    // primitive yet, so this adapter triggers it directly.
-    handleUserMove: (parentPath, node) => {
-      if (!_session) return;
-      addNode(_session.root, parentPath, node);
-      _session.setPath(parentPath + node.id);
-      markDirty();
-      redraw();
-    },
+    handleUserMove: (parentPath, node) => commitStudyUserMove(parentPath, node, redraw),
   };
 }
 
@@ -399,6 +412,9 @@ let _workspaceInstance: WorkspaceInstance | null = null;
  * (Analysis, or an earlier study), per workspaceCore's single-active-slot design.
  */
 export function mountStudyWorkspace(redraw: () => void): void {
+
+
+  _practiceWorkspaceInstance = null;
   _workspaceInstance = mountWorkspace(buildStudyWorkspaceAdapter(redraw));
 }
 
@@ -407,13 +423,82 @@ export function mountStudyWorkspace(redraw: () => void): void {
  * last mounted, via workspaceCore's `unmountWorkspace` (which no-ops if that instance is no longer
  * the active workspace — e.g. Analysis already superseded it). Idempotent: no-op when nothing is
  * stored. Returns `unmountWorkspace`'s result (true only when a still-active Study instance was
- * removed). NOT called anywhere yet — H03a-3 wires the route-exit call in main.ts.
+ * removed). `_workspaceInstance` always points to whichever Study-owned sibling is current (during a
+ * Practice takeover that is the Practice instance), so route exit releases the correct one; the
+ * Practice ownership handle is cleared here too so Practice can never remain active off-route.
  */
 export function unmountStudyWorkspace(reason: string): boolean {
   const instance = _workspaceInstance;
+  _practiceWorkspaceInstance = null;
   if (!instance) return false;
   _workspaceInstance = null;
   return unmountWorkspace(instance, reason);
+}
+
+
+
+
+
+
+
+
+let _practiceWorkspaceInstance: WorkspaceInstance | null = null;
+
+/**
+ * Whether the controller-owned Study workspace (EITHER the ordinary or the Practice sibling) is the
+ * live active workspace. The board-sync guard uses this so navigation updates the board under BOTH
+ * Study modes, without mistaking Analysis's own `practice-grading` slot for Study's (identity, not
+ * just mode).
+ */
+export function isStudyWorkspaceActive(): boolean {
+  return _workspaceInstance !== null && activeWorkspace() === _workspaceInstance;
+}
+
+/** Whether the Study slot is currently hosting the shared Practice module. */
+export function isStudyPracticeSlotActive(): boolean {
+  return _practiceWorkspaceInstance !== null;
+}
+
+/**
+ * Reconcile the single Study workspace slot with the route's Practice request (C3). Idempotent: a
+ * no-op when the requested state already matches the active state, so repeated redraws never remount.
+ *
+ * Activate: mount the shared `study-practice` module (a FRESH instance via the C4 host-neutral
+ * factory `mountStudyPracticeWorkspace`) with the SAME live cursor/orientation/redraw/navigate/
+ * handleUserMove Study's ordinary mount uses; the core synchronously supersedes and tears down the
+ * ordinary sibling. The factory result becomes BOTH the current Study instance and the Practice-owned
+ * handle.
+ *
+ * Deactivate: clear the Practice handle, guarded-unmount EXACTLY that instance, and restore the
+ * ordinary Study mount ONLY when that unmount returned `true` (the stale-owner rule — never clobber a
+ * newer workspace that already superseded Practice, e.g. an Analysis excursion).
+ *
+ * Synchronous/bounded (P0 — board navigation wins the frame). Hosting only: no grading, session,
+ * SRS, route-resume, or visible Practice behavior (Package D / C5).
+ */
+export function reconcileStudyPracticeSlot(requested: boolean, redraw: () => void): void {
+  if (!_session) return; // session not loaded yet — hydration's completion redraw retries
+  const active = _practiceWorkspaceInstance !== null;
+  if (requested === active) return; // idempotent no-op (also: no remount per redraw)
+  if (requested) {
+    const instance = mountStudyPracticeWorkspace({
+      hostId: 'study-detail',
+      getCursor: studyWorkspaceCursor,
+      getOrientation: () => _orientation,
+      redraw,
+      navigate: path => studyBoardNavigate(path, redraw),
+      handleUserMove: (parentPath, node) => commitStudyUserMove(parentPath, node, redraw),
+    });
+    _practiceWorkspaceInstance = instance;
+    _workspaceInstance = instance;
+  } else {
+    const instance = _practiceWorkspaceInstance;
+    _practiceWorkspaceInstance = null;
+    if (_workspaceInstance === instance) _workspaceInstance = null;
+    if (instance && unmountWorkspace(instance, 'study-practice-deactivate')) {
+      mountStudyWorkspace(redraw);
+    }
+  }
 }
 
 // --- Orientation ---
