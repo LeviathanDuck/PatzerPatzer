@@ -56,14 +56,6 @@ import {
 import type { RemoteSyncIssue, RemoteSyncIssueReason } from '../sync/progress';
 import type { DurableQuarantineRecord } from '../sync/versionOutbox';
 import { getDiagnosticEvents, getRecentDiagnosticSessions } from '../idb';
-import {
-  advancedReproductionToolsEnabled,
-  assembleBugPackage,
-  copyBugPackageToClipboard,
-  downloadBugPackageAsJson,
-  faultInjection,
-  setAdvancedReproductionToolsEnabled,
-} from '../diagnostics';
 import { Severity, type DiagnosticErrorGroup, type DiagnosticEvent, type DiagnosticSession } from '../diagnostics/types';
 import {
   canTransitionReportTriage,
@@ -242,8 +234,6 @@ let topCrashGroupsReportMessage = '';
 let remoteUploadTokenInput = '';
 let remoteUploadEndpointInput = '';
 let remoteUploadMessage = '';
-let advancedReproductionToolsMessage = '';
-let bugPackageBusy = false;
 let diagnosticSessions: DiagnosticSession[] | null = null;
 let diagnosticSessionsLoading = false;
 let diagnosticSessionStatusFilter: 'all' | 'clean' | 'interrupted' = 'all';
@@ -502,49 +492,6 @@ function disableRemoteUpload(redraw: () => void): void {
   redraw();
 }
 
-function hasAdminTokenForAdvancedTools(): boolean {
-  return Boolean(readRemoteSyncToken().trim());
-}
-
-function toggleAdvancedReproductionTools(redraw: () => void): void {
-  const enabled = advancedReproductionToolsEnabled();
-  if (enabled) {
-    setAdvancedReproductionToolsEnabled(false);
-    advancedReproductionToolsMessage = 'Advanced reproduction tools disabled for this browser.';
-    redraw();
-    return;
-  }
-
-  if (!hasAdminTokenForAdvancedTools()) {
-    advancedReproductionToolsMessage = 'Save a valid admin token before enabling advanced reproduction tools.';
-    redraw();
-    return;
-  }
-
-  const changed = setAdvancedReproductionToolsEnabled(true);
-  advancedReproductionToolsMessage = changed
-    ? 'Advanced reproduction tools enabled for this browser.'
-    : 'Advanced reproduction tools could not be enabled.';
-  redraw();
-}
-
-function runFaultInjection(action: () => void | Promise<void>, redraw: () => void): void {
-  if (!advancedReproductionToolsEnabled()) {
-    advancedReproductionToolsMessage = 'Enable advanced reproduction tools with an admin token before running fault injection.';
-    redraw();
-    return;
-  }
-
-  try {
-    void Promise.resolve(action()).then(() => {
-      advancedReproductionToolsMessage = 'Fault injection action ran. Refresh diagnostics events to inspect the result.';
-      redraw();
-    });
-  } catch (error) {
-    advancedReproductionToolsMessage = error instanceof Error ? error.message : 'Fault injection action failed.';
-    redraw();
-  }
-}
 
 function loadDiagnosticEvents(redraw: () => void): void {
   if (diagnosticEventsLoading) return;
@@ -767,7 +714,6 @@ export function renderAdminDiagnosticsPage(redraw: () => void): VNode {
         onRefresh: () => loadRemoteDiagnosticTrends(redraw),
       }),
       renderRemoteDiagnosticReportsPanel(redraw),
-      renderAdvancedReproductionToolsPanel(redraw),
     ]),
   ]));
 }
@@ -1919,97 +1865,9 @@ function renderSelectedDiagnosticReportDetail(redraw: () => void): VNode | null 
       report.userInput.expectedBehavior ? h('p.admin-log__empty', `Expected: ${report.userInput.expectedBehavior}`) : null,
       report.userInput.actualBehavior ? h('p.admin-log__empty', `Actual: ${report.userInput.actualBehavior}`) : null,
     ]),
-    advancedReproductionToolsEnabled() ? renderBugPackageControls(report, redraw) : null,
   ]);
 }
 
-function diagnosticErrorGroupFromReport(report: StoredDiagnosticReport): DiagnosticErrorGroup {
-  const recentError = report.routeContext.recentErrors[0];
-  if (recentError) {
-    const group: DiagnosticErrorGroup = {
-      errorGroupId: recentError.eventId,
-      eventIds: [recentError.eventId],
-      kind: recentError.kind,
-      severity: recentError.severity,
-      route: recentError.route,
-      sourceTag: recentError.sourceTag,
-      message: recentError.message,
-      firstSeenAt: recentError.timestamp,
-      lastSeenAt: recentError.timestamp,
-      count: 1,
-    };
-    if (recentError.metadata) group.metadata = recentError.metadata;
-    return group;
-  }
-
-  return {
-    errorGroupId: `report-${report.reportId}`,
-    eventIds: [],
-    kind: 'user-report',
-    severity: Severity.Info,
-    route: report.route,
-    sourceTag: 'diagnostics.report',
-    message: report.userInput.description || 'User report',
-    firstSeenAt: report.timestamp,
-    lastSeenAt: report.timestamp,
-    count: 1,
-  };
-}
-
-function buildBugPackage(report: StoredDiagnosticReport, action: 'copy' | 'download', redraw: () => void): void {
-  if (!advancedReproductionToolsEnabled()) {
-    advancedReproductionToolsMessage = 'Enable advanced reproduction tools with an admin token before building a bug package.';
-    redraw();
-    return;
-  }
-
-  bugPackageBusy = true;
-  advancedReproductionToolsMessage = 'Building bug package...';
-  redraw();
-
-  assembleBugPackage({
-    report,
-    errorGroup: diagnosticErrorGroupFromReport(report),
-    reproNotes: report.adminNotes,
-  }).then(async pkg => {
-    if (action === 'copy') await copyBugPackageToClipboard(pkg);
-    else downloadBugPackageAsJson(pkg);
-    advancedReproductionToolsMessage = action === 'copy'
-      ? 'Bug package copied to clipboard.'
-      : 'Bug package download started.';
-  }).catch(error => {
-    advancedReproductionToolsMessage = error instanceof Error ? error.message : 'Bug package build failed.';
-  }).finally(() => {
-    bugPackageBusy = false;
-    redraw();
-  });
-}
-
-function renderBugPackageControls(report: StoredDiagnosticReport, redraw: () => void): VNode {
-  return h('div.admin-data-section', [
-    h('div.admin-data-section__header', [
-      h('h4', 'Bug package'),
-      h('span', bugPackageBusy ? 'Building...' : 'Advanced reproduction export'),
-    ]),
-    h('div.admin-token-row', [
-      h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button', disabled: bugPackageBusy, ...controlExplainerAttrs({
-          label: 'Copy bug package',
-          description: bugPackageBusy ? 'A bug package is already being built.' : 'Builds a redacted diagnostics package and copies it to the clipboard.',
-        }) },
-        on: { click: () => buildBugPackage(report, 'copy', redraw) },
-      }, 'Copy package'),
-      h('button.admin-btn.admin-btn--muted', {
-        attrs: { type: 'button', disabled: bugPackageBusy, ...controlExplainerAttrs({
-          label: 'Download bug package',
-          description: bugPackageBusy ? 'A bug package is already being built.' : 'Builds a redacted diagnostics package and downloads it as JSON.',
-        }) },
-        on: { click: () => buildBugPackage(report, 'download', redraw) },
-      }, 'Download package'),
-    ]),
-    h('p.admin-log__empty', 'Bug packages include redacted report context, breadcrumbs, recent route context, and performance summary only.'),
-  ]);
-}
 
 function replaceDiagnosticReport(updated: StoredDiagnosticReport): void {
   diagnosticReports = (diagnosticReports ?? []).map(item => item.reportId === updated.reportId ? updated : item);
@@ -2715,68 +2573,6 @@ function renderRemoteUploadControls(config: ReturnType<typeof readRemoteSubmissi
 }
 
 
-function renderAdvancedReproductionToolsPanel(redraw: () => void): VNode {
-  const enabled = advancedReproductionToolsEnabled();
-  const hasToken = hasAdminTokenForAdvancedTools();
-
-  return h('section.admin-panel.admin-panel--advanced-reproduction-tools', [
-    h('div.admin-panel__header', [
-      h('h3', 'Advanced reproduction tools'),
-      h('span.admin-sync-badge', {
-        class: {
-          'admin-sync-badge--done': enabled,
-          'admin-sync-badge--error': !enabled,
-        },
-      }, enabled ? 'Enabled' : 'Off'),
-    ]),
-    h('p.admin-log__empty', 'These owner-only controls are browser-local and limited to fault injection plus selected-report bug package export. They do not gate all diagnostics capture.'),
-    h('div.admin-token-row', [
-      h('button.admin-btn', {
-        class: {
-          'admin-btn--primary': !enabled,
-          'admin-btn--muted': enabled,
-        },
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: enabled ? 'Disable advanced reproduction tools' : 'Enable advanced reproduction tools',
-          description: enabled ? 'Hides owner-only fault injection and package export controls.' : 'Shows owner-only fault injection and package export controls when an admin token is available.',
-        }) },
-        on: { click: () => toggleAdvancedReproductionTools(redraw) },
-      }, enabled ? 'Disable advanced tools' : 'Enable advanced tools'),
-      h('span.admin-backup-copy', hasToken
-        ? 'Admin token is available for this browser.'
-        : 'Save an admin token in Sync before enabling.'),
-    ]),
-    advancedReproductionToolsMessage ? h('p.admin-sync-message', advancedReproductionToolsMessage) : null,
-    enabled ? renderFaultInjectionControls(redraw) : null,
-  ]);
-}
-
-function renderFaultInjectionControls(redraw: () => void): VNode {
-  const buttons: { label: string; action: () => void | Promise<void> }[] = [
-    { label: 'Sync failure', action: faultInjection.triggerSyncFailure },
-    { label: 'IDB failure', action: faultInjection.triggerIDBFailure },
-    { label: 'Render failure', action: faultInjection.triggerRenderFailure },
-    { label: 'Engine init failure', action: faultInjection.triggerEngineInitFailure },
-    { label: 'Unhandled rejection', action: faultInjection.triggerUnhandledRejection },
-    { label: 'Slow route', action: () => faultInjection.triggerSlowRoute(3000) },
-    { label: 'Resource failure', action: faultInjection.triggerResourceLoadFailure },
-    { label: 'Mobile crash marker', action: faultInjection.triggerMobileCrash },
-  ];
-
-  return h('div.admin-data-section', [
-    h('div.admin-data-section__header', [
-      h('h4', 'Fault injection'),
-      h('span', 'Writes synthetic diagnostics for reproduction validation.'),
-    ]),
-    h('div.admin-token-row', buttons.map(button => h('button.admin-btn.admin-btn--muted', {
-      attrs: { type: 'button', ...controlExplainerAttrs({
-        label: button.label,
-        description: 'Creates a synthetic diagnostic failure for owner-only reproduction validation.',
-      }) },
-      on: { click: () => runFaultInjection(button.action, redraw) },
-    }, button.label))),
-  ]);
-}
 
 function renderRemoteDiagnosticReportList(reports: RemoteDiagnosticReportSummary[], redraw: () => void): VNode {
   if (reports.length === 0) return h('p.report-list__empty', 'No remote bug reports are available.');
