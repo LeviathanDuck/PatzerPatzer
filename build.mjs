@@ -6,7 +6,7 @@ import { assertPublicEntrypointIntegrity } from './scripts/check-public-entrypoi
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const version = pkg.version || '0.0.0';
-const builtAt = new Date().toISOString();
+const builtAt = process.env.PATZER_BUILT_AT ?? new Date().toISOString();
 
 function gitValue(args) {
   try {
