@@ -65,6 +65,13 @@ export interface LoadLearnBundleInput {
   readonly learnerSide: 'white' | 'black';
   /** Lesson id; defaults to the studyItemId (material.ts convention: lessonId = StudyItem.id). */
   readonly lessonId?: string;
+
+
+
+
+
+
+  readonly treatLineAsRequired?: boolean;
 }
 
 /** The material bundle plus the session-relative Learn target set. */
@@ -123,6 +130,18 @@ export async function loadLearnLessonBundle(
   const content = new Map<string, AuthoredLessonContent>();
   for (const row of contentRows) content.set(row.decisionId, authoredContentFromRow(row));
 
+  const rowOverlay = overlayFromDecisionRows(decisionRows);
+  const rowIds = new Set(decisionRows.map(r => r.decisionId));
+  const decisionOverlay = input.treatLineAsRequired
+    ? (base: Parameters<typeof rowOverlay>[0]): ReturnType<typeof rowOverlay> => {
+        const overlaid = rowOverlay(base);
+        if (rowIds.has(base.identity.decisionId)) return overlaid; // persisted classification wins
+        // Mover color from the after-move ply (odd ⇒ white moved — the lessonExtract convention).
+        const mover = base.evidence.ply % 2 === 1 ? 'white' : 'black';
+        return mover === input.learnerSide ? { ...overlaid, trainability: 'required' } : overlaid;
+      }
+    : rowOverlay;
+
   const model = extractLessonModel({
     root,
     lessonId,
@@ -130,7 +149,7 @@ export async function loadLearnLessonBundle(
     sourceKind: 'pgn',
     content,
     previous: previousFromDecisionRows(decisionRows, input.learnerSide),
-    decisionOverlay: overlayFromDecisionRows(decisionRows),
+    decisionOverlay,
   });
 
   // Learn split (consult §3): a Required decision is a Learn target iff its SRS row is absent

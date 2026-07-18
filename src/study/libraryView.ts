@@ -63,12 +63,13 @@ import {
   repertoireBrowseGeneration,
   repertoireBrowseSourceId,
 } from './repertoireBrowseView';
-import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { isDrillActive, isDrillSummary, initDrillView, initLearnView, renderDrillView, endDrill } from './practice/drillView';
+import { loadLearnLessonBundle } from './practice/lessonHost';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { saveRepertoireLineToOrpLibrary } from './saveAction';
 import { Chessground as makeChessground } from '@lichess-org/chessground';
-import type { StudyItem } from './types';
+import type { StudyItem, TrainableSequence } from './types';
 import type { RepertoireLinePrefixMove, RepertoireSide, RepertoireSource } from '../repertoire';
 import {
   ACCOUNT_REPERTOIRE_DIRECT_GAME_LIMIT,
@@ -243,13 +244,51 @@ async function launchOrpLearnSession(redraw: () => void): Promise<void> {
 
     if (newSequences.length === 0) return;
 
-    const initialTrainAs = newSequences[0]!.trainAs;
-    _orpDrillPending = true;
-    initDrillView(newSequences, newSequences[0]!.fens[0] ?? STARTING_FEN, initialTrainAs, redraw, 'learn');
-    redraw();
+
+
+
+
+    await launchGuidedLearn(newSequences[0]!, redraw);
   } finally {
     _orpLearnLaunching = false;
   }
+}
+
+/**
+ * Launch guided recall (D7/D8 Learn runtime) for one saved line's Study. Loads the material bundle
+ * through the E3 lesson host (persisted ids/roles/content honored; learner moves of an unenrolled
+ * saved line count as Required — the ORP semantic) and mounts `initLearnView`. NEVER falls back to
+ * the retired auto-play: a failed load reports and no-ops (registry Do-not-preserve :873).
+ */
+async function launchGuidedLearn(sequence: TrainableSequence, redraw: () => void): Promise<void> {
+  const result = await loadLearnLessonBundle({
+    studyItemId: sequence.studyItemId,
+    learnerSide: sequence.trainAs,
+    treatLineAsRequired: true,
+  });
+  if (!result.ok) {
+    console.warn(`[libraryView] guided-learn load failed (${result.reason}) for study ${sequence.studyItemId}`);
+    return;
+  }
+  const { model, targetIds } = result.bundle;
+  if (model.line.length === 0) {
+    console.warn(`[libraryView] guided-learn: study ${sequence.studyItemId} has no learner decisions`);
+    return;
+  }
+  _orpDrillPending = true;
+  initLearnView({
+    line: model.line,
+    content: model.content,
+    replies: model.replies,
+    siblingsAt: model.siblingsAt,
+    targetIds,
+    leadInFenFor: model.leadInFenFor,
+    shapesFor: model.shapesFor,
+    rootFen: model.rootFen,
+    trainAs: sequence.trainAs,
+    redraw,
+  });
+  redraw();
 }
 
 function loadOrpLines(redraw: () => void): void {
@@ -2674,8 +2713,8 @@ function renderPracticeDashboard(redraw: () => void): VNode | null {
           h('button.study-btn', {
             attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Learn new Study lines', description: 'Starts a learning session for new Study practice lines.' }) },
             on: { click: () => {
-              initDrillView(learn, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'white', redraw);
-              redraw();
+
+              if (learn.length > 0) void launchGuidedLearn(learn[0]!, redraw);
             }},
           }, 'Learn Now'),
         ])
