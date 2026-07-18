@@ -293,15 +293,26 @@ interface OrpSaveOptions {
   extraTags?: readonly string[];
   mergeExistingTags?: boolean;
   sourceProvenance?: OrpSourceProvenance;
-
-
-
-
-
-
-
-  linkedSourceProvenance?: SourceImportedProvenance;
 }
+
+
+
+
+
+
+
+
+
+
+
+export interface OrpSaveDeps {
+  readonly getStudy: typeof getStudy;
+  readonly getPracticeLine: typeof getPracticeLine;
+  readonly saveStudyStrict: typeof saveStudyStrict;
+  readonly savePracticeLine: typeof savePracticeLine;
+}
+
+const REAL_ORP_SAVE_DEPS: OrpSaveDeps = { getStudy, getPracticeLine, saveStudyStrict, savePracticeLine };
 
 function mergeUniqueTags(existing: readonly string[], next: readonly string[]): string[] {
   const merged: string[] = [];
@@ -338,6 +349,7 @@ export async function saveOrpLineToLibrary(
   openingName?: string,
   openingEco?: string,
   options: OrpSaveOptions = {},
+  deps: OrpSaveDeps = REAL_ORP_SAVE_DEPS,
 ): Promise<OrpSaveResult | null> {
   // Guard: line too short to drill.
   if (ucis.length < 3) {
@@ -376,34 +388,39 @@ export async function saveOrpLineToLibrary(
   let seqCreatedAt   = now;
   let seqStatus: 'active' | 'paused' = 'active';
   let existingStudy: StudyItem | null = null;
-  let existingSeqRecord: TrainableSequence | null = null;
+
+
+
+
+
+
   try {
-    const existing = await getStudy(studyItemId);
+    const existing = await deps.getStudy(studyItemId);
     if (existing) {
       existingStudy = existing;
       studyCreatedAt = existing.createdAt;
     }
   } catch (e) {
     recordOrpLoadFail(e);
-    console.warn('[saveAction] ORP: getStudy lookup failed on upsert, using now for createdAt', e);
+    recordOrpSaveFail('idb-read-error');
+    throw new Error('orp-upsert-preservation-read-failed: getStudy');
   }
   try {
-    const existingSeq = await getPracticeLine(sequenceId);
+    const existingSeq = await deps.getPracticeLine(sequenceId);
     if (existingSeq) {
-      existingSeqRecord = existingSeq;
       seqCreatedAt = existingSeq.createdAt;
       seqStatus    = existingSeq.status;
     }
   } catch (e) {
     recordOrpLoadFail(e);
-    console.warn('[saveAction] ORP: getPracticeLine lookup failed on upsert, using now for createdAt', e);
+    recordOrpSaveFail('idb-read-error');
+    throw new Error('orp-upsert-preservation-read-failed: getPracticeLine');
   }
 
   // Build the PGN from the UCI moves for the StudyItem.pgn field.
   const pgn = uciMovesToPgn(ucis, title);
   const tags = buildOrpTags(trainAs, collection, options.extraTags);
   const sourceProvenance = options.sourceProvenance;
-  const linkedProvenance = options.linkedSourceProvenance;
 
   // Build StudyItem (source: 'openings').
   const studyItem: StudyItem = {
@@ -421,22 +438,6 @@ export async function saveOrpLineToLibrary(
     studyItem.sourceGameId = sourceProvenance.originalStudyItemId;
     studyItem.orpSourceProvenance = sourceProvenance;
     if (sourceProvenance.sourcePath !== undefined) studyItem.sourcePath = sourceProvenance.sourcePath;
-  }
-  // Stamp external linked/snapshot-source provenance WITHOUT clobbering locally-authored layers
-  // (P2-ORP-18 "never overwrite My notes"). The stamp writes ONLY linkedSourceProvenance; the
-  // My-analysis/My-notes layers and free-text notes are carried forward verbatim from the existing
-  // record on the upsert path. Orthogonal to trainability — no `required`, no SRS/decision row.
-  if (linkedProvenance) {
-    const stamp = stampLinkedSourceProvenance({
-      incoming: linkedProvenance,
-      ...(existingStudy?.localProvenanceLayers !== undefined
-        ? { existingLocalLayers: existingStudy.localProvenanceLayers }
-        : {}),
-      ...(existingStudy?.notes !== undefined ? { existingNotes: existingStudy.notes } : {}),
-    });
-    studyItem.linkedSourceProvenance = stamp.linkedSourceProvenance;
-    if (stamp.localProvenanceLayers !== undefined) studyItem.localProvenanceLayers = stamp.localProvenanceLayers;
-    if (stamp.notes !== undefined) studyItem.notes = stamp.notes;
   }
   if (openingEco)  studyItem.eco     = openingEco;
   if (openingName) studyItem.opening = openingName;
@@ -456,31 +457,20 @@ export async function saveOrpLineToLibrary(
     updatedAt:   now,
   };
   if (sourceProvenance) sequence.orpSourceProvenance = sourceProvenance;
-  // Same non-clobbering stamp for the TrainableSequence's provenance layers (TrainableSequence has no
-  // notes field; only its locally-authored layers are preserved from the existing sequence record).
-  if (linkedProvenance) {
-    const seqStamp = stampLinkedSourceProvenance({
-      incoming: linkedProvenance,
-      ...(existingSeqRecord?.localProvenanceLayers !== undefined
-        ? { existingLocalLayers: existingSeqRecord.localProvenanceLayers }
-        : {}),
-    });
-    sequence.linkedSourceProvenance = seqStamp.linkedSourceProvenance;
-    if (seqStamp.localProvenanceLayers !== undefined) sequence.localProvenanceLayers = seqStamp.localProvenanceLayers;
-  }
 
-  // Persist both records. saveStudy / savePracticeLine use IDB put() (upsert).
+
+
   try {
-    await saveStudy(studyItem);
-    await savePracticeLine(sequence);
+    await deps.saveStudyStrict(studyItem);
+    await deps.savePracticeLine(sequence);
   } catch (e) {
     recordOrpSaveFail(classifyOrpError(e));
     throw e;
   }
 
   const [persistedStudy, persistedSequence] = await Promise.all([
-    getStudy(studyItemId),
-    getPracticeLine(sequenceId),
+    deps.getStudy(studyItemId),
+    deps.getPracticeLine(sequenceId),
   ]);
   if (!persistedStudy || !persistedSequence) {
     recordOrpSaveFail('idb-write-error');
@@ -488,6 +478,83 @@ export async function saveOrpLineToLibrary(
   }
 
   return { studyItem, sequence };
+}
+
+
+export interface LinkedStudyImportInput {
+  /** Deterministic or caller-generated StudyItem id (repeat imports upsert the same item). */
+  readonly studyItemId: string;
+  readonly pgn: string;
+  readonly title: string;
+  readonly tags?: readonly string[];
+  /** External linked/snapshot-source provenance to stamp (stampLinkedSourceProvenance semantics). */
+  readonly linkedSourceProvenance: SourceImportedProvenance;
+  /** StudyItem source classification; defaults to 'import'. */
+  readonly source?: StudySource;
+  readonly eco?: string;
+  readonly opening?: string;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function saveLinkedStudyImport(
+  input: LinkedStudyImportInput,
+  deps: OrpSaveDeps = REAL_ORP_SAVE_DEPS,
+): Promise<StudyItem> {
+  const now = Date.now();
+
+  let existing: StudyItem | undefined;
+  try {
+    existing = await deps.getStudy(input.studyItemId);
+  } catch (e) {
+    recordOrpLoadFail(e);
+    recordOrpSaveFail('idb-read-error');
+    throw new Error('linked-import-preservation-read-failed: getStudy');
+  }
+
+  const stamp = stampLinkedSourceProvenance({
+    incoming: input.linkedSourceProvenance,
+    ...(existing?.localProvenanceLayers !== undefined
+      ? { existingLocalLayers: existing.localProvenanceLayers }
+      : {}),
+    ...(existing?.notes !== undefined ? { existingNotes: existing.notes } : {}),
+  });
+
+  const studyItem: StudyItem = {
+    id:        input.studyItemId,
+    pgn:       input.pgn,
+    title:     input.title,
+    source:    input.source ?? 'import',
+    tags:      existing ? mergeUniqueTags(existing.tags, input.tags ?? []) : [...(input.tags ?? [])],
+    folders:   existing ? [...existing.folders] : [],
+    favorite:  existing?.favorite ?? false,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  studyItem.linkedSourceProvenance = stamp.linkedSourceProvenance;
+  if (stamp.localProvenanceLayers !== undefined) studyItem.localProvenanceLayers = stamp.localProvenanceLayers;
+  if (stamp.notes !== undefined) studyItem.notes = stamp.notes;
+  if (input.eco !== undefined) studyItem.eco = input.eco;
+  if (input.opening !== undefined) studyItem.opening = input.opening;
+
+  try {
+    await deps.saveStudyStrict(studyItem);
+  } catch (e) {
+    recordOrpSaveFail(classifyOrpError(e));
+    throw e;
+  }
+  return studyItem;
 }
 
 export async function saveRepertoireLineToOrpLibrary(
