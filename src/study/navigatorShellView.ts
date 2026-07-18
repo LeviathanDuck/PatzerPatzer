@@ -139,6 +139,7 @@ import {
 import { current, replaceHashRoute, writeHashRoute } from '../router';
 import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
 import { deriveHomeFolderId } from './studyDb';
+import { openDrillCatalog } from './practice/drillCatalogView';
 
 // ---------------------------------------------------------------------------------------------
 // Selection model — BASIC single-selection only (T5-D09 owns multi-select). Kept as a single
@@ -626,6 +627,9 @@ interface RailContext {
   onSelectPractice?: () => void;
   /** Returns to the ordinary Study detail surface by clearing the Practice tool route. */
   onLeavePractice?: () => void;
+
+
+  onOpenDrillCatalog?: () => void;
 }
 
 const DEFAULT_RAIL_CONTEXT: RailContext = { studyOpen: false, practiceActive: false };
@@ -646,6 +650,16 @@ function railSurfaces(ctx: RailContext): RailSurface[] {
         : 'Shows the Study Library surface.',
       disabledReason: 'Library is coming soon.',
       onClick: practiceActive ? ctx.onLeavePractice : undefined,
+    },
+    {
+      id: 'drill-catalog',
+      label: 'Drill Catalog',
+      icon: 'history',
+      active: false,
+      disabled: ctx.onOpenDrillCatalog === undefined,
+      description: 'Opens the global Drill Catalog: every saved Engine Drill, newest first.',
+      disabledReason: 'The Drill Catalog opens from the Study Library.',
+      onClick: ctx.onOpenDrillCatalog,
     },
     { id: 'repertoire-builder', label: 'Repertoire Builder', icon: 'hammer', active: false, disabled: true, description: 'Repertoire Builder is coming soon.', disabledReason: 'Repertoire Builder is coming soon.' },
     { id: 'compliance-toolkit', label: 'Repertoire Compliance Toolkit', icon: 'shield-check', active: false, disabled: true, description: 'Repertoire Compliance Toolkit is coming soon.', disabledReason: 'Repertoire Compliance Toolkit is coming soon.' },
@@ -1742,6 +1756,7 @@ function renderGameOpenShell(
     practiceActive: opts.toolsOpen && opts.activeToolTab === STUDY_DETAIL_PRACTICE_TOOL_TAB,
     onSelectPractice: opts.onSelectPractice,
     onLeavePractice: opts.onCloseTools,
+    onOpenDrillCatalog: () => { openDrillCatalog({ kind: 'global' }, redraw); redraw(); },
   };
 
   return h('div.lib-shell.lib-shell--game-open', {
@@ -1914,7 +1929,10 @@ export function renderNavigatorShell(
   return h('div.lib-shell', {
     attrs: { style: _navDivider.styleDeclaration() },
   }, [
-    renderRail(),
+    renderRail({
+      ...DEFAULT_RAIL_CONTEXT,
+      onOpenDrillCatalog: () => { openDrillCatalog({ kind: 'global' }, redraw); redraw(); },
+    }),
     h('div.lib-nav-wrap', {
       attrs: { 'aria-label': 'Study navigation pane', ...controlExplainerAttrs({ label: 'Study navigation pane' }) },
       on: {

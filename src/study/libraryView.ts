@@ -65,6 +65,7 @@ import {
 } from './repertoireBrowseView';
 import { isDrillActive, isDrillSummary, initDrillView, initLearnView, renderDrillView, endDrill } from './practice/drillView';
 import { loadLearnLessonBundle } from './practice/lessonHost';
+import { isDrillCatalogOpen, closeDrillCatalog, renderDrillCatalog } from './practice/drillCatalogView';
 import { launchDueReview } from './practice/dueReviewLaunch';
 import { enrollLearnedLine } from './practice/learnEnrollment';
 import type { LearnTargetCompletion } from './practice/drillCtrl';
@@ -2167,6 +2168,21 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
   // Lazy-load stored repertoire divergence records for Surface E.
   if (!repertoireComplianceReportLoaded()) loadRepertoireComplianceReport(redraw);
+
+
+
+  if (isDrillCatalogOpen()) {
+    return h('div.study-page', [
+      h('div.study-page__header', [
+        h('h1', 'Drill Catalog'),
+        h('button.study-btn', {
+          attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to Study Library', description: 'Closes the Drill Catalog and returns to the Study Library.' }) },
+          on: { click: () => { closeDrillCatalog(); redraw(); } },
+        }, '← Back to Library'),
+      ]),
+      renderDrillCatalog(redraw),
+    ]);
+  }
 
 
   if (isDrillActive() || isDrillSummary()) {
