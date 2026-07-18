@@ -262,32 +262,44 @@ async function launchOrpLearnSession(redraw: () => void): Promise<void> {
 
 
 
-
-    await launchGuidedLearn(newSequences[0]!, redraw);
+    await launchGuidedLearn(newSequences, 0, redraw);
   } finally {
     _orpLearnLaunching = false;
   }
 }
 
-/**
- * Launch guided recall (D7/D8 Learn runtime) for one saved line's Study. Loads the material bundle
- * through the E3 lesson host (persisted ids/roles/content honored; learner moves of an unenrolled
- * saved line count as Required — the ORP semantic) and mounts `initLearnView`. NEVER falls back to
- * the retired auto-play: a failed load reports and no-ops (registry Do-not-preserve :873).
- */
-async function launchGuidedLearn(sequence: TrainableSequence, redraw: () => void): Promise<void> {
+
+
+
+
+
+
+
+
+async function launchGuidedLearn(
+  sequences: readonly TrainableSequence[],
+  index: number,
+  redraw: () => void,
+): Promise<void> {
+  if (index >= sequences.length) {
+    redraw(); // chain complete — the refreshed library state shows the enrolled lines
+    return;
+  }
+  const sequence = sequences[index]!;
   const result = await loadLearnLessonBundle({
     studyItemId: sequence.studyItemId,
     learnerSide: sequence.trainAs,
     treatLineAsRequired: true,
   });
   if (!result.ok) {
-    console.warn(`[libraryView] guided-learn load failed (${result.reason}) for study ${sequence.studyItemId}`);
+    console.warn(`[libraryView] guided-learn load failed (${result.reason}) for study ${sequence.studyItemId}; skipping to the next line`);
+    await launchGuidedLearn(sequences, index + 1, redraw);
     return;
   }
   const { model, targetIds } = result.bundle;
   if (model.line.length === 0) {
-    console.warn(`[libraryView] guided-learn: study ${sequence.studyItemId} has no learner decisions`);
+    console.warn(`[libraryView] guided-learn: study ${sequence.studyItemId} has no learner decisions; skipping to the next line`);
+    await launchGuidedLearn(sequences, index + 1, redraw);
     return;
   }
   _orpDrillPending = true;
@@ -321,7 +333,8 @@ async function launchGuidedLearn(sequence: TrainableSequence, redraw: () => void
         } else {
           console.warn(`[libraryView] learn enrollment failed (${outcome.reason})`);
         }
-        redraw();
+
+        void launchGuidedLearn(sequences, index + 1, redraw);
       });
     },
   });
@@ -2751,7 +2764,7 @@ function renderPracticeDashboard(redraw: () => void): VNode | null {
             attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Learn new Study lines', description: 'Starts a learning session for new Study practice lines.' }) },
             on: { click: () => {
 
-              if (learn.length > 0) void launchGuidedLearn(learn[0]!, redraw);
+              if (learn.length > 0) void launchGuidedLearn(learn, 0, redraw);
             }},
           }, 'Learn Now'),
         ])
