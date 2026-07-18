@@ -48,6 +48,7 @@ import {
   type WorkspaceInstance,
 } from './workspaceCore';
 import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
+import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab } from '../study/practice/practiceView';
 import type { TreeNode } from '../tree/types';
 
 // --- Action-menu open/close state ---
@@ -175,6 +176,29 @@ export function initAnalysisPracticeSlot(deps: AnalysisPracticeSlotDeps): void {
 /** Whether the Analysis slot is currently hosting the shared study-practice module. */
 export function isAnalysisPracticeSlotActive(): boolean {
   return _practiceSlotInstance !== null;
+}
+
+
+
+
+
+
+
+
+let _analysisPracticeTab: PracticePanelTab = 'review';
+
+/** Render the Analysis Practice panel, or null while the practice slot is not active. */
+export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
+  if (!isAnalysisPracticeSlotActive()) return null;
+  const props: PracticePanelProps = {
+    activeTab: _analysisPracticeTab,
+    onSelectTab: (tab: PracticePanelTab) => { _analysisPracticeTab = tab; redraw(); },
+    learn: { status: 'ready', entries: [] },
+    review: { status: 'empty' },
+    practice: { status: 'empty' },
+    progress: { status: 'empty' },
+  };
+  return h('div.analyse__practice-panel', [renderPracticePanel(props)]);
 }
 
 /**

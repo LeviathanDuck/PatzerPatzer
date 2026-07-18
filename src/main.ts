@@ -89,7 +89,7 @@ import {
 } from './analyse/pgnExport';
 import { initPersist, scheduleGamePersist, flushPendingGamePersist } from './analyse/persist';
 import {
-  initAnalysisControls, renderMoveNavBar, renderActionMenu,
+  initAnalysisControls, renderMoveNavBar, renderActionMenu, renderAnalysisPracticePanel,
   initAnalysisPracticeSlot, activateAnalysisPracticeSlot, deactivateAnalysisPracticeSlot,
 } from './analyse/analysisControls';
 
@@ -3217,6 +3217,10 @@ function renderRouteContent(route: Route): VNode {
               h('div.analyse__mobile-moves-context', renderAnalysisMobileContextChildren()),
             ]);
           })(),
+
+
+
+          renderAnalysisPracticePanel(redraw),
           // Analysis-local action menu — overlays the tools column when opened.
           // position: absolute; inset: 0 on .action-menu ensures it covers all tool content.
           // Returns null when closed, so tools render normally.
