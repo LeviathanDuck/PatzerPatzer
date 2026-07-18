@@ -56,9 +56,10 @@ import { isSourcePreviewOpen, renderSourcePreview } from './practice/sourcePrevi
 import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import {
-  deriveLessonDecisions, BRANCH_ROLES,
+  BRANCH_ROLES,
   type LessonDecision, type BranchRole, type DecisionTrainability,
 } from './practice/material';
+import { extractLessonModel } from './practice/lessonExtract';
 import {
   authoredContentFor, editAuthoredField,
   editDecisionRole, editDecisionTrainability, editDecisionLearnerSide,
@@ -128,12 +129,15 @@ let _authoringPreviewAt: string | null = null;
 function ensureAuthoringModel(study: StudyItem, root: TreeNode): void {
   if (_authoringStudyId === study.id) return;
   _authoringStudyId = study.id;
-  // One bootstrap derivation via D1's producer; identity comes from D1 and is carried forward by the
-  // pure edit ops for the lifetime of this opened Study.
-  const model = deriveLessonDecisions(root, {
+  // One bootstrap derivation through the shared extractor (E1, lessonExtract.ts) — the same core
+  // the library/host loader consumes. Identity still comes from D1's producer inside it and is
+  // carried forward by the pure edit ops for the lifetime of this opened Study.
+  const model = extractLessonModel({
+    root,
     lessonId: study.id,
     sourceKind: 'pgn',
     learnerSide: detailOrientation(),
+    content: new Map(),
   });
   _authoringDecisions = [...model.decisions];
   _authoredContent = new Map();
