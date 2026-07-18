@@ -2,7 +2,7 @@
 // Adapted from lichess-org/lila: ui/analyse/src/view/ and ui/chart/src/acpl.ts
 
 import { h, type VNode } from 'snabbdom';
-import { evalWinChances, type MoveLabel } from '../engine/winchances';
+import { classifyLoss, evalWinChances, type MoveLabel } from '../engine/winchances';
 import { getEvalCacheRevision } from '../engine/ctrl';
 import { labelForReviewEval } from './deepenedEval';
 import {
@@ -82,6 +82,58 @@ function moveAccuracyFromDiff(diff: number): number {
   if (diff < 0) return 100; // improvement → perfect
   const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * diff) + -3.166924740191411;
   return Math.max(0, Math.min(100, raw + 1));
+}
+
+
+
+
+
+
+
+/** One learner move to score: white-perspective evals before/after (the Game Review convention). */
+export interface DrillScoredMove {
+  readonly evalBefore: { readonly cp?: number; readonly mate?: number };
+  readonly evalAfter: { readonly cp?: number; readonly mate?: number };
+  readonly moverIsWhite: boolean;
+  /** Only ORIGINAL first attempts contribute to the percentage/critical count (§12.2). */
+  readonly firstAttempt: boolean;
+}
+
+export interface DrillScore {
+  /** Mean per-move Lichess accuracy over the scored (firstAttempt, evaluable) moves; null when none. */
+  readonly moveQualityPct: number | null;
+  /** Count of canonical `blunder` labels among scored moves — the contract's "critical mistakes". */
+  readonly criticalMistakes: number;
+  /** Per-input canonical label (null = fine move or unevaluable/unscored). */
+  readonly labeled: readonly (MoveLabel | null)[];
+}
+
+export function scoreDrillMoves(moves: readonly DrillScoredMove[]): DrillScore {
+  const labeled: (MoveLabel | null)[] = [];
+  const accuracies: number[] = [];
+  let criticalMistakes = 0;
+  for (const move of moves) {
+    const wcBefore = evalWinChances(move.evalBefore);
+    const wcAfter = evalWinChances(move.evalAfter);
+    if (wcBefore === undefined || wcAfter === undefined || !move.firstAttempt) {
+      labeled.push(null);
+      continue;
+    }
+    // Mover-perspective win-chance drop; winchances' loss field is delta/2 (see LOSS_THRESHOLDS doc).
+    const delta = move.moverIsWhite ? wcBefore - wcAfter : wcAfter - wcBefore;
+    const label = classifyLoss(Math.max(0, delta) / 2);
+    labeled.push(label);
+    if (label === 'blunder') criticalMistakes++;
+    // Mover-perspective win-PERCENT diff for the Lichess accuracy curve.
+    const pctBefore = (wcBefore + 1) / 2 * 100;
+    const pctAfter = (wcAfter + 1) / 2 * 100;
+    const diff = move.moverIsWhite ? pctBefore - pctAfter : pctAfter - pctBefore;
+    accuracies.push(moveAccuracyFromDiff(diff));
+  }
+  const moveQualityPct = accuracies.length === 0
+    ? null
+    : accuracies.reduce((a, b) => a + b, 0) / accuracies.length;
+  return { moveQualityPct, criticalMistakes, labeled };
 }
 
 function standardDeviation(values: readonly number[]): number {
