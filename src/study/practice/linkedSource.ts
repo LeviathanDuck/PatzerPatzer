@@ -33,7 +33,13 @@
 
 
 
-import type { DeriveDecisionsOptions } from './material';
+
+
+import {
+  deriveLessonDecisions,
+  type DeriveDecisionsOptions, type LessonDecision, type LessonDecisionModel,
+} from './material';
+import type { TreeNode } from '../../tree/types';
 import type { SrsSourceVersion } from './srsTypes';
 import type {
   LocalAuthoredProvenance,
@@ -96,67 +102,106 @@ export function unlinkedFromSourceVersion(): SrsSourceVersion {
   return { kind: 'unlinked', origin: 'unlinked-from-source' };
 }
 
-// --- Copy vs unlink: INDEPENDENT identity WITHOUT re-minting a decision id ------------------------
-//
-// The crux of P2-ORP-17 ("copies and unlinked snapshots receive independent identities"). D3 never
-// re-mints a decision UUID itself; it controls the derivation INPUTS so D1's existing mint path
-// produces fresh UUIDs for a genuinely-new lesson. The single lever is whether `previous` is passed:
-//   - COPY  → omit `previous`  → D1's `mint()` branch (material.ts:306) runs for every decision.
-//   - LINK  → pass `previous`  → D1 carries prior identity forward (that is D6's in-place re-derive).
-// D3 provides the copy builder; it does NOT itself call `deriveLessonDecisions`.
 
-/**
- * Derivation options that PROVABLY omit `previous`. `previous?: undefined` makes passing a populated
- * `previous` a COMPILE error, so a copy cannot inherit the source's decision UUIDs (P2-ORP-17 HIGH).
- * Assignable to `DeriveDecisionsOptions` (its `previous` is optional), so feed the result straight to
- * D1's `deriveLessonDecisions`.
- */
-export type CopyDerivationOptions = Omit<DeriveDecisionsOptions, 'previous'> & {
-  readonly previous?: undefined;
-};
 
-/** Inputs for building a copy's derivation options. A copy is a NEW lesson (new `lessonId`) and a NEW
- *  lineage (new `sourceLineageId`, minted via `mintSourceLineageId`) — never the source's ids. */
-export interface BuildCopyDerivationInput {
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** The source being copied — consumed ONLY by the runtime independence assertion, never as
+ *  derivation input. */
+export interface CopySourceIdentity {
+  /** The source's lineage id, when it has one (a linked source). */
+  readonly lineageId?: string;
+  /** The source's current decisions; the copy must share NONE of their UUIDs. */
+  readonly decisions: readonly Pick<LessonDecision, 'identity'>[];
+}
+
+/** Inputs for deriving a COPY. A copy is a NEW lesson (new `lessonId`) and an internally-minted NEW
+ *  lineage — there is deliberately NO field for a caller-supplied lineage and NO `previous`. */
+export interface DeriveCopiedLessonInput {
   readonly lessonId: string;
   readonly sourceKind: DeriveDecisionsOptions['sourceKind'];
   readonly learnerSide: 'white' | 'black';
   readonly chapterId?: string;
-  readonly sourceLineageId?: string;
   readonly sourceRevision?: number;
+  /** Decision-UUID mint (deterministic in tests); defaults inside D1. */
   readonly mintId?: () => string;
+  /** Lineage-id mint (deterministic in tests); defaults to `crypto.randomUUID`. */
+  readonly mintLineageId?: () => string;
+  readonly source: CopySourceIdentity;
 }
 
-/**
- * Build `DeriveDecisionsOptions` for a COPY of a lesson. The returned options OMIT `previous`, so
- * D1's `mint()` branch (material.ts:306) runs for EVERY decision → fresh, independent UUIDs; the copy
- * never inherits the source's decision identities (P2-ORP-17 §5.1). D3 shapes D1's inputs only — it
- * neither re-mints nor re-derives here.
- */
-export function buildCopyDerivationOptions(input: BuildCopyDerivationInput): CopyDerivationOptions {
-  // `previous` is intentionally never set — see CopyDerivationOptions (compile-enforced independence).
-  return {
+/** The copy derivation result: D1's model plus the freshly-minted lineage stamped on it. */
+export interface CopiedLessonDerivation {
+  readonly model: LessonDecisionModel;
+  readonly sourceLineageId: string;
+}
+
+
+
+
+
+
+
+
+
+export function deriveCopiedLessonDecisions(
+  root: TreeNode,
+  input: DeriveCopiedLessonInput,
+): CopiedLessonDerivation {
+  const sourceLineageId = mintSourceLineageId(input.mintLineageId);
+  if (input.source.lineageId !== undefined && sourceLineageId === input.source.lineageId) {
+    throw new Error('copy-lineage-collision: minted lineage equals the source lineage');
+  }
+  const model = deriveLessonDecisions(root, {
     lessonId: input.lessonId,
     sourceKind: input.sourceKind,
     learnerSide: input.learnerSide,
     ...(input.chapterId !== undefined ? { chapterId: input.chapterId } : {}),
-    ...(input.sourceLineageId !== undefined ? { sourceLineageId: input.sourceLineageId } : {}),
+    sourceLineageId,
     ...(input.sourceRevision !== undefined ? { sourceRevision: input.sourceRevision } : {}),
     ...(input.mintId !== undefined ? { mintId: input.mintId } : {}),
-  };
+    // NO `previous` — structurally unpassable through DeriveCopiedLessonInput.
+  });
+  const sourceIds = new Set(input.source.decisions.map(d => d.identity.decisionId));
+  for (const decision of model.decisions) {
+    if (sourceIds.has(decision.identity.decisionId)) {
+      throw new Error(
+        `copy-identity-collision: derived decision ${decision.identity.decisionId} reuses a source UUID`,
+      );
+    }
+  }
+  return { model, sourceLineageId };
 }
 
-/**
- * Transition a linked source provenance to UNLINKED in place (§14.4). KEEPS `sourceLineageId` and the
- * verified source descriptor as honest lineage history, flips linkage to
- * `{unlinked; 'unlinked-from-source'}`, and captures the last linked revision so lineage stays
- * explainable. Performs NO re-mint and NO schedule reset — the caller keeps the Study's stable
- * decision UUIDs untouched (D3 never re-derives on unlink). Contrast a COPY, which is a genuinely new
- * object and DOES get fresh UUIDs via `buildCopyDerivationOptions`.
- */
+
+
+
+
+
+
+
+
+
+
+
+
 export function unlinkSourceProvenance(current: SourceImportedProvenance): SourceImportedProvenance {
   const preservedRevision =
     current.version.kind === 'linked' ? current.version.sourceRevision : current.lastLinkedRevision;
+  if (preservedRevision !== undefined && !isUsableSourceRevision(preservedRevision)) {
+    throw new Error(`unlink-invalid-source-revision: ${String(preservedRevision)} is not a usable source revision`);
+  }
   return {
     ...current,
     version: unlinkedFromSourceVersion(),
