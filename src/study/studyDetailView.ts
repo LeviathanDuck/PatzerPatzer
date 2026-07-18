@@ -51,6 +51,7 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { isSourcePreviewOpen, renderSourcePreview } from './practice/sourcePreviewCtrl';
 import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
 import {
@@ -1931,7 +1932,11 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
 
 
-  const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary();
+
+
+
+
+  const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary() && !isSourcePreviewOpen();
   reconcileStudyPracticeSlot(practiceRequested, redraw);
 
 
@@ -1941,6 +1946,14 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
 
   establishRouteDestination({ name: 'study-detail', params: { id }, query: routeQuery }, isStudyWorkspaceActive());
+
+
+
+
+
+  if (isSourcePreviewOpen()) {
+    return renderSourcePreview(redraw);
+  }
 
 
   if (isDrillActive() || isDrillSummary()) {
