@@ -44,7 +44,7 @@ const ESTABLISHED_PREFERENCE_PREFIXES = [
 ];
 
 const DOMAIN_STORES: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  'patzer-pro': ['accounts', 'games', 'studies', 'analysis-library'],
+  'chess-patzer': ['accounts', 'games', 'studies', 'analysis-library'],
   'patzer-puzzle-v1': ['definitions', 'attempts', 'user-meta'],
 });
 

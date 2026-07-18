@@ -2,7 +2,7 @@
  * Openings research persistence — separate IndexedDB database.
  *
  * Uses its own DB ('patzer-openings') so opponent-research data never
- * touches the main analysis/puzzle persistence in 'patzer-pro'.
+ * touches the main analysis/puzzle persistence in 'chess-patzer'.
  */
 
 import type { ResearchCollection, ResearchGame, PersistedOpeningsTool, SavedVariation } from './types';

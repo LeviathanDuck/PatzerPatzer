@@ -1,5 +1,5 @@
 // Study Library IDB persistence — CRUD for studies, practice-lines, position-progress, drill-attempts, folders.
-// Uses the shared 'patzer-pro' database opened by src/idb/index.ts.
+// Uses the shared 'chess-patzer' database opened by src/idb/index.ts.
 // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts cursor patterns.
 
 import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';

@@ -783,7 +783,7 @@ export function buildStudyPgn(): string {
   // PGN's headers at import/save time), else the PGN-spec "?" unknown placeholder.
   const headers: [string, string][] = [
     ['Event',  _study.title],
-    ['Site',   'PatzerPro'],
+    ['Site',   'ChessPatzer'],
     ['Date',   new Date(_study.createdAt).toISOString().slice(0, 10).replace(/-/g, '.')],
     ['White',  _study.white ?? '?'],
     ['Black',  _study.black ?? '?'],

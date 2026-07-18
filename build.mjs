@@ -6,7 +6,7 @@ import { assertPublicEntrypointIntegrity } from './scripts/check-public-entrypoi
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const version = pkg.version || '0.0.0';
-const builtAt = new Date().toISOString();
+const builtAt = process.env.PATZER_BUILT_AT ?? new Date().toISOString();
 
 function gitValue(args) {
   try {
@@ -25,7 +25,7 @@ const branch = process.env.PATZER_BRANCH || gitValue('branch --show-current');
 const commitTimestamp = process.env.PATZER_COMMIT_TIMESTAMP || gitValue('show -s --format=%cI HEAD');
 const commitMessage = process.env.PATZER_COMMIT_MESSAGE || gitValue('log -1 --format=%B');
 const buildId = process.env.PATZER_BUILD_ID || shortCommit || builtAt.replace(/[-:T.Z]/g, '').slice(0, 14);
-const release = `patzer-pro@${version}+${buildId}`;
+const release = `chess-patzer@${version}+${buildId}`;
 const sourcemapRoot = 'dist/sourcemaps';
 const buildIdentity = { release, buildId, shortCommit, commit };
 const buildIdentityJson = JSON.stringify(buildIdentity);

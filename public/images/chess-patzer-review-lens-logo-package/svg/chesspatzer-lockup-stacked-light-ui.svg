@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="700" viewBox="0 0 860 700" role="img" aria-label="Chess Patzer stacked logo for light backgrounds">
+  <rect width="860" height="700" fill="none"/>
+  <g id="review-lens-mark" transform="translate(176 34) scale(.5)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="438" cy="418" r="228" stroke="#101212" stroke-width="76"/>
+    <path d="M608 590 L780 762" stroke="#101212" stroke-width="76"/>
+    <path d="M344 438 L438 532 L594 356" stroke="#42BDA8" stroke-width="72"/>
+  </g>
+  <text x="430" y="552" text-anchor="middle" fill="#686E6C" font-family="Inter, SF Pro Display, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="20" font-weight="800" letter-spacing="8">CHESS</text>
+  <text x="430" y="650" text-anchor="middle" fill="#101212" font-family="Inter, SF Pro Display, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="100" font-weight="850" letter-spacing="-3">Patzer</text>
+</svg>

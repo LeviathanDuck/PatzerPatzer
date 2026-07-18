@@ -17,7 +17,7 @@ function patzer_session_config_int(array $config, string $key, int $minimum, int
 
 function patzer_session_config_is_valid(array $config): bool {
     if (($config['auth_lifecycle_config_version'] ?? null) !== PATZER_AUTH_LIFECYCLE_VERSION ||
-        ($config['auth_canonical_origin'] ?? null) !== 'https://patzerpro.com') {
+        ($config['auth_canonical_origin'] ?? null) !== 'https://chesspatzer.com') {
         return false;
     }
     $cookieName = $config['auth_session_cookie_name'] ?? null;

@@ -1,5 +1,5 @@
 // IndexedDB persistence layer.
-// DB name: 'patzer-pro' — see DB_VERSION and openGameDb() for the current schema.
+// DB name: 'chess-patzer' — see DB_VERSION and openGameDb() for the current schema.
 // Mirrors the pattern of lichess-org/lila: ui/analyse/src/idbTree.ts
 
 import type { ImportedGame } from '../import/types';
@@ -673,7 +673,7 @@ export interface PlayerProfileRecord {
 
 // --- DB connection ---
 
-export const DB_NAME = 'patzer-pro';
+export const DB_NAME = 'chess-patzer';
 
 
 
@@ -3244,7 +3244,7 @@ export async function backfillOpenings(): Promise<number> {
 // --- Full reset ---
 
 /**
- * Clear all Patzer Pro IndexedDB data in a single transaction.
+ * Clear all Chess Patzer IndexedDB data in a single transaction.
  * Called by the "Clear Local Data" action. Leaves the DB schema intact.
  */
 export async function clearAllIdbData(): Promise<void> {

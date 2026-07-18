@@ -235,7 +235,7 @@ export function buildPgn(annotated: boolean): string {
 
   const headers: [string, string][] = [
     ['Event',  '?'],
-    ['Site',   'PatzerPro'],
+    ['Site',   'ChessPatzer'],
     ['Date',   game?.date ?? '????.??.??'],
     ['Round',  '?'],
     ['White',  game?.white ?? '?'],
@@ -259,7 +259,7 @@ export function buildPgn(annotated: boolean): string {
   if (game?.blackRating) headers.push(['BlackElo', String(game.blackRating)]);
   if (game?.termination) headers.push(['Termination', game.termination]);
 
-  if (annotated) headers.push(['Annotator', 'PatzerPro']);
+  if (annotated) headers.push(['Annotator', 'ChessPatzer']);
 
 
 

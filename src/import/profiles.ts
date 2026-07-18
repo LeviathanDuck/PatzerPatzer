@@ -20,7 +20,7 @@ export const PROFILE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 // so this has no effect on in-browser requests today, but it is honored by
 // any non-browser runtime and costs nothing to include (mirrors
 // src/import/chesscom.ts CHESSCOM_USER_AGENT).
-const CHESSCOM_USER_AGENT = 'PatzerPro/1.0 (+https://patzerpro.com; profile fetch)';
+const CHESSCOM_USER_AGENT = 'ChessPatzer/1.0 (+https://chesspatzer.com; profile fetch)';
 
 /** Injectable fetch type, for tests that stub network access. */
 export type ProfileFetchFn = typeof fetch;

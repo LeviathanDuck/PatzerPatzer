@@ -33,7 +33,7 @@ function patzer_upstream_content_type_from_headers(array $headers): string {
 function patzer_proxy_explorer(string $target, string $token): never {
     $requestHeaders = [
         'Authorization: Bearer ' . $token,
-        'User-Agent: PatzerPro/1.0',
+        'User-Agent: ChessPatzer/1.0',
         'Accept: application/x-ndjson, application/json;q=0.9',
     ];
 

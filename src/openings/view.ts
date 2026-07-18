@@ -1413,7 +1413,7 @@ function renderEmptyState(redraw: () => void): VNode {
     h('div.openings__empty-icon', '\u265E'),
     h('h2.openings__empty-title', 'Opening Tree'),
     h('p', 'Research your opponents\u2019 openings by importing their games.'),
-    h('p.openings__hint', 'Accounts imported anywhere in Patzer Pro appear here automatically.'),
+    h('p.openings__hint', 'Accounts imported anywhere in Chess Patzer appear here automatically.'),
     h('button.openings__start-btn', {
       attrs: controlExplainerAttrs({ label: 'Start new opening research', description: 'Open the import workflow for a new opening tree.' }),
       on: { click: () => { setImportStep('details'); redraw(); } },

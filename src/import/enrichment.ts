@@ -55,7 +55,7 @@ const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
 // src/import/chesscom.ts / src/import/profiles.ts — browsers drop this
 // header silently, but it costs nothing and is honored by non-browser
 // runtimes, including this module's own tests).
-const CHESSCOM_USER_AGENT = 'PatzerPro/1.0 (+https://patzerpro.com; background enrichment)';
+const CHESSCOM_USER_AGENT = 'ChessPatzer/1.0 (+https://chesspatzer.com; background enrichment)';
 
 /** Attempt ceiling for a single archive-month fetch before it is abandoned and logged. */
 const MAX_FETCH_ATTEMPTS = 4;

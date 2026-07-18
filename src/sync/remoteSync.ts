@@ -1494,7 +1494,7 @@ const IDB_STORE_SPECS: IdbStoreSpec[] = [
     updatedAt: record => numberField(record, 'updatedAt'),
   },
   // --- Study-owned SRS practice stores (ORP V2 Package B / Hardened Contract §14.1, slice B7) -----
-  // The five durable Study-practice stores. All live in the MAIN patzer-pro DB (v27, built additively
+  // The five durable Study-practice stores. All live in the MAIN chess-patzer DB (v27, built additively
   // in idb/index.ts) and carry a stable caller-generated per-record UUID key — mirroring the existing
   // keyPath stores above. The manifest (B6) allowlists these exact names with `serverVersionCasWholeRecord`;
   // the per-item CAS/outbox and generic apply path (applyIdbItem) handle them like any other keyPath
