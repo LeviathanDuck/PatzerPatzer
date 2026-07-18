@@ -20,6 +20,7 @@ import {
   type LearnState,
   type LearnStep,
   type LearnReply,
+  type LearnTargetCompletion,
   type LearnTimer,
   type LearnTimerHandle,
 } from './drillCtrl';
@@ -251,6 +252,11 @@ export interface LearnViewConfig {
   readonly trainAs: 'white' | 'black';
   readonly redraw: () => void;
   readonly onExitRestore?: () => void;
+
+
+
+  readonly onTargetComplete?: (completion: LearnTargetCompletion) => void;
+  readonly onLineComplete?: () => void;
 }
 
 /**
@@ -288,6 +294,8 @@ export function initLearnView(config: LearnViewConfig): void {
     steps:   _learnSteps,
     content: config.content,
     timer:   makeLearnTimer(),
+    ...(config.onTargetComplete ? { onTargetComplete: config.onTargetComplete } : {}),
+    ...(config.onLineComplete ? { onLineComplete: config.onLineComplete } : {}),
   });
 
   if (config.onExitRestore !== undefined) _restoreCallback = config.onExitRestore;

@@ -65,6 +65,7 @@ import {
 } from './repertoireBrowseView';
 import { isDrillActive, isDrillSummary, initDrillView, initLearnView, renderDrillView, endDrill } from './practice/drillView';
 import { loadLearnLessonBundle } from './practice/lessonHost';
+import { startDueReviewSession, type DueReviewHostRuntime } from './practice/dueReviewHost';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { saveRepertoireLineToOrpLibrary } from './saveAction';
@@ -192,6 +193,20 @@ async function launchOrpDueSession(redraw: () => void): Promise<void> {
   if (_orpDueLaunching) return;
   _orpDueLaunching = true;
   try {
+
+
+
+
+    const startedNew = await startDueReviewSession({});
+    if (startedNew.ok) {
+      _orpDrillPending = true;
+      presentNextDueReplay(startedNew.runtime, redraw);
+      return;
+    }
+    if (startedNew.reason !== 'no-due') {
+      console.warn(`[libraryView] due-review runtime failed (${startedNew.reason}); falling back to legacy review`);
+    }
+
     // Collect active ORP sequences (exclude paused — buildReviewSession filters them too,
     // but pre-filtering keeps the progress-map query focused).
     const activeSequences = _orpLines
@@ -252,6 +267,46 @@ async function launchOrpLearnSession(redraw: () => void): Promise<void> {
   } finally {
     _orpLearnLaunching = false;
   }
+}
+
+
+
+
+
+
+
+
+function presentNextDueReplay(runtime: DueReviewHostRuntime, redraw: () => void): void {
+  const replay = runtime.currentReplay();
+  if (replay === undefined) {
+    const card = runtime.scorecard();
+    console.info(
+      `[libraryView] due review complete: ${card.clean}/${card.total} clean` +
+      ` (${Math.round(card.accuracy * 100)}% accuracy; ${card.failed} failed, ${card.assisted} assisted)`,
+    );
+    redraw();
+    return;
+  }
+  const model = runtime.viewMaterialFor(replay.lessonId);
+  if (model === undefined) {
+    console.warn(`[libraryView] due review: no material for lesson ${replay.lessonId}; stopping session`);
+    return;
+  }
+  initLearnView({
+    line: model.line,
+    content: model.content,
+    replies: model.replies,
+    siblingsAt: model.siblingsAt,
+    targetIds: new Set([replay.targetId]),
+    leadInFenFor: model.leadInFenFor,
+    shapesFor: model.shapesFor,
+    rootFen: model.rootFen,
+    trainAs: model.line[0]?.learnerSide ?? 'white',
+    redraw,
+    onTargetComplete: (completion) => { void runtime.completeTarget(completion); },
+    onLineComplete: () => { presentNextDueReplay(runtime, redraw); },
+  });
+  redraw();
 }
 
 /**

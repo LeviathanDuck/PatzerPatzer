@@ -222,6 +222,12 @@ export interface LearnControllerConfig {
 
 
   readonly onTargetComplete?: (completion: LearnTargetCompletion) => void;
+
+
+
+
+
+  readonly onLineComplete?: () => void;
 }
 
 /**
@@ -339,6 +345,7 @@ export function createLearnController(config: LearnControllerConfig): LearnContr
   const mint = config.mintId ?? (() => crypto.randomUUID());
   const assistanceOf = config.assistanceOf ?? ((kind) => kind);
   const onTargetComplete = config.onTargetComplete;
+  const onLineComplete = config.onLineComplete;
 
   // --- Mutable session state (closure) ---
   let mode: LearnMode = 'learn';
@@ -391,6 +398,7 @@ export function createLearnController(config: LearnControllerConfig): LearnContr
     sessionState = 'completed';
     // "one clean unassisted traversal of the targeted Required material" — a genuinely clean pass only.
     completedClean = !anyFailedOrAssisted && repairQueue.length === 0;
+    onLineComplete?.();
   };
 
   const advanceToNextStep = (): void => {
