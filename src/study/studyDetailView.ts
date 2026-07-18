@@ -60,6 +60,7 @@ import {
   type LessonDecision, type BranchRole, type DecisionTrainability,
 } from './practice/material';
 import { extractLessonModel } from './practice/lessonExtract';
+import { loadAuthoringState, persistDecisionEdit, persistContentEdit } from './practice/lessonPersistence';
 import {
   authoredContentFor, editAuthoredField,
   editDecisionRole, editDecisionTrainability, editDecisionLearnerSide,
@@ -126,7 +127,7 @@ let _authoringDecisions: LessonDecision[] = [];
 let _authoredContent = new Map<string, AuthoredLessonContent>();
 let _authoringPreviewAt: string | null = null;
 
-function ensureAuthoringModel(study: StudyItem, root: TreeNode): void {
+function ensureAuthoringModel(study: StudyItem, root: TreeNode, redraw?: () => void): void {
   if (_authoringStudyId === study.id) return;
   _authoringStudyId = study.id;
   // One bootstrap derivation through the shared extractor (E1, lessonExtract.ts) — the same core
@@ -142,18 +143,54 @@ function ensureAuthoringModel(study: StudyItem, root: TreeNode): void {
   _authoringDecisions = [...model.decisions];
   _authoredContent = new Map();
   _authoringPreviewAt = null;
+
+
+
+
+
+  const loadedFor = study.id;
+  void loadAuthoringState(loadedFor, detailOrientation()).then(result => {
+    if (_authoringStudyId !== loadedFor) return; // stale — a different Study opened meanwhile
+    if (!result.ok || !result.state.hasPersistedState) return;
+    const reloaded = extractLessonModel({
+      root,
+      lessonId: loadedFor,
+      sourceKind: 'pgn',
+      learnerSide: detailOrientation(),
+      content: result.state.content,
+      previous: result.state.previous,
+      decisionOverlay: result.state.decisionOverlay,
+    });
+    _authoringDecisions = [...reloaded.decisions];
+    _authoredContent = new Map(result.state.content);
+    redraw?.();
+  }).catch(e => {
+    console.warn('[studyDetailView] authoring-state load failed; module state stays fresh-derived', e);
+  });
 }
 
 function replaceAuthoringDecision(next: LessonDecision): void {
   _authoringDecisions = _authoringDecisions.map(d =>
     d.identity.decisionId === next.identity.decisionId ? next : d);
   _authoringPreviewAt = null; // any classification/trainability change re-opens validation
+  // E2b-ii write-through (fire-and-forget; P0 — the edit lands in module state synchronously and a
+  // failed persist logs rather than dropping it). Writes the E2a-keyed decision row; NEVER an SRS row.
+  void persistDecisionEdit(next).then(ok => {
+    if (!ok) console.warn(`[studyDetailView] decision persist failed for ${next.identity.decisionId}`);
+  });
 }
 
 function setAuthoredContent(next: AuthoredLessonContent): void {
   const map = new Map(_authoredContent);
   map.set(next.decisionId, next);
   _authoredContent = map;
+  // E2b-ii write-through (fire-and-forget; see replaceAuthoringDecision).
+  const lessonId = _authoringStudyId;
+  if (lessonId !== null) {
+    void persistContentEdit(lessonId, next).then(ok => {
+      if (!ok) console.warn(`[studyDetailView] content persist failed for ${next.decisionId}`);
+    });
+  }
 }
 
 function syncToolsStateFromRoute(routeKey: string, routeQuery: string): void {
@@ -898,7 +935,7 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
     ]);
   }
 
-  ensureAuthoringModel(study, root);
+  ensureAuthoringModel(study, root, redraw);
   const path = detailPath();
   const currentNode = detailNode();
   const decision = _authoringDecisions.find(d => d.identity.authoredPath === path);
