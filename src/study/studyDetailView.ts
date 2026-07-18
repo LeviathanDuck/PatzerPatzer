@@ -71,6 +71,8 @@ import {
 } from './practice/lessonAuthoring';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
+import { resolveOrpSettings, resetToInherited } from './practice/settings';
+import { readOrpGlobalDefaults, readOrpStudyOverride, writeOrpStudyOverride } from '../sync/settingsLiveApply';
 import { activeWorkspace } from '../analyse/workspaceCore';
 import { cgInstance, onBoardUserMove, renderBoard, renderPromotionDialog, syncBoard } from '../board/index';
 
@@ -887,6 +889,81 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
   return h('div.study-tools-col__field', [
     h('span.study-tools-col__label', 'Practice & progress'),
     renderPracticePanel(props),
+    lessonId !== null ? renderStudyPracticeSettings(lessonId, redraw) : null,
+  ]);
+}
+
+
+
+
+
+
+
+
+
+const ORP_STUDY_SETTING_FIELDS: readonly {
+  readonly field: 'newPerSession' | 'duePerSession' | 'moveFeedback' | 'hints' | 'drillDifficulty';
+  readonly label: string;
+  readonly cycle: readonly (number | boolean | string)[];
+  readonly format: (v: number | boolean | string) => string;
+}[] = [
+  { field: 'newPerSession', label: 'New lines per Learn session', cycle: [3, 5, 8, 10], format: String },
+  { field: 'duePerSession', label: 'Due targets per Review session', cycle: [10, 20, 40], format: String },
+  { field: 'moveFeedback', label: 'Move feedback', cycle: [true, false], format: v => (v ? 'On' : 'Off') },
+  { field: 'hints', label: 'Hints', cycle: [true, false], format: v => (v ? 'On' : 'Off') },
+  { field: 'drillDifficulty', label: 'Drill difficulty', cycle: ['casual', 'mastery'], format: v => (v === 'mastery' ? 'Mastery' : 'Casual') },
+];
+
+const ORP_PROVENANCE_LABELS = {
+  global: 'Inherited from defaults',
+  study: 'This Study',
+  session: 'Session (temporary)',
+} as const;
+
+function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): VNode {
+  const globalDefaults = readOrpGlobalDefaults();
+  const overrideLayer = readOrpStudyOverride(studyItemId);
+  const resolved = resolveOrpSettings(globalDefaults, overrideLayer, undefined, Date.now());
+  return h('div.study-tools-col__field.orp-study-settings', [
+    h('span.study-tools-col__label', 'Practice settings'),
+    ...ORP_STUDY_SETTING_FIELDS.map(def => {
+      const provenance = resolved.provenance[def.field];
+      const value = resolved.values[def.field];
+      const overridden = provenance === 'study';
+      return h('div.orp-study-settings__row', { key: def.field }, [
+        h('span.orp-study-settings__name', def.label),
+        h('button.orp-study-settings__value', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: `${def.label}: save only for this Study`,
+            description: 'Cycles the value and saves it as a Study override; other Studies keep inheriting the default.',
+            tier: 'more-help',
+          }) },
+          on: {
+            click: () => {
+              const next = def.cycle[(def.cycle.findIndex(c => c === value) + 1) % def.cycle.length]!;
+              writeOrpStudyOverride(studyItemId, { ...overrideLayer, [def.field]: next });
+              redraw();
+            },
+          },
+        }, def.format(value)),
+        h('span.orp-study-settings__scope', ORP_PROVENANCE_LABELS[provenance]),
+        overridden
+          ? h('button.orp-study-settings__reset', {
+              attrs: { type: 'button', ...controlExplainerAttrs({
+                label: `${def.label}: reset to inherited`,
+                description: 'Removes the Study override so the shared ORP default flows through again.',
+                tier: 'essential',
+              }) },
+              on: {
+                click: () => {
+                  writeOrpStudyOverride(studyItemId, resetToInherited(overrideLayer, def.field));
+                  redraw();
+                },
+              },
+            }, 'Reset')
+          : null,
+      ]);
+    }),
   ]);
 }
 

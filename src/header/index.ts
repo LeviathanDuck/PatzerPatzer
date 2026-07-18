@@ -70,6 +70,7 @@ import {
 import { classifySeverity, getTierMeta, type FeedbackTone } from '../feedback/severity';
 import { checkAuth, LOGIN_MODAL_EVENT, login, logout } from '../sync/client';
 import { startAccountSettingsSync, stopAccountSettingsSync } from '../sync/settings';
+import { readOrpGlobalDefaults, writeOrpGlobalDefaults } from '../sync/settingsLiveApply';
 import {
   REMOTE_SYNC_PROGRESS_EVENT,
   clearRemoteSyncToken,
@@ -2751,7 +2752,7 @@ interface SettingsMenuRow {
 }
 
 interface SettingsMenuSection {
-  id: 'appearance' | 'experience' | 'analysis-tools' | 'account-data' | 'support';
+  id: 'appearance' | 'experience' | 'orp-practice' | 'analysis-tools' | 'account-data' | 'support';
   label: string;
   rows: Array<SettingsMenuRow | VNode | null>;
 }
@@ -2862,6 +2863,63 @@ function renderGlobalMenu(deps: HeaderDeps): VNode {
           onSelect: () => { setBoardWheelNavEnabled(!boardWheelNavEnabled); redraw(); },
         },
       ],
+    },
+    {
+
+
+
+
+      id: 'orp-practice',
+      label: 'Practice (ORP)',
+      rows: (() => {
+        const orp = readOrpGlobalDefaults();
+        const cycle = <T,>(values: readonly T[], current: T): T =>
+          values[(values.indexOf(current) + 1) % values.length]!;
+        return [
+          {
+            id: 'orp-new-per-session',
+            label: 'New lines per Learn session',
+            value: String(orp.newPerSession),
+            description: 'How many new lines a Learn session introduces. Saved as your ORP default.',
+            onSelect: () => { writeOrpGlobalDefaults({ newPerSession: cycle([3, 5, 8, 10], orp.newPerSession) }); redraw(); },
+          },
+          {
+            id: 'orp-due-per-session',
+            label: 'Due targets per Review session',
+            value: String(orp.duePerSession),
+            description: 'How many due targets a Review session takes on. Saved as your ORP default.',
+            onSelect: () => { writeOrpGlobalDefaults({ duePerSession: cycle([10, 20, 40], orp.duePerSession) }); redraw(); },
+          },
+          {
+            id: 'orp-move-feedback',
+            label: 'Practice move feedback',
+            value: orp.moveFeedback ? 'On' : 'Off',
+            description: 'Immediate verdict feedback during practice. Saved as your ORP default; Studies can override it.',
+            onSelect: () => { writeOrpGlobalDefaults({ moveFeedback: !orp.moveFeedback }); redraw(); },
+          },
+          {
+            id: 'orp-hints',
+            label: 'Practice hints',
+            value: orp.hints ? 'On' : 'Off',
+            description: 'Progressive hints during practice. Saved as your ORP default; Studies can override it.',
+            onSelect: () => { writeOrpGlobalDefaults({ hints: !orp.hints }); redraw(); },
+          },
+          {
+            id: 'orp-drill-difficulty',
+            label: 'Default drill difficulty',
+            value: orp.drillDifficulty === 'mastery' ? 'Mastery' : 'Casual',
+            description: 'The Engine Drill setup starts from this difficulty. Saved as your ORP default.',
+            onSelect: () => { writeOrpGlobalDefaults({ drillDifficulty: orp.drillDifficulty === 'mastery' ? 'casual' : 'mastery' }); redraw(); },
+          },
+          {
+            id: 'orp-intervals',
+            label: 'Review intervals',
+            value: `${orp.intervals.length} steps`,
+            disabledReason: 'Interval editing arrives with the previewed schedule recomputation — existing due dates never move from a settings tap.',
+            onSelect: () => {},
+          },
+        ] as SettingsMenuRow[];
+      })(),
     },
     {
       id: 'analysis-tools',

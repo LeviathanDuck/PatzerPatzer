@@ -167,6 +167,17 @@ export const SETTINGS_LIVE_APPLY_GROUPS: readonly SettingsLiveApplyGroup[] = Obj
     handlerId: 'analysis-panel.reload-recommended',
     status: 'reload-recommended',
   },
+  {
+
+
+
+
+    id: 'orp-practice',
+    label: 'ORP practice settings',
+    keys: ['patzer.orp.settings.v1', 'patzer.orp.studyOverrides.v1'],
+    handlerId: 'orp-practice.storage-reread',
+    status: 'applied',
+  },
 ]);
 
 function uniqueKeys(keys: Iterable<string>): string[] {
@@ -244,4 +255,70 @@ export function applySettingsLive(input: {
     window.dispatchEvent(new CustomEvent(SETTINGS_LIVE_APPLY_EVENT, { detail: result }));
   }
   return result;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import {
+  ORP_DEFAULT_SETTINGS,
+  type OrpSettingsValues, type OrpSettingsLayer,
+} from '../study/practice/settings';
+
+export const ORP_SETTINGS_GLOBAL_KEY = 'patzer.orp.settings.v1';
+export const ORP_SETTINGS_STUDY_OVERRIDES_KEY = 'patzer.orp.studyOverrides.v1';
+
+function readJson(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    return null; // malformed storage falls back to defaults — never throws into render
+  }
+}
+
+/** Global ORP defaults: stored partial merged over the shipped defaults. */
+export function readOrpGlobalDefaults(): OrpSettingsValues {
+  const stored = readJson(ORP_SETTINGS_GLOBAL_KEY);
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return ORP_DEFAULT_SETTINGS;
+  return { ...ORP_DEFAULT_SETTINGS, ...(stored as Partial<OrpSettingsValues>) };
+}
+
+/** "Save as ORP defaults" (§10): merges changes into the stored global defaults. */
+export function writeOrpGlobalDefaults(changes: OrpSettingsLayer): OrpSettingsValues {
+  const next = { ...readOrpGlobalDefaults(), ...changes };
+  localStorage.setItem(ORP_SETTINGS_GLOBAL_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function readOrpStudyOverride(studyItemId: string): OrpSettingsLayer {
+  const stored = readJson(ORP_SETTINGS_STUDY_OVERRIDES_KEY);
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {};
+  const layer = (stored as Record<string, unknown>)[studyItemId];
+  if (typeof layer !== 'object' || layer === null || Array.isArray(layer)) return {};
+  return layer as OrpSettingsLayer;
+}
+
+/** "Save only for this Study" / "Reset to inherited" (§10): writes ONE Study's override layer;
+ *  an empty layer removes the entry so absent-means-inherited stays structural in storage too. */
+export function writeOrpStudyOverride(studyItemId: string, layer: OrpSettingsLayer): void {
+  const stored = readJson(ORP_SETTINGS_STUDY_OVERRIDES_KEY);
+  const map: Record<string, unknown> =
+    typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+      ? { ...(stored as Record<string, unknown>) }
+      : {};
+  if (Object.keys(layer).length === 0) delete map[studyItemId];
+  else map[studyItemId] = layer;
+  localStorage.setItem(ORP_SETTINGS_STUDY_OVERRIDES_KEY, JSON.stringify(map));
 }
