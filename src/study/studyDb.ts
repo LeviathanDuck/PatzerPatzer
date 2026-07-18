@@ -3965,19 +3965,32 @@ const MERGE_ARCHIVED_STATUS = 'archived';
 
 
 
-export async function assembleLocalMergeState(studyItemId: string): Promise<LocalMergeState | undefined> {
+
+
+
+
+export type LocalMergeStateResult =
+  | { readonly state: LocalMergeState }
+  | { readonly localStateTruncated: true; readonly scope: 'lessons' | 'decisions' | 'attempts' };
+
+export async function assembleLocalMergeState(studyItemId: string): Promise<LocalMergeStateResult | undefined> {
   const item = await getStudy(studyItemId);
   if (item === undefined) return undefined;
 
-  const lessons = await listPracticeLessonsByStudyItem(studyItemId, MERGE_LOCAL_LESSON_LIMIT);
+  // limit+1 sentinel reads (finding 5): hitting a cap is a typed fail-closed result, never a silent
+  // truncation. (CR-2 bounded reads preserved — the +1 only detects overflow.)
+  const lessons = await listPracticeLessonsByStudyItem(studyItemId, MERGE_LOCAL_LESSON_LIMIT + 1);
+  if (lessons.length > MERGE_LOCAL_LESSON_LIMIT) return { localStateTruncated: true, scope: 'lessons' };
   const primaryLessonId = lessons[0]?.lessonId ?? studyItemId;
 
   const decisions: LocalDecisionState[] = [];
   for (const lesson of lessons) {
-    const rows = await listPracticeDecisionsByLesson(lesson.lessonId, MERGE_LOCAL_DECISION_LIMIT);
+    const rows = await listPracticeDecisionsByLesson(lesson.lessonId, MERGE_LOCAL_DECISION_LIMIT + 1);
+    if (rows.length > MERGE_LOCAL_DECISION_LIMIT) return { localStateTruncated: true, scope: 'decisions' };
     for (const row of rows) {
       const srs = await getPracticeSrs(row.decisionId);
-      const attempts = await listPracticeAttemptsByDecision(row.decisionId, MERGE_LOCAL_ATTEMPT_LIMIT);
+      const attempts = await listPracticeAttemptsByDecision(row.decisionId, MERGE_LOCAL_ATTEMPT_LIMIT + 1);
+      if (attempts.length > MERGE_LOCAL_ATTEMPT_LIMIT) return { localStateTruncated: true, scope: 'attempts' };
       decisions.push({
         decisionId: row.decisionId,
         ...(row.status !== undefined ? { status: row.status } : {}),
@@ -3988,23 +4001,35 @@ export async function assembleLocalMergeState(studyItemId: string): Promise<Loca
   }
 
   return {
-    studyItemId,
-    lessonId: primaryLessonId,
-    decisions,
-    ...(item.notes !== undefined ? { notes: item.notes } : {}),
-    ...(item.localProvenanceLayers !== undefined ? { localProvenanceLayers: item.localProvenanceLayers } : {}),
-    ...(item.linkedSourceProvenance !== undefined ? { linkedSourceProvenance: item.linkedSourceProvenance } : {}),
+    state: {
+      studyItemId,
+      lessonId: primaryLessonId,
+      decisions,
+      ...(item.notes !== undefined ? { notes: item.notes } : {}),
+      ...(item.localProvenanceLayers !== undefined ? { localProvenanceLayers: item.localProvenanceLayers } : {}),
+      ...(item.linkedSourceProvenance !== undefined ? { linkedSourceProvenance: item.linkedSourceProvenance } : {}),
+    },
   };
 }
 
-/** Outcome tally of an applied merge (diagnostic; the writes themselves are the effect). */
-export interface MergeApplyResult {
-  readonly newDecisions: number;
-  readonly archivedDecisions: number;
-  readonly suspendedSchedules: number;
-  readonly archivedSchedules: number;
-  readonly provenanceStamped: boolean;
-}
+
+
+
+
+export type MergeApplyResult =
+  | {
+      readonly applied: true;
+      readonly newDecisions: number;
+      readonly archivedDecisions: number;
+      readonly suspendedSchedules: number;
+      readonly archivedSchedules: number;
+      readonly provenanceStamped: true;
+    }
+  | {
+      readonly applied: false;
+      readonly reason: 'missing-study' | 'lineage-mismatch' | 'stale-plan' | 'transaction-failed';
+      readonly detail: string;
+    };
 
 /** Build a fresh, UNTRAINABLE decision row for a new/replacement decision. Never reuses an archived id;
  *  never creates an SRS row (so it is not auto-enrolled). */
@@ -4025,15 +4050,16 @@ function buildUntrainableDecisionRow(
   };
 }
 
-/** Flip a schedule row to a non-active status WITHOUT touching progress identity (level/step/streak) —
- *  training is halted, the row is kept, attempts are never read/mutated. Funnels through the closed-record
- *  guard via `savePracticeSrs`. */
-function toInactiveSchedule(
-  rec: SrsScheduleRecord,
+
+
+
+
+function inactivateCurrentSchedule(
+  current: SrsScheduleRecord,
   status: 'suspended' | 'archived',
   now: number,
 ): SrsScheduleRecord {
-  return { ...rec, status, dueAt: rec.dueAt, updatedAt: now };
+  return { ...current, status, scheduleRevision: current.scheduleRevision + 1, updatedAt: now };
 }
 
 /**
@@ -4055,91 +4081,251 @@ function toInactiveSchedule(
 export async function applyAcceptedMerge(accepted: AcceptedMergePlan): Promise<MergeApplyResult> {
   const plan: MergePlan = acceptedPlan(accepted);
   const now = Date.now();
-  let newDecisions = 0;
-  let archivedDecisions = 0;
-  let suspendedSchedules = 0;
-  let archivedSchedules = 0;
 
-  // A fail-closed plan can never be accepted (acceptMergePlan throws), so `plan.failClosed` is always
-  // undefined here; guard defensively so an apply still mutates nothing if that ever changes.
-  if (plan.failClosed === undefined) {
-    for (const entry of plan.entries) {
+  // A fail-closed plan can never be accepted (acceptMergePlan throws); guard defensively so an apply
+  // still mutates nothing if that ever changes. Its sourceRevision must be a usable finite integer —
+  // the provenance CAS below is meaningless without one.
+  if (plan.failClosed !== undefined || plan.sourceRevision === null) {
+    return { applied: false, reason: 'stale-plan', detail: 'plan is fail-closed or carries no usable revision' };
+  }
+  const planRevision = plan.sourceRevision;
+
+  let db: IDBDatabase;
+  try {
+    db = await openDb();
+  } catch (e) {
+    return { applied: false, reason: 'transaction-failed', detail: `could not open study database: ${classifyStudyError(e)}` };
+  }
+
+
+
+
+
+
+  return await new Promise<MergeApplyResult>((resolve) => {
+    let decided: MergeApplyResult | null = null;
+    let newDecisions = 0;
+    let archivedDecisions = 0;
+    let suspendedSchedules = 0;
+    let archivedSchedules = 0;
+    let stampedItem: StudyItem | null = null;
+
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(['studies', 'study-practice-decisions', 'study-practice-srs'], 'readwrite');
+    } catch (e) {
+      resolve({ applied: false, reason: 'transaction-failed', detail: `could not open transaction: ${classifyStudyError(e)}` });
+      return;
+    }
+    let studiesStore: IDBObjectStore;
+    let decisionsStore: IDBObjectStore;
+    let srsStore: IDBObjectStore;
+    try {
+      studiesStore = tx.objectStore('studies');
+      decisionsStore = tx.objectStore('study-practice-decisions');
+      srsStore = tx.objectStore('study-practice-srs');
+    } catch (e) {
+      resolve({ applied: false, reason: 'transaction-failed', detail: `could not acquire a store: ${classifyStudyError(e)}` });
+      return;
+    }
+
+    const abortWith = (r: MergeApplyResult): void => {
+      decided = r;
+      try { tx.abort(); } catch { /* transaction may already be inactive */ }
+    };
+
+    tx.oncomplete = () => {
+      if (decided) { resolve(decided); return; }
+      // Enqueue-AFTER-commit: the Study stamp reaches the sync outbox only once it is durably
+      // committed (mirrors saveStudyStrict's enqueue; practice rows stay local, as before).
+      if (stampedItem !== null) enqueueStudyPut('studies', stampedItem.id, stampedItem, stampedItem.updatedAt);
+      resolve({
+        applied: true, newDecisions, archivedDecisions, suspendedSchedules, archivedSchedules,
+        provenanceStamped: true,
+      });
+    };
+    tx.onerror = () => {
+      if (decided) { resolve(decided); return; }
+      recordStudyTxFail(tx, 'onerror', 'merge-apply');
+      resolve({ applied: false, reason: 'transaction-failed', detail: `transaction failed: ${tx.error?.name ?? 'UnknownError'}` });
+    };
+    tx.onabort = () => {
+      if (decided) { resolve(decided); return; }
+      recordStudyTxFail(tx, 'onabort', 'merge-apply');
+      resolve({ applied: false, reason: 'transaction-failed', detail: `transaction aborted: ${tx.error?.name ?? 'AbortError'}` });
+    };
+
+    const putGuarded = (store: IDBObjectStore, value: unknown, label: string): boolean => {
+      try {
+        store.put(value);
+        return true;
+      } catch (e) {
+        abortWith({ applied: false, reason: 'transaction-failed', detail: `${label} put threw: ${classifyStudyError(e)}` });
+        return false;
+      }
+    };
+
+    // Entry processors run sequentially via request chaining (IndexedDB transactions stay active only
+    // while requests are pending — no external awaits inside the transaction).
+    const entries = plan.entries;
+    const processEntry = (index: number): void => {
+      if (index >= entries.length) return; // all writes issued; tx auto-commits when requests drain
+      const entry = entries[index]!;
+      const next = (): void => processEntry(index + 1);
+
+      // The plan-time SRS snapshot this entry froze; apply must CAS the CURRENT row against it
+      // (finding 2) and write forward from CURRENT state, never the snapshot.
+      const inactivateSrs = (
+        planSrs: SrsScheduleRecord,
+        status: 'suspended' | 'archived',
+        onDone: () => void,
+      ): void => {
+        const req = srsStore.get(planSrs.targetId);
+        req.onsuccess = () => {
+          const current = req.result as SrsScheduleRecord | undefined;
+          if (current === undefined) {
+            abortWith({ applied: false, reason: 'stale-plan', detail: `srs row ${planSrs.targetId} vanished since planning` });
+            return;
+          }
+          if (current.scheduleRevision !== planSrs.scheduleRevision) {
+            abortWith({
+              applied: false, reason: 'stale-plan',
+              detail: `srs ${planSrs.targetId} scheduleRevision moved ${planSrs.scheduleRevision} -> ${current.scheduleRevision} since planning`,
+            });
+            return;
+          }
+          let persistable: SrsScheduleRecord;
+          try {
+            persistable = asPersistableScheduleRecord(inactivateCurrentSchedule(current, status, now));
+          } catch (e) {
+            abortWith({ applied: false, reason: 'transaction-failed', detail: `srs guard rejected ${planSrs.targetId}: ${classifyStudyError(e)}` });
+            return;
+          }
+          if (!putGuarded(srsStore, persistable, `srs ${planSrs.targetId}`)) return;
+          if (status === 'archived') archivedSchedules++; else suspendedSchedules++;
+          onDone();
+        };
+        req.onerror = () => {
+          abortWith({ applied: false, reason: 'transaction-failed', detail: `srs read failed for ${planSrs.targetId}` });
+        };
+      };
+
       switch (entry.cls) {
         case 'unchanged':
         case 'presentation-only-change':
-          // Progress preserved — SRS rows untouched. (Presentation refresh onto the local tree is D5/D12
-          // UI work, deliberately out of D6's apply to avoid a flat StudyItem clobber.)
-          break;
+          // Progress preserved — SRS rows untouched.
+          next();
+          return;
 
         case 'new-in-source': {
           if (entry.incoming) {
-            await savePracticeDecision(buildUntrainableDecisionRow(
+            if (!putGuarded(decisionsStore, buildUntrainableDecisionRow(
               entry.incoming.identity.decisionId,
               entry.incoming.identity.lessonId,
               entry.incoming.identity.chapterId,
               entry.incoming.identity.sourceLineageId ?? plan.sourceLineageId,
               now,
-            ));
+            ), `decision ${entry.incoming.identity.decisionId}`)) return;
             newDecisions++;
           }
-          break;
+          next();
+          return;
         }
 
         case 'expected-move-or-path-change': {
           if (entry.side === 'added' && entry.incoming) {
-            // Mint the NEW decision (fresh id from D1's derive), untrainable, no SRS row.
-            await savePracticeDecision(buildUntrainableDecisionRow(
+            if (!putGuarded(decisionsStore, buildUntrainableDecisionRow(
               entry.replacementDecisionId ?? entry.incoming.identity.decisionId,
               entry.incoming.identity.lessonId,
               entry.incoming.identity.chapterId,
               entry.incoming.identity.sourceLineageId ?? plan.sourceLineageId,
               now,
-            ));
+            ), `replacement ${entry.replacementDecisionId ?? ''}`)) return;
             newDecisions++;
-          } else if (entry.side === 'removed' && entry.baseline) {
-            // Archive the REPLACED decision: keep the row, flip status → archived (id never reused).
-            const existing = await getPracticeDecision(entry.baseline.identity.decisionId);
-            if (existing !== undefined) {
-              await savePracticeDecision({ ...existing, status: MERGE_ARCHIVED_STATUS, updatedAt: now });
-              archivedDecisions++;
-            }
-            if (entry.local?.srs !== undefined) {
-              await savePracticeSrs(toInactiveSchedule(entry.local.srs, 'archived', now));
-              archivedSchedules++;
-            }
+            next();
+            return;
           }
-          break;
+          if (entry.side === 'removed' && entry.baseline) {
+            const decisionId = entry.baseline.identity.decisionId;
+            const req = decisionsStore.get(decisionId);
+            req.onsuccess = () => {
+              const existing = req.result as StudyPracticeDecisionRow | undefined;
+              if (existing !== undefined) {
+                if (!putGuarded(decisionsStore, { ...existing, status: MERGE_ARCHIVED_STATUS, updatedAt: now }, `archive ${decisionId}`)) return;
+                archivedDecisions++;
+              }
+              if (entry.local?.srs !== undefined) {
+                inactivateSrs(entry.local.srs, 'archived', next);
+              } else {
+                next();
+              }
+            };
+            req.onerror = () => {
+              abortWith({ applied: false, reason: 'transaction-failed', detail: `decision read failed for ${decisionId}` });
+            };
+            return;
+          }
+          next();
+          return;
         }
 
         case 'removed':
         case 'ambiguous': {
           // Removed / rewritten / ambiguous material → training suspended, notes/history preserved, no
-          // delete (P2-ORP-18). Only the removed-side local material is suspended; ambiguous added-side
-          // enters explicit review with NO automatic write (zero heuristic mastery transfer, P2-ORP-17).
+          // delete (P2-ORP-18); ambiguous added-side gets NO automatic write (P2-ORP-17).
           if (entry.side === 'removed' && entry.local?.srs !== undefined) {
-            await savePracticeSrs(toInactiveSchedule(entry.local.srs, 'suspended', now));
-            suspendedSchedules++;
+            inactivateSrs(entry.local.srs, 'suspended', next);
+            return;
           }
-          break;
+          next();
+          return;
         }
       }
-    }
-  }
+    };
 
-  // Provenance re-stamp — MERGE onto the existing StudyItem so My-notes / My-analysis / free-text notes
-  // survive verbatim; only `linkedSourceProvenance` changes. NEVER a fresh-literal rebuild.
-  let provenanceStamped = false;
-  const item = await getStudy(plan.studyItemId);
-  if (item !== undefined) {
-    const stamp = stampLinkedSourceProvenance({
-      incoming: plan.incomingProvenance,
-      ...(item.localProvenanceLayers !== undefined ? { existingLocalLayers: item.localProvenanceLayers } : {}),
-      ...(item.notes !== undefined ? { existingNotes: item.notes } : {}),
-    });
-    const updated: StudyItem = { ...item, linkedSourceProvenance: stamp.linkedSourceProvenance, updatedAt: now };
-    await saveStudyStrict(updated);
-    provenanceStamped = true;
-  }
-
-  return { newDecisions, archivedDecisions, suspendedSchedules, archivedSchedules, provenanceStamped };
+    // Step 1 — read the StudyItem, CAS its provenance (finding 3 apply-side), stamp it, then walk the
+    // entries. All inside the one transaction.
+    const itemReq = studiesStore.get(plan.studyItemId);
+    itemReq.onsuccess = () => {
+      const item = itemReq.result as StudyItem | undefined;
+      if (item === undefined) {
+        abortWith({ applied: false, reason: 'missing-study', detail: `study ${plan.studyItemId} does not exist` });
+        return;
+      }
+      const existingProv = item.linkedSourceProvenance;
+      if (existingProv !== undefined) {
+        if (existingProv.sourceLineageId !== plan.sourceLineageId) {
+          abortWith({
+            applied: false, reason: 'lineage-mismatch',
+            detail: `study is linked to ${existingProv.sourceLineageId}, plan targets ${plan.sourceLineageId}`,
+          });
+          return;
+        }
+        const stampedRevision = existingProv.version.kind === 'linked'
+          ? existingProv.version.sourceRevision
+          : existingProv.lastLinkedRevision;
+        if (typeof stampedRevision === 'number' && Number.isFinite(stampedRevision) && stampedRevision > planRevision) {
+          abortWith({
+            applied: false, reason: 'stale-plan',
+            detail: `study provenance already at revision ${stampedRevision} > plan ${planRevision}`,
+          });
+          return;
+        }
+      }
+      // Provenance re-stamp — MERGE onto the existing StudyItem so My-notes / My-analysis / free-text
+      // notes survive verbatim; only `linkedSourceProvenance` changes. NEVER a fresh-literal rebuild.
+      const stamp = stampLinkedSourceProvenance({
+        incoming: plan.incomingProvenance,
+        ...(item.localProvenanceLayers !== undefined ? { existingLocalLayers: item.localProvenanceLayers } : {}),
+        ...(item.notes !== undefined ? { existingNotes: item.notes } : {}),
+      });
+      const updated: StudyItem = { ...item, linkedSourceProvenance: stamp.linkedSourceProvenance, updatedAt: now };
+      if (!putGuarded(studiesStore, updated, `study ${item.id}`)) return;
+      stampedItem = updated;
+      processEntry(0);
+    };
+    itemReq.onerror = () => {
+      abortWith({ applied: false, reason: 'transaction-failed', detail: `study read failed for ${plan.studyItemId}` });
+    };
+  });
 }
