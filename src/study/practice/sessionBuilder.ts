@@ -24,7 +24,11 @@
 
 
 import type { TrainableSequence, PositionProgress } from '../types';
+import type { TreePath } from '../../tree/types';
 import { isDue, positionKey } from './scheduler';
+import { isSrsEnrollable, type LessonDecision } from './material';
+import type { AuthoredLessonContent } from './lessonAuthoring';
+import type { LearnStep, LearnReply, LearnStepKind } from './drillCtrl';
 import type {
   SrsScheduleRecord,
   SrsActiveScheduleRecord,
@@ -682,4 +686,156 @@ function earliestDueAt(
     if (due < earliest) earliest = due;
   }
   return earliest;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Scope selection for a Learn traversal (P2-ORP-9 LOCKED base :981-985): the full authored line, the
+ *  line minus its first ~3 learner moves (board starts at that FEN), or only the critical tail beginning
+ *  at the nearest meaningful authored branch point before the target. */
+export type LearnScope = 'full' | 'skip-first-3' | 'critical-tail';
+
+/** Number of leading learner steps `skip-first-3` removes (P2-ORP-9 "skip first ~3"). */
+const SKIP_FIRST_N = 3;
+
+/**
+ * Pure input to `buildLearnSteps`. All authored material is supplied by the caller (D8 / D10b); the
+ * builder reads no IDB/DOM/tree and mints nothing.
+ */
+export interface BuildLearnStepsInput {
+  /** The authored learner-side decisions, in traversal order (a single authored line). */
+  readonly line: readonly LessonDecision[];
+  /**
+   * Authored siblings at a given lead-in position. The builder computes each step's lead-in as
+   * `leadInPathOf(authoredPath)` (an AUTHORED PATH, never a FEN) and asks for the siblings there, so
+   * transpositions reaching the same FEN by a different authored path stay distinct (P2-ORP-17). The
+   * decision itself is excluded from its own siblings. Omit ⇒ no siblings.
+   */
+  readonly siblingsAt?: (leadInPath: TreePath) => readonly LessonDecision[];
+  /** Authored opponent reply that follows a learner move, keyed by the learner decision's id. These are
+   *  authored only — Stockfish never selects a Learn reply (P2-ORP-16). Omit ⇒ no replies. */
+  readonly replies?: ReadonlyMap<string, LearnReply>;
+  /** Authored content keyed by `decisionId` — the SAME map `createLearnController` consumes. Accepted
+   *  here so the call site passes one coherent bundle; the `LearnStep` shape embeds no content, so the
+   *  builder does not read it (the controller resolves prompts/hints/explanations from it at runtime). */
+  readonly content: ReadonlyMap<string, AuthoredLessonContent>;
+  /**
+   * The `decisionId`s THIS session scores. SESSION-RELATIVE target labeling keys off this set (see the
+   * load-bearing rule above). Empty set ⇒ the D8 single-line convenience: every Required decision on the
+   * line is a target (equivalent to passing all of the line's Required ids explicitly). A due-review
+   * session (D10b) always passes a NON-EMPTY set (the plan's scored entries), so the strict
+   * session-relative rule governs it.
+   */
+  readonly targetIds: ReadonlySet<string>;
+  readonly scope: LearnScope;
+  /** For `critical-tail`: the branch-point POSITION path the tail begins at (P2-ORP-9 "critical tail
+   *  begins at the nearest meaningful authored branch point before the target"). Ignored otherwise. */
+  readonly criticalTailStartPath?: TreePath;
+}
+
+/** The lead-in (parent-position) path: the authored path minus its final 2-char node id. Mirrors D1's
+ *  private `leadInPathOf` (material.ts:249) — grouping by this authored path, NOT by FEN, is what keeps
+ *  transpositions distinct (P2-ORP-17). */
+function leadInPathOf(authoredPath: TreePath): TreePath {
+  return authoredPath.length >= 2 ? authoredPath.slice(0, -2) : '';
+}
+
+/**
+ * The SESSION-RELATIVE target/context decision — the load-bearing rule. `target` requires BOTH SRS
+ * enrollability (Required trainability, material.ts:226-228) AND membership in this session's
+ * `targetIds`; everything else — including a Required, due decision that is merely a shared PREFIX for a
+ * later target in the same replay — is `context`. The empty-`targetIds` D8 single-line convenience
+ * treats every enrollable decision as a target.
+ */
+function stepKindFor(
+  decision: LessonDecision,
+  targetIds: ReadonlySet<string>,
+  targetEveryEnrollable: boolean,
+): LearnStepKind {
+  if (!isSrsEnrollable(decision)) return 'context'; // non-Required is NEVER a target
+  if (targetEveryEnrollable) return 'target';        // empty set ⇒ D8 single-line: the line's Required
+  return targetIds.has(decision.identity.decisionId) ? 'target' : 'context';
+}
+
+/** Apply the scope selection AFTER labeling: trimmed prefix moves are REMOVED entirely (never relabeled),
+ *  and every surviving step keeps its already-computed target/context label (D10 consult §2). */
+function trimScope(
+  steps: readonly LearnStep[],
+  scope: LearnScope,
+  criticalTailStartPath: TreePath | undefined,
+): readonly LearnStep[] {
+  if (scope === 'skip-first-3') {
+    return steps.slice(Math.min(SKIP_FIRST_N, steps.length));
+  }
+  if (scope === 'critical-tail') {
+    const start = criticalTailStartPath ?? '';
+    if (start === '') return steps; // root branch point ⇒ the whole line is the critical tail
+    // Keep only moves PLAYED FROM the branch point onward: a decision whose lead-in position is at or
+    // below `start` (the move that merely REACHES the branch point has a shorter lead-in and is dropped —
+    // the board starts already at that position). Prefix matching on 2-char-aligned authored paths.
+    return steps.filter((step) => leadInPathOf(step.target.identity.authoredPath).startsWith(start));
+  }
+  return steps; // 'full'
+}
+
+/**
+ * Build the ordered `LearnStep[]` for one authored line under a session's scoring scope. Pure and
+ * deterministic: same input ⇒ same output, no IDB/DOM/clock, no scheduler. Output is EXACTLY D7's
+ * `LearnStep` shape, so `createLearnController({ steps, content, timer, … })` consumes it verbatim.
+ *
+ * Only LEARNER-side decisions become steps; authored OPPONENT replies attach as the preceding step's
+ * `reply` (never their own step). Target/context labeling is session-relative (see `stepKindFor` / the
+ * load-bearing rule); scope trimming runs last and preserves labels.
+ */
+export function buildLearnSteps(input: BuildLearnStepsInput): readonly LearnStep[] {
+  const { line, targetIds, scope, siblingsAt, replies } = input;
+  const targetEveryEnrollable = targetIds.size === 0;
+
+  // 1. Label every learner step SESSION-RELATIVELY (before any scope trimming), attach authored siblings
+  //    (grouped by authored lead-in path, self excluded) and the authored opponent reply if any.
+  const labeled: LearnStep[] = line.map((decision) => {
+    const kind = stepKindFor(decision, targetIds, targetEveryEnrollable);
+    const leadIn = leadInPathOf(decision.identity.authoredPath);
+    const siblings = (siblingsAt ? siblingsAt(leadIn) : []).filter(
+      (s) => s.identity.decisionId !== decision.identity.decisionId,
+    );
+    const reply = replies?.get(decision.identity.decisionId);
+    // Under exactOptionalPropertyTypes, `reply` must be OMITTED (not set to undefined) when absent.
+    return reply === undefined
+      ? { kind, target: decision, siblings }
+      : { kind, target: decision, siblings, reply };
+  });
+
+  // 2. Apply scope selection (removes prefix moves entirely; survivors keep their labels).
+  return trimScope(labeled, scope, input.criticalTailStartPath);
 }
