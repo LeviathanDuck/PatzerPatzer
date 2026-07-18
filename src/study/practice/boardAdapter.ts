@@ -12,9 +12,11 @@
 
 import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { Key } from '@lichess-org/chessground/types';
+import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Color } from 'chessops/types';
 import { playDrillFeedbackSound } from '../../board/sound';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../../board/animation';
+import { registerModuleAutoShapesProvider, syncArrowForced } from '../../board/shapeSink';
 import type {
   WorkspaceBoardInputModule,
   WorkspaceBoardPort,
@@ -58,6 +60,9 @@ export interface DrillBoardController {
   showCorrectMove(from: Key, to: Key, afterFen: string): void;
   /** Brief CSS flash on the board wrapper (green = correct, red = incorrect). */
   flashFeedback(type: FeedbackType): void;
+  /** Recompute the module authored-shape provider (D8 Learn: authored shapes + alternate marker +
+   *  show-move solution). No-op when no shape provider was supplied (legacy quiz path). */
+  refreshShapes(): void;
 }
 
 export interface DrillBoardControllerDeps {
@@ -76,6 +81,13 @@ export interface DrillBoardControllerDeps {
   onAttached: () => void;
   /** True while THIS controller's drill run is still the current one (drillView run generation). */
   isRunCurrent: () => boolean;
+  /**
+   * Optional module authored-shape provider (D8 Learn only). Returns the CURRENT node's authored
+   * shapes + accepted-alternate marker + show-move solution as `DrawShape[]`; registered at attach via
+   * `registerModuleAutoShapesProvider` and driven by `refreshShapes()`. The legacy quiz path omits it
+   * (no authored shapes). The provider must read live controller/node state each call (stale-drop, P0).
+   */
+  authoredShapes?: () => DrawShape[];
 }
 
 /**
@@ -99,6 +111,7 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
   let _wrapEl: HTMLElement | null = null;
   let _unsubAnimation: (() => void) | null = null;
   let _flashTimer: ReturnType<typeof setTimeout> | null = null;
+  let _disposeShapesProvider: (() => void) | null = null;
 
   // --- Ephemeral cursor (workspace identity/observability; never becomes a shared move tree). ---
   // A single coherent leaf: root === node, path === '', node.fen is the position module state
@@ -144,7 +157,10 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
         castle: false,
       },
       drawable: {
-        enabled: false,
+        // Lifted from `enabled: false` (D8): the module authored-shape provider (Learn authored
+        // shapes / accepted-alternate marker / show-move solution) writes through the shared sink,
+        // which requires drawing enabled. Authored shapes are provider-owned, not seeded here.
+        enabled: true,
         shapes: [],
       },
       ...(_lastMove ? { lastMove: _lastMove } : {}),
@@ -237,6 +253,13 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
     playDrillFeedbackSound(type);
   }
 
+  function refreshShapes(): void {
+    // Recompute the module auto-shapes. Guarded by the same live-run/port checks as every other
+    // board write: a superseded/exited run must not repaint shapes. `syncArrowForced` reads the
+    // registered provider (which itself reads the current node/state), so stale nodes never render.
+    if (deps.isRunCurrent() && _port !== null && _port.isLive()) syncArrowForced();
+  }
+
   const module: WorkspaceBoardInputModule = {
     id: 'orp-drill',
     mode: 'practice-grading',
@@ -262,6 +285,12 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
       _port = port;
       // Resolve the unchanged flash target (the outer `.drill-board-wrap`) once at attach.
       _wrapEl = boardEl.closest('.drill-board-wrap') as HTMLElement | null;
+      // Register the module authored-shape provider (D8 Learn only; the quiz path omits it). The
+      // returned disposer is exact-registration keyed, so a stale owner cannot clear a newer one.
+      if (deps.authoredShapes) {
+        _disposeShapesProvider?.();
+        _disposeShapesProvider = registerModuleAutoShapesProvider(deps.authoredShapes);
+      }
       // Own the puzzle-animation subscription at the port scope (was a module-level listener). Only
       // write when the run and the port are still live.
       _unsubAnimation = onBoardAnimationChange('puzzle', () => {
@@ -280,6 +309,10 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
       if (_unsubAnimation) {
         _unsubAnimation();
         _unsubAnimation = null;
+      }
+      if (_disposeShapesProvider) {
+        _disposeShapesProvider();
+        _disposeShapesProvider = null;
       }
       if (_flashTimer) {
         clearTimeout(_flashTimer);
@@ -306,5 +339,6 @@ export function createDrillBoardAdapter(deps: DrillBoardControllerDeps): DrillBo
     disableUserInput,
     showCorrectMove,
     flashFeedback,
+    refreshShapes,
   };
 }

@@ -4,15 +4,28 @@
 
 
 import type { Key } from '@lichess-org/chessground/types';
+import type { DrawShape } from '@lichess-org/chessground/draw';
 import { Chess } from 'chessops/chess';
 import { chessgroundDests } from 'chessops/compat';
-import { parseFen } from 'chessops/fen';
+import { parseFen, makeFen } from 'chessops/fen';
 import { makeSanAndPlay } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { controlExplainerAttrs } from '../../ui/controlExplainer';
 import { createDrillBoardAdapter, type DrillBoardController } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
+import {
+  createLearnController,
+  type LearnController,
+  type LearnState,
+  type LearnStep,
+  type LearnReply,
+  type LearnTimer,
+  type LearnTimerHandle,
+} from './drillCtrl';
+import { buildLearnSteps, type LearnScope } from './sessionBuilder';
+import type { LessonDecision } from './material';
+import type { AuthoredLessonContent } from './lessonAuthoring';
 import { scheduleNext, positionKey, isDue } from './scheduler';
 import { getPositionProgress, savePositionProgress, saveDrillAttempt } from '../studyDb';
 import { renderBoard } from '../../board/index';
@@ -21,6 +34,7 @@ import {
   unmountWorkspace,
   type WorkspaceInstance,
 } from '../../analyse/workspaceCore';
+import type { Shape, TreePath } from '../../tree/types';
 import type { TrainableSequence, PositionProgress, DrillAttempt } from '../types';
 
 // --- Module-level drill state ---
@@ -74,6 +88,58 @@ function drillCallbackLive(run: number, adapter: DrillBoardController | null): a
   return run === _drillRunGeneration && adapter === _adapter && adapter !== null && adapter.isLive();
 }
 
+
+
+
+
+
+
+
+
+let _learn:            LearnController | null = null;
+let _learnSteps:       readonly LearnStep[]   = [];
+let _learnContent:     ReadonlyMap<string, AuthoredLessonContent> = new Map();
+let _learnLeadInFenFor: (decision: LessonDecision) => string      = () => _rootFen;
+let _learnShapesFor:   (decision: LessonDecision) => readonly Shape[] = () => [];
+// The learner's last played uci this step — sourced only for the accepted-alternate board marker,
+// which persists through the reply-pacing advance and clears at the next recall node.
+let _learnLastPlayedUci: string | null = null;
+
+/**
+ * Injected pacing timer for `createLearnController` (LearnTimer). Wraps the tracked/stale-dropped
+ * `_drillTimers` set so a superseded/exited run cancels the controller's comment-free reply pacing
+ * exactly like every other delayed drill callback. After the controller advances on the timer, the
+ * board re-syncs and redraws so the next recall position renders (board is P0 — this is lower-priority
+ * pacing work that stale-drops).
+ */
+function makeLearnTimer(): LearnTimer {
+  return {
+    schedule(fn: () => void, ms: number): LearnTimerHandle {
+      const run = _drillRunGeneration;
+      const capAdapter = _adapter;
+      const handle = setTimeout(() => {
+        _drillTimers.delete(handle);
+        if (!drillCallbackLive(run, capAdapter)) return; // stale-drop (P0)
+        fn();
+        syncLearnBoard();
+        _redraw();
+      }, ms);
+      _drillTimers.add(handle);
+      return handle;
+    },
+    cancel(handle: LearnTimerHandle): void {
+      const t = handle as ReturnType<typeof setTimeout>;
+      clearTimeout(t);
+      _drillTimers.delete(t);
+    },
+  };
+}
+
+/** True when a Learn traversal is the active runtime. */
+export function isLearnActive(): boolean {
+  return _learn !== null;
+}
+
 // Performance stats — tracked during session, preserved for summary on completion/early exit.
 let _totalPositions   = 0;
 let _correctFirst     = 0;
@@ -89,7 +155,7 @@ let _showSummary      = false;
 export function isDrillActive(): boolean {
   // Summary is still Drill-owned presentation. Treat it as active ownership so the app-wide
   // route-exit signal dismisses a visible summary even after End Session cleared `_session`.
-  return _session !== null || _showSummary;
+  return _session !== null || _learn !== null || _showSummary;
 }
 
 /**
@@ -150,6 +216,255 @@ export function initDrillView(
   });
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export interface LearnViewConfig {
+  /** The authored learner-side decisions in traversal order (a single authored line). */
+  readonly line: readonly LessonDecision[];
+  /** Authored content keyed by `decisionId` — prompts/hints/explanations the controller resolves. */
+  readonly content: ReadonlyMap<string, AuthoredLessonContent>;
+  /** Authored opponent replies keyed by the learner decision id (Stockfish never selects a reply). */
+  readonly replies?: ReadonlyMap<string, LearnReply>;
+  /** Authored siblings at a lead-in authored path (for branch-specific wrong/refutation grading). */
+  readonly siblingsAt?: (leadInPath: TreePath) => readonly LessonDecision[];
+  /** This session's scored decision ids; empty ⇒ D8 single-line (every Required decision is target). */
+  readonly targetIds?: ReadonlySet<string>;
+  readonly scope?: LearnScope;
+  /** The board FEN the learner recalls FROM for a decision (the position BEFORE the authored move). */
+  readonly leadInFenFor: (decision: LessonDecision) => string;
+  /** Authored arrows/highlights on the decision's node (`TreeNode.shapes`), restored on recall. */
+  readonly shapesFor?: (decision: LessonDecision) => readonly Shape[];
+  readonly rootFen: string;
+  readonly trainAs: 'white' | 'black';
+  readonly redraw: () => void;
+  readonly onExitRestore?: () => void;
+}
+
+/**
+ * Initialise and start a guided-recall Learn traversal. Drives `createLearnController` fed by
+ * `buildLearnSteps` — never the legacy `createDrillSession` auto-play. Mounts the same module-owned
+ * workspace board as the quiz drill; board input is P0 (a legal move applies through Chessground
+ * immediately, then `gradeAndAdvance` grades — grading/shape/pacing never gate the move).
+ */
+export function initLearnView(config: LearnViewConfig): void {
+  // New run: bump the generation and cancel any leftover timers so a prior run's callbacks no-op.
+  _drillRunGeneration++;
+  clearDrillTimers();
+
+  _session   = null;
+  _rootFen   = config.rootFen;
+  _trainAs   = config.trainAs;
+  _redraw    = config.redraw;
+  _startedAt = Date.now();
+  _showSummary = false;
+
+  _learnContent      = config.content;
+  _learnLeadInFenFor = config.leadInFenFor;
+  _learnShapesFor    = config.shapesFor ?? (() => []);
+  _learnLastPlayedUci = null;
+
+  _learnSteps = buildLearnSteps({
+    line:      config.line,
+    content:   config.content,
+    ...(config.replies    ? { replies:    config.replies }    : {}),
+    ...(config.siblingsAt ? { siblingsAt: config.siblingsAt } : {}),
+    targetIds: config.targetIds ?? new Set<string>(),
+    scope:     config.scope ?? 'full',
+  });
+  _learn = createLearnController({
+    steps:   _learnSteps,
+    content: config.content,
+    timer:   makeLearnTimer(),
+  });
+
+  if (config.onExitRestore !== undefined) _restoreCallback = config.onExitRestore;
+
+  const run = _drillRunGeneration;
+  const adapter = createDrillBoardAdapter({
+    initialFen:         config.rootFen,
+    initialOrientation: config.trainAs,
+    handleMove:         (orig, dest) => { learnUserMove(orig, dest); },
+    handleKeydown:      handleLearnKeydown,
+    onAttached:         () => { syncLearnBoard(); },
+    isRunCurrent:       () => run === _drillRunGeneration,
+    authoredShapes:     learnAuthoredShapes,
+  });
+  _adapter = adapter;
+  _workspaceInstance = mountWorkspace({
+    id: 'orp-drill',
+    boardInputMode: 'practice-grading',
+    boardInputModule: adapter.module,
+    getCursor: adapter.getCursor,
+    getOrientation: adapter.getOrientation,
+    redraw: config.redraw,
+    handleUserMove: () => {},
+  });
+}
+
+/** The current Learn step (the cued decision to recall), or undefined once complete. */
+function currentLearnStep(): LearnStep | undefined {
+  return _learn ? _learnSteps[_learn.state.stepIndex] : undefined;
+}
+
+function uciToAfterFen(fromFen: string, uci: string): { keys: [Key, Key]; afterFen: string } | null {
+  const keys = uciToKeys(uci);
+  if (!keys) return null;
+  try {
+    const setup = parseFen(fromFen).unwrap();
+    const pos   = Chess.fromSetup(setup).unwrap();
+    const move  = parseUci(uci);
+    if (!move) return null;
+    makeSanAndPlay(pos, move); // mutates `pos` to the resulting position
+    return { keys, afterFen: makeFen(pos.toSetup()) };
+  } catch {
+    // Fall back to the from-position FEN so the piece still animates from/to on the current board.
+    return { keys, afterFen: fromFen };
+  }
+}
+
+/**
+ * Sync the Learn board to the controller's current `LearnState`. Board mutations are lower-priority
+ * than raw input and stale-drop; the authored-shape provider (registered on the board module) reads
+ * the CURRENT step each call so a superseded node never renders stale shapes.
+ */
+function syncLearnBoard(): void {
+  const adapter = _adapter;
+  const learn   = _learn;
+  if (!adapter || !learn) return;
+  const st   = learn.state;
+  const step = _learnSteps[st.stepIndex];
+
+  if (st.phase === 'complete' || !step) {
+    _learnLastPlayedUci = null;
+    adapter.disableUserInput();
+    adapter.refreshShapes();
+    return;
+  }
+
+  if (st.phase === 'recall' || st.phase === 'repair') {
+    // A new recall clears the transient accepted-alternate marker.
+    _learnLastPlayedUci = null;
+    const fenBefore = _learnLeadInFenFor(step.target);
+    adapter.setPosition(fenBefore, _trainAs);
+    adapter.enableUserInput(computeDrillDests(fenBefore));
+    adapter.refreshShapes();
+    return;
+  }
+
+  if (st.phase === 'reply-pacing') {
+    // The learner's move is already on the board (P0). Animate the authored opponent reply, then the
+    // controller's injected timer (comment-free) or the Next control (commented) advances the step.
+    adapter.disableUserInput();
+    const reply = step.reply;
+    if (reply) {
+      const animated = uciToAfterFen(step.target.evidence.fen, reply.uci);
+      if (animated) adapter.animateOpponentMove(animated.keys[0], animated.keys[1], animated.afterFen);
+    }
+    adapter.refreshShapes();
+    return;
+  }
+
+  // 'feedback' (or any other transient) — freeze input; shapes re-evaluate.
+  adapter.disableUserInput();
+  adapter.refreshShapes();
+}
+
+/** Authored-shape provider for the Learn board (registered on the module in boardAdapter.attach).
+ *  Reads the CURRENT controller/step state each call (stale-safe): authored node shapes + the
+ *  Show-move solution arrow + the persistent accepted-alternate marker (all paired with a brush and
+ *  never color-only in the UI — the feedback strip carries the text/icon per P2-ORP-21). */
+function learnAuthoredShapes(): DrawShape[] {
+  const learn = _learn;
+  const step  = currentLearnStep();
+  if (!learn || !step) return [];
+  const st = learn.state;
+  const shapes: DrawShape[] = [];
+
+  // 1. Authored arrows/highlights on the recall node.
+  for (const s of _learnShapesFor(step.target)) {
+    shapes.push({
+      orig: s.orig as Key,
+      ...(s.dest ? { dest: s.dest as Key } : {}),
+      brush: s.brush ?? 'green',
+    });
+  }
+
+  const solutionKeys = uciToKeys(step.target.evidence.uci);
+  // 2. Show-move solution arrow (only once assistance revealed it).
+  if (st.revealed && solutionKeys) {
+    shapes.push({ orig: solutionKeys[0], dest: solutionKeys[1], brush: 'blue' });
+  } else if (st.hintShown && solutionKeys) {
+    // 3. Hint highlights the from-square only (never the full solution move).
+    shapes.push({ orig: solutionKeys[0], brush: 'yellow' });
+  }
+
+  // 4. Accepted-alternate marker — persists from the accepted play through reply-pacing until the
+  //    next recall node clears `_learnLastPlayedUci`. Sourced from the played move + a correct outcome
+  //    on a non-target-mainline branch (accepted-optional / reference-acknowledged).
+  const outcome = st.lastOutcome;
+  if (
+    _learnLastPlayedUci &&
+    (st.phase === 'reply-pacing' || st.phase === 'feedback') &&
+    outcome &&
+    (outcome.category === 'accepted-optional' || outcome.category === 'reference-acknowledged')
+  ) {
+    const acceptedKeys = uciToKeys(_learnLastPlayedUci);
+    if (acceptedKeys) shapes.push({ orig: acceptedKeys[0], dest: acceptedKeys[1], brush: 'green' });
+  }
+  return shapes;
+}
+
+/** Board-input entry for a legal learner move in Learn (P0). The move is already on the board via
+ *  Chessground; this grades it through the controller (lower-priority) and renders the next phase. */
+function learnUserMove(orig: Key, dest: Key): void {
+  const learn = _learn;
+  const adapter = _adapter;
+  if (!learn || !adapter) return;
+  const step = currentLearnStep();
+  if (!step) return;
+
+  const fenBefore = _learnLeadInFenFor(step.target);
+  let san = '';
+  let uci = `${orig}${dest}`;
+  try {
+    const setup = parseFen(fenBefore).unwrap();
+    const pos   = Chess.fromSetup(setup).unwrap();
+    const move  = parseUci(uci);
+    if (!move) { syncLearnBoard(); return; }
+    san = makeSanAndPlay(pos, move);
+  } catch {
+    syncLearnBoard();
+    return;
+  }
+
+  _learnLastPlayedUci = uci;
+  // Grade + advance (the controller already holds any Hint/Show-move assistance recorded this step).
+  const st = learn.gradeAndAdvance({ uci, san });
+
+  if (st.phase === 'repair') {
+    adapter.flashFeedback('incorrect');
+  } else {
+    adapter.flashFeedback('correct');
+  }
+  // Render the resulting phase (walk back on repair, animate reply / advance on correct, end on
+  // complete). Board input already applied — grading/pacing/shape work never gated it (P0).
+  syncLearnBoard();
+  _redraw();
+}
+
 /** Snapshot current stats and show summary without destroying session data. */
 function captureSummary(): void {
   _summaryPositions = _totalPositions;
@@ -187,6 +502,9 @@ export function endDrill(
   const wasActive = instance ? unmountWorkspace(instance, reason) : false;
   _adapter  = null;
   _session  = null;
+  _learn    = null;
+  _learnSteps = [];
+  _learnLastPlayedUci = null;
   // Restore Study only after a still-active embedded drill was actually unmounted. Retained
   // summary may launch Practice Again; preserve its one-shot restore only in that case so the
   // restarted embedded drill can restore Study on its eventual final dismissal.
@@ -260,42 +578,11 @@ function syncDrillBoard(): void {
 
   const idx = session.positionIndex;
 
-  // Learn mode: auto-play every move at 700ms/move. When pass completes, session
-  // automatically transitions to quiz mode (see drillCtrl advance()).
-  if (session.mode === 'learn' && session.feedback === 'waiting') {
-    adapter.disableUserInput();
-    const uci  = seq?.moves[idx];
-    const keys = uci ? uciToKeys(uci) : null;
-    if (keys) {
-      const afterFen = seq?.fens[idx] ?? _rootFen;
-      const run     = _drillRunGeneration;
-      const capAdapter = adapter;
-      drillTimeout(() => {
-        if (!drillCallbackLive(run, capAdapter)) return;             // stale-drop (P0)
-        if (!_session || _session.mode !== 'learn') return;          // session may have changed
-        capAdapter.animateOpponentMove(keys[0], keys[1], afterFen);
-        const prevMode = _session.mode;
-        _session = _session.advance();
-        // Detect learn→quiz transition and seed level-1 for all positions in these sequences.
-        if (prevMode === 'learn' && _session.mode === 'quiz') {
-          void seedLearnedPositions(_sequences).catch(e =>
-            console.warn('[drillView] seedLearnedPositions failed', e),
-          );
-        }
-        _redraw();
-        const run2 = _drillRunGeneration;
-        const capAdapter2 = _adapter;
-        drillTimeout(() => {
-          if (!drillCallbackLive(run2, capAdapter2)) return;         // stale-drop (P0)
-          syncDrillBoard();
-        }, 300);
-      }, 700);
-    } else {
-      _session = _session?.advance() ?? null;
-      syncDrillBoard();
-    }
-    return;
-  }
+
+
+
+
+
 
   if (session.feedback === 'waiting') {
     if (isUserTurn(idx, seq)) {
@@ -342,45 +629,10 @@ function syncDrillBoard(): void {
   }
 }
 
-/**
- * Seed all positions in the given sequences to level 1 when learn phase completes.
- * Only seeds positions that have no existing progress (level 0 or missing).
- */
-async function seedLearnedPositions(sequences: TrainableSequence[]): Promise<void> {
-  const now = Date.now();
-  const { INTERVALS_MS } = await import('./scheduler');
-  for (const seq of sequences) {
-    for (const fen of seq.fens) {
-      const key      = positionKey(fen);
-      let existing: PositionProgress | undefined;
-      try {
-        existing = await getPositionProgress(key);
-      } catch (e) {
-        // BUG-2026-07-10-008 P2 data-integrity guard: getPositionProgress now REJECTS on a genuine
-        // storage read failure (was masked as undefined). A failed read must NOT be treated as
-        // "no progress" here — seeding this position could overwrite an existing spaced-repetition
-        // level. Skip it; the learn→quiz seed self-heals on the next transition.
-        console.warn('[drillView] seedLearnedPositions skipped a position — progress read failed', e);
-        continue;
-      }
-      if (existing && existing.level > 0) continue; // already has progress
-      const seeded: PositionProgress = {
-        key,
-        level:         1,
-        nextDueAt:     now + INTERVALS_MS[1]!,
-        attempts:      0,
-        correct:       0,
-        incorrect:     0,
-        streak:        0,
-        lastAttemptAt: 0,
-        sequenceIds:   existing?.sequenceIds.includes(seq.id)
-          ? existing.sequenceIds
-          : [...(existing?.sequenceIds ?? []), seq.id],
-      };
-      await savePositionProgress(seeded).catch(() => {});
-    }
-  }
-}
+
+
+
+
 
 /**
  * Persist the graded position result to IDB (fire-and-forget).
@@ -548,6 +800,13 @@ function onUserMove(orig: Key, dest: Key): void {
 // --- VNode rendering ---
 
 export function renderDrillView(redraw: () => void): VNode {
+  // Learn traversal (guided recall) — rendered from the controller's readonly LearnState.
+  if (_learn) {
+    return h('div.drill-session.drill-session--learn', [
+      renderDrillBoard(),
+      renderLearnSidebar(_learn.state, redraw),
+    ]);
+  }
   if (_showSummary || !_session || _session.isDone || _session.feedback === 'complete') {
     if (_session?.isDone || _session?.feedback === 'complete') captureSummary();
     return renderDrillSummary(redraw);
@@ -590,6 +849,215 @@ function handleDrillKeydown(e: KeyboardEvent): void {
   ) {
     e.preventDefault();
   }
+}
+
+/**
+ * Surface-owned Learn keyboard handler (P2-ORP-21). Space/Enter advance a paused reply / repair retry
+ * (the contextually-safe action) and NEVER trigger assistance; arrows are bounded (Read-only stepping,
+ * no browse-ahead in Learn); Escape ends the session. Assistance (Hint/Show move) is deliberately NOT
+ * bound to any bare navigation key.
+ */
+function handleLearnKeydown(e: KeyboardEvent): void {
+  const tag = (e.target as HTMLElement)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const learn = _learn;
+  if (!learn) return;
+  const st = learn.state;
+
+  if (e.key === 'Enter' || e.key === ' ') {
+    // Contextually-safe advance only: a paused (commented) reply or a repair retry. Never assistance.
+    if (st.phase === 'reply-pacing' && st.awaitingNext) {
+      e.preventDefault();
+      learn.next();
+      syncLearnBoard();
+      _redraw();
+    } else if (st.phase === 'repair') {
+      e.preventDefault();
+      learn.next(); // re-enter recall for the retry
+      syncLearnBoard();
+      _redraw();
+    }
+  } else if (e.key === 'ArrowLeft') {
+    // Backward stepping is allowed only in non-scoring Read mode (bounds enforced by the controller).
+    if (st.mode === 'read') { e.preventDefault(); learn.readBack(); syncLearnBoard(); _redraw(); }
+    else e.preventDefault(); // Learn: swallow — no free backward jump on the scored traversal.
+  } else if (e.key === 'ArrowRight') {
+    if (st.mode === 'read') { e.preventDefault(); learn.readForward(); syncLearnBoard(); _redraw(); }
+    else e.preventDefault(); // Learn: browsing ahead is not allowed (P2-ORP-16).
+  } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    e.preventDefault();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    endDrill('keyboard-escape', 'dismiss');
+    _redraw();
+  }
+}
+
+// --- Learn sidebar (guided-recall rendering from LearnState) ---
+
+function learnPromptFor(step: LearnStep | undefined): string {
+  if (!step) return '';
+  const content = _learnContent.get(step.target.identity.decisionId);
+  return content?.instructionalPrompt?.trim() || 'Play the required move.';
+}
+
+function renderLearnSidebar(st: LearnState, redraw: () => void): VNode {
+  const step = _learnSteps[st.stepIndex];
+  const total = _learnSteps.filter(s => s.kind === 'target').length;
+  const seen  = _learnSteps.slice(0, st.stepIndex + 1).filter(s => s.kind === 'target').length;
+
+  return h('div.drill-sidebar.drill-sidebar--learn', [
+    h('div.drill-header', [
+      h('div.drill-sequence-label', st.mode === 'read' ? 'Read (non-scoring)' : 'Learn'),
+      h('div.drill-move-counter', total > 0 ? `Target ${Math.min(seen, total)} of ${total}` : ''),
+    ]),
+    renderLearnFeedback(st, step),
+    renderLearnControls(st, redraw),
+  ]);
+}
+
+function renderLearnFeedback(st: LearnState, step: LearnStep | undefined): VNode {
+  // Every state pairs color with text/icon (never color-only) and is announced via aria-live without
+  // stealing board focus (P2-ORP-21). loading/empty/error/ready are folded into the phase render:
+  // an empty plan completes immediately (handled by 'complete' below with a "nothing to learn" note).
+  if (st.phase === 'complete') {
+    const clean = st.completedClean;
+    return h('div.drill-feedback.drill-feedback--learn.drill-feedback--complete', {
+      attrs: { role: 'status', 'aria-live': 'polite' },
+    }, [
+      h('span.drill-feedback__icon', clean ? '✓' : '•'),
+      h('span.drill-feedback__text',
+        _learnSteps.length === 0
+          ? 'Nothing to learn in this line yet.'
+          : clean ? 'Line complete — clean traversal.' : 'Line complete.'),
+    ]);
+  }
+
+  const outcome = st.lastOutcome;
+  let icon = '›';
+  let text = learnPromptFor(step);
+  let mod  = 'recall';
+
+  if (st.phase === 'repair') {
+    mod  = 'repair';
+    icon = '↺';
+    // Branch-specific wrong/refutation explanation, else generic deviation, else a plain retry cue.
+    text = outcome?.explanation
+      ?? (outcome?.category === 'deviation' ? 'Off book — return and play the required move.' : 'Not quite — try the required move again.');
+  } else if (st.phase === 'reply-pacing') {
+    mod  = 'correct';
+    icon = '✓';
+    text = st.awaitingNext ? 'Correct. Read the note, then continue.' : 'Correct.';
+  } else if (st.revealed) {
+    mod  = 'assisted';
+    icon = '👁';
+    text = 'Solution shown — this attempt is marked assisted.';
+  } else if (st.hintShown) {
+    mod  = 'assisted';
+    icon = '💡';
+    text = 'Hint shown — this attempt is marked assisted.';
+  }
+
+  return h(`div.drill-feedback.drill-feedback--learn.drill-feedback--${mod}`, {
+    attrs: { role: 'status', 'aria-live': 'polite' },
+  }, [
+    h('span.drill-feedback__icon', icon),
+    h('span.drill-feedback__text', text),
+  ]);
+}
+
+function renderLearnControls(st: LearnState, redraw: () => void): VNode {
+  const learn = _learn!;
+  const inRecall = st.phase === 'recall' || st.phase === 'repair';
+  const buttons: (VNode | null)[] = [];
+
+  // Hint (Essential — consequential: marks the position assisted/failed).
+  if (st.mode === 'learn' && inRecall) {
+    buttons.push(h('button.drill-btn.drill-btn--hint', {
+      attrs: {
+        type: 'button',
+        'aria-pressed': String(st.hintShown),
+        ...controlExplainerAttrs({
+          tier: 'essential',
+          label: 'Hint',
+          description: 'Reveals the authored hint. Using it marks this position as failed for scheduling.',
+        }),
+      },
+      on: { click: () => { learn.useHint(); if (_adapter) _adapter.refreshShapes(); redraw(); } },
+    }, 'Hint'));
+
+    // Show move (Essential — consequential + assistance-marking).
+    buttons.push(h('button.drill-btn.drill-btn--show', {
+      attrs: {
+        type: 'button',
+        ...controlExplainerAttrs({
+          tier: 'essential',
+          label: 'Show move',
+          description: 'Draws the solution move. Using it marks this position as failed for scheduling.',
+        }),
+      },
+      on: { click: () => { learn.showMove(); syncLearnBoard(); if (_adapter) _adapter.refreshShapes(); redraw(); } },
+    }, 'Show move'));
+  }
+
+  // Next (More Help — advance the paced reply / repair retry).
+  if ((st.phase === 'reply-pacing' && st.awaitingNext) || st.phase === 'repair') {
+    buttons.push(h('button.drill-btn.drill-btn--next', {
+      attrs: {
+        type: 'button',
+        ...controlExplainerAttrs({ label: 'Next', description: 'Advances past the paced reply or repair prompt.' }),
+      },
+      on: { click: () => { learn.next(); syncLearnBoard(); redraw(); } },
+    }, 'Next'));
+  }
+
+  // Read-mode toggle (Essential — explains Read is non-scoring stepping).
+  buttons.push(h('button.drill-btn.drill-btn--read', {
+    attrs: {
+      type: 'button',
+      'aria-pressed': String(st.mode === 'read'),
+      ...controlExplainerAttrs({
+        tier: 'essential',
+        label: st.mode === 'read' ? 'Exit Read' : 'Read',
+        description: 'Read mode steps through the line without scoring. It never marks the position failed.',
+      }),
+    },
+    on: { click: () => { if (st.mode === 'read') learn.enterLearn(); else learn.enterRead(); syncLearnBoard(); redraw(); } },
+  }, st.mode === 'read' ? 'Exit Read' : 'Read'));
+
+  if (st.phase === 'complete') {
+    // Mark as learned (Essential — honest override; not a clean pass).
+    buttons.push(h('button.drill-btn.drill-btn--again', {
+      attrs: {
+        type: 'button',
+        ...controlExplainerAttrs({ label: 'Replay line', description: 'Re-opens this line to learn it again from the start.' }),
+      },
+      on: { click: () => { learn.reset(); syncLearnBoard(); redraw(); } },
+    }, 'Replay'));
+  } else {
+    buttons.push(h('button.drill-btn.drill-btn--marklearned', {
+      attrs: {
+        type: 'button',
+        ...controlExplainerAttrs({
+          tier: 'essential',
+          label: 'Mark as learned',
+          description: 'Records an honest override for this line. It does not fabricate a clean pass or accuracy.',
+        }),
+      },
+      on: { click: () => { learn.markAsLearned(); syncLearnBoard(); redraw(); } },
+    }, 'Mark as learned'));
+  }
+
+  // End session (Essential — consequential).
+  buttons.push(h('button.drill-btn.drill-btn--end', {
+    attrs: {
+      type: 'button',
+      ...controlExplainerAttrs({ tier: 'essential', label: 'End session', description: 'Ends this Learn session and returns to the Study.' }),
+    },
+    on: { click: () => { endDrill('learn-end', 'dismiss'); redraw(); } },
+  }, 'End session'));
+
+  return h('div.drill-controls.drill-controls--learn', buttons);
 }
 
 // --- Board ---
