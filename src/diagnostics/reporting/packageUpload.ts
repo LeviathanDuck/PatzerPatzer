@@ -1,3 +1,4 @@
+import type { DiagnosticReportScreenshotAttachment } from './reportAssembly';
 
 export type PackageUploadStatus = 'queued' | 'uploading' | 'uploaded' | 'failed';
 
