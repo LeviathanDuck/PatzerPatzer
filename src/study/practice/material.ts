@@ -172,8 +172,13 @@ export interface DeriveDecisionsOptions {
    * keeps its `decisionId`; a changed expected move / authored path yields a NEW identity and the
    * replaced prior decision is returned in `archived` (append-only at the model level — never
    * overwritten). Omit for a first derivation.
+   *
+   * The explicit `| undefined` is required under the repo's `exactOptionalPropertyTypes: true`: it
+   * lets a caller pass `previous: undefined` (or a value that is structurally `undefined`, e.g.
+   * `CopyDerivationOptions`) and still be assignable, while the derivation treats an explicit
+   * `undefined` and an absent key IDENTICALLY — both take the fresh-mint branch via `?? []` below.
    */
-  readonly previous?: readonly LessonDecision[];
+  readonly previous?: readonly LessonDecision[] | undefined;
 }
 
 /**
