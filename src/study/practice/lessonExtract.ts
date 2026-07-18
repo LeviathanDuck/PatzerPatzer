@@ -17,7 +17,10 @@
 
 
 import type { Shape, TreeNode, TreePath } from '../../tree/types';
-import { deriveLessonDecisions, type LessonDecision, type LessonSourceKind } from './material';
+import {
+  BRANCH_ROLES, deriveLessonDecisions,
+  type BranchRole, type DecisionTrainability, type LessonDecision, type LessonSourceKind,
+} from './material';
 import { getNodeAtPath } from './extractLine';
 import type { LearnReply } from './drillCtrl';
 import type { AuthoredLessonContent } from './lessonAuthoring';
@@ -89,6 +92,78 @@ function moverSideOf(ply: number): 'white' | 'black' {
 function replyCommentOf(node: TreeNode): string | undefined {
   const texts = (node.comments ?? []).map(c => c.text.trim()).filter(t => t.length > 0);
   return texts.length ? texts.join('\n') : undefined;
+}
+
+/**
+ * STRUCTURAL shape of a persisted `study-practice-decisions` row as this pure module needs it —
+ * declared locally so lessonExtract keeps no dependency on the persistence layer (`studyDb.ts`'s
+ * `StudyPracticeDecisionRow` satisfies it structurally). The E2a fields are optional: legacy rows
+ * predate the continuity key.
+ */
+export interface PersistedDecisionRowLike {
+  readonly decisionId: string;
+  readonly lessonId: string;
+  readonly chapterId?: string;
+  readonly sourceLineageId?: string;
+  readonly authoredPath?: string;
+  readonly uci?: string;
+  readonly role?: string;
+  readonly trainability?: string;
+}
+
+/** Every `DecisionTrainability` member (typed so a removed member fails compilation here). */
+const TRAINABILITY_VALUES: readonly DecisionTrainability[] = [
+  'required', 'optional-practice', 'reference-only', 'untrainable',
+];
+
+function asBranchRole(value: string | undefined): BranchRole {
+  return value !== undefined && (BRANCH_ROLES as readonly string[]).includes(value)
+    ? (value as BranchRole)
+    : 'needs-classification';
+}
+
+function asTrainability(value: string | undefined): DecisionTrainability {
+  return value !== undefined && (TRAINABILITY_VALUES as readonly string[]).includes(value)
+    ? (value as DecisionTrainability)
+    : 'untrainable';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function previousFromDecisionRows(
+  rows: readonly PersistedDecisionRowLike[],
+  learnerSide: 'white' | 'black',
+): readonly LessonDecision[] {
+  const previous: LessonDecision[] = [];
+  for (const row of rows) {
+    if (!row.authoredPath || !row.uci) continue;
+    previous.push({
+      identity: {
+        decisionId: row.decisionId,
+        lessonId: row.lessonId,
+        ...(row.chapterId !== undefined ? { chapterId: row.chapterId } : {}),
+        authoredPath: row.authoredPath,
+        ...(row.sourceLineageId !== undefined ? { sourceLineageId: row.sourceLineageId } : {}),
+      },
+      role: asBranchRole(row.role),
+      trainability: asTrainability(row.trainability),
+      learnerSide,
+      evidence: { fen: '', uci: row.uci, san: '', ply: 0 },
+    });
+  }
+  return previous;
 }
 
 export function extractLessonModel(input: ExtractLessonModelInput): LessonModel {

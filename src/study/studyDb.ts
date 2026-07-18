@@ -1388,11 +1388,18 @@ export interface StudyPracticeLessonRow {
   readonly updatedAt: number;
 }
 
-/**
- * Minimal persistence-boundary row shape for `study-practice-decisions`. The canonical
- * decision-identity contract (immutable identity tuple, authored path, source lineage) arrives with
- * D1; B4a needs only the key plus the §14.1 indexed fields.
- */
+
+
+
+
+
+
+
+
+
+
+
+
 export interface StudyPracticeDecisionRow {
   /** Primary key; caller-generated UUID (the durable Required-decision identity). */
   readonly decisionId: string;
@@ -1406,6 +1413,14 @@ export interface StudyPracticeDecisionRow {
   readonly status: string;
   /** Last mutation instant, UTC epoch ms. */
   readonly updatedAt?: number;
+  /** Exact authored node-id path (continuity key part 1; 2-char ids concatenated). */
+  readonly authoredPath?: string;
+  /** Expected authored move (continuity key part 2). */
+  readonly uci?: string;
+  /** Persisted authored `BranchRole` (validated back into the union on read). */
+  readonly role?: string;
+  /** Persisted authored `DecisionTrainability` (validated back into the union on read). */
+  readonly trainability?: string;
 }
 
 function recordPracticeIdbReadFail(storeName: StudyPracticeStoreName, error: unknown): void {
@@ -3392,7 +3407,7 @@ function validateLessonRowShape(v: unknown): SrsPersistenceFailure | null {
   }
 }
 
-const DECISION_ROW_KEYS = ['decisionId', 'lessonId', 'chapterId', 'sourceLineageId', 'status', 'updatedAt'] as const;
+const DECISION_ROW_KEYS = ['decisionId', 'lessonId', 'chapterId', 'sourceLineageId', 'status', 'updatedAt', 'authoredPath', 'uci', 'role', 'trainability'] as const;
 
 /** Total service-side shape validator for a caller-supplied `study-practice-decisions` row: closed
  *  record, non-empty identity/lineage/status strings, optional `chapterId` string, optional finite
@@ -3411,6 +3426,27 @@ function validateDecisionRowShape(v: unknown, path: string): SrsPersistenceFailu
     if (!isNonEmptyString(v.status)) return mkFail('missing-required-string', `${path}.status`, 'status is missing/empty');
     if (v.updatedAt !== undefined && !isFiniteNumber(v.updatedAt)) {
       return mkFail('non-finite-number', `${path}.updatedAt`, 'updatedAt, when present, must be a finite number');
+    }
+
+
+
+    const authoredPath = v.authoredPath;
+    if (authoredPath !== undefined) {
+      if (typeof authoredPath !== 'string' || !isNonEmptyString(authoredPath)) {
+        return mkFail('missing-required-string', `${path}.authoredPath`, 'authoredPath, when present, must be a non-empty string');
+      }
+      if (authoredPath.length % 2 !== 0) {
+        return mkFail('missing-required-string', `${path}.authoredPath`, 'authoredPath, when present, must be a concatenation of 2-char node ids (even length)');
+      }
+    }
+    if (v.uci !== undefined && !isNonEmptyString(v.uci)) {
+      return mkFail('missing-required-string', `${path}.uci`, 'uci, when present, must be a non-empty string');
+    }
+    if (v.role !== undefined && !isNonEmptyString(v.role)) {
+      return mkFail('missing-required-string', `${path}.role`, 'role, when present, must be a non-empty string');
+    }
+    if (v.trainability !== undefined && !isNonEmptyString(v.trainability)) {
+      return mkFail('missing-required-string', `${path}.trainability`, 'trainability, when present, must be a non-empty string');
     }
     return null;
   } catch (e) {
@@ -3778,17 +3814,18 @@ const MERGE_LOCAL_ATTEMPT_LIMIT = 500;
 const MERGE_UNTRAINABLE_STATUS = 'untrainable';
 const MERGE_ARCHIVED_STATUS = 'archived';
 
-/**
- * Assemble the "current local Study + user-owned layers" leg for the three-way merge from EXISTING
- * rows. Reads the StudyItem's protected overlays (`notes`, `localProvenanceLayers`,
- * `linkedSourceProvenance`) plus, for every decision under the item's lessons, its SRS row and immutable
- * attempt history — the overlays the merge must carry forward verbatim. Bounded/indexed reads only.
- *
- * NOTE (Option-A deferral): the minimal `study-practice-decisions` row carries no authored path / move,
- * so the merge joins these overlays to a class by `decisionId` (matched through the INJECTED baseline,
- * which carries both id and continuity key) rather than reconstructing keys here. Durable key↔id mapping
- * persistence is D15's.
- */
+
+
+
+
+
+
+
+
+
+
+
+
 export async function assembleLocalMergeState(studyItemId: string): Promise<LocalMergeState | undefined> {
   const item = await getStudy(studyItemId);
   if (item === undefined) return undefined;
