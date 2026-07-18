@@ -51,6 +51,7 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { renderPracticePanel, type PracticePanelTab, type PracticePanelProps } from './practice/practiceView';
 import { isSourcePreviewOpen, renderSourcePreview } from './practice/sourcePreviewCtrl';
 import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
@@ -104,6 +105,14 @@ let _orpScope: OrpFlagScope = 'current-line';
 let _orpTrainAs: 'white' | 'black' = 'white';
 let _orpSaving = false;
 let _orpFeedback: { studyId: string; kind: 'saved' | 'error' | 'saving'; message: string } | null = null;
+
+
+
+
+
+
+
+let _practiceTab: PracticePanelTab = 'review';
 
 
 
@@ -762,6 +771,35 @@ function renderOrpToolPanel(redraw: () => void): VNode {
     feedback
       ? h(`div.study-tools-col__orp-feedback.study-tools-col__orp-feedback--${feedback.kind}`, feedback.message)
       : null,
+
+
+
+
+
+    renderStudyPracticePanel(redraw),
+  ]);
+}
+
+/** Feed the pure D12 practice panel from the Study host. Live session assembly (DueReviewSession /
+ *  PracticeSelectedSession / DueReviewScorecard) is a separate consumer slice not in D12's 3-file scope;
+ *  until it lands the host supplies the honest empty states so the tab strip, states, and copy are
+ *  reviewable (design-gated posture, mirroring D8's caller-wiring F1). The Analysis-mount hookup and the
+ *  view render tests are the D12 F1s. */
+function renderStudyPracticePanel(redraw: () => void): VNode {
+  const props: PracticePanelProps = {
+    activeTab: _practiceTab,
+    onSelectTab: (tab: PracticePanelTab) => { _practiceTab = tab; redraw(); },
+    // Learn entry list + live drill hand-off arrive with the caller-wiring F1 (D8 precedent); an empty
+    // entry list renders the neutral "No lines to learn" state honestly for now.
+    learn: { status: 'ready', entries: [] },
+    // Review/Practice/Progress render their empty states until the SRS-store assembly plumbing lands.
+    review: { status: 'empty' },
+    practice: { status: 'empty' },
+    progress: { status: 'empty' },
+  };
+  return h('div.study-tools-col__field', [
+    h('span.study-tools-col__label', 'Practice & progress'),
+    renderPracticePanel(props),
   ]);
 }
 
