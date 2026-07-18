@@ -3541,6 +3541,27 @@ function validateDecisionRowShape(v: unknown, path: string): SrsPersistenceFailu
   }
 }
 
+
+
+
+
+
+
+
+
+function validateEnrollmentDecisionRow(v: unknown, path: string): SrsPersistenceFailure | null {
+  const shape = validateDecisionRowShape(v, path);
+  if (shape) return shape;
+  const row = v as Record<string, unknown>;
+  if (row.authoredPath === undefined) {
+    return mkFail('missing-required-string', `${path}.authoredPath`, 'enrollment requires the E2a continuity key: authoredPath is missing (a key-less enrolled row orphans its SRS progress on reload)');
+  }
+  if (row.uci === undefined) {
+    return mkFail('missing-required-string', `${path}.uci`, 'enrollment requires the E2a continuity key: uci is missing (a key-less enrolled row orphans its SRS progress on reload)');
+  }
+  return null;
+}
+
 /** Getter-free canonical capture of every enrollment input, or a typed pre-DB rejection. */
 interface CanonicalEnrollInput {
   readonly lesson: StudyPracticeLessonRow;
@@ -3588,7 +3609,7 @@ function canonicalizeEnrollInput(input: EnrollStudyPracticeLessonInput): EnrollC
     return { ok: false, rejection: rejectedEnrollment('invalid', `decisions array invalid at ${decisionsKeyFail.path}: ${decisionsKeyFail.reason}`) };
   }
   for (let i = 0; i < decisions.length; i++) {
-    const f = validateDecisionRowShape(decisions[i], `decisions[${i}]`);
+    const f = validateEnrollmentDecisionRow(decisions[i], `decisions[${i}]`);
     if (f) return { ok: false, rejection: rejectedEnrollment('invalid', `decision failed validation at ${f.path}: ${f.reason}`) };
   }
   deepFreeze(decisions);
