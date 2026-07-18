@@ -28,6 +28,26 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import type { TreeNode } from '../../tree/types';
 import { pgnToTree } from '../../tree/pgn';
 import { mintSourceLineageId, linkedSourceVersion } from './linkedSource';
@@ -180,11 +200,16 @@ function studyIdForTarget(target: VerifiedStudyTarget): string | null {
   return parseStudyId(target.studyId);
 }
 
-// --- Endpoints (policy shape — confirm exact paths at build time, gate §2) -------------------------
+
 
 function studyPgnUrl(studyId: string): string {
   return `${LICHESS_API_BASE}/api/study/${encodeURIComponent(studyId)}.pgn`;
 }
+
+
+
+
+
 
 function studyMetaUrl(studyId: string): string {
   return `${LICHESS_API_BASE}/api/study/${encodeURIComponent(studyId)}`;
@@ -266,6 +291,10 @@ function firstString(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+
+
+
+
 function resolveAuthor(meta: Record<string, unknown>): string | undefined {
   const owner = meta.owner;
   if (typeof owner === 'string') return firstString(owner);
@@ -277,14 +306,18 @@ function resolveAuthor(meta: Record<string, unknown>): string | undefined {
   return firstString(meta.author, meta.username, meta.ownerId, meta.ownerName);
 }
 
-/** Derive a FINITE integer snapshot cursor from metadata. Tries explicit revision/version fields, then
- *  an updated-at epoch cursor. Returns null when none is a finite number — the caller then fails
- *  closed (never persists a link with an unusable revision). */
+
+
+
+
+
+
 function deriveFiniteRevision(meta: Record<string, unknown>): number | null {
   const nested = (meta.updated && typeof meta.updated === 'object')
     ? (meta.updated as Record<string, unknown>).at
     : undefined;
-  const candidates = [meta.revision, meta.version, meta.updatedAt, nested, meta.dateUpdated];
+  // Live-authoritative update-timestamp cursors first; revision/version are non-live fixture tolerance.
+  const candidates = [meta.updatedAt, nested, meta.dateUpdated, meta.revision, meta.version];
   for (const c of candidates) {
     if (typeof c === 'number' && Number.isFinite(c)) return Math.floor(c);
   }
