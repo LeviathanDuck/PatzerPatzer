@@ -680,7 +680,11 @@ export const DB_NAME = 'chess-patzer';
 
 
 
-export const DB_VERSION = 27;
+
+
+
+
+export const DB_VERSION = 28;
 
 let _idb: IDBDatabase | undefined;
 
@@ -920,6 +924,13 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   ensureIndex(practiceSessionsStore, 'lessonId',  'lessonId',  { unique: false });
   ensureIndex(practiceSessionsStore, 'state',     'state',     { unique: false });
   ensureIndex(practiceSessionsStore, 'updatedAt', 'updatedAt', { unique: false });
+
+
+
+
+  const authoredContentStore = ensureStore(db, event, 'study-practice-authored-content', { keyPath: 'decisionId' });
+  ensureIndex(authoredContentStore, 'lessonId',  'lessonId',  { unique: false });
+  ensureIndex(authoredContentStore, 'updatedAt', 'updatedAt', { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {

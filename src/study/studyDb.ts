@@ -38,6 +38,7 @@ import type {
   LegacyMigrationPlanResult,
   LegacyMigrationDecisionAuthorityEntry,
 } from './practice/migration';
+import type { AuthoredLessonContent } from './practice/lessonAuthoring';
 import { stampLinkedSourceProvenance } from './practice/linkedSource';
 import { acceptedPlan } from './practice/linkedStudyMerge';
 import type {
@@ -1369,7 +1370,8 @@ type StudyPracticeStoreName =
   | 'study-practice-decisions'
   | 'study-practice-srs'
   | 'study-practice-attempts'
-  | 'study-practice-sessions';
+  | 'study-practice-sessions'
+  | 'study-practice-authored-content';
 
 /**
  * Minimal persistence-boundary row shape for `study-practice-lessons`. The canonical authored-lesson
@@ -1680,6 +1682,91 @@ export async function listPracticeDecisionsByLesson(
   const db = await openDb();
   return collectBoundedPracticeCursor<StudyPracticeDecisionRow>(
     db, 'study-practice-decisions', 'lessonId', IDBKeyRange.only(lessonId), 'next', limit,
+  );
+}
+
+
+
+
+
+
+
+
+
+export interface StudyPracticeAuthoredContentRow {
+  /** Primary key — the owning decision's durable UUID. */
+  readonly decisionId: string;
+  /** Indexed — owning lesson, for bounded per-lesson loads. */
+  readonly lessonId: string;
+  /** Indexed — last mutation instant, UTC epoch ms. */
+  readonly updatedAt: number;
+  readonly instructionalPrompt?: string;
+  readonly hiddenHint?: string;
+  readonly genericDeviation?: string;
+  readonly wrongRefutationExplanation?: string;
+  readonly authoredBranchName?: string;
+  readonly recallPromptCue?: string;
+}
+
+/** The exact `AuthoredLessonContent` text fields the row round-trips — a CLOSED mapping. */
+const AUTHORED_CONTENT_TEXT_FIELDS = [
+  'instructionalPrompt', 'hiddenHint', 'genericDeviation',
+  'wrongRefutationExplanation', 'authoredBranchName', 'recallPromptCue',
+] as const;
+type AuthoredContentTextField = (typeof AUTHORED_CONTENT_TEXT_FIELDS)[number];
+
+/**
+ * Project an `AuthoredLessonContent` onto its persistence row. Closed field mapping: ONLY the six
+ * known text fields cross; unknown keys on the input never reach the row; empty/whitespace-only
+ * text is dropped (absent, never `undefined`/empty — `exactOptionalPropertyTypes` discipline).
+ */
+export function authoredContentRowOf(
+  content: AuthoredLessonContent,
+  lessonId: string,
+  now: number,
+): StudyPracticeAuthoredContentRow {
+  const row: { -readonly [K in keyof StudyPracticeAuthoredContentRow]?: StudyPracticeAuthoredContentRow[K] } = {
+    decisionId: content.decisionId,
+    lessonId,
+    updatedAt: now,
+  };
+  for (const field of AUTHORED_CONTENT_TEXT_FIELDS) {
+    const value = content[field];
+    if (typeof value === 'string' && value.trim().length > 0) row[field] = value;
+  }
+  return row as StudyPracticeAuthoredContentRow;
+}
+
+/** Rebuild the in-memory `AuthoredLessonContent` from a row. Row bookkeeping (`lessonId`,
+ *  `updatedAt`) never leaks into the content object; absent text fields stay absent. */
+export function authoredContentFromRow(row: StudyPracticeAuthoredContentRow): AuthoredLessonContent {
+  const content: { decisionId: string } & { -readonly [K in AuthoredContentTextField]?: string } = {
+    decisionId: row.decisionId,
+  };
+  for (const field of AUTHORED_CONTENT_TEXT_FIELDS) {
+    const value = row[field];
+    if (typeof value === 'string' && value.trim().length > 0) content[field] = value;
+  }
+  return content;
+}
+
+export function saveAuthoredContentRow(row: StudyPracticeAuthoredContentRow): Promise<void> {
+  return practicePut('study-practice-authored-content', row);
+}
+export function getAuthoredContentRow(decisionId: string): Promise<StudyPracticeAuthoredContentRow | undefined> {
+  return practiceGet<StudyPracticeAuthoredContentRow>('study-practice-authored-content', decisionId);
+}
+export function deleteAuthoredContentRow(decisionId: string): Promise<void> {
+  return practiceDelete('study-practice-authored-content', decisionId);
+}
+/** Bounded list of a lesson's authored-content rows via the `lessonId` index. */
+export async function listAuthoredContentByLesson(
+  lessonId: string,
+  limit: number,
+): Promise<StudyPracticeAuthoredContentRow[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<StudyPracticeAuthoredContentRow>(
+    db, 'study-practice-authored-content', 'lessonId', IDBKeyRange.only(lessonId), 'next', limit,
   );
 }
 
