@@ -5,7 +5,10 @@
 import { DB_NAME, DB_VERSION, upgradeGameDbSchema } from '../idb/index';
 import { compileGameFilterQuery, type CompiledGameFilterEvaluator } from '../gameFilters/filterCore';
 import type { GameFilterDateRange, GameFilterProjection, GameFilterQuery } from '../gameFilters/types';
-import type { StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder } from './types';
+import type {
+  StudyItem, TrainableSequence, PositionProgress, DrillAttempt, StudyFolder,
+  EngineDrillRecord, StudyPracticeCacheRow,
+} from './types';
 import { enqueueRemoteSyncDelete, enqueueRemoteSyncUpsert, type RemoteSyncStoreName } from '../sync/remoteSync';
 import { record, Severity } from '../diagnostics';
 import { isHidden } from './hiddenItems';
@@ -1371,7 +1374,9 @@ type StudyPracticeStoreName =
   | 'study-practice-srs'
   | 'study-practice-attempts'
   | 'study-practice-sessions'
-  | 'study-practice-authored-content';
+  | 'study-practice-authored-content'
+  | 'engine-drills'
+  | 'study-practice-cache';
 
 /**
  * Minimal persistence-boundary row shape for `study-practice-lessons`. The canonical authored-lesson
@@ -4347,6 +4352,202 @@ export async function applyAcceptedMerge(accepted: AcceptedMergePlan): Promise<M
     };
     itemReq.onerror = () => {
       abortWith({ applied: false, reason: 'transaction-failed', detail: `study read failed for ${plan.studyItemId}` });
+    };
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** The exact top-level fields an `engine-drills` row round-trips — a CLOSED mapping (the B1
+ *  closed-record discipline): unknown keys on the input never reach the persisted row. */
+const ENGINE_DRILL_RECORD_FIELDS = [
+  'drillId', 'studyItemId', 'studyNodePath', 'startFen', 'snapshot', 'settingsHistory',
+  'outcome', 'completionState', 'retryOfDrillId', 'createdAt', 'updatedAt',
+] as const;
+
+/**
+ * Fail-closed persistence guard for the durable drill record: closed top-level field projection
+ * plus identity/linkage invariants. Throws (never silently repairs) on a malformed record — the
+ * durable catalog must not accumulate rows that later break retry-chain or index reads.
+ */
+export function asPersistableEngineDrillRecord(record: EngineDrillRecord): EngineDrillRecord {
+  if (typeof record.drillId !== 'string' || record.drillId.trim().length === 0) {
+    throw new Error('engine-drill-record: drillId must be a non-empty string');
+  }
+  if (record.retryOfDrillId !== undefined && record.retryOfDrillId === record.drillId) {
+    throw new Error('engine-drill-record: retryOfDrillId must not self-link');
+  }
+  if (typeof record.startFen !== 'string' || record.startFen.trim().length === 0) {
+    throw new Error('engine-drill-record: startFen must be a non-empty string');
+  }
+  if (!Number.isFinite(record.createdAt) || !Number.isFinite(record.updatedAt)) {
+    throw new Error('engine-drill-record: createdAt/updatedAt must be finite epoch ms');
+  }
+  const row: Record<string, unknown> = {};
+  for (const field of ENGINE_DRILL_RECORD_FIELDS) {
+    const value = (record as unknown as Record<string, unknown>)[field];
+    if (value !== undefined) row[field] = value;
+  }
+  return row as unknown as EngineDrillRecord;
+}
+
+/**
+ * First save of a drill record — existence-rejecting (`practiceAdd`): a duplicate drillId resolves
+ * typed instead of overwriting, so retries can never clobber the record they link to.
+ */
+export function createEngineDrillRecord(record: EngineDrillRecord): Promise<{ readonly duplicate: boolean }> {
+  return practiceAdd('engine-drills', asPersistableEngineDrillRecord(record));
+}
+/** Incremental upsert of an EXISTING drill's record (§13 "saves incrementally"). */
+export function saveEngineDrillRecord(record: EngineDrillRecord): Promise<void> {
+  return practicePut('engine-drills', asPersistableEngineDrillRecord(record));
+}
+export function getEngineDrillRecord(drillId: string): Promise<EngineDrillRecord | undefined> {
+  return practiceGet<EngineDrillRecord>('engine-drills', drillId);
+}
+export function deleteEngineDrillRecord(drillId: string): Promise<void> {
+  return practiceDelete('engine-drills', drillId);
+}
+/** Bounded newest-first list of one Study's drills (`studyItemId` index; in-cursor recency sort is
+ *  not available on a one-part index, so callers get insertion order per key — the catalog UI's
+ *  date grouping (D16) re-sorts its bounded page). */
+export async function listEngineDrillsByStudyItem(
+  studyItemId: string,
+  limit: number,
+): Promise<EngineDrillRecord[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<EngineDrillRecord>(
+    db, 'engine-drills', 'studyItemId', IDBKeyRange.only(studyItemId), 'next', limit,
+  );
+}
+/** Bounded newest-first list across all drills via the `updatedAt` index walked descending. */
+export async function listRecentEngineDrills(limit: number): Promise<EngineDrillRecord[]> {
+  const db = await openDb();
+  return collectBoundedPracticeCursor<EngineDrillRecord>(
+    db, 'engine-drills', 'updatedAt', null, 'prev', limit,
+  );
+}
+
+// Namespaced cache-key vocabulary for the drill boundary. Bulky PV/calculation detail for a drill
+// is stored ONLY under this kind — never on the durable record.
+export const DRILL_ENGINE_DETAIL_CACHE_KIND = 'drill-engine-detail';
+export function drillEngineDetailCacheKey(drillId: string): string {
+  return `${DRILL_ENGINE_DETAIL_CACHE_KIND}:${drillId}`;
+}
+
+export function putStudyPracticeCacheEntry(row: StudyPracticeCacheRow): Promise<void> {
+  if (typeof row.cacheKey !== 'string' || row.cacheKey.trim().length === 0) {
+    return Promise.reject(new Error('study-practice-cache: cacheKey must be a non-empty string'));
+  }
+  if (typeof row.kind !== 'string' || row.kind.trim().length === 0) {
+    return Promise.reject(new Error('study-practice-cache: kind must be a non-empty string'));
+  }
+  if (!Number.isFinite(row.lastAccessedAt)) {
+    return Promise.reject(new Error('study-practice-cache: lastAccessedAt must be finite epoch ms'));
+  }
+  return practicePut('study-practice-cache', row);
+}
+
+/**
+ * Cache read that TOUCHES recency: on a hit, `lastAccessedAt` is rewritten to `now` in the same
+ * readwrite transaction, so eviction order tracks actual use. A miss resolves undefined.
+ */
+export async function getStudyPracticeCacheEntry(
+  cacheKey: string,
+  now: number,
+): Promise<StudyPracticeCacheRow | undefined> {
+  const db = await openDb();
+  return new Promise<StudyPracticeCacheRow | undefined>((resolve, reject) => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction('study-practice-cache', 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    let hit: StudyPracticeCacheRow | undefined;
+    tx.oncomplete = () => resolve(hit);
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', 'put');
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', 'put');
+      reject(tx.error ?? new DOMException('study-practice-cache get transaction aborted', 'AbortError'));
+    };
+    const store = tx.objectStore('study-practice-cache');
+    const req = store.get(cacheKey) as IDBRequest<StudyPracticeCacheRow | undefined>;
+    req.onsuccess = () => {
+      const row = req.result;
+      if (row === undefined) return; // miss — tx completes, resolves undefined
+      hit = { ...row, lastAccessedAt: Number.isFinite(now) ? now : row.lastAccessedAt };
+      store.put(hit);
+    };
+    // req.onerror: the tx-level handlers reject; no separate path needed.
+  });
+}
+
+export function deleteStudyPracticeCacheEntry(cacheKey: string): Promise<void> {
+  return practiceDelete('study-practice-cache', cacheKey);
+}
+
+/**
+ * Bounded oldest-first eviction (§14.1 "local-only, evictable"): walks the `lastAccessedAt` index
+ * ascending, deleting until at most `keepNewest` entries remain. `maxDeletes` bounds one pass
+ * (default 200) so a huge backlog cannot stall the UI in a single transaction (CR-1/CR-4).
+ * Returns the number of entries deleted.
+ */
+export async function evictStudyPracticeCache(
+  opts: { readonly keepNewest: number; readonly maxDeletes?: number },
+): Promise<number> {
+  const keepNewest = opts.keepNewest;
+  const maxDeletes = opts.maxDeletes ?? 200;
+  if (!Number.isFinite(keepNewest) || keepNewest < 0) {
+    throw new Error('study-practice-cache: keepNewest must be a non-negative number');
+  }
+  const db = await openDb();
+  return new Promise<number>((resolve, reject) => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction('study-practice-cache', 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    let deleted = 0;
+    tx.oncomplete = () => resolve(deleted);
+    tx.onerror = () => {
+      recordStudyTxFail(tx, 'onerror', 'delete');
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', 'delete');
+      reject(tx.error ?? new DOMException('study-practice-cache evict transaction aborted', 'AbortError'));
+    };
+    const store = tx.objectStore('study-practice-cache');
+    const countReq = store.count();
+    countReq.onsuccess = () => {
+      const excess = countReq.result - keepNewest;
+      if (excess <= 0) return; // nothing to evict — tx completes, resolves 0
+      const budget = Math.min(excess, maxDeletes);
+      const cursorReq = store.index('lastAccessedAt').openCursor(null, 'next');
+      cursorReq.onsuccess = () => {
+        const cursor = cursorReq.result;
+        if (!cursor || deleted >= budget) return; // stop driving; auto-commit fires oncomplete
+        cursor.delete();
+        deleted += 1;
+        cursor.continue();
+      };
     };
   });
 }

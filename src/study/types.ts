@@ -2,6 +2,7 @@
 
 
 import type { SaveFlowGameDestination } from '../save/saveFlowCtrl';
+import type { EngineDrillSnapshot } from './practice/engineDrillCtrl';
 import type { SrsSourceVersion } from './practice/srsTypes';
 
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
@@ -265,3 +266,78 @@ export type {
   SrsTraversalPlanEntry,
   SrsTraversalPlan,
 } from './practice/srsTypes';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Catalog result classification (§14.1 `outcome` index). 'ended' covers finish-drill/limit
+ *  endings that the configured goals did not turn into a win/loss verdict. */
+export type EngineDrillOutcome = 'won' | 'lost' | 'draw' | 'ended';
+
+/** §13 "completion state, and partial/interrupted state" (§14.1 `completionState` index).
+ *  'partial' = resumable in-progress save; 'interrupted' = ended without a clean result surface. */
+export type EngineDrillCompletionState = 'complete' | 'partial' | 'interrupted';
+
+/** One §12.3/§13 settings/difficulty change: "preserve the original settings in history". */
+export interface EngineDrillSettingsChange {
+  readonly at: number;
+  readonly requestedDifficulty: string;
+  readonly difficulty: string;
+  readonly substituted: boolean;
+}
+
+
+
+
+
+
+
+
+
+export interface EngineDrillRecord {
+  /** Generated once, never derived from FEN/SAN/title/timestamp/position (§14.1). */
+  readonly drillId: string;
+  /** Starting Study reference when the drill launched from Study material (§13). */
+  readonly studyItemId?: string;
+  /** Starting node path within that Study, when present (§13 "Study/node reference"). */
+  readonly studyNodePath?: string;
+  readonly startFen: string;
+  /** Full JSON-safe drill payload: moves, side, goals, limits, settings, assistance, takebacks,
+   *  timing, phase, end reason, terminal (D13 snapshot — the resume contract). */
+  readonly snapshot: EngineDrillSnapshot;
+  /** §13 settings/difficulty change history, original settings preserved. */
+  readonly settingsHistory: readonly EngineDrillSettingsChange[];
+  readonly outcome: EngineDrillOutcome | null;
+  readonly completionState: EngineDrillCompletionState;
+  /** Linked-attempt chain (§13 "Retries create linked attempts"). */
+  readonly retryOfDrillId?: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+/**
+ * `study-practice-cache` store row (§14.1: namespaced cache key; kind/lastAccessedAt/sourceLinkId/
+ * drillId indexes; sync class "local-only, evictable"). Bulky PV/calculation detail for drills
+ * lives here under kind 'drill-engine-detail'; eviction is oldest-first by `lastAccessedAt`.
+ */
+export interface StudyPracticeCacheRow {
+  /** Namespaced key, e.g. `drill-engine-detail:<drillId>`. */
+  readonly cacheKey: string;
+  readonly kind: string;
+  readonly lastAccessedAt: number;
+  readonly sourceLinkId?: string;
+  readonly drillId?: string;
+  /** JSON-safe cached payload — evictable, never authoritative, never synced. */
+  readonly payload: unknown;
+}

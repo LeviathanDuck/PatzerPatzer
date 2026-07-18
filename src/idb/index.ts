@@ -684,7 +684,12 @@ export const DB_NAME = 'chess-patzer';
 
 
 
-export const DB_VERSION = 28;
+
+
+
+
+
+export const DB_VERSION = 29;
 
 let _idb: IDBDatabase | undefined;
 
@@ -931,6 +936,24 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   const authoredContentStore = ensureStore(db, event, 'study-practice-authored-content', { keyPath: 'decisionId' });
   ensureIndex(authoredContentStore, 'lessonId',  'lessonId',  { unique: false });
   ensureIndex(authoredContentStore, 'updatedAt', 'updatedAt', { unique: false });
+
+
+
+
+
+  const engineDrillsStore = ensureStore(db, event, 'engine-drills', { keyPath: 'drillId' });
+  ensureIndex(engineDrillsStore, 'studyItemId',     'studyItemId',     { unique: false });
+  ensureIndex(engineDrillsStore, 'updatedAt',       'updatedAt',       { unique: false });
+  ensureIndex(engineDrillsStore, 'completionState', 'completionState', { unique: false });
+  ensureIndex(engineDrillsStore, 'outcome',         'outcome',         { unique: false });
+
+
+
+  const practiceCacheStore = ensureStore(db, event, 'study-practice-cache', { keyPath: 'cacheKey' });
+  ensureIndex(practiceCacheStore, 'kind',           'kind',           { unique: false });
+  ensureIndex(practiceCacheStore, 'lastAccessedAt', 'lastAccessedAt', { unique: false });
+  ensureIndex(practiceCacheStore, 'sourceLinkId',   'sourceLinkId',   { unique: false });
+  ensureIndex(practiceCacheStore, 'drillId',        'drillId',        { unique: false });
 }
 
 function openGameDb(): Promise<IDBDatabase> {
