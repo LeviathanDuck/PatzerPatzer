@@ -24,7 +24,7 @@ import {
   getStudy, createStudyStrict, saveStudyStrict,
 } from '../studyDb';
 import type { EngineDrillRecord } from '../types';
-import { resumePersistedEngineDrill, startEngineDrill, engineDrillActive } from './engineDrillHost';
+import { resumePersistedEngineDrill, startEngineDrill, engineDrillActive, openDrillRecordOnBoard } from './engineDrillHost';
 import { buildSelectedDrillExport, type DrillExportScope } from './orpBundle';
 import { planDrillPromotion, applyDrillPromotion, type DrillPromotionPlan } from './drillPromotion';
 
@@ -136,6 +136,9 @@ function dateGroupLabel(epochMs: number): string {
 
 function resumeRecord(record: EngineDrillRecord, redraw: () => void): void {
   if (engineDrillActive()) { _notice = 'A drill is already live on the analysis board — finish or abandon it first.'; redraw(); return; }
+
+
+  openDrillRecordOnBoard(record);
   resumePersistedEngineDrill(record);
   closeDrillCatalog();
   writeHashRoute('#/analysis');
@@ -144,6 +147,8 @@ function resumeRecord(record: EngineDrillRecord, redraw: () => void): void {
 
 function retryRecord(record: EngineDrillRecord, redraw: () => void): void {
   if (engineDrillActive()) { _notice = 'A drill is already live on the analysis board — finish or abandon it first.'; redraw(); return; }
+
+  openDrillRecordOnBoard(record, { atStart: true });
   const s = record.snapshot;
   startEngineDrill({
     startFen: s.startFen,
@@ -317,10 +322,17 @@ function renderRow(r: EngineDrillRecord, redraw: () => void): VNode {
           }, 'Resume')
         : null,
       h('button.drill-catalog__action', {
-        attrs: { type: 'button', disabled: true, ...controlExplainerAttrs({
+        attrs: { type: 'button', ...controlExplainerAttrs({
           label: 'Analyze', tier: 'essential',
-          description: 'Unavailable until the analysis board can be positioned to a drill automatically (follow-up in progress).',
+          description: 'Opens this drill game on the analysis board for engine review.',
         }) },
+        on: {
+          click: () => {
+            openDrillRecordOnBoard(r);
+            closeDrillCatalog();
+            redraw();
+          },
+        },
       }, 'Analyze'),
       h('button.drill-catalog__action', {
         attrs: { type: 'button', ...controlExplainerAttrs({

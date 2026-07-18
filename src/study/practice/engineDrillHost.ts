@@ -21,10 +21,12 @@
 
 
 import { h, type VNode } from 'snabbdom';
-import { parseFen, makeFen } from 'chessops/fen';
+import { parseFen, makeFen, INITIAL_FEN } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
+import { makePgn, defaultHeaders, ChildNode, Node as PgnNode, type PgnNodeData } from 'chessops/pgn';
+import { chainDrillLine } from './drillPromotion';
 import { requestPlayMove, cancelPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
 import { engineMode, exitPlayMode } from '../../engine/ctrl';
@@ -55,6 +57,9 @@ export interface EngineDrillHostDeps {
   playUciMove(uci: string): void;
   /** Live analysis eval of the CURRENT position (white-perspective), with reached depth. */
   getEvalForCurrent(): { readonly cp?: number; readonly mate?: number; readonly depth?: number } | undefined;
+
+
+  openPgnOnBoard?(pgn: string): void;
   redraw(): void;
   now(): number;
 }
@@ -387,6 +392,38 @@ export function abandonEngineDrill(): void {
   _drillId = null;
   _record = null;
   deps?.redraw();
+}
+
+
+
+/** Minimal drill-line PGN: SetUp/FEN headers off-initial + the played SAN mainline. A mainline-
+ *  only sibling of drillPromotion's fuller chapter builder — enough to position the board. */
+function drillRecordPgn(record: EngineDrillRecord, includeMoves: boolean): string {
+  const headers = defaultHeaders();
+  headers.set('Event', 'Engine Drill');
+  headers.set('Site', 'ChessPatzer');
+  if (record.startFen.split(' ').slice(0, 4).join(' ') !== INITIAL_FEN.split(' ').slice(0, 4).join(' ')) {
+    headers.set('SetUp', '1');
+    headers.set('FEN', record.startFen);
+  }
+  const root = new PgnNode<PgnNodeData>();
+  if (includeMoves) {
+    // A corrupt/unchainable record falls back to the bare start position — never a guessed line.
+    const line = chainDrillLine(record) ?? [];
+    let cursor: PgnNode<PgnNodeData> = root;
+    for (const m of line) {
+      const child = new ChildNode<PgnNodeData>({ san: m.san });
+      cursor.children.push(child);
+      cursor = child;
+    }
+  }
+  return makePgn({ headers, moves: root });
+}
+
+/** Load a drill record's material onto the analysis board (played line, or bare start position
+ *  when `atStart`). No-op when the host is uninitialized or the seam is unwired. */
+export function openDrillRecordOnBoard(record: EngineDrillRecord, opts?: { readonly atStart?: boolean }): void {
+  deps?.openPgnOnBoard?.(drillRecordPgn(record, opts?.atStart !== true));
 }
 
 /** Resume a partial drill from its persisted record (catalog resume rides D16; exported now so

@@ -4357,6 +4357,9 @@ initEngineDrillHost({
   navigate,
   playUciMove: (uci: string) => playUciMove(uci),
   getEvalForCurrent: () => evalCache.get(ctrl.path),
+
+
+  openPgnOnBoard: (pgn: string) => openAnalysisBoardFromEditor(pgn),
   redraw,
   now: () => Date.now(),
 });
