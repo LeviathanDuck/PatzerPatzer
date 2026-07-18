@@ -55,9 +55,11 @@ import type { ResolvedVerifiedSource, ResolvedChapter } from './lichessLibrary';
 // authored path AND expected move agree — deliberately NOT FEN: a transposition reaching the same FEN by
 // a different authored path has a different key and stays DISTINCT (material.ts:239-241; P2-ORP-17).
 
-/** The identity-continuity key: authored path + expected move (mirrors material.ts:239-241). */
-export function continuityKey(authoredPath: TreePath, uci: Uci): string {
-  return `${authoredPath} ${uci}`;
+
+
+
+export function continuityKey(chapterId: string | undefined, authoredPath: TreePath, uci: Uci): string {
+  return `${chapterId ?? ''} ${authoredPath} ${uci}`;
 }
 
 /** The lead-in (parent-position) path: the authored path minus its final 2-char node id
@@ -67,7 +69,13 @@ function leadInPathOf(authoredPath: TreePath): TreePath {
 }
 
 function keyOf(decision: LessonDecision): string {
-  return continuityKey(decision.identity.authoredPath, decision.evidence.uci);
+  return continuityKey(decision.identity.chapterId, decision.identity.authoredPath, decision.evidence.uci);
+}
+
+/** A chapter-scoped lead-in grouping key (rewrite/split/merge detection must not pair a removal in
+ *  chapter A with an addition in chapter B). */
+function leadInGroupKeyOf(decision: LessonDecision): string {
+  return `${decision.identity.chapterId ?? ''} ${leadInPathOf(decision.identity.authoredPath)}`;
 }
 
 // --- Presentation digest — the unchanged-vs-presentation-only signal -------------------------------
@@ -92,14 +100,14 @@ function presentationDigestFor(node: TreeNode): string {
 }
 
 /** Walk a chapter tree collecting a presentation digest for every authored move node, keyed by the
- *  same continuity key D1 uses. Mirrors D1's `collectRawDecisions` walk (material.ts:254-272) for path
- *  construction so the digest keys line up with the derived decisions' keys. */
-function collectPresentationDigests(root: TreeNode, out: Map<string, string>): void {
+ *  same CHAPTER-scoped continuity key the decisions use. Mirrors D1's `collectRawDecisions` walk
+ *  (material.ts:254-272) for path construction so the digest keys line up with the decisions' keys. */
+function collectPresentationDigests(chapterId: string, root: TreeNode, out: Map<string, string>): void {
   const walk = (node: TreeNode, path: TreePath): void => {
     node.children.forEach((child) => {
       const childPath = path + child.id;
       if (child.uci && child.san) {
-        out.set(continuityKey(childPath, child.uci), presentationDigestFor(child));
+        out.set(continuityKey(chapterId, childPath, child.uci), presentationDigestFor(child));
       }
       walk(child, childPath);
     });
@@ -109,30 +117,42 @@ function collectPresentationDigests(root: TreeNode, out: Map<string, string>): v
 
 // --- Snapshot leg (baseline R0 / incoming R1) ------------------------------------------------------
 
-/**
- * A source snapshot leg: the derived decision set PLUS the per-key presentation digest. The baseline
- * (R0) is INJECTED as this shape (durable persistence deferred to D15); the incoming (R1) is built from
- * D4's `ResolvedVerifiedSource` via `snapshotFromChapters`.
- */
+
+
+
+
+
+
+
 export interface SourceSnapshot {
+  readonly sourceLineageId: string;
+  readonly sourceRevision: number;
   readonly decisions: readonly LessonDecision[];
   /** continuityKey → presentation digest. */
   readonly presentationByKey: ReadonlyMap<string, string>;
 }
 
-/** Config for deriving a source snapshot from chapters — mirrors D1's `DeriveDecisionsOptions` minus
- *  the tree and `previous` (both supplied per call). */
+
+
+
+
+
 export interface MergeDeriveConfig {
-  readonly lessonId: string;
-  readonly chapterId?: string;
   readonly sourceKind: LessonSourceKind;
   readonly learnerSide: 'white' | 'black';
-  readonly sourceLineageId?: string;
-  readonly sourceRevision?: number;
   /** Identity minter (injected so a "new"/"changed" decision's id provably comes from the mint, not the
    *  content). Forwarded to D1's `deriveLessonDecisions`. */
   readonly mintId?: () => string;
 }
+
+/** The non-caller-controlled identity a snapshot derivation is stamped with (produceMergePlan
+ *  supplies it from the local leg + verified incoming source). */
+export interface SnapshotIdentity {
+  readonly lessonId: string;
+  readonly sourceLineageId: string;
+  readonly sourceRevision: number;
+}
+
 
 
 
@@ -144,25 +164,35 @@ export interface MergeDeriveConfig {
 export function snapshotFromChapters(
   chapters: readonly ResolvedChapter[],
   config: MergeDeriveConfig,
+  identity: SnapshotIdentity,
   previous?: readonly LessonDecision[],
 ): SourceSnapshot {
   const decisions: LessonDecision[] = [];
   const presentationByKey = new Map<string, string>();
   for (const chapter of chapters) {
     const model = deriveLessonDecisions(chapter.tree, {
-      lessonId: config.lessonId,
+      lessonId: identity.lessonId,
       sourceKind: config.sourceKind,
       learnerSide: config.learnerSide,
-      ...(config.chapterId !== undefined ? { chapterId: config.chapterId } : {}),
-      ...(config.sourceLineageId !== undefined ? { sourceLineageId: config.sourceLineageId } : {}),
-      ...(config.sourceRevision !== undefined ? { sourceRevision: config.sourceRevision } : {}),
+      chapterId: chapter.chapterId,
+      sourceLineageId: identity.sourceLineageId,
+      sourceRevision: identity.sourceRevision,
       ...(config.mintId !== undefined ? { mintId: config.mintId } : {}),
-      ...(previous !== undefined ? { previous } : {}),
+      // Continuity is chapter-scoped: only the baseline decisions of THIS chapter may carry identity
+      // forward, so a same-opening decision in another chapter can never donate its id (finding 1).
+      ...(previous !== undefined
+        ? { previous: previous.filter(p => p.identity.chapterId === chapter.chapterId) }
+        : {}),
     });
     decisions.push(...model.decisions);
-    collectPresentationDigests(chapter.tree, presentationByKey);
+    collectPresentationDigests(chapter.chapterId, chapter.tree, presentationByKey);
   }
-  return { decisions, presentationByKey };
+  return {
+    sourceLineageId: identity.sourceLineageId,
+    sourceRevision: identity.sourceRevision,
+    decisions,
+    presentationByKey,
+  };
 }
 
 // --- Local leg (current Study + user-owned layers) -------------------------------------------------
@@ -235,10 +265,18 @@ export interface MergePlanEntry {
   readonly newTrainability?: DecisionTrainability;
 }
 
-/** Why a plan is fail-closed (no per-decision apply): the required baseline leg is missing, or the
- *  incoming revision is not a usable finite integer. Fail-closed routes to explicit update review — it
- *  NEVER falls back to a two-way local-vs-incoming diff that could overwrite local edits (§8 risk 6). */
-export type MergeFailClosedReason = 'missing-baseline' | 'unusable-revision';
+
+
+
+
+
+
+export type MergeFailClosedReason =
+  | 'missing-baseline'
+  | 'unusable-revision'
+  | 'lineage-mismatch'
+  | 'revision-regression'
+  | 'duplicate-continuity-key';
 
 /**
  * The inert merge plan — a PROPOSAL. It mutates nothing; `applyAcceptedMerge` (studyDb.ts) applies it
@@ -301,41 +339,66 @@ export function produceMergePlan(input: ProduceMergePlanInput): MergePlan {
   const { baseline, incoming, local, deriveConfig } = input;
   const incomingProvenance = provenanceFromIncoming(incoming);
 
-  // Fail-closed guards (§8 risks 6, 8). A missing baseline or a non-finite incoming revision routes the
-  // WHOLE update to explicit review rather than degrading to a two-way diff that could overwrite local
-  // edits. No per-decision entry is emitted, so apply mutates nothing (beyond, on accept, the provenance
-  // stamp the caller opts into).
-  if (baseline === null) {
-    return {
-      studyItemId: local.studyItemId,
-      lessonId: local.lessonId,
-      sourceLineageId: incoming.sourceLineageId,
-      sourceRevision: isUsableSourceRevision(incoming.sourceRevision) ? incoming.sourceRevision : null,
-      incomingProvenance,
-      entries: [],
-      failClosed: 'missing-baseline',
-    };
+  const failClosed = (reason: MergeFailClosedReason): MergePlan => ({
+    studyItemId: local.studyItemId,
+    lessonId: local.lessonId,
+    sourceLineageId: incoming.sourceLineageId,
+    sourceRevision: isUsableSourceRevision(incoming.sourceRevision) ? incoming.sourceRevision : null,
+    incomingProvenance,
+    entries: [],
+    failClosed: reason,
+  });
+
+
+
+
+  if (baseline === null) return failClosed('missing-baseline');
+  if (!isUsableSourceRevision(incoming.sourceRevision)) return failClosed('unusable-revision');
+
+  // LINEAGE COHERENCE (finding 3): baseline, local linked provenance (when linked), and incoming must
+  // agree on ONE lineage, and the incoming's version descriptor must cohere with its own revision. A
+  // D4 refresh mismatch (local L1 paired with incoming L2) must never stamp a hijacked lineage.
+  const localLineage = local.linkedSourceProvenance?.sourceLineageId;
+  if (baseline.sourceLineageId !== incoming.sourceLineageId) return failClosed('lineage-mismatch');
+  if (localLineage !== undefined && localLineage !== incoming.sourceLineageId) return failClosed('lineage-mismatch');
+  if (incoming.version.kind !== 'linked' || incoming.version.sourceRevision !== incoming.sourceRevision) {
+    return failClosed('lineage-mismatch');
   }
-  if (!isUsableSourceRevision(incoming.sourceRevision)) {
-    return {
-      studyItemId: local.studyItemId,
-      lessonId: local.lessonId,
-      sourceLineageId: incoming.sourceLineageId,
-      sourceRevision: null,
-      incomingProvenance,
-      entries: [],
-      failClosed: 'unusable-revision',
-    };
+
+  // REVISION MONOTONICITY (finding 3): the incoming snapshot must be at or beyond BOTH the baseline
+  // and the locally-stamped revision — a delayed older response must never merge backward.
+  if (incoming.sourceRevision < baseline.sourceRevision) return failClosed('revision-regression');
+  const localVersion = local.linkedSourceProvenance?.version;
+  if (localVersion?.kind === 'linked'
+      && isUsableSourceRevision(localVersion.sourceRevision)
+      && incoming.sourceRevision < localVersion.sourceRevision) {
+    return failClosed('revision-regression');
   }
 
   // Derive the incoming decisions, carrying baseline identity forward (unchanged → same id; new/changed
-  // → freshly minted by D1). This is the source→source delta reuse (§2.2).
-  const incomingSnapshot = snapshotFromChapters(incoming.chapters, deriveConfig, baseline.decisions);
+  // → freshly minted by D1) under the VALIDATED identity — never caller-supplied lineage (§2.2 + F3).
+  const incomingSnapshot = snapshotFromChapters(
+    incoming.chapters,
+    deriveConfig,
+    { lessonId: local.lessonId, sourceLineageId: incoming.sourceLineageId, sourceRevision: incoming.sourceRevision },
+    baseline.decisions,
+  );
 
+  // DUPLICATE-KEY REJECTION (finding 1): a continuity-key collision means two decisions would silently
+  // Map-overwrite each other during classification — a change in one chapter could classify against
+  // another. Reject the whole update to review instead.
   const baseByKey = new Map<string, LessonDecision>();
-  for (const d of baseline.decisions) baseByKey.set(keyOf(d), d);
+  for (const d of baseline.decisions) {
+    const key = keyOf(d);
+    if (baseByKey.has(key)) return failClosed('duplicate-continuity-key');
+    baseByKey.set(key, d);
+  }
   const incByKey = new Map<string, LessonDecision>();
-  for (const d of incomingSnapshot.decisions) incByKey.set(keyOf(d), d);
+  for (const d of incomingSnapshot.decisions) {
+    const key = keyOf(d);
+    if (incByKey.has(key)) return failClosed('duplicate-continuity-key');
+    incByKey.set(key, d);
+  }
 
   // Local overlay is joined by decisionId; baseline carries both decisionId and the continuity key, so a
   // local decision attaches to a class via its baseline counterpart's id (identity-based, FEN-free).
@@ -363,22 +426,29 @@ export function produceMergePlan(input: ProduceMergePlanInput): MergePlan {
     });
   }
 
-  // 2) Group the source delta by lead-in position to distinguish rewrite (1:1) from split/merge (n:m).
-  const groups = new Map<TreePath, LeadInGroup>();
-  const groupFor = (leadIn: TreePath): LeadInGroup => {
-    let g = groups.get(leadIn);
-    if (!g) { g = { removed: [], added: [] }; groups.set(leadIn, g); }
+  // 2) Group the source delta by CHAPTER-SCOPED lead-in position to distinguish rewrite (1:1) from
+  //    split/merge (n:m). Chapter scoping (finding 1) stops a removal in chapter A pairing with an
+  //    addition in chapter B as a phantom "rewrite".
+  const groups = new Map<string, LeadInGroup & { readonly leadIn: TreePath }>();
+  const groupFor = (decision: LessonDecision): LeadInGroup => {
+    const groupKey = leadInGroupKeyOf(decision);
+    let g = groups.get(groupKey);
+    if (!g) {
+      g = { removed: [], added: [], leadIn: leadInPathOf(decision.identity.authoredPath) };
+      groups.set(groupKey, g);
+    }
     return g;
   };
   for (const [key, baseDecision] of baseByKey) {
-    if (!incByKey.has(key)) groupFor(leadInPathOf(baseDecision.identity.authoredPath)).removed.push(baseDecision);
+    if (!incByKey.has(key)) groupFor(baseDecision).removed.push(baseDecision);
   }
   for (const [key, incDecision] of incByKey) {
-    if (!baseByKey.has(key)) groupFor(leadInPathOf(incDecision.identity.authoredPath)).added.push(incDecision);
+    if (!baseByKey.has(key)) groupFor(incDecision).added.push(incDecision);
   }
 
   // 3) Classify each lead-in group.
-  for (const [leadIn, g] of groups) {
+  for (const [, g] of groups) {
+    const leadIn = g.leadIn;
     const r = g.removed.length;
     const a = g.added.length;
     if (r >= 1 && a >= 1 && r === 1 && a === 1) {
@@ -526,6 +596,9 @@ export function shouldSurfaceUpdate(
   now: number,
 ): boolean {
   if (!isUsableSourceRevision(revision)) return false;
+
+
+  if (state.sourceLineageId !== sourceLineageId) return true;
   if (isDismissedForRevision(state, sourceLineageId, revision)) return false;
   if (isSnoozeActive(state, now)) return false;
   return true;

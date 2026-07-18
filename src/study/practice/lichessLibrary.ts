@@ -113,8 +113,13 @@ export interface VerifiedStudyDescriptor {
   readonly url: string;
 }
 
-/** One parsed study chapter — a chapter title plus its full move TreeNode (via pgnToTree). */
+
+
+
+
+
 export interface ResolvedChapter {
+  readonly chapterId: string;
   readonly title: string;
   readonly tree: TreeNode;
 }
@@ -341,6 +346,14 @@ function extractChapterTitle(pgn: string, index: number): string {
   return `Chapter ${index + 1}`;
 }
 
+
+
+function extractChapterId(pgn: string, index: number): string {
+  const site = extractTag(pgn, 'Site') ?? '';
+  const match = site.match(/\/study\/[a-zA-Z0-9]{8}\/([a-zA-Z0-9]{8})/);
+  return match ? match[1]! : `chapter-${index + 1}`;
+}
+
 /** Split a multi-chapter Study PGN and build one TreeNode per chapter. ALL-OR-NOTHING: if ANY chapter
  *  fails to parse, returns null so the whole import is rejected — never a partial/corrupt lesson.
  *  Reuses the exact chapter-split pattern proven in src/import/lichess.ts:185. */
@@ -357,7 +370,7 @@ function parseChapters(text: string): ResolvedChapter[] | null {
     } catch {
       return null;
     }
-    chapters.push({ title: extractChapterTitle(pgn, i), tree });
+    chapters.push({ chapterId: extractChapterId(pgn, i), title: extractChapterTitle(pgn, i), tree });
   }
   return chapters;
 }
