@@ -219,6 +219,20 @@ export interface LearnControllerConfig {
   readonly rootReplyDelayMs?: number;
   /** Maps a UI assistance action to its neutral kernel assistance vocabulary (default: identity). */
   readonly assistanceOf?: (kind: 'hint' | 'show-move') => SrsAssistanceType;
+
+
+
+
+
+
+
+
+
+
+
+
+
+  readonly onTargetComplete?: (completion: LearnTargetCompletion) => void;
 }
 
 /**
@@ -232,6 +246,23 @@ export interface LearnFirstAttempt {
   readonly firstAttemptResult: SrsFirstAttemptResult;
   readonly assistanceTypes: readonly SrsAssistanceType[];
   readonly failedMoveKeys: readonly string[];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+export interface LearnTargetCompletion {
+  readonly attempt: LearnFirstAttempt;
+  readonly outcome: GradeOutcome;
+  readonly cuedDecisionId: string;
 }
 
 /** A same-session repair item (wrong/assisted target, or a missed context move — never auto-scored). */
@@ -318,6 +349,7 @@ export function createLearnController(config: LearnControllerConfig): LearnContr
   } = config;
   const mint = config.mintId ?? (() => crypto.randomUUID());
   const assistanceOf = config.assistanceOf ?? ((kind) => kind);
+  const onTargetComplete = config.onTargetComplete;
 
   // --- Mutable session state (closure) ---
   let mode: LearnMode = 'learn';
@@ -458,6 +490,10 @@ export function createLearnController(config: LearnControllerConfig): LearnContr
       };
       firstAttempts.push(record);
       firstAttemptByTarget.set(targetId, record);
+
+
+
+      onTargetComplete?.({ attempt: record, outcome, cuedDecisionId: targetId });
     }
 
     // A clean unassisted correct target keeps the traversal clean; anything else taints it.
@@ -611,5 +647,148 @@ export function createLearnController(config: LearnControllerConfig): LearnContr
     getFirstAttempts: () => firstAttempts.slice(),
     getRepairQueue: () => repairQueue.slice(),
     getOverrides: () => overrides.slice(),
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Configuration for the interleaved repair cycle. */
+export interface RepairCycleConfig {
+  /** Failed/assisted target ids to resurface, in first-failure order (e.g. from `getRepairQueue()`).
+   *  Duplicates are collapsed to their first occurrence so a target flagged twice cycles once. */
+  readonly failedTargetIds: readonly string[];
+  /** Consecutive clean retries required to clear each failed target (P2-ORP-5 "2–3 times"). Default 2;
+   *  clamped to the inclusive range [2, 3] per the decision (a non-integer/out-of-range value clamps). */
+  readonly cleanRunsRequired?: number;
+  /** Hard cap on TOTAL retries — guarantees termination even if a target never goes clean. Default:
+   *  `failedTargetIds` unique count × `cleanRunsRequired` × 4 (generous; a clean run needs far fewer). */
+  readonly maxTotalRetries?: number;
+}
+
+/** Read-only snapshot of the repair cycle's progress (what the host renders / persists). */
+export interface RepairCycleState {
+  /** `retrying` while targets remain to clear; `complete` when every target cleared or the cap is hit. */
+  readonly phase: 'retrying' | 'complete';
+  /** The target the host should resurface NEXT (interleaved), or null when complete. */
+  readonly currentTargetId: string | null;
+  /** Targets still needing clean retries, in the current rotation order (diagnostic). */
+  readonly remainingTargetIds: readonly string[];
+  /** Total retries recorded so far (against the `maxTotalRetries` cap). */
+  readonly retriesRecorded: number;
+}
+
+/** The pure interleaved repair-cycle sequencer (P2-ORP-5). Emit-only: no board, no IDB, no scheduler. */
+export interface RepairCycleDriver {
+  readonly state: RepairCycleState;
+  /** The next failed target to resurface (interleaved), or null when the cycle is complete. */
+  peek(): string | null;
+  /** Report the outcome of retrying the CURRENT target; advances the interleaving and returns the new
+   *  state. A clean retry increments that target's clean-run (clearing it at `cleanRunsRequired`); a
+   *  non-clean retry resets its run. Either way the rotation advances round-robin, so the next `peek()`
+   *  is a DIFFERENT still-failing target when one exists (the interleave), and the same target only when
+   *  it is the last one left. Calling after completion is an inert no-op. */
+  recordRetry(clean: boolean): RepairCycleState;
+}
+
+/** Number of consecutive clean retries required to clear a repaired target — clamped to P2-ORP-5's 2–3. */
+function clampCleanRuns(v: number | undefined): number {
+  if (v === undefined || !Number.isFinite(v)) return 2;
+  const n = Math.trunc(v);
+  return n < 2 ? 2 : n > 3 ? 3 : n;
+}
+
+/**
+ * Create the P2-ORP-5 interleaved cross-target repair-cycle driver. Deterministic and pure: the SAME
+ * sequence of `recordRetry` results always yields the SAME target order.
+ *
+ * Interleaving is a round-robin over a live rotation of still-failing targets: `peek()` returns the head;
+ * `recordRetry(clean)` updates the head's clean-run, removes it when cleared, otherwise moves it to the
+ * back — so the head advances to the NEXT failing target each call (A→B→A→B…), which is the "interleaved"
+ * behavior the decision requires, NOT draining one target before the next.
+ */
+export function createRepairCycleDriver(config: RepairCycleConfig): RepairCycleDriver {
+  const cleanRunsRequired = clampCleanRuns(config.cleanRunsRequired);
+
+  // Dedupe failed ids to first occurrence (a target flagged on several wrong attempts cycles once).
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const id of config.failedTargetIds) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      order.push(id);
+    }
+  }
+
+  const defaultCap = order.length * cleanRunsRequired * 4;
+  const maxTotalRetries =
+    config.maxTotalRetries !== undefined && Number.isFinite(config.maxTotalRetries) && config.maxTotalRetries >= 0
+      ? Math.trunc(config.maxTotalRetries)
+      : defaultCap;
+
+  // Live rotation: each still-failing target with its current consecutive-clean run count.
+  const rotation: { targetId: string; cleanRun: number }[] = order.map((targetId) => ({ targetId, cleanRun: 0 }));
+  let retriesRecorded = 0;
+
+  const capHit = (): boolean => retriesRecorded >= maxTotalRetries;
+
+  const snapshot = (): RepairCycleState => {
+    const done = rotation.length === 0 || capHit();
+    return {
+      phase: done ? 'complete' : 'retrying',
+      currentTargetId: done ? null : (rotation[0]?.targetId ?? null),
+      remainingTargetIds: rotation.map((r) => r.targetId),
+      retriesRecorded,
+    };
+  };
+
+  const peek = (): string | null => snapshot().currentTargetId;
+
+  const recordRetry = (clean: boolean): RepairCycleState => {
+    // Inert once complete (nothing left to retry, or the cap was reached).
+    if (rotation.length === 0 || capHit()) return snapshot();
+    const head = rotation.shift();
+    if (!head) return snapshot();
+    retriesRecorded += 1;
+    if (clean) {
+      const nextRun = head.cleanRun + 1;
+      if (nextRun >= cleanRunsRequired) {
+        // Cleared: this target has cycled clean the required number of times — drop it from rotation.
+      } else {
+        // Not yet cleared: keep its accumulated clean-run and re-queue at the BACK (interleave).
+        rotation.push({ targetId: head.targetId, cleanRun: nextRun });
+      }
+    } else {
+      // A wrong retry resets the consecutive-clean run and keeps the target in rotation ("until clean").
+      rotation.push({ targetId: head.targetId, cleanRun: 0 });
+    }
+    return snapshot();
+  };
+
+  return {
+    get state() {
+      return snapshot();
+    },
+    peek,
+    recordRetry,
   };
 }

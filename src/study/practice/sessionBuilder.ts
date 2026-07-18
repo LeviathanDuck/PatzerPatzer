@@ -28,7 +28,7 @@ import type { TreePath } from '../../tree/types';
 import { isDue, positionKey } from './scheduler';
 import { isSrsEnrollable, type LessonDecision } from './material';
 import type { AuthoredLessonContent } from './lessonAuthoring';
-import type { LearnStep, LearnReply, LearnStepKind } from './drillCtrl';
+import type { LearnStep, LearnReply, LearnStepKind, LearnFirstAttempt } from './drillCtrl';
 import type {
   SrsScheduleRecord,
   SrsActiveScheduleRecord,
@@ -44,6 +44,9 @@ import type {
   SrsTraversalPlanEntry,
   SrsContextEntry,
   SrsRepairEntry,
+  SrsPracticeSessionRow,
+  SrsSessionProgress,
+  SrsSessionState,
 } from './srsTypes';
 
 // ===========================================================================
@@ -838,4 +841,324 @@ export function buildLearnSteps(input: BuildLearnStepsInput): readonly LearnStep
 
   // 2. Apply scope selection (removes prefix moves entirely; survivors keep their labels).
   return trimScope(labeled, scope, input.criticalTailStartPath);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * The authored material for ONE due target's full-line replay — supplied by the host (this pure runtime
+ * never loads the tree). `line` is the authored learner-side decisions from the configured start through
+ * the target (host-derived via `deriveDecisionTraversal`/`collectAuthoredPathIds`, material.ts); the rest
+ * mirror `buildLearnSteps`'s optional authored inputs.
+ */
+export interface DueReviewTargetMaterial {
+  readonly line: readonly LessonDecision[];
+  readonly siblingsAt?: (leadInPath: TreePath) => readonly LessonDecision[];
+  readonly replies?: ReadonlyMap<string, LearnReply>;
+  readonly content: ReadonlyMap<string, AuthoredLessonContent>;
+  readonly criticalTailStartPath?: TreePath;
+}
+
+/** One due target's assembled full-line replay: its identity + the `LearnStep[]` a controller consumes. */
+export interface DueReviewTargetReplay {
+  readonly targetId: string;
+  readonly lessonId: string;
+  /** The per-target replay steps — built with `targetIds = {targetId}` (NON-EMPTY; single-target). */
+  readonly steps: readonly LearnStep[];
+}
+
+/** The assembled due-review session: the frozen plan + one full-line replay per deliverable scored target. */
+export interface DueReviewSession {
+  readonly plan: SrsTraversalPlan;
+  readonly replays: readonly DueReviewTargetReplay[];
+  readonly scope: LearnScope;
+}
+
+/** Input to `assembleDueReviewSession`. */
+export interface DueReviewAssemblyInput {
+  readonly sessionId: string;
+  readonly traversalId: string;
+  /** Explicit creation instant (UTC epoch ms). No wall-clock read. */
+  readonly createdAt: number;
+  /** Enrolled active schedule rows + per-target meta — the exact unit `selectDueTargets` consumes. */
+  readonly candidates: readonly SrsDueCandidateInput[];
+  /** The due query (its `now` is the ONLY clock the selection reads). */
+  readonly query: SrsDueQuery;
+  /** Scope selection for every per-target replay (P2-ORP-9). Default per-target FULL-line replay. */
+  readonly scope: LearnScope;
+  /** Host-supplied authored material for a scored plan entry, or null when the material is gone/
+   *  undeliverable (that entry is dropped from the replays; its schedule row is untouched). */
+  readonly materialFor: (entry: SrsTraversalPlanEntry) => DueReviewTargetMaterial | null;
+  /** Optional custom ranking; defaults to the ratified ORP comparator. */
+  readonly comparator?: SrsDueTargetComparator;
+  /** Optional schedule-neutral context/repair carried verbatim onto the frozen plan. */
+  readonly context?: readonly SrsContextEntry[];
+  readonly repair?: readonly SrsRepairEntry[];
+}
+
+/**
+ * Assemble a due-review session: select due targets (Package B), freeze them into a traversal plan, and
+ * build one full-line replay per scored entry via the D10a `buildLearnSteps` with a NON-EMPTY
+ * single-target set. Pure; adds no scheduling math.
+ */
+export function assembleDueReviewSession(input: DueReviewAssemblyInput): DueReviewSession {
+  const due = selectDueTargets(input.candidates, input.query);
+
+  // Map each due target back to the display/source snapshot to freeze onto its plan entry.
+  const displayById = new Map<string, SrsDisplaySnapshot>();
+  for (const c of input.candidates) displayById.set(c.record.targetId, c.meta.display);
+
+  const scored: SrsScoredPlanCandidate[] = [];
+  for (const d of due) {
+    const frozenSource = displayById.get(d.targetId);
+    if (!frozenSource) continue; // defensive: every due target originates from a candidate with a display
+    scored.push({ due: d, frozenSource });
+  }
+
+  const plan = buildTraversalPlan(
+    {
+      sessionId: input.sessionId,
+      traversalId: input.traversalId,
+      createdAt: input.createdAt,
+      scored,
+      ...(input.context ? { context: input.context } : {}),
+      ...(input.repair ? { repair: input.repair } : {}),
+    },
+    input.comparator ?? defaultOrpPriorityComparator,
+  );
+
+  const replays: DueReviewTargetReplay[] = [];
+  for (const entry of plan.entries) {
+    const material = input.materialFor(entry);
+    if (!material) continue; // material gone/undeliverable ⇒ drop the replay; schedule row untouched
+    // NON-EMPTY, single-target set: only THIS entry is a `target`; shared prefixes stay `context`.
+    const stepsInput: BuildLearnStepsInput = {
+      line: material.line,
+      targetIds: new Set<string>([entry.targetId]),
+      scope: input.scope,
+      content: material.content,
+      ...(material.siblingsAt ? { siblingsAt: material.siblingsAt } : {}),
+      ...(material.replies ? { replies: material.replies } : {}),
+      ...(material.criticalTailStartPath ? { criticalTailStartPath: material.criticalTailStartPath } : {}),
+    };
+    replays.push({ targetId: entry.targetId, lessonId: entry.lessonId, steps: buildLearnSteps(stepsInput) });
+  }
+
+  return { plan, replays, scope: input.scope };
+}
+
+// --- Frozen resume: durable session row + revalidating resume ---------------
+
+/** Input to `buildDueReviewSessionRow`. */
+export interface DueReviewSessionRowInput {
+  readonly plan: SrsTraversalPlan;
+  /** Single owning lesson scope (S2). All scored/context/repair entries share it. */
+  readonly lessonId: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  /** Existing progress when re-persisting a resumed session; fresh (cursor 0, empty ledgers) otherwise. */
+  readonly progress?: SrsSessionProgress;
+  /** Optional explicit lifecycle state; defaults to `completed` when every scored target is done, else
+   *  `active`. The host sets `partial` on interrupt. */
+  readonly state?: SrsSessionState;
+}
+
+/**
+ * Shape a durable `SrsPracticeSessionRow` embedding the FROZEN plan + a progress cursor, so an interrupted
+ * session is fully resumable from this one row (consult §3.2). Pure shaping only — the host persists it.
+ * The fresh row satisfies the S1–S10 checkpoint invariants (cursor 0, empty completed/applied ledgers,
+ * `targetCount === plan.entries.length`).
+ */
+export function buildDueReviewSessionRow(input: DueReviewSessionRowInput): SrsPracticeSessionRow {
+  const targetCount = input.plan.entries.length;
+  const progress: SrsSessionProgress = input.progress ?? {
+    entryCursor: 0,
+    completedTargetIds: [],
+    appliedAttemptIds: [],
+  };
+  const done = progress.completedTargetIds.length >= targetCount && progress.entryCursor >= targetCount;
+  const state: SrsSessionState = input.state ?? (done ? 'completed' : 'active');
+  return {
+    sessionId: input.plan.sessionId,
+    lessonId: input.lessonId,
+    state,
+    updatedAt: input.updatedAt,
+    createdAt: input.createdAt,
+    progress,
+    targetCount,
+    plan: input.plan,
+  };
+}
+
+/** The result of resuming a persisted due-review session against live state. */
+export interface DueReviewResume {
+  /** Scored entries whose live schedule/source DRIFTED (dropped on resume; never replayed). */
+  readonly droppedTargetIds: readonly string[];
+  /** The full revalidation detail (target + context + repair) for observability. */
+  readonly invalidEntries: readonly SrsPlanInvalidEntry[];
+  /** Scored entries still to replay: neither drifted nor already completed, in frozen plan order. */
+  readonly resumableEntries: readonly SrsTraversalPlanEntry[];
+  /** The carried-forward progress cursor (unchanged — first attempts survive as persisted attempts). */
+  readonly progress: SrsSessionProgress;
+}
+
+/**
+ * Resume a persisted due-review session. Runs the sealed `revalidateTraversalPlan` against the LIVE
+ * schedule/source and DROPS scored entries whose row drifted (replaced decision, advanced revision, gone
+ * row) BEFORE continuing (consult §3.3 / risk #4) — the frozen PLAN order/targets are fixed, but the
+ * schedule APPLICATION reads live state. Already-completed targets (from the progress ledger) are also
+ * excluded, so the resumable set is exactly the outstanding, still-valid work. Pure — reads only.
+ */
+export function resumeDueReviewSession(
+  row: SrsPracticeSessionRow,
+  currentById: ReadonlyMap<string, SrsScheduleRecord>,
+  currentSourceById?: ReadonlyMap<string, SrsSourceVersion>,
+): DueReviewResume {
+  const revalidation = revalidateTraversalPlan(row.plan, currentById, currentSourceById);
+  const dropped = new Set<string>();
+  for (const e of revalidation.invalidEntries) if (e.kind === 'target') dropped.add(e.targetId);
+  const completed = new Set(row.progress.completedTargetIds);
+  const resumableEntries = row.plan.entries.filter(
+    (e) => !dropped.has(e.targetId) && !completed.has(e.targetId),
+  );
+  return {
+    droppedTargetIds: [...dropped],
+    invalidEntries: revalidation.invalidEntries,
+    resumableEntries,
+    progress: row.progress,
+  };
+}
+
+// --- Upcoming load (pure read of the frozen plan) ---------------------------
+
+/**
+ * The next scored target(s) to review — a PURE read of the frozen plan ordered `entries` from
+ * `progress.entryCursor`, no re-query (consult §3.6). `count` omitted ⇒ every remaining entry.
+ */
+export function upcomingTargets(
+  plan: SrsTraversalPlan,
+  progress: SrsSessionProgress,
+  count?: number,
+): readonly SrsTraversalPlanEntry[] {
+  const total = plan.entries.length;
+  const start = Math.min(Math.max(0, progress.entryCursor), total);
+  const end = count === undefined ? total : Math.min(total, start + Math.max(0, count));
+  return plan.entries.slice(start, end);
+}
+
+// --- Scorecard (pure projection; P2-ORP-11) ---------------------------------
+
+/** Per-folder success/accuracy for the end-of-session scorecard. */
+export interface DueReviewScorecardFolder {
+  readonly folder: string;
+  readonly total: number;
+  /** Clean first attempts (unassisted correct). */
+  readonly clean: number;
+  /** Failed first attempts (wrong OR assisted — assistance is `failed`, P2-ORP-10). */
+  readonly failed: number;
+  /** Subset of `failed` where assistance was used (diagnostic split). */
+  readonly assisted: number;
+  /** `clean / total` in [0,1]; 0 when `total === 0`. */
+  readonly accuracy: number;
+}
+
+/** The end-of-session scorecard (P2-ORP-11): per-folder success + a session roll-up. */
+export interface DueReviewScorecard {
+  readonly folders: readonly DueReviewScorecardFolder[];
+  readonly total: number;
+  readonly clean: number;
+  readonly failed: number;
+  readonly assisted: number;
+  readonly accuracy: number;
+}
+
+/** Input to `buildDueReviewScorecard`. */
+export interface DueReviewScorecardInput {
+  /** The controller's emitted immutable first attempts (`getFirstAttempts()`). */
+  readonly firstAttempts: readonly LearnFirstAttempt[];
+  /** Group each scored target into its folder/category (P2-ORP-11 "per folder"). */
+  readonly folderOf: (targetId: string) => string;
+}
+
+/**
+ * Build the end-of-session scorecard as a PURE projection over the emitted first attempts, grouped per
+ * folder/category (P2-ORP-11). Clean vs failed/assisted is read straight off the immutable first-attempt
+ * signal; it computes NO intervals and MUST NOT mutate SRS (no schedule/clock touched — the append-only
+ * success-rate log + next due queue derive from the persisted attempts elsewhere). Folders are ordered by
+ * name for deterministic output.
+ */
+export function buildDueReviewScorecard(input: DueReviewScorecardInput): DueReviewScorecard {
+  const byFolder = new Map<string, { total: number; clean: number; failed: number; assisted: number }>();
+  let total = 0;
+  let clean = 0;
+  let failed = 0;
+  let assisted = 0;
+
+  for (const fa of input.firstAttempts) {
+    const folder = input.folderOf(fa.targetId);
+    let bucket = byFolder.get(folder);
+    if (!bucket) {
+      bucket = { total: 0, clean: 0, failed: 0, assisted: 0 };
+      byFolder.set(folder, bucket);
+    }
+    bucket.total += 1;
+    total += 1;
+    if (fa.firstAttemptResult === 'clean') {
+      bucket.clean += 1;
+      clean += 1;
+    } else {
+      bucket.failed += 1;
+      failed += 1;
+      if (fa.assistanceTypes.length > 0) {
+        bucket.assisted += 1;
+        assisted += 1;
+      }
+    }
+  }
+
+  const folders: DueReviewScorecardFolder[] = [...byFolder.entries()]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([folder, b]) => ({
+      folder,
+      total: b.total,
+      clean: b.clean,
+      failed: b.failed,
+      assisted: b.assisted,
+      accuracy: b.total > 0 ? b.clean / b.total : 0,
+    }));
+
+  return {
+    folders,
+    total,
+    clean,
+    failed,
+    assisted,
+    accuracy: total > 0 ? clean / total : 0,
+  };
 }
