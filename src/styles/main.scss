@@ -2703,6 +2703,7 @@
   --app-sync: #4fb3ba;
   --app-sync-soft: rgba(79, 179, 186, 0.12);
   --app-accepted-alternate: #d7c77a;
+  --app-accepted-alternate-outline: #756b3e;
   --app-accepted-alternate-ink: #f1e9bb;
   --app-accepted-alternate-soft: rgba(215, 199, 122, 0.12);
   --app-danger: #d66;
@@ -2746,6 +2747,7 @@
   --app-sync: #287a75;
   --app-sync-soft: rgba(40, 122, 117, 0.12);
   --app-accepted-alternate: #d7c77a;
+  --app-accepted-alternate-outline: #756b3e;
   --app-accepted-alternate-ink: #625929;
   --app-accepted-alternate-soft: #f2eccb;
   --app-danger: #a84643;
@@ -28229,4 +28231,61 @@ body.study-nav-reordering {
   align-items: center;
   gap: 6px;
   font-variant-numeric: tabular-nums;
+}
+
+
+
+
+
+
+.drill-catalog__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.drill-catalog__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.drill-catalog__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.orp-study-settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+@media (max-width: 720px) {
+  .drill-catalog__row,
+  .drill-catalog__filters,
+  .orp-study-settings__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .drill-catalog__row-actions { justify-content: flex-start; }
+  .drill-host,
+  .drill-catalog,
+  .orp-study-settings { max-width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drill-catalog *,
+  .drill-host *,
+  .drill-setup *,
+  .drill-readout *,
+  .drill-result *,
+  .orp-study-settings * {
+    transition: none !important;
+    animation: none !important;
+  }
 }

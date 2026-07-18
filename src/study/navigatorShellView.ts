@@ -677,8 +677,29 @@ function railSurfaces(ctx: RailContext): RailSurface[] {
   ];
 }
 
+
+
+
+function handleRailKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'Home' && e.key !== 'End') return;
+  const rail = e.currentTarget as HTMLElement;
+  const buttons = Array.from(rail.querySelectorAll<HTMLButtonElement>('button.lib-rail__btn:not([disabled])'));
+  if (buttons.length === 0) return;
+  const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  let next: number;
+  if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = buttons.length - 1;
+  else if (current === -1) next = 0;
+  else next = (current + (e.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length;
+  e.preventDefault();
+  buttons[next]!.focus();
+}
+
 function renderRail(ctx: RailContext = DEFAULT_RAIL_CONTEXT): VNode {
-  return h('div.lib-rail', { attrs: { role: 'toolbar', 'aria-label': 'Study Navigator tools', 'aria-orientation': 'vertical' } },
+  return h('div.lib-rail', {
+    attrs: { role: 'toolbar', 'aria-label': 'Study Navigator tools', 'aria-orientation': 'vertical' },
+    on: { keydown: handleRailKeydown },
+  },
     railSurfaces(ctx).map(surface => surface.disabled
       ? renderDisabledControlExplainer(
           { label: surface.label, description: surface.disabledReason },

@@ -917,7 +917,10 @@ function renderLearnSidebar(st: LearnState, redraw: () => void): VNode {
   return h('div.drill-sidebar.drill-sidebar--learn', [
     h('div.drill-header', [
       h('div.drill-sequence-label', st.mode === 'read' ? 'Read (non-scoring)' : 'Learn'),
-      h('div.drill-move-counter', total > 0 ? `Target ${Math.min(seen, total)} of ${total}` : ''),
+
+
+      h('div.drill-move-counter', { attrs: { role: 'status', 'aria-live': 'polite' } },
+        total > 0 ? `Target ${Math.min(seen, total)} of ${total}` : ''),
     ]),
     renderLearnFeedback(st, step),
     renderLearnControls(st, redraw),
@@ -1100,7 +1103,9 @@ function renderDrillHeader(seq: TrainableSequence | undefined): VNode {
   const idx   = _session?.positionIndex ?? 0;
   return h('div.drill-header', [
     h('div.drill-sequence-label', label),
-    h('div.drill-move-counter', total > 0 ? `Position ${idx + 1} of ${total}` : ''),
+
+    h('div.drill-move-counter', { attrs: { role: 'status', 'aria-live': 'polite' } },
+      total > 0 ? `Position ${idx + 1} of ${total}` : ''),
   ]);
 }
 
