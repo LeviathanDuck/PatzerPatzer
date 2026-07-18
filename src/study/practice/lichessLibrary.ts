@@ -48,6 +48,8 @@
 
 
 
+
+
 import type { TreeNode } from '../../tree/types';
 import { pgnToTree } from '../../tree/pgn';
 import { mintSourceLineageId, linkedSourceVersion } from './linkedSource';
@@ -57,8 +59,10 @@ import {
   getLichessStudyMetadata,
   putLichessStudyMetadata,
   dropLichessStudyMetadata,
+  clearPrivateLichessStudyMetadata,
   classifyStudyMetadataFreshness,
   type CachedLichessStudyMetadata,
+  type CachedStudyAccess,
   type StudyMetadataFreshness,
 } from '../studyDb';
 
@@ -160,11 +164,14 @@ export type ResolveOutcome =
   | { readonly state: 'offline'; readonly cached?: CachedLichessStudyMetadata }
   | { readonly state: 'failed'; readonly reason: ResolveFailureReason };
 
-/** Revalidation outcome for an ALREADY-LINKED source. 404/403 here means the source was removed or
- *  turned private: mark unavailable, DROP cached metadata, offer unlink — never cascade a local
- *  delete, never serve stale private content as live. */
+
+
+
+
+
 export type RefreshOutcome =
-  | { readonly state: 'resolved'; readonly source: ResolvedVerifiedSource; readonly freshness: StudyMetadataFreshness }
+  | { readonly state: 'resolved'; readonly source: ResolvedVerifiedSource; readonly freshness: Exclude<StudyMetadataFreshness, 'regression'> }
+  | { readonly state: 'regression'; readonly cached: CachedLichessStudyMetadata; readonly fetchedRevision: number }
   | { readonly state: 'unavailable'; readonly studyId: string; readonly reason: 'removed' | 'private'; readonly offerUnlink: true }
   | { readonly state: 'auth-required' }
   | { readonly state: 'rate-limited'; readonly retryAfterMs: number }
@@ -204,15 +211,6 @@ function studyIdForTarget(target: VerifiedStudyTarget): string | null {
 
 function studyPgnUrl(studyId: string): string {
   return `${LICHESS_API_BASE}/api/study/${encodeURIComponent(studyId)}.pgn`;
-}
-
-
-
-
-
-
-function studyMetaUrl(studyId: string): string {
-  return `${LICHESS_API_BASE}/api/study/${encodeURIComponent(studyId)}`;
 }
 
 function byUserPgnUrl(username: string): string {
@@ -282,12 +280,20 @@ async function classifiedFetch(url: string, args: ClassifiedFetchArgs): Promise<
   return { kind: 'http-error', status: res.status };
 }
 
-// --- Metadata + chapter parsing --------------------------------------------------------------------
+// --- Metadata derivation from the PGN export + response headers (live-authoritative) ---------------
 
-function firstString(...values: unknown[]): string | undefined {
-  for (const v of values) {
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
+
+
+
+
+
+
+function parseAnnotatorAuthor(pgn: string): string | undefined {
+  const raw = extractTag(pgn, 'Annotator')?.trim();
+  if (!raw) return undefined;
+  const profile = raw.match(/lichess\.org\/@\/([A-Za-z0-9_-]+)/);
+  if (profile) return profile[1]!;
+  if (/^[A-Za-z0-9_-]+$/.test(raw)) return raw;
   return undefined;
 }
 
@@ -295,48 +301,28 @@ function firstString(...values: unknown[]): string | undefined {
 
 
 
-function resolveAuthor(meta: Record<string, unknown>): string | undefined {
-  const owner = meta.owner;
-  if (typeof owner === 'string') return firstString(owner);
-  if (owner && typeof owner === 'object') {
-    const o = owner as Record<string, unknown>;
-    const fromOwner = firstString(o.name, o.username, o.id);
-    if (fromOwner) return fromOwner;
+
+
+function parseLastModifiedRevision(res: Response): number | null {
+  try {
+    const header = res.headers?.get?.('Last-Modified');
+    if (!header) return null;
+    const ms = Date.parse(header);
+    return Number.isFinite(ms) ? Math.floor(ms) : null;
+  } catch {
+    return null;
   }
-  return firstString(meta.author, meta.username, meta.ownerId, meta.ownerName);
 }
 
-
-
-
-
-
-
-function deriveFiniteRevision(meta: Record<string, unknown>): number | null {
-  const nested = (meta.updated && typeof meta.updated === 'object')
-    ? (meta.updated as Record<string, unknown>).at
-    : undefined;
-  // Live-authoritative update-timestamp cursors first; revision/version are non-live fixture tolerance.
-  const candidates = [meta.updatedAt, nested, meta.dateUpdated, meta.revision, meta.version];
-  for (const c of candidates) {
-    if (typeof c === 'number' && Number.isFinite(c)) return Math.floor(c);
+/** Study display title from the first chapter's `Event` tag (`"StudyName: ChapterName"`). */
+function parseStudyTitle(firstChapterPgn: string | undefined, studyId: string): string {
+  if (firstChapterPgn) {
+    const event = extractTag(firstChapterPgn, 'Event') ?? '';
+    const colon = event.indexOf(':');
+    const title = (colon >= 0 ? event.slice(0, colon) : event).trim();
+    if (title) return title;
   }
-  return null;
-}
-
-interface ParsedStudyMeta {
-  readonly title?: string | undefined;
-  readonly author?: string | undefined;
-  readonly revision: number | null;
-}
-
-function parseStudyMeta(json: unknown): ParsedStudyMeta {
-  const obj = (json && typeof json === 'object') ? (json as Record<string, unknown>) : {};
-  return {
-    title: firstString(obj.name, obj.title),
-    author: resolveAuthor(obj),
-    revision: deriveFiniteRevision(obj),
-  };
+  return studyId;
 }
 
 function extractTag(pgn: string, tag: string): string | undefined {
@@ -376,14 +362,6 @@ function parseChapters(text: string): ResolvedChapter[] | null {
   return chapters;
 }
 
-async function readJsonSafe(res: Response): Promise<unknown | undefined> {
-  try {
-    return await res.json();
-  } catch {
-    return undefined;
-  }
-}
-
 async function readTextSafe(res: Response): Promise<string | undefined> {
   try {
     return await res.text();
@@ -392,14 +370,36 @@ async function readTextSafe(res: Response): Promise<string | undefined> {
   }
 }
 
+
+
+/** Short, non-reversible principal key for cache partitioning (FNV-1a over the token; the raw token
+ *  is never used as a key or stored on entries). */
+function principalKeyOf(token: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < token.length; i++) {
+    h ^= token.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+/** The access context a resolve runs under: authenticated requests read/write the principal's
+ *  PRIVATE cache partition; unauthenticated/public-path requests see only proven-public entries. */
+function accessOf(sendAuth: boolean, token: string | undefined): CachedStudyAccess {
+  return sendAuth && token ? { scope: 'private', principal: principalKeyOf(token) } : { scope: 'public' };
+}
+
 // --- Single-study resolve (paths: direct, my-studies, named-user-public) ---------------------------
 
 function mapFetchToResolveState(
   f: Exclude<ClassifiedFetch, { kind: 'ok' }>,
   studyId: string,
+  access: CachedStudyAccess,
 ): ResolveOutcome {
   switch (f.kind) {
     case 'auth-expired':
+      // Auth loss: this principal's private-partition entries must not outlive the session's auth.
+      if (access.scope === 'private') clearPrivateLichessStudyMetadata(access.principal);
       return { state: 'auth-required' };
     case 'private':
       return { state: 'private', studyId };
@@ -408,7 +408,7 @@ function mapFetchToResolveState(
     case 'rate-limited':
       return { state: 'rate-limited', retryAfterMs: f.retryAfterMs };
     case 'offline': {
-      const cached = getLichessStudyMetadata(studyId);
+      const cached = getLichessStudyMetadata(studyId, access);
       return cached ? { state: 'offline', cached } : { state: 'offline' };
     }
     case 'http-error':
@@ -416,84 +416,121 @@ function mapFetchToResolveState(
   }
 }
 
-/** Assemble a resolved verified source from fetched metadata + chapters. Emits D3's inputs
- *  (mintSourceLineageId + fail-closed linkedSourceVersion) and populates the metadata cache. */
-function buildResolved(
-  studyId: string,
-  meta: ParsedStudyMeta,
-  chapters: readonly ResolvedChapter[],
-  deps: LichessLibraryDeps,
-  now: () => number,
-): ResolvedVerifiedSource | { readonly failure: ResolveFailureReason } {
-  if (!meta.author) return { failure: 'missing-attribution' };
-  if (meta.revision === null) return { failure: 'unresolvable-revision' };
 
-  let version: SrsSourceVersion;
-  try {
-    // D3 owns the fail-closed finite-revision authority (throws RangeError on non-finite/non-integer).
-    version = linkedSourceVersion(meta.revision);
-  } catch {
-    return { failure: 'unresolvable-revision' };
-  }
 
-  const title = meta.title ?? studyId;
-  const url = studyWebUrl(studyId);
-  const sourceLineageId = mintSourceLineageId(deps.mintLineageId);
-  const fetchedAt = now();
-  const descriptor: VerifiedStudyDescriptor = { studyId, author: meta.author, title, url };
-  const source: VerifiedSourceDescriptor = { url, label: `${title} — ${meta.author}` };
 
-  putLichessStudyMetadata({
-    studyId,
-    title,
-    author: meta.author,
-    chapterList: chapters.map(c => c.title),
-    revisionCursor: meta.revision,
-    fetchedAt,
-  });
+type LineageMode =
+  | { readonly kind: 'mint' }
+  | { readonly kind: 'reuse'; readonly sourceLineageId: string };
 
-  return { sourceLineageId, sourceRevision: meta.revision, version, descriptor, source, chapters, fetchedAt };
-}
-
+/** Fetched-and-parsed study payload from the single PGN GET. */
 interface FetchedStudy {
-  readonly meta: ParsedStudyMeta;
+  readonly author: string | undefined;
+  readonly title: string;
+  readonly revision: number | null;
   readonly chapters: readonly ResolvedChapter[];
 }
 
-/** Shared network+parse core: metadata then PGN, mapping every non-ok classification to a state.
- *  Returns either a fetch state to surface directly or the fetched study payload. */
-async function fetchStudy(
+/**
+ * The single-fetch network+parse core (PGN-only — finding 2): one GET of the documented PGN export.
+ * Author from the `Annotator` tag; revision from `Last-Modified`; title from the first chapter's
+ * `Event` study part. Returns a classification for every non-ok outcome.
+ */
+async function fetchStudyPgn(
   studyId: string,
   sendAuth: boolean,
   deps: LichessLibraryDeps,
   fetchImpl: typeof fetch,
-): Promise<{ readonly state: ResolveOutcome } | { readonly study: FetchedStudy }> {
-  const metaFetch = await classifiedFetch(studyMetaUrl(studyId), {
-    fetchImpl, token: deps.token, sendAuth, accept: 'application/json',
-  });
-  if (metaFetch.kind !== 'ok') return { state: mapFetchToResolveState(metaFetch, studyId) };
-  const metaJson = await readJsonSafe(metaFetch.response);
-  if (metaJson === undefined) return { state: { state: 'failed', reason: 'parse' } };
-  const meta = parseStudyMeta(metaJson);
-
+): Promise<{ readonly fetch: Exclude<ClassifiedFetch, { kind: 'ok' }> }
+        | { readonly failed: ResolveFailureReason }
+        | { readonly study: FetchedStudy }> {
   const pgnFetch = await classifiedFetch(studyPgnUrl(studyId), {
     fetchImpl, token: deps.token, sendAuth, accept: 'application/x-chess-pgn',
   });
-  if (pgnFetch.kind !== 'ok') return { state: mapFetchToResolveState(pgnFetch, studyId) };
+  if (pgnFetch.kind !== 'ok') return { fetch: pgnFetch };
+  const revision = parseLastModifiedRevision(pgnFetch.response);
   const text = await readTextSafe(pgnFetch.response);
-  if (text === undefined) return { state: { state: 'failed', reason: 'parse' } };
+  if (text === undefined) return { failed: 'parse' };
 
   const chapters = parseChapters(text);
-  if (chapters === null) return { state: { state: 'failed', reason: 'parse' } };
-  if (chapters.length === 0) return { state: { state: 'failed', reason: 'empty' } };
+  if (chapters === null) return { failed: 'parse' };
+  if (chapters.length === 0) return { failed: 'empty' };
 
-  return { study: { meta, chapters } };
+  const firstChapter = text.trim().split(/\n\n(?=\[Event )/)[0];
+  return {
+    study: {
+      author: firstChapter !== undefined ? parseAnnotatorAuthor(firstChapter) : undefined,
+      title: parseStudyTitle(firstChapter, studyId),
+      revision,
+      chapters,
+    },
+  };
+}
+
+/** Verified author evidence: the PGN `Annotator` tag, else the named-user path's verified username
+ *  (the by-path scope IS the author identity there). Anything else fails closed (attribution is
+ *  mandatory — gate §3). */
+function resolveVerifiedAuthor(study: FetchedStudy, target: VerifiedStudyTarget): string | undefined {
+  if (study.author) return study.author;
+  if (target.path === 'named-user-public') return target.username;
+  return undefined;
+}
+
+/** Assemble a resolved verified source. PURE assembly — the cache commit is the CALLER's decision
+ *  (finding 3: refresh classifies freshness BEFORE committing). */
+function buildResolved(
+  studyId: string,
+  author: string,
+  study: FetchedStudy,
+  lineage: LineageMode,
+  deps: LichessLibraryDeps,
+  now: () => number,
+): ResolvedVerifiedSource | { readonly failure: ResolveFailureReason } {
+  if (study.revision === null) return { failure: 'unresolvable-revision' };
+
+  let version: SrsSourceVersion;
+  try {
+    // D3 owns the fail-closed finite-revision authority (throws RangeError on non-finite/non-integer).
+    version = linkedSourceVersion(study.revision);
+  } catch {
+    return { failure: 'unresolvable-revision' };
+  }
+
+  const url = studyWebUrl(studyId);
+  const sourceLineageId = lineage.kind === 'reuse'
+    ? lineage.sourceLineageId
+    : mintSourceLineageId(deps.mintLineageId);
+  const fetchedAt = now();
+  const descriptor: VerifiedStudyDescriptor = { studyId, author, title: study.title, url };
+  const source: VerifiedSourceDescriptor = { url, label: `${study.title} — ${author}` };
+
+  return {
+    sourceLineageId, sourceRevision: study.revision, version, descriptor, source,
+    chapters: study.chapters, fetchedAt,
+  };
+}
+
+function cacheEntryOf(
+  studyId: string,
+  built: ResolvedVerifiedSource,
+  access: CachedStudyAccess,
+): CachedLichessStudyMetadata {
+  return {
+    studyId,
+    title: built.descriptor.title,
+    author: built.descriptor.author,
+    chapterList: built.chapters.map(c => c.title),
+    revisionCursor: built.sourceRevision,
+    fetchedAt: built.fetchedAt,
+    access,
+  };
 }
 
 /**
  * Resolve a single verified study into the linked-source inputs D3 consumes. Covers the direct-URL,
  * My-Studies (own), and named-user-public paths. My-Studies without a token → auth-required (no
- * network call). All-or-nothing: any parse failure yields `failed`, never a partial import.
+ * network call). All-or-nothing: any parse failure yields `failed`, never a partial import. This is
+ * the INITIAL import path — it mints the lineage; refresh never does.
  */
 export async function resolveVerifiedStudy(
   target: VerifiedStudyTarget,
@@ -507,23 +544,38 @@ export async function resolveVerifiedStudy(
 
   const sendAuth = target.path !== 'named-user-public';
   if (target.path === 'my-studies' && !deps.token) return { state: 'auth-required' };
+  const access = accessOf(sendAuth, deps.token);
 
-  const fetched = await fetchStudy(studyId, sendAuth, deps, fetchImpl);
-  if ('state' in fetched) return fetched.state;
+  const fetched = await fetchStudyPgn(studyId, sendAuth, deps, fetchImpl);
+  if ('fetch' in fetched) return mapFetchToResolveState(fetched.fetch, studyId, access);
+  if ('failed' in fetched) return { state: 'failed', reason: fetched.failed };
 
-  const built = buildResolved(studyId, fetched.study.meta, fetched.study.chapters, deps, now);
+  const author = resolveVerifiedAuthor(fetched.study, target);
+  if (!author) return { state: 'failed', reason: 'missing-attribution' };
+
+  const built = buildResolved(studyId, author, fetched.study, { kind: 'mint' }, deps, now);
   if ('failure' in built) return { state: 'failed', reason: built.failure };
+
+  putLichessStudyMetadata(cacheEntryOf(studyId, built, access));
   return { state: 'resolved', source: built };
 }
 
+/** The already-linked identity a refresh revalidates — the refresh REUSES this lineage (finding 1). */
+export interface LinkedStudyIdentity {
+  readonly sourceLineageId: string;
+}
+
 /**
- * Revalidate an already-linked study. On 404/403 the source is unavailable (removed / turned private):
- * cached metadata is DROPPED, unlink is offered, and no stale private content is served — the local
- * snapshot (D3) is untouched (no local delete cascades). On success, classifies freshness (stale vs
- * current) against the cached revision cursor before refreshing the cache.
+ * Revalidate an ALREADY-LINKED study. Reuses the existing `sourceLineageId` (finding 1 — a refresh
+ * never mints; dismissals/snoozes/D6 joins keyed to the lineage survive). On 404/403 the source is
+ * unavailable (removed / turned private): cached metadata is DROPPED, unlink is offered, and no
+ * stale private content is served — the local snapshot (D3) is untouched. On success, freshness is
+ * classified BEFORE the cache commit (finding 3): a LOWER-than-cached revision is a `regression`
+ * outcome that does NOT replace the cached cursor and carries NO source (never merge input).
  */
 export async function refreshVerifiedStudy(
   target: VerifiedStudyTarget,
+  existing: LinkedStudyIdentity,
   deps: LichessLibraryDeps = {},
 ): Promise<RefreshOutcome> {
   const fetchImpl = resolveFetch(deps);
@@ -534,57 +586,46 @@ export async function refreshVerifiedStudy(
 
   const sendAuth = target.path !== 'named-user-public';
   if (target.path === 'my-studies' && !deps.token) return { state: 'auth-required' };
+  const access = accessOf(sendAuth, deps.token);
 
   // Peek the prior cached revision BEFORE any refresh so freshness compares against the last snapshot.
-  const priorRevision = getLichessStudyMetadata(studyId)?.revisionCursor;
+  const prior = getLichessStudyMetadata(studyId, access);
 
-  const metaFetch = await classifiedFetch(studyMetaUrl(studyId), {
-    fetchImpl, token: deps.token, sendAuth, accept: 'application/json',
-  });
-  if (metaFetch.kind !== 'ok') {
-    const refreshState = mapFetchToRefreshState(metaFetch, studyId);
-    if (refreshState) return refreshState;
-  }
+  const fetched = await fetchStudyPgn(studyId, sendAuth, deps, fetchImpl);
+  if ('fetch' in fetched) return mapFetchToRefreshState(fetched.fetch, studyId, access);
+  if ('failed' in fetched) return { state: 'failed', reason: fetched.failed };
 
-  // metaFetch is ok past this point.
-  const okMeta = metaFetch as Extract<ClassifiedFetch, { kind: 'ok' }>;
-  const metaJson = await readJsonSafe(okMeta.response);
-  if (metaJson === undefined) return { state: 'failed', reason: 'parse' };
-  const meta = parseStudyMeta(metaJson);
+  const author = resolveVerifiedAuthor(fetched.study, target);
+  if (!author) return { state: 'failed', reason: 'missing-attribution' };
 
-  const pgnFetch = await classifiedFetch(studyPgnUrl(studyId), {
-    fetchImpl, token: deps.token, sendAuth, accept: 'application/x-chess-pgn',
-  });
-  if (pgnFetch.kind !== 'ok') {
-    const refreshState = mapFetchToRefreshState(pgnFetch, studyId);
-    if (refreshState) return refreshState;
-  }
-  const okPgn = pgnFetch as Extract<ClassifiedFetch, { kind: 'ok' }>;
-  const text = await readTextSafe(okPgn.response);
-  if (text === undefined) return { state: 'failed', reason: 'parse' };
-  const chapters = parseChapters(text);
-  if (chapters === null) return { state: 'failed', reason: 'parse' };
-  if (chapters.length === 0) return { state: 'failed', reason: 'empty' };
-
-  const built = buildResolved(studyId, meta, chapters, deps, now);
+  const built = buildResolved(
+    studyId, author, fetched.study,
+    { kind: 'reuse', sourceLineageId: existing.sourceLineageId }, deps, now,
+  );
   if ('failure' in built) return { state: 'failed', reason: built.failure };
 
-  const freshness = priorRevision === undefined
+  // Classify BEFORE committing the cache (finding 3). A regression/out-of-order snapshot must not
+  // replace the cursor and must not be returned as a usable source.
+  const freshness = prior === undefined
     ? 'unknown'
-    : classifyStudyMetadataFreshness(priorRevision, built.sourceRevision);
+    : classifyStudyMetadataFreshness(prior.revisionCursor, built.sourceRevision);
+  if (freshness === 'regression') {
+    return { state: 'regression', cached: prior!, fetchedRevision: built.sourceRevision };
+  }
+
+  putLichessStudyMetadata(cacheEntryOf(studyId, built, access));
   return { state: 'resolved', source: built, freshness };
 }
 
-/** Map a non-ok classification to a REFRESH state. 404/403 → unavailable (drop cache, offer unlink);
- *  returns null for `ok` (never reached — callers guard). */
+/** Map a non-ok classification to a REFRESH state. 404/403 → unavailable (drop cache, offer unlink). */
 function mapFetchToRefreshState(
-  f: ClassifiedFetch,
+  f: Exclude<ClassifiedFetch, { kind: 'ok' }>,
   studyId: string,
-): RefreshOutcome | null {
+  access: CachedStudyAccess,
+): RefreshOutcome {
   switch (f.kind) {
-    case 'ok':
-      return null;
     case 'auth-expired':
+      if (access.scope === 'private') clearPrivateLichessStudyMetadata(access.principal);
       return { state: 'auth-required' };
     case 'not-found':
       dropLichessStudyMetadata(studyId);
@@ -596,7 +637,7 @@ function mapFetchToRefreshState(
       return { state: 'rate-limited', retryAfterMs: f.retryAfterMs };
     case 'offline': {
       // Offline: serve cached metadata only, freshness-unknown; never fabricate a live state.
-      const cached = getLichessStudyMetadata(studyId);
+      const cached = getLichessStudyMetadata(studyId, access);
       return cached ? { state: 'offline', cached } : { state: 'offline' };
     }
     case 'http-error':

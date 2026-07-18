@@ -3800,6 +3800,17 @@ export async function enrollStudyPracticeLesson(
 
 
 
+
+
+
+
+
+
+
+export type CachedStudyAccess =
+  | { readonly scope: 'public' }
+  | { readonly scope: 'private'; readonly principal: string };
+
 /** Lightweight, non-authoritative study metadata for the verified Lichess Library cache. */
 export interface CachedLichessStudyMetadata {
   readonly studyId: string;
@@ -3808,6 +3819,8 @@ export interface CachedLichessStudyMetadata {
   readonly chapterList: readonly string[];
   readonly revisionCursor: number;
   readonly fetchedAt: number;
+  /** The access scope this entry was resolved under (partitioning key part). */
+  readonly access: CachedStudyAccess;
 }
 
 /** Max cache entries before LRU eviction (bounded per AP-7). */
@@ -3815,14 +3828,20 @@ export const LICHESS_LIBRARY_CACHE_MAX_ENTRIES = 200;
 
 // Insertion-ordered Map used as an LRU: a `get` re-inserts (moves the key to the newest position); a
 // `put` beyond the cap evicts the oldest (first) key. Module-scoped so it is session-lived, never
-// persisted and never synced.
+// persisted and never synced. KEYS are partitioned by access scope + principal (finding 4): one
+// studyId may hold a public entry and per-principal private entries simultaneously.
 const lichessStudyMetadataCache = new Map<string, CachedLichessStudyMetadata>();
 
-/** Insert/update a cached metadata entry, evicting the oldest entries past the bound (LRU). */
+function cacheKeyOf(studyId: string, access: CachedStudyAccess): string {
+  return access.scope === 'public' ? `public ${studyId}` : `private ${access.principal} ${studyId}`;
+}
+
+/** Insert/update a cached metadata entry under its access partition, evicting past the bound (LRU). */
 export function putLichessStudyMetadata(entry: CachedLichessStudyMetadata): void {
+  const key = cacheKeyOf(entry.studyId, entry.access);
   // Refresh recency: delete any existing entry so the re-insert appends at the newest position.
-  lichessStudyMetadataCache.delete(entry.studyId);
-  lichessStudyMetadataCache.set(entry.studyId, entry);
+  lichessStudyMetadataCache.delete(key);
+  lichessStudyMetadataCache.set(key, entry);
   while (lichessStudyMetadataCache.size > LICHESS_LIBRARY_CACHE_MAX_ENTRIES) {
     const oldest = lichessStudyMetadataCache.keys().next().value as string | undefined;
     if (oldest === undefined) break;
@@ -3830,22 +3849,53 @@ export function putLichessStudyMetadata(entry: CachedLichessStudyMetadata): void
   }
 }
 
-/** Read a cached metadata entry and mark it most-recently-used. */
-export function getLichessStudyMetadata(studyId: string): CachedLichessStudyMetadata | undefined {
-  const entry = lichessStudyMetadataCache.get(studyId);
+function takeRecent(key: string): CachedLichessStudyMetadata | undefined {
+  const entry = lichessStudyMetadataCache.get(key);
   if (entry === undefined) return undefined;
-  lichessStudyMetadataCache.delete(studyId);
-  lichessStudyMetadataCache.set(studyId, entry);
+  lichessStudyMetadataCache.delete(key);
+  lichessStudyMetadataCache.set(key, entry);
   return entry;
 }
 
 /**
- * Drop a cached entry — used when a linked source is removed / turned private on refresh (§5: drop
- * cached metadata, never serve stale private content). This NEVER cascades into any local Study or
- * lesson deletion; it only clears the evictable metadata cache.
+ * Read a cached metadata entry under an access context, marking it most-recently-used.
+ * - A PUBLIC read returns ONLY proven-public entries — never a private-scope entry.
+ * - A PRIVATE read prefers its principal's private entry, then falls back to a public entry
+ *   (public data is readable by anyone); it never reads ANOTHER principal's private entry.
+ */
+export function getLichessStudyMetadata(
+  studyId: string,
+  access: CachedStudyAccess = { scope: 'public' },
+): CachedLichessStudyMetadata | undefined {
+  if (access.scope === 'private') {
+    const priv = takeRecent(cacheKeyOf(studyId, access));
+    if (priv !== undefined) return priv;
+  }
+  return takeRecent(cacheKeyOf(studyId, { scope: 'public' }));
+}
+
+/**
+ * Drop every cached entry for a study across ALL access partitions — used when a linked source is
+ * removed / turned private on refresh (§5: drop cached metadata, never serve stale private content).
+ * This NEVER cascades into any local Study or lesson deletion; it only clears the evictable cache.
  */
 export function dropLichessStudyMetadata(studyId: string): void {
-  lichessStudyMetadataCache.delete(studyId);
+  for (const [key, entry] of lichessStudyMetadataCache) {
+    if (entry.studyId === studyId) lichessStudyMetadataCache.delete(key);
+  }
+}
+
+/**
+ * Clear private-scope entries (all principals, or one) — MUST be called on auth loss so a
+ * de-authenticated session cannot keep serving privately-resolved metadata (finding 4).
+ */
+export function clearPrivateLichessStudyMetadata(principal?: string): void {
+  for (const [key, entry] of lichessStudyMetadataCache) {
+    if (entry.access.scope !== 'private') continue;
+    if (principal === undefined || entry.access.principal === principal) {
+      lichessStudyMetadataCache.delete(key);
+    }
+  }
 }
 
 /** Clear the entire cache (test/reset seam). */
@@ -3858,19 +3908,21 @@ export function lichessStudyMetadataCacheSize(): number {
   return lichessStudyMetadataCache.size;
 }
 
-export type StudyMetadataFreshness = 'current' | 'stale' | 'unknown';
+export type StudyMetadataFreshness = 'current' | 'stale' | 'unknown' | 'regression';
 
-/**
- * Compare a cached revision cursor against the freshly-resolved one. A non-finite cursor is 'unknown'
- * (never silently treated as current); a higher current revision is 'stale'. This is how the client
- * surfaces "may be out of date" without ever serving stale content as current.
- */
+
+
+
+
+
+
 export function classifyStudyMetadataFreshness(
   cachedRevision: number,
   currentRevision: number,
 ): StudyMetadataFreshness {
   if (!Number.isFinite(cachedRevision) || !Number.isFinite(currentRevision)) return 'unknown';
   if (currentRevision > cachedRevision) return 'stale';
+  if (currentRevision < cachedRevision) return 'regression';
   return 'current';
 }
 
