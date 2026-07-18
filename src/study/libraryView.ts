@@ -66,6 +66,8 @@ import {
 import { isDrillActive, isDrillSummary, initDrillView, initLearnView, renderDrillView, endDrill } from './practice/drillView';
 import { loadLearnLessonBundle } from './practice/lessonHost';
 import { startDueReviewSession, type DueReviewHostRuntime } from './practice/dueReviewHost';
+import { enrollLearnedLine } from './practice/learnEnrollment';
+import type { LearnTargetCompletion } from './practice/drillCtrl';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { saveRepertoireLineToOrpLibrary } from './saveAction';
@@ -331,6 +333,10 @@ async function launchGuidedLearn(sequence: TrainableSequence, redraw: () => void
     return;
   }
   _orpDrillPending = true;
+
+
+
+  const completions: LearnTargetCompletion[] = [];
   initLearnView({
     line: model.line,
     content: model.content,
@@ -342,6 +348,24 @@ async function launchGuidedLearn(sequence: TrainableSequence, redraw: () => void
     rootFen: model.rootFen,
     trainAs: sequence.trainAs,
     redraw,
+    onTargetComplete: (completion) => { completions.push(completion); },
+    onLineComplete: () => {
+      void enrollLearnedLine({
+        studyItemId: sequence.studyItemId,
+        lessonId: sequence.studyItemId,
+        model,
+        completions,
+      }).then(outcome => {
+        if (outcome.ok) {
+          if (outcome.outcome === 'enrolled') {
+            console.info(`[libraryView] learned line enrolled: ${outcome.srsRows} tracked decision(s)`);
+          }
+        } else {
+          console.warn(`[libraryView] learn enrollment failed (${outcome.reason})`);
+        }
+        redraw();
+      });
+    },
   });
   redraw();
 }
