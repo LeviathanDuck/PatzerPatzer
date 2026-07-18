@@ -1162,3 +1162,195 @@ export function buildDueReviewScorecard(input: DueReviewScorecardInput): DueRevi
     accuracy: total > 0 ? clean / total : 0,
   };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Host classification of one selected decision's SRS status. `learn` = not-yet-enrolled OR not-clean
+ *  (transition-eligible); `practice` = already enrolled + learned (schedule-neutral); `not-enrollable`
+ *  = Required but the host reports no trainable/enrolled row (context, neither set). Keyed off the
+ *  host's ENROLLMENT + CLEAN status, NOT `isSrsEnrollable` alone (D11 consult §7 risk #2). */
+export type PracticeSelectedClass = 'learn' | 'practice' | 'not-enrollable';
+
+/** The authored material for ONE user-selected line's replay — supplied by the host (this pure
+ *  assembly never loads the tree). Mirrors `DueReviewTargetMaterial`'s optional authored inputs. */
+export interface PracticeSelectedLineMaterial {
+  /** The authored learner-side decisions for this selected line, in traversal order. */
+  readonly line: readonly LessonDecision[];
+  readonly siblingsAt?: (leadInPath: TreePath) => readonly LessonDecision[];
+  readonly replies?: ReadonlyMap<string, LearnReply>;
+  readonly content: ReadonlyMap<string, AuthoredLessonContent>;
+  readonly criticalTailStartPath?: TreePath;
+}
+
+/** One selected line's assembled replay: its `LearnStep[]` plus the two per-replay OWNED id sets
+ *  (subsets of the session-level sets). Both id sets are `kind:'target'` steps in `steps`. */
+export interface PracticeSelectedReplay {
+  readonly lessonId: string;
+  /** The per-line replay steps — built with `targetIds` = this replay's OWNED learn ∪ practice ids. */
+  readonly steps: readonly LearnStep[];
+  /** This replay's OWNED Learn-selected ids (transition-eligible; route to D9). */
+  readonly learnTargetIds: readonly string[];
+  /** This replay's OWNED Practice-learned ids (SCHEDULE-NEUTRAL; metrics-only, NEVER to D9). */
+  readonly practiceTargetIds: readonly string[];
+}
+
+/** Input to `assemblePracticeSelectedSession`. */
+export interface PracticeSelectedAssemblyInput {
+  readonly sessionId: string;
+  readonly traversalId: string;
+  /** Explicit creation instant (UTC epoch ms). No wall-clock read (mirrors D10b). */
+  readonly createdAt: number;
+  /** The USER-selected lines (P2-ORP-9 filter rail), in selection order — NOT a due query. */
+  readonly selectedLines: readonly PracticeSelectedLineMaterial[];
+  /** Host-supplied enrollment + clean status per decision (the split authority; §7 risk #2). */
+  readonly classifyDecision: (decisionId: string) => PracticeSelectedClass;
+  /** Scope selection for every per-line replay (P2-ORP-9). */
+  readonly scope: LearnScope;
+}
+
+/** The assembled Practice-Selected session: one replay per selected line, plus the session-level
+ *  routing partition. `learnTargetIds` route to D9; `practiceTargetIds` are schedule-neutral. */
+export interface PracticeSelectedSession {
+  readonly replays: readonly PracticeSelectedReplay[];
+  /** Session-level transition-eligible ids (route to D9). Deduplicated across replays. */
+  readonly learnTargetIds: ReadonlySet<string>;
+  /** Session-level schedule-neutral ids (metrics-only; NEVER routed to D9). Deduplicated. */
+  readonly practiceTargetIds: ReadonlySet<string>;
+  readonly scope: LearnScope;
+}
+
+/** The routing decision for one completed target in a Practice-Selected session. `learn` → the host
+ *  awaits D9 `applyOrpDecisionOutcome`; `practice` → METRICS-ONLY (scorecard), NEVER the adapter;
+ *  `context` → not a scored target at all. This is the tag-and-route split the host consults per
+ *  `completion.attempt.targetId`; it is a pure set-membership read (no board-blocking work). */
+export type PracticeCompletionRoute = 'learn' | 'practice' | 'context';
+
+/**
+ * Classify a completed target for routing (the load-bearing schedule-neutral guarantee). A pure
+ * set-membership read the host runs per completion: `learn` → route to D9 (the schedule advances/
+ * enrolls); `practice` → scorecard/clean-metrics ONLY, the adapter is NEVER called (so `dueAt` stays
+ * byte-identical, P2-ORP-14); `context` → neither. Keeping this a pure lookup is what lets the host
+ * enforce neutrality BEFORE the adapter without any board-blocking work.
+ */
+export function routePracticeCompletion(
+  session: Pick<PracticeSelectedSession, 'learnTargetIds' | 'practiceTargetIds'>,
+  targetId: string,
+): PracticeCompletionRoute {
+  if (session.learnTargetIds.has(targetId)) return 'learn';
+  if (session.practiceTargetIds.has(targetId)) return 'practice';
+  return 'context';
+}
+
+/**
+ * Assemble a Practice-Selected (mixed scope) session over the user-selected lines. For each line, split
+ * its ENROLLABLE decisions into Learn-selected vs Practice-learned off the host `classifyDecision`
+ * status, build a `LearnStep[]` replay via the D10a `buildLearnSteps` with BOTH sets as targets, and
+ * return the session-level routing partition. Pure; adds no scheduling math.
+ *
+ * Shared-prefix discipline (D10b lesson): a decision is a scored `target` under EXACTLY ONE owning
+ * replay — the FIRST selected line (in input order) that owns it. In later replays that share the
+ * prefix, the already-owned decision stays `context` (its `targetIds` exclude it), so it is never
+ * double-scored or double-enrolled across two line controllers. A line that owns no new enrollable
+ * decision (fully subsumed by earlier lines, or all non-Required) is skipped rather than fall into
+ * `buildLearnSteps`'s empty-`targetIds` "every Required is a target" convenience — which would wrongly
+ * re-score decisions owned by other lines.
+ */
+export function assemblePracticeSelectedSession(
+  input: PracticeSelectedAssemblyInput,
+): PracticeSelectedSession {
+  const learnTargetIds = new Set<string>();
+  const practiceTargetIds = new Set<string>();
+  // Decisions already owned by an earlier selected line's replay (shared-prefix dedup). A decision is
+  // scored under exactly one owning replay; elsewhere it is a shared-prefix `context` move.
+  const assigned = new Set<string>();
+  const replays: PracticeSelectedReplay[] = [];
+
+  for (const lineMat of input.selectedLines) {
+    const ownedLearn: string[] = [];
+    const ownedPractice: string[] = [];
+    const ownedTargetIds = new Set<string>();
+
+    for (const decision of lineMat.line) {
+      const id = decision.identity.decisionId;
+      // Non-enrollable (non-Required) decisions are NEVER targets — context only, in neither set. Gate
+      // FIRST so the learn/practice split never mislabels a non-Required move (buildLearnSteps applies
+      // the identical isSrsEnrollable gate, so an id we omit here also renders as context there).
+      if (!isSrsEnrollable(decision)) continue;
+      // Shared-prefix discipline: a decision owned by an EARLIER selected line stays context here.
+      if (assigned.has(id)) continue;
+      // Classify off the host-supplied ENROLLMENT + CLEAN status (NOT isSrsEnrollable alone). A learned
+      // decision routes schedule-neutral; a not-yet-learned one enrolls/transitions via D9 (§7 risk #2).
+      const status = input.classifyDecision(id);
+      if (status === 'learn') {
+        assigned.add(id);
+        ownedTargetIds.add(id);
+        ownedLearn.push(id);
+        learnTargetIds.add(id);
+      } else if (status === 'practice') {
+        assigned.add(id);
+        ownedTargetIds.add(id);
+        ownedPractice.push(id);
+        practiceTargetIds.add(id);
+      }
+      // 'not-enrollable' host status ⇒ neither set; the move stays context in the replay.
+    }
+
+    // A line owning no new enrollable target contributes no scored decision — skip it rather than trip
+    // buildLearnSteps's empty-set convenience (which would re-score other lines' owned decisions).
+    if (ownedTargetIds.size === 0) continue;
+
+    const stepsInput: BuildLearnStepsInput = {
+      line: lineMat.line,
+      // NON-EMPTY, this line's OWNED targets only: shared prefixes owned elsewhere stay context here.
+      targetIds: ownedTargetIds,
+      scope: input.scope,
+      content: lineMat.content,
+      ...(lineMat.siblingsAt ? { siblingsAt: lineMat.siblingsAt } : {}),
+      ...(lineMat.replies ? { replies: lineMat.replies } : {}),
+      ...(lineMat.criticalTailStartPath ? { criticalTailStartPath: lineMat.criticalTailStartPath } : {}),
+    };
+    const lessonId = lineMat.line[0]?.identity.lessonId ?? '';
+    replays.push({
+      lessonId,
+      steps: buildLearnSteps(stepsInput),
+      learnTargetIds: ownedLearn,
+      practiceTargetIds: ownedPractice,
+    });
+  }
+
+  return { replays, learnTargetIds, practiceTargetIds, scope: input.scope };
+}

@@ -28,23 +28,57 @@ import type {
   WorkspaceShapeOwnership,
   WorkspaceSessionOwnership,
 } from '../../analyse/workspaceCore';
+import type { PracticeSelectedSession } from './sessionBuilder';
+import { routePracticeCompletion, type PracticeCompletionRoute } from './sessionBuilder';
+
+/**
+ * The deferred `study-practice` feature-session shape, SUPPLIED by Package D/D11 (`workspaceModule.ts`
+ * previously declared `featureStateDeferred:true` with no data shape — C1 §3). For the Practice-Selected
+ * (mixed scope) mount it is exactly the assembled `PracticeSelectedSession`: the per-line replays plus
+ * the Learn/Practice routing partition. Threading this to the mount lets the board host consume ONE
+ * coherent mixed-scope session and route each completion correctly (Learn → D9, Practice → metrics-only).
+ *
+ * D11 supplies the SHAPE + the pure split routing; it does NOT do the full grader-dispatch swap (that is
+ * the C3/C4-mount consumer slice — C1 §3): the completion→D9 (Learn) vs metrics-only (Practice) `await`
+ * is the host's, driven by `routeCompletion` below, not module logic.
+ */
+export type StudyPracticeFeatureState = PracticeSelectedSession;
 
 /**
  * The only dependency C1 accepts: the shared-tree navigation the host already owns. Before a grader
  * exists, accepted moves continue through the shared tree/navigation path — this avoids inventing a
  * no-op or speculative move grader. D7 replaces this with the module-owned grader dispatch.
+ *
+ * D11 additively threads the optional Practice-Selected feature-state (the mixed-scope session + split).
+ * When present, the module's `sessionOwnership.featureStateDeferred` flips to `false` (the shape is now
+ * supplied) and the module exposes it plus the pure `routeCompletion` split for the host to consult.
  */
 export interface StudyPracticeWorkspaceModuleDeps {
   navigate(path: TreePath): void;
+  /** Optional D11 Practice-Selected feature-state (replays + Learn/Practice routing partition). */
+  readonly practiceSession?: StudyPracticeFeatureState;
 }
 
 /**
  * C1's refined return type: the base module contract with the declarative ownership metadata made
  * REQUIRED (they are optional on the base interface for additive back-compat with older modules).
+ *
+ * D11 additively exposes the supplied Practice-Selected feature-state and a pure `routeCompletion` split
+ * (present only when a `practiceSession` was threaded in) so the board host can enforce schedule-neutral
+ * Practice: it routes ONLY Learn-selected completions to D9 and keeps Practice-learned metrics-only.
  */
 export interface StudyPracticeWorkspaceModule extends WorkspaceBoardInputModule {
   readonly shapeOwnership: WorkspaceShapeOwnership;
   readonly sessionOwnership: WorkspaceSessionOwnership;
+  /** The supplied D11 Practice-Selected feature-state, or undefined when none was threaded in. */
+  readonly practiceSession?: StudyPracticeFeatureState;
+  /**
+   * Pure per-completion routing split (undefined when no `practiceSession`): `learn` → the host awaits
+   * D9 `applyOrpDecisionOutcome`; `practice` → METRICS-ONLY, the adapter is NEVER called (byte-identical
+   * `dueAt`, P2-ORP-14); `context` → not a scored target. A pure set-membership read — no board-blocking
+   * work, so board input stays P0.
+   */
+  readonly routeCompletion?: (targetId: string) => PracticeCompletionRoute;
 }
 
 /**
@@ -91,13 +125,27 @@ export function createStudyPracticeWorkspaceModule(
     },
 
     // Declarative session ownership: the shared core owns board cursor/FEN/orientation/lifecycle;
-    // Practice lesson/target/traversal state is module-owned but its data shape is DEFERRED to
-    // Package D (no data shape declared here).
+    // Practice lesson/target/traversal state is module-owned. Its data shape was DEFERRED to Package D
+    // (C1); D11 SUPPLIES it as the Practice-Selected feature-state, so `featureStateDeferred` is false
+    // exactly when a `practiceSession` was threaded in (still deferred/back-compat otherwise).
     sessionOwnership: {
       cursor: 'core',
       featureState: 'module',
-      featureStateDeferred: true,
+      featureStateDeferred: deps.practiceSession === undefined,
     },
+
+    // D11 Practice-Selected feature-state (mixed-scope session + Learn/Practice routing partition) and
+    // the pure completion-routing split. Present only when a `practiceSession` was supplied; both are
+    // OMITTED otherwise (exactOptionalPropertyTypes). `routeCompletion` is a pure set-membership read —
+    // no board-blocking work — so board input stays P0. The completion→D9 (Learn) vs metrics-only
+    // (Practice) `await` is the HOST's, driven by this split, not module logic (no grader-dispatch swap).
+    ...(deps.practiceSession !== undefined
+      ? {
+          practiceSession: deps.practiceSession,
+          routeCompletion: (targetId: string): PracticeCompletionRoute =>
+            routePracticeCompletion(deps.practiceSession!, targetId),
+        }
+      : {}),
 
     // Resource-free: C1 consumes the narrow WorkspaceBoardPort only and need not even call it. It
     // acquires nothing at attach and releases nothing at detach.
@@ -145,6 +193,10 @@ export interface StudyPracticeWorkspaceHost {
   navigate: (path: TreePath) => void;
   /** Host tree-commit for a board-created node (Analysis's add-and-navigate). */
   handleUserMove: (parentPath: TreePath, node: TreeNode) => void;
+  /** Optional D11 Practice-Selected feature-state to mount (the mixed-scope session + Learn/Practice
+   *  routing partition). When supplied the mounted module exposes it plus the pure `routeCompletion`
+   *  split; omit for the non-scoring C1 hosting mount (back-compat). */
+  readonly practiceSession?: StudyPracticeFeatureState;
 }
 
 /**
@@ -159,7 +211,12 @@ export interface StudyPracticeWorkspaceHost {
  * grading, session, SRS, route, or UI behavior (that is Package D).
  */
 export function mountStudyPracticeWorkspace(host: StudyPracticeWorkspaceHost): WorkspaceInstance {
-  const module = createStudyPracticeWorkspaceModule({ navigate: host.navigate });
+  const module = createStudyPracticeWorkspaceModule({
+    navigate: host.navigate,
+    // Thread the optional D11 Practice-Selected feature-state through to the module (omitted when the
+    // host supplies none, keeping the non-scoring C1 mount unchanged for back-compat).
+    ...(host.practiceSession !== undefined ? { practiceSession: host.practiceSession } : {}),
+  });
   return mountWorkspace({
     id: host.hostId,
     boardInputMode: 'practice-grading',
