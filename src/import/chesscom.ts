@@ -22,7 +22,7 @@ const CHESSCOM_BASE = 'https://api.chess.com/pub/player';
 // so this has no effect on in-browser requests today, but it is honored by
 // any non-browser runtime (e.g. this adapter's Node-based tests) and costs
 // nothing to include for when a server-side path exists.
-const CHESSCOM_USER_AGENT = 'PatzerPro/1.0 (+https://patzerpro.com; game import)';
+const CHESSCOM_USER_AGENT = 'ChessPatzer/1.0 (+https://chesspatzer.com; game import)';
 
 function errorClass(error: unknown): string {
   return error instanceof Error ? error.name : typeof error;

@@ -3,7 +3,7 @@
 // Adapted from lichess-org/lila: ui/analyse/src/idbTree.ts (IDB pattern).
 //
 // Uses a separate IndexedDB database ('patzer-puzzle-v1') so that the legacy
-// candidate storage in src/idb/index.ts ('patzer-pro' db, 'puzzle-library'
+// candidate storage in src/idb/index.ts ('chess-patzer' db, 'puzzle-library'
 // store) remains completely untouched. The two systems coexist until the
 // legacy path is retired.
 //
@@ -1126,7 +1126,7 @@ export async function getPuzzleRatedEligibility(puzzleId: string): Promise<Rated
 
 /**
  * Clear all Puzzle V1 data. Called during a full data reset.
- * Does NOT touch the legacy 'patzer-pro' puzzle-library store.
+ * Does NOT touch the legacy 'chess-patzer' puzzle-library store.
  */
 export async function clearAllPuzzleV1Data(): Promise<void> {
   try {

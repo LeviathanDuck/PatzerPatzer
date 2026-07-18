@@ -192,41 +192,59 @@ export function commitWithPracticeLease(lease: PracticeLease, commit: () => void
 
 // --- Bootstrap + route transitions -----------------------------------------------------------------
 
-/**
- * Initial-load reconciliation: `hashchange` does not fire for the first URL, so orchestration calls
- * this once after C4 initialization to record the bootstrap route's Practice owner. Synchronous.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function bootstrapPracticeRouteState(route: Route): void {
-  _owner = practiceRouteOwnerFromRoute(route);
   _resumeRef = null;
   _phase = 'active';
+  // Start from a clean null owner so a non-null owner stays deferred (establishRouteDestination leaves
+  // `_owner` untouched for a deferred non-null owner), then fail closed through the host-ready gate.
+  _owner = null;
+  establishRouteDestination(route, false);
 }
 
-/**
- * First half of a real route transition (the `hashchange` seam), invoked BEFORE the existing Study
- * route-exit unmount and Analysis orientation/remount path. Uses the explicitly-forwarded previous and
- * destination routes (never mutable `currentRoute`, which a redraw can flip mid-handler):
- *   1. If leaving an analysis surface for a different one, clear C4's retained Practice slot handle
- *      via `deactivateAnalysisPracticeSlot('route-exit')`. This ALSO fixes the disclosed C4 hazard:
- *      the coordinator's `_practiceSlotInstance` stays non-null after mere workspace supersession, so
- *      a later activation would wrongly no-op unless the handle is cleared here. The call is a safe
- *      no-op when no slot is active.
- *   2. If the Practice route OWNER changes, invalidate every outstanding lease (bump generation) and
- *      drop the suspended owner/ref/phase — an exited route commits nothing, and the dropped resume
- *      ref reflects that a genuine route departure abandons the session context (Package D decides
- *      abandon-vs-partial-resume on re-entry; C5 does not retain a ref across an owner change). When
- *      the owner is unchanged, state is preserved untouched so a within-owner transition never
- *      destroys the session.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function handleRouteTransition(transition: { previousRoute: Route; destinationRoute: Route }): void {
   const { previousRoute, destinationRoute } = transition;
 
-  const prevAnalysisKey = analysisSurfaceKey(previousRoute);
-  const destAnalysisKey = analysisSurfaceKey(destinationRoute);
-  if (prevAnalysisKey !== null && prevAnalysisKey !== destAnalysisKey) {
-    _deps?.deactivateAnalysisPracticeSlot('route-exit');
-  }
-
+  // Step 1 (HIGH 1): invalidate the outgoing lease FIRST, before any C4 teardown can run a reentrant
+  // guarded commit or throw.
   const prevOwner = practiceRouteOwnerFromRoute(previousRoute);
   const destOwner = practiceRouteOwnerFromRoute(destinationRoute);
   if (ownerKey(prevOwner) !== ownerKey(destOwner)) {
@@ -235,16 +253,85 @@ export function handleRouteTransition(transition: { previousRoute: Route; destin
     _resumeRef = null;
     _phase = 'active';
   }
+
+  // Step 2 (HIGH 1): NOW hand C4's retained Practice slot handle back on a real analysis-surface exit.
+  // Any reentrant detach commit this triggers already sees the stale lease invalidated above.
+  const prevAnalysisKey = analysisSurfaceKey(previousRoute);
+  const destAnalysisKey = analysisSurfaceKey(destinationRoute);
+  if (prevAnalysisKey !== null && prevAnalysisKey !== destAnalysisKey) {
+    _deps?.deactivateAnalysisPracticeSlot('route-exit');
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function establishRouteDestination(route: Route, hostActive: boolean): void {
+  const destOwner = practiceRouteOwnerFromRoute(route);
+  if (destOwner !== null && !hostActive) return;
+  _owner = destOwner;
 }
 
 /**
- * Second half of a real route transition, invoked AFTER the destination's host workspace is ready
- * (Analysis remount already ran; a Study host mounts asynchronously later — recording its owner here
- * is pure bookkeeping and P0-safe). Records the destination Practice owner under the generation
- * already bumped by `handleRouteTransition`. Idempotent when the owner is unchanged.
+ * Shared owner-invalidation primitive: invalidate every outstanding lease (bump generation) and drop
+ * the suspended ref/phase, then publish `nextOwner` (null clears ownership). The render-time reconciler
+ * below uses it for its owner-change / clear branches so the 4-way guarded commit rejects every lease
+ * captured against the previous owner. Synchronous/bounded.
  */
-export function establishRouteDestination(route: Route): void {
-  _owner = practiceRouteOwnerFromRoute(route);
+function invalidateAndPublishOwner(nextOwner: PracticeRouteOwner | null): void {
+  _generation += 1;
+  _owner = nextOwner;
+  _resumeRef = null;
+  _phase = 'active';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function reconcileRouteDestination(route: Route, exactHostReady: boolean): void {
+  const readyOwner = exactHostReady ? practiceRouteOwnerFromRoute(route) : null;
+  if (ownerKey(_owner) === ownerKey(readyOwner)) return;
+  if (_owner === null) {
+    _owner = readyOwner;
+    return;
+  }
+  invalidateAndPublishOwner(readyOwner);
 }
 
 // --- In-place Analysis interruption ----------------------------------------------------------------
@@ -256,28 +343,43 @@ export function establishRouteDestination(route: Route): void {
 // entry (D7 decides abandon, D10 does eligible Partial resume). C5 resumes only the opaque session
 // REFERENCE and owner context.
 
-/**
- * Interrupt the active Practice session in place: invalidate the active lease (bump generation), keep
- * the opaque resume ref SUSPENDED, mark the phase `interrupted`, and hand the shared Analysis slot
- * back to free analysis via `deactivateAnalysisPracticeSlot('analysis-interruption')` (C4 restores
- * free Analysis only if its Practice instance was still active). The owner is unchanged (still on the
- * Analysis route). No-op-safe when no ref is suspended.
- */
-export function interruptForAnalysisExploration(): void {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function interruptForAnalysisExploration(): boolean {
+  if (_owner === null || _owner.host !== 'analysis-game' || _phase !== 'active') return false;
   _generation += 1;
   _phase = 'interrupted';
   // _resumeRef and _owner intentionally retained: the session reference stays suspended in place.
   _deps?.deactivateAnalysisPracticeSlot('analysis-interruption');
+  return true;
 }
 
-/**
- * Resume the interrupted Practice session in place: verify the exact owner still holds and the phase
- * is `interrupted`, re-activate C4's Analysis Practice slot, and issue a NEW generation/lease carrying
- * the SAME opaque resume ref (same reference in -> same reference out, under a new valid generation).
- * Returns whether resume occurred. Package D restores the live controller state from the ref later.
- */
+
+
+
+
+
+
+
+
+
+
+
 export function resumeAfterAnalysisExploration(): boolean {
-  if (_phase !== 'interrupted' || _owner === null) return false;
+  if (_phase !== 'interrupted' || _owner === null || _owner.host !== 'analysis-game') return false;
   _deps?.activateAnalysisPracticeSlot();
   _generation += 1;
   _phase = 'active';

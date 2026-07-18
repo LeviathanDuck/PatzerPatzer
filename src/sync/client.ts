@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Client-side sync service for Patzer Pro.
+// Client-side sync service for Chess Patzer.
 // Manual push/pull between IndexedDB and the server's SQLite database.
 // Last-write-wins conflict resolution by timestamp.
 // ---------------------------------------------------------------------------

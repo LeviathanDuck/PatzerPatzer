@@ -133,8 +133,8 @@ function renderDisabledControlWhen(
     : control;
 }
 
-const HEADER_LOGO_SRC = '/images/patzer-pro-review-lens-logo-package/png/app-icons/patzerpro-app-icon-152.png';
-const PLATFORM_DISCLAIMER = 'Patzer Pro is not affiliated with or endorsed by Chess.com or Lichess.';
+const HEADER_LOGO_SRC = '/images/chess-patzer-review-lens-logo-package/svg/chesspatzer-lockup-horizontal-dark-ui.svg';
+const PLATFORM_DISCLAIMER = 'Chess Patzer is not affiliated with or endorsed by Chess.com or Lichess.';
 
 // --- Module-level header state ---
 type ImportPlatform = 'chesscom' | 'lichess';
@@ -3904,12 +3904,12 @@ export function renderHeader(deps: HeaderDeps): VNode {
   }) : null;
 
   return h('header.header', [
-    h('a.header__brand', { attrs: { href: '#/', ...iconControlExplainerAttrs({ label: 'Patzer Pro home' }) } }, [
+    h('a.header__brand', { attrs: { href: '#/', ...iconControlExplainerAttrs({ label: 'Chess Patzer home' }) } }, [
       h('img.header__brand-logo', {
         attrs: {
           src: HEADER_LOGO_SRC,
-          alt: 'Patzer Pro',
-          width: '30',
+          alt: 'Chess Patzer',
+          width: '118',
           height: '30',
         },
       }),

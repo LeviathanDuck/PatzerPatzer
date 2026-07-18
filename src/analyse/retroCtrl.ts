@@ -1,7 +1,7 @@
 // Retrospection controller: per-game "Learn From Your Mistakes" session state.
 // Adapted from lichess-org/lila: ui/analyse/src/retrospect/retroCtrl.ts
 //
-// Patzer Pro deviations from Lichess RetroCtrl:
+// Chess Patzer deviations from Lichess RetroCtrl:
 // - Candidates are pre-built RetroCandidate[] (from buildRetroCandidates) rather
 //   than derived lazily from tree-node eval fields and comp children.
 // - Win/fail detection is handled by board/index.ts onUserMove() exact-bestMove
