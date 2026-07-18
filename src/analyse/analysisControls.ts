@@ -49,6 +49,7 @@ import {
 } from './workspaceCore';
 import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
 import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab } from '../study/practice/practiceView';
+import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode } from '../study/practice/engineDrillHost';
 import type { TreeNode } from '../tree/types';
 
 // --- Action-menu open/close state ---
@@ -198,7 +199,16 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
     practice: { status: 'empty' },
     progress: { status: 'empty' },
   };
-  return h('div.analyse__practice-panel', [renderPracticePanel(props)]);
+  return h('div.analyse__practice-panel', [
+    renderPracticePanel(props),
+
+
+
+
+    _analysisPracticeTab === 'practice' || engineDrillActive() || engineDrillFinished()
+      ? engineDrillPanelVnode()
+      : null,
+  ]);
 }
 
 /**

@@ -322,6 +322,15 @@ import {
 import { renderPracticeBox, renderPracticeRail } from './analyse/practice/practiceView';
 
 
+import {
+  initEngineDrillHost,
+  engineDrillActive,
+  engineDrillOnUserMove,
+  engineDrillOnCeval,
+  engineDrillReadoutVnode,
+} from './study/practice/engineDrillHost';
+
+
 
 
 import QuestionnaireCtrl from './analyse/questionnaire/questionnaireCtrl';
@@ -2126,6 +2135,9 @@ let prePracticeEngineWasOff: boolean | null = null;
 // as opposed to browsing. Distinguishes lila's playUci→jump from userJump.
 let practiceMoveNavigation = false;
 
+
+let drillFenBeforeUserMove: string | null = null;
+
 function togglePracticeSession(): void {
   if (practiceActive()) {
     endPracticeSession();
@@ -3261,7 +3273,7 @@ function renderRouteContent(route: Route): VNode {
           ]),
 
 
-          renderPracticeRail({ redraw }),
+          renderPracticeRail({ redraw, drillReadout: engineDrillReadoutVnode() }),
 
 
 
@@ -4339,6 +4351,15 @@ initPractice({
   redraw,
   onShapesChanged: () => syncArrowForced(),
 });
+initEngineDrillHost({
+  getCurrentFen: () => ctrl.node.fen,
+  getCurrentPath: () => ctrl.path,
+  navigate,
+  playUciMove: (uci: string) => playUciMove(uci),
+  getEvalForCurrent: () => evalCache.get(ctrl.path),
+  redraw,
+  now: () => Date.now(),
+});
 const analysisPracticePremoveHost = createAnalysisPracticePremoveHost({
   getFen: () => ctrl.node.fen,
   getPath: () => ctrl.path,
@@ -4365,12 +4386,29 @@ setExtraArrowSuppressProvider(() => practiceActive() && !isRetroVisibleEngineEna
 // User moves: flag the resulting navigation as move application and set the session
 // running before onJump processes it (lila ctrl.userMove ordering).
 onBeforeBoardUserMove(() => {
+  // Engine Drill: capture the exact pre-move FEN so the host can bind the learner's move
+  // (the drill controller rejects a move whose fenBefore desyncs from drill state).
+  if (engineDrillActive()) drillFenBeforeUserMove = ctrl.node.fen;
   if (!practiceActive()) return;
   practiceOnUserMove();
   practiceMoveNavigation = true;
 });
 onBoardUserMove(() => {
   practiceMoveNavigation = false;
+  if (drillFenBeforeUserMove !== null) {
+    const fenBefore = drillFenBeforeUserMove;
+    drillFenBeforeUserMove = null;
+    const node = ctrl.node;
+    if (engineDrillActive() && node.uci !== undefined && node.fen !== fenBefore) {
+      engineDrillOnUserMove({
+        fenBefore,
+        fenAfter: node.fen,
+        uci: node.uci,
+        ...(node.san !== undefined ? { san: node.san } : {}),
+      });
+      redraw();
+    }
+  }
 });
 setRepertoireArrowShapeProvider(() => {
   if (!explorerCtrl.enabled || explorerCtrl.config.db !== 'repertoire') return [];
@@ -4436,6 +4474,7 @@ registerDataManagementBeforeDeleteFence(async detail => {
 setOnLiveEvalInfo((path, ev) => {
   // Practice verdict/hint gate rides the same live-eval ticks (lila practice.onCeval).
   practiceOnCeval();
+  engineDrillOnCeval();
   const cand = ctrl.retro?.current();
   if (!cand) return;
   const snap = ctrl.retro!.getSolvingMoveSnapshot();
@@ -4458,6 +4497,7 @@ setOnLiveEvalInfo((path, ev) => {
 setOnLiveEvalUpdated((path, ev) => {
   // Practice verdict/hint gate rides the same live-eval ticks (lila practice.onCeval).
   practiceOnCeval();
+  engineDrillOnCeval();
   const cand = ctrl.retro?.current();
   if (!cand) return;
 
