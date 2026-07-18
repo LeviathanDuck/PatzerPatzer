@@ -220,3 +220,38 @@ export function pgnToTree(pgn: string): TreeNode {
   if (!game) throw new Error('No game found in PGN');
   return pgnGameToTree(game);
 }
+
+
+
+
+
+
+
+export function countParseablePgnGames(pgn: string): number {
+  let games;
+  try {
+    games = parsePgn(pgn);
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  for (const game of games) {
+    const start = startingPosition(game.headers);
+    if (start.isErr) continue;
+    const pos = start.value;
+    let legal = true;
+    let node = game.moves.children[0];
+    const replay = pos.clone();
+    while (node !== undefined) {
+      const move = parseSan(replay, node.data.san);
+      if (move === undefined) { legal = false; break; }
+      replay.play(move);
+      node = node.children[0];
+    }
+    // A game must carry actual chess material: at least one legal mainline move, or an explicit
+    // FEN start position. (A junk string the parser reduces to zero moves "replays" trivially
+    // but is not extractable material.)
+    if (legal && (game.moves.children.length > 0 || game.headers.has('FEN'))) count++;
+  }
+  return count;
+}
