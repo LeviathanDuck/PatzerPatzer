@@ -2,6 +2,7 @@
 
 
 import type { SaveFlowGameDestination } from '../save/saveFlowCtrl';
+import type { SrsSourceVersion } from './practice/srsTypes';
 
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
 
@@ -17,6 +18,74 @@ export interface OrpSourceProvenance {
   stopPly?: number;
   sourcePgn?: string;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * Provenance-layer discriminator (§4.5 three separate layers). A locally-authored layer
+ * ('my-analysis' / 'my-notes') is TYPED DISTINCTLY from source-imported material so a source stamp
+ * can never claim/overwrite a user-authored layer (P2-ORP-18).
+ */
+export type ProvenanceLayer = 'source-imported' | 'my-analysis' | 'my-notes';
+
+/**
+ * Verified upstream source descriptor — purely DESCRIPTIVE provenance (§4.4 "verified source
+ * identity"). Never an identity: the durable grouping key is the minted `sourceLineageId`, never the
+ * URL and never a content hash.
+ */
+export interface VerifiedSourceDescriptor {
+  readonly url?: string;
+  readonly label?: string;
+}
+
+/**
+ * Source-imported provenance layer — material linked to / imported from an EXTERNAL upstream
+ * (linked, snapshot, or manual). Carries the minted `sourceLineageId`, the reused `SrsSourceVersion`
+ * linkage state, and the descriptive verified-source descriptor. Distinct from the intra-Study
+ * `OrpSourceProvenance`.
+ */
+export interface SourceImportedProvenance {
+  readonly layer: 'source-imported';
+  /** Minted local UUID grouping all decisions from one imported lineage (D3). NOT a URL, NOT a hash. */
+  readonly sourceLineageId: string;
+  /** Reused linkage union: {linked; sourceRevision} | {unlinked; origin?}. See srsTypes.ts:174-186. */
+  readonly version: SrsSourceVersion;
+  /** Descriptive verified-source identity/URL (not identity). */
+  readonly source?: VerifiedSourceDescriptor;
+  /** Last upstream snapshot revision, retained after Unlink from source to explain lineage (§14.4). */
+  readonly lastLinkedRevision?: number;
+  /** When the link/import was first stamped (metadata, not authority). */
+  readonly linkedAt?: number;
+}
+
+/**
+ * Locally-authored provenance layer — My analysis / My notes. NEVER overwritten by a source stamp
+ * (P2-ORP-18 "never overwrite My notes"). Kept as a separate layer so D6's three-way merge has
+ * separable owner-authored material to protect.
+ */
+export interface LocalAuthoredProvenance {
+  readonly layer: 'my-analysis' | 'my-notes';
+  /** When the owner authored this layer (metadata). */
+  readonly authoredAt?: number;
+}
+
+/** Any single provenance layer (source-imported or locally-authored). */
+export type ProvenanceLayerRecord = SourceImportedProvenance | LocalAuthoredProvenance;
 
 // Folder entity — persisted to the 'folders' IDB store.
 // Supports a two-level hierarchy: a folder may have one optional parent.
@@ -67,6 +136,21 @@ export interface StudyItem {
 
 
 
+  /**
+   * External-source provenance for material linked to / imported from an upstream source. DISTINCT
+   * from `orpSourceProvenance` (intra-Study). Stamped by saveAction on a link/snapshot import; a
+   * source stamp populates ONLY this layer and never overwrites the locally-authored layers below.
+   */
+  linkedSourceProvenance?: SourceImportedProvenance;
+  /**
+   * Locally-authored provenance layers (My analysis / My notes) kept SEPARATE from source-imported
+   * material and protected from source overwrite (P2-ORP-18 §4.5). Carried forward verbatim on a
+   * source re-stamp.
+   */
+  localProvenanceLayers?: readonly LocalAuthoredProvenance[];
+
+
+
 
 
 
@@ -108,6 +192,11 @@ export interface TrainableSequence {
   createdAt: number;
   updatedAt: number;
   orpSourceProvenance?: OrpSourceProvenance;
+
+
+
+  linkedSourceProvenance?: SourceImportedProvenance;
+  localProvenanceLayers?: readonly LocalAuthoredProvenance[];
 }
 
 // Per-position mastery (the scheduling unit) — persisted to the 'position-progress' IDB store.
