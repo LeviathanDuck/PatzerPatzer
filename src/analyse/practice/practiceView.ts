@@ -201,10 +201,13 @@ export interface PracticeRailDeps {
 export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
   const premoveControls = renderPremoveQueueControls(deps);
   if (!practiceActive()) {
-    return premoveControls
+
+
+    const drillReadout = deps.drillReadout ?? null;
+    return premoveControls || drillReadout
       ? h('div.practice-rail', {
-          class: { 'practice-rail--queue-visible': true },
-        }, [premoveControls])
+          class: { 'practice-rail--queue-visible': premoveControls !== null },
+        }, [premoveControls, drillReadout])
       : null;
   }
   const hint = practiceHinting();
