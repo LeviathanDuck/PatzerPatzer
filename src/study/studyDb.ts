@@ -353,6 +353,54 @@ export async function saveStudyStrict(item: StudyItem): Promise<void> {
   enqueueStudyPut('studies', item.id, item, item.updatedAt);
 }
 
+
+
+
+
+
+
+export async function createStudyStrict(item: StudyItem): Promise<{ readonly duplicate: boolean }> {
+  const db = await openDb();
+  return new Promise<{ readonly duplicate: boolean }>((resolve, reject) => {
+    let duplicate = false;
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction('studies', 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    let req: IDBRequest;
+    try {
+      req = tx.objectStore('studies').add(item);
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    req.onerror = (event: Event) => {
+      const err = req.error;
+      if (err && err.name === 'ConstraintError') {
+        duplicate = true;
+        event.preventDefault();
+      }
+    };
+    tx.oncomplete = () => {
+      if (!duplicate) enqueueStudyPut('studies', item.id, item, item.updatedAt);
+      resolve({ duplicate });
+    };
+    tx.onerror = () => {
+      if (duplicate) return; // prevented ConstraintError still bubbles; tx completes normally
+      recordStudyTxFail(tx, 'onerror', 'add');
+      reject(tx.error);
+    };
+    tx.onabort = () => {
+      if (duplicate) { resolve({ duplicate: true }); return; }
+      recordStudyTxFail(tx, 'onabort', 'add');
+      reject(tx.error ?? new DOMException('Study create transaction aborted', 'AbortError'));
+    };
+  });
+}
+
 export async function getStudy(id: string): Promise<StudyItem | undefined> {
   // Un-swallowed (BUG-2026-07-10-008 P2): a genuine storage failure must REJECT so callers can
   // distinguish it from a genuinely-missing key, rather than masking every failure as "not found"
