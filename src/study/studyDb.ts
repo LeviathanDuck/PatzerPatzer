@@ -3651,3 +3651,94 @@ export async function enrollStudyPracticeLesson(
   }
   return result;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Lightweight, non-authoritative study metadata for the verified Lichess Library cache. */
+export interface CachedLichessStudyMetadata {
+  readonly studyId: string;
+  readonly title: string;
+  readonly author: string;
+  readonly chapterList: readonly string[];
+  readonly revisionCursor: number;
+  readonly fetchedAt: number;
+}
+
+/** Max cache entries before LRU eviction (bounded per AP-7). */
+export const LICHESS_LIBRARY_CACHE_MAX_ENTRIES = 200;
+
+// Insertion-ordered Map used as an LRU: a `get` re-inserts (moves the key to the newest position); a
+// `put` beyond the cap evicts the oldest (first) key. Module-scoped so it is session-lived, never
+// persisted and never synced.
+const lichessStudyMetadataCache = new Map<string, CachedLichessStudyMetadata>();
+
+/** Insert/update a cached metadata entry, evicting the oldest entries past the bound (LRU). */
+export function putLichessStudyMetadata(entry: CachedLichessStudyMetadata): void {
+  // Refresh recency: delete any existing entry so the re-insert appends at the newest position.
+  lichessStudyMetadataCache.delete(entry.studyId);
+  lichessStudyMetadataCache.set(entry.studyId, entry);
+  while (lichessStudyMetadataCache.size > LICHESS_LIBRARY_CACHE_MAX_ENTRIES) {
+    const oldest = lichessStudyMetadataCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    lichessStudyMetadataCache.delete(oldest);
+  }
+}
+
+/** Read a cached metadata entry and mark it most-recently-used. */
+export function getLichessStudyMetadata(studyId: string): CachedLichessStudyMetadata | undefined {
+  const entry = lichessStudyMetadataCache.get(studyId);
+  if (entry === undefined) return undefined;
+  lichessStudyMetadataCache.delete(studyId);
+  lichessStudyMetadataCache.set(studyId, entry);
+  return entry;
+}
+
+/**
+ * Drop a cached entry — used when a linked source is removed / turned private on refresh (§5: drop
+ * cached metadata, never serve stale private content). This NEVER cascades into any local Study or
+ * lesson deletion; it only clears the evictable metadata cache.
+ */
+export function dropLichessStudyMetadata(studyId: string): void {
+  lichessStudyMetadataCache.delete(studyId);
+}
+
+/** Clear the entire cache (test/reset seam). */
+export function clearLichessStudyMetadataCache(): void {
+  lichessStudyMetadataCache.clear();
+}
+
+/** Current cache size (bounds/eviction assertions). */
+export function lichessStudyMetadataCacheSize(): number {
+  return lichessStudyMetadataCache.size;
+}
+
+export type StudyMetadataFreshness = 'current' | 'stale' | 'unknown';
+
+/**
+ * Compare a cached revision cursor against the freshly-resolved one. A non-finite cursor is 'unknown'
+ * (never silently treated as current); a higher current revision is 'stale'. This is how the client
+ * surfaces "may be out of date" without ever serving stale content as current.
+ */
+export function classifyStudyMetadataFreshness(
+  cachedRevision: number,
+  currentRevision: number,
+): StudyMetadataFreshness {
+  if (!Number.isFinite(cachedRevision) || !Number.isFinite(currentRevision)) return 'unknown';
+  if (currentRevision > cachedRevision) return 'stale';
+  return 'current';
+}
