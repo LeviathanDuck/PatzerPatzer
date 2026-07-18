@@ -341,3 +341,18 @@ export interface StudyPracticeCacheRow {
   /** JSON-safe cached payload — evictable, never authoritative, never synced. */
   readonly payload: unknown;
 }
+
+
+
+
+export type {
+  OrpSettingsValues,
+  OrpSettingsField,
+  OrpSettingsLayer,
+  OrpSessionOverride,
+  OrpSettingsProvenance,
+  ResolvedOrpSettings,
+  RecomputeInputRow,
+  RecomputePlanEntry,
+  IntervalRecomputePlan,
+} from './practice/settings';
