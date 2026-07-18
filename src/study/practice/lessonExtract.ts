@@ -135,6 +135,29 @@ function asTrainability(value: string | undefined): DecisionTrainability {
 
 
 
+export function overlayFromDecisionRows(
+  rows: readonly PersistedDecisionRowLike[],
+): (base: LessonDecision) => LessonDecision {
+  const byId = new Map<string, PersistedDecisionRowLike>();
+  for (const row of rows) byId.set(row.decisionId, row);
+  return (base: LessonDecision): LessonDecision => {
+    const row = byId.get(base.identity.decisionId);
+    if (row === undefined || (row.role === undefined && row.trainability === undefined)) return base;
+    return {
+      ...base,
+      ...(row.role !== undefined ? { role: asBranchRole(row.role) } : {}),
+      ...(row.trainability !== undefined ? { trainability: asTrainability(row.trainability) } : {}),
+    };
+  };
+}
+
+
+
+
+
+
+
+
 
 
 
