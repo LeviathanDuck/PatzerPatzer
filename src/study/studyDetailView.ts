@@ -51,7 +51,11 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
-import { renderPracticePanel, type PracticePanelTab, type PracticePanelProps } from './practice/practiceView';
+import { renderPracticePanel, type PracticePanelTab, type PracticePanelProps, type PanelDrillsSection } from './practice/practiceView';
+import { listRecentEngineDrills } from './studyDb';
+import { openDrillRecordOnBoard } from './practice/engineDrillHost';
+import { openDrillCatalog } from './practice/drillCatalogView';
+import type { EngineDrillRecord } from './types';
 import { isSourcePreviewOpen, renderSourcePreview } from './practice/sourcePreviewCtrl';
 import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
@@ -850,6 +854,54 @@ function refreshPanelData(lessonId: string, redraw: () => void): void {
 
 
 
+
+
+
+let _panelDrills: EngineDrillRecord[] | null = null;
+let _panelDrillsLoading = false;
+
+function panelDrillLabel(r: EngineDrillRecord): string {
+  const side = r.snapshot.learnerIsWhite ? 'White' : 'Black';
+  const goals = r.snapshot.goals.map(g => g.kind).join(', ') || 'open-ended';
+  return `${side} · ${goals} · ${r.outcome ?? r.completionState}`;
+}
+
+function studyPanelDrillsSection(studyItemId: string | null, redraw: () => void): PanelDrillsSection {
+  if (_panelDrills === null && !_panelDrillsLoading) {
+    _panelDrillsLoading = true;
+    listRecentEngineDrills(5).then(records => {
+      _panelDrills = records;
+      _panelDrillsLoading = false;
+      redraw();
+    }).catch(() => { _panelDrills = []; _panelDrillsLoading = false; redraw(); });
+  }
+  return {
+    recent: (_panelDrills ?? []).map(r => ({
+      label: panelDrillLabel(r),
+      sublabel: `${r.snapshot.moves.length} moves`,
+      resumable: r.completionState === 'partial',
+      onOpen: () => { openDrillRecordOnBoard(r); },
+    })),
+    onOpenCatalog: () => {
+      openDrillCatalog({ kind: 'global' }, redraw);
+      writeHashRoute('#/study');
+      redraw();
+    },
+    ...(studyItemId !== null ? {
+      onViewAllFromStudy: () => {
+        openDrillCatalog({ kind: 'study', studyItemId, title: studyDetail()?.title ?? 'this Study' }, redraw);
+        writeHashRoute('#/study');
+        redraw();
+      },
+    } : {}),
+  };
+}
+
+
+
+
+
+
 function renderStudyPracticePanel(redraw: () => void): VNode {
   const study = studyDetail();
   const lessonId = study?.id ?? null;
@@ -885,6 +937,7 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
     review,
     practice: { status: 'empty' },
     progress: data === null ? (_panelLoading ? { status: 'loading' } : { status: 'empty' }) : data.progress,
+    drills: studyPanelDrillsSection(lessonId, redraw),
   };
   return h('div.study-tools-col__field', [
     h('span.study-tools-col__label', 'Practice & progress'),

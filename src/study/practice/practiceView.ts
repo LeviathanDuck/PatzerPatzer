@@ -120,6 +120,24 @@ export type ProgressTabData =
   | ({ readonly status: 'ready' } & ProgressReadyData);
 
 /** The full host-supplied props for the practice panel. Pure inputs + callbacks; no ambient state. */
+/** One bounded Recent-drills entry (§13 "Recent drills … live in the Practice panel"). */
+export interface PanelDrillEntry {
+  readonly label: string;
+  readonly sublabel?: string;
+  readonly resumable: boolean;
+
+  readonly onOpen: () => void;
+}
+
+
+
+export interface PanelDrillsSection {
+  readonly recent: readonly PanelDrillEntry[];
+  readonly onOpenCatalog: () => void;
+  /** Study mount only: the per-Study catalog scope (§13 "View all drills from this Study"). */
+  readonly onViewAllFromStudy?: () => void;
+}
+
 export interface PracticePanelProps {
   readonly activeTab: PracticePanelTab;
   readonly onSelectTab: (tab: PracticePanelTab) => void;
@@ -127,6 +145,8 @@ export interface PracticePanelProps {
   readonly review: ReviewTabData;
   readonly practice: PracticeTabData;
   readonly progress: ProgressTabData;
+
+  readonly drills?: PanelDrillsSection;
 }
 
 // --- Copy, localized in two clearly-named maps so the vocabularies cannot drift (§8 risk #5) ---------
@@ -455,11 +475,57 @@ function renderProgressTab(data: ProgressTabData): VNode {
 
 // --- Active tab body + panel root -------------------------------------------
 
+
+function renderPanelDrills(drills: PanelDrillsSection): VNode {
+  return h('div.orp-practice__drills', [
+    h('div.orp-practice__split-head', 'Recent drills'),
+    drills.recent.length === 0
+      ? h('div.orp-practice__split-note', 'No drills yet — start one from the analysis board.')
+      : h('ul.orp-practice__split-list', { attrs: { 'aria-label': 'Recent drills' } },
+          drills.recent.map((entry, index) =>
+            h('li.orp-practice__drill-row', { key: `drill-${index}` }, [
+              h('button.orp-practice__drill-open', {
+                attrs: { type: 'button', ...controlExplainerAttrs({
+                  label: `Open drill: ${entry.label}`,
+                  description: entry.resumable
+                    ? 'Opens this partial drill on the analysis board. Resume it from the Drill Catalog.'
+                    : 'Opens this drill game on the analysis board.',
+                }) },
+                on: { click: entry.onOpen },
+              }, [
+                h('span.orp-practice__drill-label', entry.label),
+                entry.sublabel !== undefined ? h('span.orp-practice__drill-sub', entry.sublabel) : null,
+              ]),
+            ]))),
+    h('div.orp-practice__drill-links', [
+      h('button.orp-practice__drill-link', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: 'Open Drill Catalog',
+          description: 'Opens the full Drill Catalog: every saved drill, newest first, with export and promotion.',
+        }) },
+        on: { click: drills.onOpenCatalog },
+      }, 'Drill Catalog'),
+      drills.onViewAllFromStudy !== undefined
+        ? h('button.orp-practice__drill-link', {
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: 'View all drills from this Study',
+              description: 'Opens the Drill Catalog scoped to drills launched from this Study.',
+            }) },
+            on: { click: drills.onViewAllFromStudy },
+          }, 'View all from this Study')
+        : null,
+    ]),
+  ]);
+}
+
 function renderActiveBody(props: PracticePanelProps): VNode {
   switch (props.activeTab) {
     case 'learn': return renderLearnTab(props.learn);
     case 'review': return renderReviewTab(props.review);
-    case 'practice': return renderPracticeTab(props.practice);
+    case 'practice': return h('div', [
+      renderPracticeTab(props.practice),
+      props.drills !== undefined ? renderPanelDrills(props.drills) : null,
+    ]);
     case 'progress': return renderProgressTab(props.progress);
   }
 }

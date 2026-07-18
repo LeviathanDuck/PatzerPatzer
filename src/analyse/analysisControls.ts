@@ -48,8 +48,11 @@ import {
   type WorkspaceInstance,
 } from './workspaceCore';
 import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
-import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab } from '../study/practice/practiceView';
-import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode } from '../study/practice/engineDrillHost';
+import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab, type PanelDrillsSection } from '../study/practice/practiceView';
+import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode, openDrillRecordOnBoard } from '../study/practice/engineDrillHost';
+import { openDrillCatalog } from '../study/practice/drillCatalogView';
+import { listRecentEngineDrills } from '../study/studyDb';
+import type { EngineDrillRecord } from '../study/types';
 import type { TreeNode } from '../tree/types';
 
 // --- Action-menu open/close state ---
@@ -188,6 +191,35 @@ export function isAnalysisPracticeSlotActive(): boolean {
 
 let _analysisPracticeTab: PracticePanelTab = 'review';
 
+
+let _analysisPanelDrills: EngineDrillRecord[] | null = null;
+let _analysisPanelDrillsLoading = false;
+
+function analysisPanelDrillsSection(redraw: () => void): PanelDrillsSection {
+  if (_analysisPanelDrills === null && !_analysisPanelDrillsLoading) {
+    _analysisPanelDrillsLoading = true;
+    listRecentEngineDrills(5).then(records => {
+      _analysisPanelDrills = records;
+      _analysisPanelDrillsLoading = false;
+      redraw();
+    }).catch(() => { _analysisPanelDrills = []; _analysisPanelDrillsLoading = false; redraw(); });
+  }
+  return {
+    recent: (_analysisPanelDrills ?? []).map(r => ({
+      label: `${r.snapshot.learnerIsWhite ? 'White' : 'Black'} · ${r.snapshot.goals.map(g => g.kind).join(', ') || 'open-ended'} · ${r.outcome ?? r.completionState}`,
+      sublabel: `${r.snapshot.moves.length} moves`,
+      resumable: r.completionState === 'partial',
+      onOpen: () => { openDrillRecordOnBoard(r); },
+    })),
+    onOpenCatalog: () => {
+      // The catalog takeover renders on the library surface.
+      openDrillCatalog({ kind: 'global' }, redraw);
+      writeHashRoute('#/study');
+      redraw();
+    },
+  };
+}
+
 /** Render the Analysis Practice panel, or null while the practice slot is not active. */
 export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   if (!isAnalysisPracticeSlotActive()) return null;
@@ -198,6 +230,7 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
     review: { status: 'empty' },
     practice: { status: 'empty' },
     progress: { status: 'empty' },
+    drills: analysisPanelDrillsSection(redraw),
   };
   return h('div.analyse__practice-panel', [
     renderPracticePanel(props),
