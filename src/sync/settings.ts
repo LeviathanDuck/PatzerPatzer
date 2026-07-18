@@ -16,6 +16,10 @@ const SETTING_UPDATED_AT_PREFIX = 'patzer.account.settingUpdatedAt.';
 const FLUSH_DEBOUNCE_MS = 300;
 
 const SETTINGS_KEYS = new Set([
+
+
+  'patzer.orp.settings.v1',
+  'patzer.orp.studyOverrides.v1',
   'patzer.reviewDepth',
   'patzer.reviewDepth.bulk',
   'patzer.reviewMovetime',
