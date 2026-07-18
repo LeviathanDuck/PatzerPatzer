@@ -28054,3 +28054,179 @@ body.study-nav-reordering {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+
+
+
+.drill-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.drill-setup__title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--app-text);
+}
+
+.drill-setup__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drill-setup__label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--app-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.drill-setup__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.drill-setup__choice {
+  padding: 5px 9px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+
+  &--active {
+    color: var(--app-text);
+    border-color: var(--app-accent, #629924);
+    background: var(--app-surface-soft, var(--app-surface));
+  }
+}
+
+.drill-setup__number {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.8rem;
+}
+
+.drill-setup__start {
+  align-self: flex-start;
+  padding: 7px 14px;
+  border: 1px solid var(--app-accent, #629924);
+  border-radius: 6px;
+  background: var(--app-accent, #629924);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.drill-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  font-size: 0.76rem;
+  color: var(--app-text-muted);
+}
+
+.drill-readout__clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--app-text);
+}
+
+.drill-readout__goal {
+  font-weight: 600;
+}
+
+.drill-readout__substituted {
+  font-style: italic;
+}
+
+.drill-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: var(--app-surface);
+}
+
+.drill-result__headline {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--app-text);
+}
+
+.drill-result__goals,
+.drill-result__score {
+  display: flex;
+  gap: 12px;
+  font-size: 0.8rem;
+  color: var(--app-text);
+}
+
+.drill-result__neutral {
+  font-size: 0.74rem;
+  color: var(--app-text-muted);
+}
+
+.drill-result__primary,
+.drill-result__secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.drill-result__action,
+.drill-result__more,
+.drill-result__countdown-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface);
+  color: var(--app-text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.drill-result__autonext {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.76rem;
+  color: var(--app-text-muted);
+}
+
+.drill-result__autonext-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.drill-result__countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}

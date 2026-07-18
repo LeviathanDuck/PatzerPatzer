@@ -184,6 +184,9 @@ export function renderPracticeBox(deps: PracticeViewDeps): VNode {
 
 export interface PracticeRailDeps {
   redraw(): void;
+
+
+  drillReadout?: VNode | null;
 }
 
 
@@ -255,6 +258,7 @@ export function renderPracticeRail(deps: PracticeRailDeps): VNode | null {
       }, '⚙'),
     ]),
     premoveControls,
+    deps.drillReadout ?? null,
     settingsOpen
       ? h('div.practice-rail__settings', [
           renderStrengthSelector(practiceStrengthLevel(), level => {
