@@ -47,10 +47,10 @@ function compileTimeIdentity(): ReleaseIdentity {
   );
   const builtAt = optionalString(typeof __PATZER_BUILT_AT__ === 'string' ? __PATZER_BUILT_AT__ : undefined);
   return {
-    app: 'patzer-pro',
+    app: 'chess-patzer',
     release: requiredString(
       typeof __PATZER_RELEASE__ === 'string' ? __PATZER_RELEASE__ : undefined,
-      `patzer-pro@${version}+${buildId}`,
+      `chess-patzer@${version}+${buildId}`,
     ),
     version,
     buildId,
@@ -79,7 +79,7 @@ function normalizeLiveIdentity(value: unknown): ReleaseIdentity | null {
   const deployedAt = optionalString(data.deployedAt);
 
   return {
-    app: optionalString(data.app) ?? 'patzer-pro',
+    app: optionalString(data.app) ?? 'chess-patzer',
     release,
     version,
     buildId,
@@ -119,7 +119,7 @@ export function loadLiveReleaseIdentity(onLoaded?: () => void): void {
 }
 
 export function releaseProductLabel(identity: ReleaseIdentity = getVisibleReleaseIdentity()): string {
-  return `Patzer Pro v${identity.version}`;
+  return `Chess Patzer v${identity.version}`;
 }
 
 export function releaseDeployLabel(identity: ReleaseIdentity = getVisibleReleaseIdentity()): string {

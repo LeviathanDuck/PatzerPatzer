@@ -1,0 +1,10 @@
+:root {
+  --chess-patzer-ink: #101212;
+  --chess-patzer-panel: #171a1a;
+  --chess-patzer-line: #2b302f;
+  --chess-patzer-paper: #f3f4ef;
+  --chess-patzer-muted-dark: #9aa09e;
+  --chess-patzer-muted-light: #686e6c;
+  --chess-patzer-teal: #42bda8;
+  --chess-patzer-font: Inter, "SF Pro Display", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+}
