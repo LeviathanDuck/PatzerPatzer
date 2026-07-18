@@ -178,6 +178,28 @@ export function getNodeAtPath(root: TreeNode, path: string): TreeNode | null {
   return node;
 }
 
+
+
+
+
+
+
+
+export function collectAuthoredPathIds(root: TreeNode, path: string): string[] | null {
+  const ids: string[] = [];
+  let node: TreeNode = root;
+  let remaining = path;
+  while (remaining.length >= 2) {
+    const id = remaining.slice(0, 2);
+    remaining = remaining.slice(2);
+    const child = node.children.find(c => c.id === id);
+    if (!child) return null;
+    ids.push(child.id);
+    node = child;
+  }
+  return ids;
+}
+
 /**
  * Extract mainline forward from a specific tree path position.
  * Used for "Practice from here" — extracts from the node at `path` to the end of its mainline.

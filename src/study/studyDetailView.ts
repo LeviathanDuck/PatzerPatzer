@@ -51,8 +51,19 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
+import { isSourcePreviewOpen, renderSourcePreview } from './practice/sourcePreviewCtrl';
 import { establishRouteDestination } from './practice/routeState';
 import { extractMainline, extractFromPath, getNodeAtPath, extractFromVariationPath } from './practice/extractLine';
+import {
+  deriveLessonDecisions, BRANCH_ROLES,
+  type LessonDecision, type BranchRole, type DecisionTrainability,
+} from './practice/material';
+import {
+  authoredContentFor, editAuthoredField,
+  editDecisionRole, editDecisionTrainability, editDecisionLearnerSide,
+  validateScopeReadiness,
+  type AuthoredLessonContent, type AuthoredTextField, type LessonBlockerKind,
+} from './practice/lessonAuthoring';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
 import { activeWorkspace } from '../analyse/workspaceCore';
@@ -93,6 +104,44 @@ let _orpScope: OrpFlagScope = 'current-line';
 let _orpTrainAs: 'white' | 'black' = 'white';
 let _orpSaving = false;
 let _orpFeedback: { studyId: string; kind: 'saved' | 'error' | 'saving'; message: string } | null = null;
+
+
+
+
+
+
+
+let _authoringStudyId: string | null = null;
+let _authoringDecisions: LessonDecision[] = [];
+let _authoredContent = new Map<string, AuthoredLessonContent>();
+let _authoringPreviewAt: string | null = null;
+
+function ensureAuthoringModel(study: StudyItem, root: TreeNode): void {
+  if (_authoringStudyId === study.id) return;
+  _authoringStudyId = study.id;
+  // One bootstrap derivation via D1's producer; identity comes from D1 and is carried forward by the
+  // pure edit ops for the lifetime of this opened Study.
+  const model = deriveLessonDecisions(root, {
+    lessonId: study.id,
+    sourceKind: 'pgn',
+    learnerSide: detailOrientation(),
+  });
+  _authoringDecisions = [...model.decisions];
+  _authoredContent = new Map();
+  _authoringPreviewAt = null;
+}
+
+function replaceAuthoringDecision(next: LessonDecision): void {
+  _authoringDecisions = _authoringDecisions.map(d =>
+    d.identity.decisionId === next.identity.decisionId ? next : d);
+  _authoringPreviewAt = null; // any classification/trainability change re-opens validation
+}
+
+function setAuthoredContent(next: AuthoredLessonContent): void {
+  const map = new Map(_authoredContent);
+  map.set(next.decisionId, next);
+  _authoredContent = map;
+}
 
 function syncToolsStateFromRoute(routeKey: string, routeQuery: string): void {
   if (_toolsRouteSyncKey === routeKey) return;
@@ -724,8 +773,71 @@ export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () =
   if (activeToolTab === 'questionnaire') return renderQuestionnaireToolPanel(redraw);
   if (activeToolTab === 'organize') return renderOrganizeToolPanel(redraw);
   if (activeToolTab === 'orp') return renderOrpToolPanel(redraw);
-  if (activeToolTab === 'practice') return renderPracticeToolPanel();
+  if (activeToolTab === 'practice') return renderPracticeToolPanel(redraw);
   return null;
+}
+
+
+const AUTHORING_ROLE_LABELS: Record<BranchRole, string> = {
+  'mainline-correct': 'Mainline correct',
+  'accepted-alternate': 'Accepted alternate',
+  'wrong-refutation': 'Wrong / refutation',
+  'reference-only': 'Reference only',
+  'needs-classification': 'Needs classification',
+};
+const AUTHORING_TRAINABILITIES: readonly DecisionTrainability[] = [
+  'required', 'optional-practice', 'reference-only', 'untrainable',
+];
+const AUTHORING_TRAINABILITY_LABELS: Record<DecisionTrainability, string> = {
+  'required': 'Required',
+  'optional-practice': 'Optional practice',
+  'reference-only': 'Reference only',
+  'untrainable': 'Untrainable',
+};
+const AUTHORING_BLOCKER_LABELS: Record<LessonBlockerKind, string> = {
+  'missing-recall-prompt': 'Missing recall prompt',
+  'unclassified-branch': 'Unclassified branch',
+  'duplicate-required-cue': 'Duplicate Required cue',
+  'unreachable-path': 'Broken authored path',
+};
+
+/** Node-contextual move label for the authoring header. */
+function authoringNodeLabel(node: TreeNode | null | undefined): string {
+  return formatStudyMoveContext(node);
+}
+
+/** One authored-text field (prompt / hint / deviation / wrong-refutation / cue). Mirrors the Organize
+ * panel's draft-on-input, commit-on-blur cadence so the caret never jumps mid-edit; the in-memory
+ * decision model is updated on every keystroke, and validation refreshes on blur. Each field carries
+ * an associated accessible label + a More-Help explainer (no echo-the-label tooltip). */
+function renderAuthoredTextField(
+  decision: LessonDecision,
+  field: AuthoredTextField,
+  labelText: string,
+  helpText: string,
+  placeholder: string,
+  multiline: boolean,
+  redraw: () => void,
+): VNode {
+  const content = authoredContentFor(_authoredContent, decision.identity.decisionId);
+  const value = content[field] ?? '';
+  const selector = multiline ? 'textarea.study-authoring__textarea' : 'input.study-authoring__input';
+  return h('label.study-tools-col__field', [
+    h('span.study-tools-col__label', labelText),
+    h(selector, {
+      attrs: {
+        ...(multiline ? {} : { type: 'text' }),
+        placeholder,
+        'aria-label': labelText,
+        ...controlExplainerAttrs({ label: labelText, description: helpText }),
+      },
+      props: { value },
+      on: {
+        input: (e: Event) => { setAuthoredContent(editAuthoredField(content, field, (e.target as HTMLInputElement | HTMLTextAreaElement).value)); },
+        blur: () => redraw(),
+      },
+    }),
+  ]);
 }
 
 
@@ -735,13 +847,149 @@ export function renderStudyToolPanel(activeToolTab: StudyToolTabId, redraw: () =
 
 
 
+function renderPracticeToolPanel(redraw: () => void): VNode {
+  const study = studyDetail();
+  const root = detailRoot();
+  if (!study || !root) {
+    return h('div.study-tools-col__panel.study-tools-col__practice', [
+      h('div.study-tools-col__empty', 'Study not loaded.'),
+    ]);
+  }
 
-function renderPracticeToolPanel(): VNode {
-  return h('div.study-tools-col__panel.study-tools-col__practice', [
-    h('div.study-tools-col__practice-lead', 'Practice uses this Study’s existing board and move tree.'),
-    h('div.study-tools-col__empty',
-      'Guided practice sessions are not available yet — no session, grading, or review has started. Use the board and move list as usual.'),
-  ]);
+  ensureAuthoringModel(study, root);
+  const path = detailPath();
+  const currentNode = detailNode();
+  const decision = _authoringDecisions.find(d => d.identity.authoredPath === path);
+  const scope = validateScopeReadiness({ decisions: _authoringDecisions, content: _authoredContent, root });
+
+  const children: (VNode | null)[] = [
+    h('div.study-tools-col__orp-head', [
+      h('div.study-tools-col__orp-title', 'Lesson authoring'),
+      h('div.study-tools-col__orp-context', [
+        h('span.study-tools-col__orp-context-label', 'At'),
+        h('span.study-tools-col__orp-context-value', authoringNodeLabel(currentNode)),
+      ]),
+    ]),
+  ];
+
+  if (!decision) {
+    // Empty state: no authored decision at this node (e.g. the root position).
+    children.push(h('div.study-tools-col__empty',
+      'Select a move to author its lesson decision. The root position has no decision to author.'));
+  } else {
+    // Branch role selector (Essential — consequential; classifies the branch).
+    children.push(h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Branch role'),
+      h('div.study-authoring__seg-list',
+        BRANCH_ROLES.map(role => h('button.study-authoring__seg', {
+          key: role,
+          class: { 'study-authoring__seg--active': decision.role === role },
+          attrs: {
+            type: 'button', 'aria-pressed': String(decision.role === role),
+            ...controlExplainerAttrs({ label: `Set branch role: ${AUTHORING_ROLE_LABELS[role]}`, description: 'Sets the explicit role for this branch.', tier: 'essential' }),
+          },
+          on: { click: () => { replaceAuthoringDecision(editDecisionRole(decision, role)); redraw(); } },
+        }, AUTHORING_ROLE_LABELS[role])),
+      ),
+    ]));
+
+    // Trainability selector (Essential — consequential; only Required blocks coverage / enrolls SRS).
+    children.push(h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Trainability'),
+      h('div.study-authoring__seg-list',
+        AUTHORING_TRAINABILITIES.map(trainability => h('button.study-authoring__seg', {
+          key: trainability,
+          class: { 'study-authoring__seg--active': decision.trainability === trainability },
+          attrs: {
+            type: 'button', 'aria-pressed': String(decision.trainability === trainability),
+            ...controlExplainerAttrs({ label: `Set trainability: ${AUTHORING_TRAINABILITY_LABELS[trainability]}`, description: 'Sets whether and how this decision is trained.', tier: 'essential' }),
+          },
+          on: { click: () => { replaceAuthoringDecision(editDecisionTrainability(decision, trainability)); redraw(); } },
+        }, AUTHORING_TRAINABILITY_LABELS[trainability])),
+      ),
+    ]));
+
+    // Learner side/orientation toggle (Essential — consequential).
+    children.push(h('div.study-tools-col__field', [
+      h('span.study-tools-col__label', 'Learner side'),
+      h('div.study-authoring__seg-list', (['white', 'black'] as const).map(side => h('button.study-authoring__seg', {
+        key: side,
+        class: { 'study-authoring__seg--active': decision.learnerSide === side },
+        attrs: {
+          type: 'button', 'aria-pressed': String(decision.learnerSide === side),
+          ...controlExplainerAttrs({ label: side === 'white' ? 'Learner plays White' : 'Learner plays Black', description: 'Sets which side the learner recalls this decision as.', tier: 'essential' }),
+        },
+        on: { click: () => { replaceAuthoringDecision(editDecisionLearnerSide(decision, side)); redraw(); } },
+      }, side === 'white' ? 'White' : 'Black'))),
+    ]));
+
+    // Authored-text fields (More Help by default). Comments/glyphs/arrows/shapes are authored on the
+    // board via its own Comment box + glyph toolbar + shape drawing — NOT re-implemented here.
+    children.push(renderAuthoredTextField(decision, 'instructionalPrompt', 'Recall prompt',
+      'The question the learner answers from this position in Learn.', 'e.g. What is the plan here?', true, redraw));
+    children.push(renderAuthoredTextField(decision, 'hiddenHint', 'Hidden hint',
+      'An optional hint revealed on request during Learn.', 'Optional hint…', true, redraw));
+    children.push(renderAuthoredTextField(decision, 'genericDeviation', 'Deviation explanation',
+      'The fallback explanation shown for an off-book move.', 'Why other moves miss…', true, redraw));
+    children.push(renderAuthoredTextField(decision, 'wrongRefutationExplanation', 'Wrong / refutation note',
+      'The branch-specific explanation for this wrong or refuting line.', 'Refutation detail…', true, redraw));
+    children.push(renderAuthoredTextField(decision, 'authoredBranchName', 'Required cue',
+      'A unique branch name or recall cue used when a position has several Required continuations. It must not reveal the move.',
+      'e.g. Kingside plan', false, redraw));
+
+    children.push(h('div.study-tools-col__hint',
+      'Comments, glyphs, arrows, and shapes are authored on the board and its Comment box — they are not duplicated here.'));
+  }
+
+  // Scoped readiness ("Preview as learner"): blocked list with repair routes, or trainable
+  // confirmation. Blocks ONLY this scope (P2-ORP-15). Preview action is Essential; disabled while
+  // blockers remain, with the exact scoped reason.
+  if (scope.trainable) {
+    children.push(h('div.study-authoring__ready', [
+      h('span.study-authoring__ready-icon', { attrs: { 'aria-hidden': 'true' } }, '✓'),
+      h('span', 'This scope is ready to train — no blockers.'),
+    ]));
+    children.push(h('button.study-authoring__preview', {
+      attrs: {
+        type: 'button',
+        ...controlExplainerAttrs({ label: 'Preview as learner', description: 'Opens this ready scope from the learner’s side to check it.', tier: 'essential' }),
+      },
+      on: { click: () => { _authoringPreviewAt = decision?.identity.decisionId ?? path; redraw(); } },
+    }, 'Preview as learner'));
+    if (_authoringPreviewAt) {
+      children.push(h('div.study-tools-col__hint',
+        `Previewing from ${decision?.learnerSide ?? 'the learner'}’s side. Use the board and move list to walk the line.`));
+    }
+  } else {
+    children.push(h('div.study-authoring__blockers', [
+      h('div.study-authoring__blockers-title', `${scope.blockers.length} blocker${scope.blockers.length === 1 ? '' : 's'} to resolve`),
+      ...scope.blockers.map((blocker, index) => h('button.study-authoring__blocker-route', {
+        key: `${blocker.kind}-${index}`,
+        attrs: {
+          type: 'button',
+          ...controlExplainerAttrs({ label: `Go to repair: ${AUTHORING_BLOCKER_LABELS[blocker.kind]}`, description: blocker.message, tier: 'essential' }),
+        },
+        on: {
+          click: () => {
+            const target = blocker.routes[0]?.authoredPath;
+            if (target != null) { navigateTo(target, redraw); syncStudyBoard(redraw); writeStudyDetailRoute(); }
+          },
+        },
+      }, [
+        h('span.study-authoring__blocker-kind', AUTHORING_BLOCKER_LABELS[blocker.kind]),
+        h('span.study-authoring__blocker-msg', blocker.message),
+      ])),
+    ]));
+    children.push(renderDisabledControlExplainer(
+      {
+        label: 'Preview as learner',
+        description: `Resolve ${scope.blockers.length} blocker${scope.blockers.length === 1 ? '' : 's'} before previewing this scope.`,
+      },
+      h('button.study-authoring__preview', { attrs: { type: 'button', disabled: true } }, 'Preview as learner'),
+    ));
+  }
+
+  return h('div.study-tools-col__panel.study-tools-col__practice.study-authoring', children);
 }
 
 // Defined at module scope so it survives the shared board's insert hook closure and any hook
@@ -1684,7 +1932,11 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
 
 
-  const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary();
+
+
+
+
+  const practiceRequested = _toolsOpen && _activeToolTab === 'practice' && !isDrillActive() && !isDrillSummary() && !isSourcePreviewOpen();
   reconcileStudyPracticeSlot(practiceRequested, redraw);
 
 
@@ -1694,6 +1946,14 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
 
 
   establishRouteDestination({ name: 'study-detail', params: { id }, query: routeQuery }, isStudyWorkspaceActive());
+
+
+
+
+
+  if (isSourcePreviewOpen()) {
+    return renderSourcePreview(redraw);
+  }
 
 
   if (isDrillActive() || isDrillSummary()) {

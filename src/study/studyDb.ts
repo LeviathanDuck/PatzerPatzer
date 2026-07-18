@@ -38,6 +38,14 @@ import type {
   LegacyMigrationPlanResult,
   LegacyMigrationDecisionAuthorityEntry,
 } from './practice/migration';
+import { stampLinkedSourceProvenance } from './practice/linkedSource';
+import { acceptedPlan } from './practice/linkedStudyMerge';
+import type {
+  AcceptedMergePlan,
+  MergePlan,
+  LocalMergeState,
+  LocalDecisionState,
+} from './practice/linkedStudyMerge';
 
 type StudyStoreName =
   | 'studies'
@@ -3650,4 +3658,312 @@ export async function enrollStudyPracticeLesson(
     enqueueStudyPracticeOutboxItems(buildEnrollmentOutboxItems(lesson, decisions, srsRows));
   }
   return result;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Lightweight, non-authoritative study metadata for the verified Lichess Library cache. */
+export interface CachedLichessStudyMetadata {
+  readonly studyId: string;
+  readonly title: string;
+  readonly author: string;
+  readonly chapterList: readonly string[];
+  readonly revisionCursor: number;
+  readonly fetchedAt: number;
+}
+
+/** Max cache entries before LRU eviction (bounded per AP-7). */
+export const LICHESS_LIBRARY_CACHE_MAX_ENTRIES = 200;
+
+// Insertion-ordered Map used as an LRU: a `get` re-inserts (moves the key to the newest position); a
+// `put` beyond the cap evicts the oldest (first) key. Module-scoped so it is session-lived, never
+// persisted and never synced.
+const lichessStudyMetadataCache = new Map<string, CachedLichessStudyMetadata>();
+
+/** Insert/update a cached metadata entry, evicting the oldest entries past the bound (LRU). */
+export function putLichessStudyMetadata(entry: CachedLichessStudyMetadata): void {
+  // Refresh recency: delete any existing entry so the re-insert appends at the newest position.
+  lichessStudyMetadataCache.delete(entry.studyId);
+  lichessStudyMetadataCache.set(entry.studyId, entry);
+  while (lichessStudyMetadataCache.size > LICHESS_LIBRARY_CACHE_MAX_ENTRIES) {
+    const oldest = lichessStudyMetadataCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    lichessStudyMetadataCache.delete(oldest);
+  }
+}
+
+/** Read a cached metadata entry and mark it most-recently-used. */
+export function getLichessStudyMetadata(studyId: string): CachedLichessStudyMetadata | undefined {
+  const entry = lichessStudyMetadataCache.get(studyId);
+  if (entry === undefined) return undefined;
+  lichessStudyMetadataCache.delete(studyId);
+  lichessStudyMetadataCache.set(studyId, entry);
+  return entry;
+}
+
+/**
+ * Drop a cached entry — used when a linked source is removed / turned private on refresh (§5: drop
+ * cached metadata, never serve stale private content). This NEVER cascades into any local Study or
+ * lesson deletion; it only clears the evictable metadata cache.
+ */
+export function dropLichessStudyMetadata(studyId: string): void {
+  lichessStudyMetadataCache.delete(studyId);
+}
+
+/** Clear the entire cache (test/reset seam). */
+export function clearLichessStudyMetadataCache(): void {
+  lichessStudyMetadataCache.clear();
+}
+
+/** Current cache size (bounds/eviction assertions). */
+export function lichessStudyMetadataCacheSize(): number {
+  return lichessStudyMetadataCache.size;
+}
+
+export type StudyMetadataFreshness = 'current' | 'stale' | 'unknown';
+
+/**
+ * Compare a cached revision cursor against the freshly-resolved one. A non-finite cursor is 'unknown'
+ * (never silently treated as current); a higher current revision is 'stale'. This is how the client
+ * surfaces "may be out of date" without ever serving stale content as current.
+ */
+export function classifyStudyMetadataFreshness(
+  cachedRevision: number,
+  currentRevision: number,
+): StudyMetadataFreshness {
+  if (!Number.isFinite(cachedRevision) || !Number.isFinite(currentRevision)) return 'unknown';
+  if (currentRevision > cachedRevision) return 'stale';
+  return 'current';
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/** Bounded read caps for the local-leg assembly (CR-2: never getAll() an entire store). */
+const MERGE_LOCAL_LESSON_LIMIT = 500;
+const MERGE_LOCAL_DECISION_LIMIT = 2000;
+const MERGE_LOCAL_ATTEMPT_LIMIT = 500;
+
+/** New/replacement decision rows are created UNTRAINABLE (never auto-enrolled): the absence of an SRS
+ *  row is the not-enrolled signal, and this freeform lifecycle status records the intent honestly. */
+const MERGE_UNTRAINABLE_STATUS = 'untrainable';
+const MERGE_ARCHIVED_STATUS = 'archived';
+
+/**
+ * Assemble the "current local Study + user-owned layers" leg for the three-way merge from EXISTING
+ * rows. Reads the StudyItem's protected overlays (`notes`, `localProvenanceLayers`,
+ * `linkedSourceProvenance`) plus, for every decision under the item's lessons, its SRS row and immutable
+ * attempt history — the overlays the merge must carry forward verbatim. Bounded/indexed reads only.
+ *
+ * NOTE (Option-A deferral): the minimal `study-practice-decisions` row carries no authored path / move,
+ * so the merge joins these overlays to a class by `decisionId` (matched through the INJECTED baseline,
+ * which carries both id and continuity key) rather than reconstructing keys here. Durable key↔id mapping
+ * persistence is D15's.
+ */
+export async function assembleLocalMergeState(studyItemId: string): Promise<LocalMergeState | undefined> {
+  const item = await getStudy(studyItemId);
+  if (item === undefined) return undefined;
+
+  const lessons = await listPracticeLessonsByStudyItem(studyItemId, MERGE_LOCAL_LESSON_LIMIT);
+  const primaryLessonId = lessons[0]?.lessonId ?? studyItemId;
+
+  const decisions: LocalDecisionState[] = [];
+  for (const lesson of lessons) {
+    const rows = await listPracticeDecisionsByLesson(lesson.lessonId, MERGE_LOCAL_DECISION_LIMIT);
+    for (const row of rows) {
+      const srs = await getPracticeSrs(row.decisionId);
+      const attempts = await listPracticeAttemptsByDecision(row.decisionId, MERGE_LOCAL_ATTEMPT_LIMIT);
+      decisions.push({
+        decisionId: row.decisionId,
+        ...(row.status !== undefined ? { status: row.status } : {}),
+        ...(srs !== undefined ? { srs } : {}),
+        ...(attempts.length > 0 ? { attempts } : {}),
+      });
+    }
+  }
+
+  return {
+    studyItemId,
+    lessonId: primaryLessonId,
+    decisions,
+    ...(item.notes !== undefined ? { notes: item.notes } : {}),
+    ...(item.localProvenanceLayers !== undefined ? { localProvenanceLayers: item.localProvenanceLayers } : {}),
+    ...(item.linkedSourceProvenance !== undefined ? { linkedSourceProvenance: item.linkedSourceProvenance } : {}),
+  };
+}
+
+/** Outcome tally of an applied merge (diagnostic; the writes themselves are the effect). */
+export interface MergeApplyResult {
+  readonly newDecisions: number;
+  readonly archivedDecisions: number;
+  readonly suspendedSchedules: number;
+  readonly archivedSchedules: number;
+  readonly provenanceStamped: boolean;
+}
+
+/** Build a fresh, UNTRAINABLE decision row for a new/replacement decision. Never reuses an archived id;
+ *  never creates an SRS row (so it is not auto-enrolled). */
+function buildUntrainableDecisionRow(
+  decisionId: string,
+  lessonId: string,
+  chapterId: string | undefined,
+  sourceLineageId: string,
+  now: number,
+): StudyPracticeDecisionRow {
+  return {
+    decisionId,
+    lessonId,
+    ...(chapterId !== undefined ? { chapterId } : {}),
+    sourceLineageId,
+    status: MERGE_UNTRAINABLE_STATUS,
+    updatedAt: now,
+  };
+}
+
+/** Flip a schedule row to a non-active status WITHOUT touching progress identity (level/step/streak) —
+ *  training is halted, the row is kept, attempts are never read/mutated. Funnels through the closed-record
+ *  guard via `savePracticeSrs`. */
+function toInactiveSchedule(
+  rec: SrsScheduleRecord,
+  status: 'suspended' | 'archived',
+  now: number,
+): SrsScheduleRecord {
+  return { ...rec, status, dueAt: rec.dueAt, updatedAt: now };
+}
+
+/**
+ * Apply an EXPLICITLY-ACCEPTED merge plan onto EXISTING practice stores, append-only. This is the gated
+ * write path: it accepts ONLY an `AcceptedMergePlan` (mintable solely via `acceptMergePlan`), is NEVER
+ * auto-called (no producer path invokes it), and NEVER routes through the flat `saveOrpLineToLibrary`
+ * overwrite (which would drop `linkedSourceProvenance` and clobber My-notes). Per class:
+ *   - new-in-source / expected-move-or-path-change(added) → `savePracticeDecision` (fresh id, untrainable,
+ *     NO SRS row → not auto-enrolled);
+ *   - expected-move-or-path-change(removed) → KEEP the old decision row, flip status → archived (id never
+ *     reused), and archive its SRS row (append-only history; no delete);
+ *   - removed / ambiguous(removed) → SRS row → suspended (training halted), decision row + attempts + notes
+ *     preserved, NO delete;
+ *   - ambiguous(added) → NO automatic write (routes to explicit update review — zero mastery transfer);
+ *   - unchanged / presentation-only-change → SRS UNTOUCHED (progress preserved);
+ *   - provenance → re-stamp ONLY `linkedSourceProvenance` by MERGING onto the existing StudyItem, so
+ *     My-analysis / My-notes layers and free-text notes survive verbatim.
+ */
+export async function applyAcceptedMerge(accepted: AcceptedMergePlan): Promise<MergeApplyResult> {
+  const plan: MergePlan = acceptedPlan(accepted);
+  const now = Date.now();
+  let newDecisions = 0;
+  let archivedDecisions = 0;
+  let suspendedSchedules = 0;
+  let archivedSchedules = 0;
+
+  // A fail-closed plan can never be accepted (acceptMergePlan throws), so `plan.failClosed` is always
+  // undefined here; guard defensively so an apply still mutates nothing if that ever changes.
+  if (plan.failClosed === undefined) {
+    for (const entry of plan.entries) {
+      switch (entry.cls) {
+        case 'unchanged':
+        case 'presentation-only-change':
+          // Progress preserved — SRS rows untouched. (Presentation refresh onto the local tree is D5/D12
+          // UI work, deliberately out of D6's apply to avoid a flat StudyItem clobber.)
+          break;
+
+        case 'new-in-source': {
+          if (entry.incoming) {
+            await savePracticeDecision(buildUntrainableDecisionRow(
+              entry.incoming.identity.decisionId,
+              entry.incoming.identity.lessonId,
+              entry.incoming.identity.chapterId,
+              entry.incoming.identity.sourceLineageId ?? plan.sourceLineageId,
+              now,
+            ));
+            newDecisions++;
+          }
+          break;
+        }
+
+        case 'expected-move-or-path-change': {
+          if (entry.side === 'added' && entry.incoming) {
+            // Mint the NEW decision (fresh id from D1's derive), untrainable, no SRS row.
+            await savePracticeDecision(buildUntrainableDecisionRow(
+              entry.replacementDecisionId ?? entry.incoming.identity.decisionId,
+              entry.incoming.identity.lessonId,
+              entry.incoming.identity.chapterId,
+              entry.incoming.identity.sourceLineageId ?? plan.sourceLineageId,
+              now,
+            ));
+            newDecisions++;
+          } else if (entry.side === 'removed' && entry.baseline) {
+            // Archive the REPLACED decision: keep the row, flip status → archived (id never reused).
+            const existing = await getPracticeDecision(entry.baseline.identity.decisionId);
+            if (existing !== undefined) {
+              await savePracticeDecision({ ...existing, status: MERGE_ARCHIVED_STATUS, updatedAt: now });
+              archivedDecisions++;
+            }
+            if (entry.local?.srs !== undefined) {
+              await savePracticeSrs(toInactiveSchedule(entry.local.srs, 'archived', now));
+              archivedSchedules++;
+            }
+          }
+          break;
+        }
+
+        case 'removed':
+        case 'ambiguous': {
+          // Removed / rewritten / ambiguous material → training suspended, notes/history preserved, no
+          // delete (P2-ORP-18). Only the removed-side local material is suspended; ambiguous added-side
+          // enters explicit review with NO automatic write (zero heuristic mastery transfer, P2-ORP-17).
+          if (entry.side === 'removed' && entry.local?.srs !== undefined) {
+            await savePracticeSrs(toInactiveSchedule(entry.local.srs, 'suspended', now));
+            suspendedSchedules++;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  // Provenance re-stamp — MERGE onto the existing StudyItem so My-notes / My-analysis / free-text notes
+  // survive verbatim; only `linkedSourceProvenance` changes. NEVER a fresh-literal rebuild.
+  let provenanceStamped = false;
+  const item = await getStudy(plan.studyItemId);
+  if (item !== undefined) {
+    const stamp = stampLinkedSourceProvenance({
+      incoming: plan.incomingProvenance,
+      ...(item.localProvenanceLayers !== undefined ? { existingLocalLayers: item.localProvenanceLayers } : {}),
+      ...(item.notes !== undefined ? { existingNotes: item.notes } : {}),
+    });
+    const updated: StudyItem = { ...item, linkedSourceProvenance: stamp.linkedSourceProvenance, updatedAt: now };
+    await saveStudyStrict(updated);
+    provenanceStamped = true;
+  }
+
+  return { newDecisions, archivedDecisions, suspendedSchedules, archivedSchedules, provenanceStamped };
 }

@@ -7,7 +7,14 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { saveStudy, saveStudyStrict, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
-import type { OrpSourceProvenance, StudyItem, StudySource, TrainableSequence } from './types';
+import type {
+  OrpSourceProvenance,
+  SourceImportedProvenance,
+  StudyItem,
+  StudySource,
+  TrainableSequence,
+} from './types';
+import { stampLinkedSourceProvenance } from './practice/linkedSource';
 import { MASTER_GAMES } from '../showcase/masterGames';
 import type { MasterGame } from '../showcase/masterGames';
 import { deriveFens } from './practice/extractLine';
@@ -286,6 +293,14 @@ interface OrpSaveOptions {
   extraTags?: readonly string[];
   mergeExistingTags?: boolean;
   sourceProvenance?: OrpSourceProvenance;
+
+
+
+
+
+
+
+  linkedSourceProvenance?: SourceImportedProvenance;
 }
 
 function mergeUniqueTags(existing: readonly string[], next: readonly string[]): string[] {
@@ -361,6 +376,7 @@ export async function saveOrpLineToLibrary(
   let seqCreatedAt   = now;
   let seqStatus: 'active' | 'paused' = 'active';
   let existingStudy: StudyItem | null = null;
+  let existingSeqRecord: TrainableSequence | null = null;
   try {
     const existing = await getStudy(studyItemId);
     if (existing) {
@@ -374,6 +390,7 @@ export async function saveOrpLineToLibrary(
   try {
     const existingSeq = await getPracticeLine(sequenceId);
     if (existingSeq) {
+      existingSeqRecord = existingSeq;
       seqCreatedAt = existingSeq.createdAt;
       seqStatus    = existingSeq.status;
     }
@@ -386,6 +403,7 @@ export async function saveOrpLineToLibrary(
   const pgn = uciMovesToPgn(ucis, title);
   const tags = buildOrpTags(trainAs, collection, options.extraTags);
   const sourceProvenance = options.sourceProvenance;
+  const linkedProvenance = options.linkedSourceProvenance;
 
   // Build StudyItem (source: 'openings').
   const studyItem: StudyItem = {
@@ -403,6 +421,22 @@ export async function saveOrpLineToLibrary(
     studyItem.sourceGameId = sourceProvenance.originalStudyItemId;
     studyItem.orpSourceProvenance = sourceProvenance;
     if (sourceProvenance.sourcePath !== undefined) studyItem.sourcePath = sourceProvenance.sourcePath;
+  }
+  // Stamp external linked/snapshot-source provenance WITHOUT clobbering locally-authored layers
+  // (P2-ORP-18 "never overwrite My notes"). The stamp writes ONLY linkedSourceProvenance; the
+  // My-analysis/My-notes layers and free-text notes are carried forward verbatim from the existing
+  // record on the upsert path. Orthogonal to trainability — no `required`, no SRS/decision row.
+  if (linkedProvenance) {
+    const stamp = stampLinkedSourceProvenance({
+      incoming: linkedProvenance,
+      ...(existingStudy?.localProvenanceLayers !== undefined
+        ? { existingLocalLayers: existingStudy.localProvenanceLayers }
+        : {}),
+      ...(existingStudy?.notes !== undefined ? { existingNotes: existingStudy.notes } : {}),
+    });
+    studyItem.linkedSourceProvenance = stamp.linkedSourceProvenance;
+    if (stamp.localProvenanceLayers !== undefined) studyItem.localProvenanceLayers = stamp.localProvenanceLayers;
+    if (stamp.notes !== undefined) studyItem.notes = stamp.notes;
   }
   if (openingEco)  studyItem.eco     = openingEco;
   if (openingName) studyItem.opening = openingName;
@@ -422,6 +456,18 @@ export async function saveOrpLineToLibrary(
     updatedAt:   now,
   };
   if (sourceProvenance) sequence.orpSourceProvenance = sourceProvenance;
+  // Same non-clobbering stamp for the TrainableSequence's provenance layers (TrainableSequence has no
+  // notes field; only its locally-authored layers are preserved from the existing sequence record).
+  if (linkedProvenance) {
+    const seqStamp = stampLinkedSourceProvenance({
+      incoming: linkedProvenance,
+      ...(existingSeqRecord?.localProvenanceLayers !== undefined
+        ? { existingLocalLayers: existingSeqRecord.localProvenanceLayers }
+        : {}),
+    });
+    sequence.linkedSourceProvenance = seqStamp.linkedSourceProvenance;
+    if (seqStamp.localProvenanceLayers !== undefined) sequence.localProvenanceLayers = seqStamp.localProvenanceLayers;
+  }
 
   // Persist both records. saveStudy / savePracticeLine use IDB put() (upsert).
   try {

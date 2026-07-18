@@ -25,6 +25,7 @@ import {
 } from '../analyse/workspaceCore';
 import { createStudyBoardInputModule } from './studyBoardInput';
 import { mountStudyPracticeWorkspace } from './practice/workspaceModule';
+import { isSourcePreviewOpen, closeSourcePreview } from './practice/sourcePreviewCtrl';
 import { syncStudyDetailItemToLibraryCache } from './studyCtrl';
 // studyBoardNavigate is a hoisted function declaration in studyDetailView.ts (which already imports
 // from this file). Importing it back completes a module cycle, but that is safe here: it is only
@@ -199,9 +200,15 @@ export function hydrateStudyDetailRoute(id: string, query: string, redraw: () =>
   // Path/orientation changes within the mounted Study are P0 navigation. Apply them directly to
   // the live session; never reload the same PGN from IDB or wait for persistence.
   if (_study?.id === id && _session) {
-    // SPA route exit can leave this Study session retained while Analysis supersedes the shared
-    // workspace. Re-entering the same Study must re-mount its adapter before touching the board.
-    if (!_workspaceInstance || activeWorkspace() !== _workspaceInstance) mountStudyWorkspace(redraw);
+
+
+
+
+
+
+    if ((!_workspaceInstance || activeWorkspace() !== _workspaceInstance) && !isSourcePreviewOpen()) {
+      mountStudyWorkspace(redraw);
+    }
     const recovery = resolveStudyDetailPath(_session.root, parsed.state.path);
     _session.setPath(recovery.resolvedPath);
     setStudyDetailOrientation(parsed.state.orientation);
@@ -428,6 +435,12 @@ export function mountStudyWorkspace(redraw: () => void): void {
  * Practice ownership handle is cleared here too so Practice can never remain active off-route.
  */
 export function unmountStudyWorkspace(reason: string): boolean {
+
+
+
+
+
+  closeSourcePreview(reason);
   const instance = _workspaceInstance;
   _practiceWorkspaceInstance = null;
   if (!instance) return false;
