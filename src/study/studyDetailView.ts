@@ -61,6 +61,8 @@ import {
 } from './practice/material';
 import { extractLessonModel } from './practice/lessonExtract';
 import { loadAuthoringState, persistDecisionEdit, persistContentEdit } from './practice/lessonPersistence';
+import { loadStudyPracticePanelData, type StudyPracticePanelData } from './practice/practicePanelData';
+import { launchDueReview, resumeDueReview } from './practice/dueReviewLaunch';
 import {
   authoredContentFor, editAuthoredField,
   editDecisionRole, editDecisionTrainability, editDecisionLearnerSide,
@@ -821,22 +823,66 @@ function renderOrpToolPanel(redraw: () => void): VNode {
   ]);
 }
 
-/** Feed the pure D12 practice panel from the Study host. Live session assembly (DueReviewSession /
- *  PracticeSelectedSession / DueReviewScorecard) is a separate consumer slice not in D12's 3-file scope;
- *  until it lands the host supplies the honest empty states so the tab strip, states, and copy are
- *  reviewable (design-gated posture, mirroring D8's caller-wiring F1). The Analysis-mount hookup and the
- *  view render tests are the D12 F1s. */
+
+let _panelDataFor: string | null = null;
+let _panelData: StudyPracticePanelData | null = null;
+let _panelLoading = false;
+
+function refreshPanelData(lessonId: string, redraw: () => void): void {
+  _panelLoading = true;
+  void loadStudyPracticePanelData({ lessonId }).then(data => {
+    if (_panelDataFor !== lessonId) return; // stale — a different Study opened meanwhile
+    _panelData = data;
+    _panelLoading = false;
+    redraw();
+  }).catch(e => {
+    if (_panelDataFor !== lessonId) return;
+    _panelLoading = false;
+    console.warn('[studyDetailView] practice panel data load failed', e);
+    redraw();
+  });
+}
+
+
+
+
+
+
 function renderStudyPracticePanel(redraw: () => void): VNode {
+  const study = studyDetail();
+  const lessonId = study?.id ?? null;
+  if (lessonId !== null && _panelDataFor !== lessonId) {
+    _panelDataFor = lessonId;
+    _panelData = null;
+    refreshPanelData(lessonId, redraw);
+  }
+
+  const data = _panelData;
+  const onSessionEnd = (): void => {
+    if (lessonId !== null) refreshPanelData(lessonId, redraw);
+  };
+  let review: PracticePanelProps['review'];
+  if (data === null) {
+    review = _panelLoading ? { status: 'loading' } : { status: 'empty' };
+  } else if (data.review.status === 'ready') {
+    const resumableId = data.resumableSessionId;
+    review = {
+      ...data.review,
+      ...(resumableId !== undefined
+        ? { onResume: () => { void resumeDueReview(resumableId, {}, redraw, { onSessionEnd }); } }
+        : { onStart: () => { if (lessonId !== null) void launchDueReview({ lessonId }, redraw, { onSessionEnd }); } }),
+    };
+  } else {
+    review = data.review;
+  }
+
   const props: PracticePanelProps = {
     activeTab: _practiceTab,
     onSelectTab: (tab: PracticePanelTab) => { _practiceTab = tab; redraw(); },
-    // Learn entry list + live drill hand-off arrive with the caller-wiring F1 (D8 precedent); an empty
-    // entry list renders the neutral "No lines to learn" state honestly for now.
     learn: { status: 'ready', entries: [] },
-    // Review/Practice/Progress render their empty states until the SRS-store assembly plumbing lands.
-    review: { status: 'empty' },
+    review,
     practice: { status: 'empty' },
-    progress: { status: 'empty' },
+    progress: data === null ? (_panelLoading ? { status: 'loading' } : { status: 'empty' }) : data.progress,
   };
   return h('div.study-tools-col__field', [
     h('span.study-tools-col__label', 'Practice & progress'),
