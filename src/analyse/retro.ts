@@ -108,10 +108,10 @@ type EvalLookup = (path: string) => {
  *
  * Parity notes vs Lichess Retrospection { fault, prev, solution, openingUcis }:
  * - fault/prev: represented here as path + parentPath (tree node references are
- *   not stored because Patzer Pro's batch analysis populates evalCache rather than
+ *   not stored because Chess Patzer's batch analysis populates evalCache rather than
  *   tree-node ceval/eval fields).
  * - solution: Lichess derives this from `prev.node.children.find(n => n.comp)`, a
- *   "comp" child added during server analysis. Patzer Pro stores only the best-move
+ *   "comp" child added during server analysis. Chess Patzer stores only the best-move
  *   UCI in evalCache (parentEval.best), so the solution node cannot be reconstructed
  *   without additional multi-PV storage. bestMove approximates it, but is NOT fully
  *   equivalent: a comp child only exists when the played move differed from the best
@@ -169,7 +169,7 @@ export interface RetroCandidate {
  *   2. The parent position had a forced mate in ≤ retroConfig.missedMateDistance available,
  *      but the played move did not deliver or maintain that mate.
  *
- * Threshold note: Lichess evalSwings uses |povDiff| > 0.1 (un-halved scale). Patzer Pro
+ * Threshold note: Lichess evalSwings uses |povDiff| > 0.1 (un-halved scale). Chess Patzer
  * stores loss = (moverPrevWc − moverNodeWc) / 2, so the equivalent inaccuracy floor is
  * loss > 0.05 (= LOSS_THRESHOLDS.inaccuracy). The default minClassification of 'mistake'
  * corresponds to loss >= 0.10 (= LOSS_THRESHOLDS.mistake), which is somewhat stricter
@@ -211,7 +211,7 @@ export function buildRetroCandidates(
 
     // Require both positions to have engine data and the parent to have a best move.
     // Mirrors nodeFinder.ts: `curr.eval && prev.eval && hasCompChild(prev)`.
-    // Patzer Pro stores best-move UCI in evalCache rather than as a comp child node —
+    // Chess Patzer stores best-move UCI in evalCache rather than as a comp child node —
     // this is functionally equivalent for candidate detection and move display.
     if (!nodeEval || !parentEval || !parentEval.best) continue;
 
