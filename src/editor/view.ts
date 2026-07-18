@@ -383,7 +383,7 @@ function discardEditorSaveFlow(): void {
 function editorSaveFlowContext(): SaveFlowContext {
   return {
     line: 'From Board Editor — save this position',
-    source: 'Board Editor — "to Study" action (internal update)',
+    source: 'Board Editor — "to Study" action',
   };
 }
 

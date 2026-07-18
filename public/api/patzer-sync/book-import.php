@@ -12,7 +12,7 @@ function patzer_proxy_import(string $pgn, string $token): never {
     $payload = http_build_query(['pgn' => $pgn], '', '&', PHP_QUERY_RFC3986);
     $requestHeaders = [
         'Authorization: Bearer ' . $token,
-        'User-Agent: PatzerPro/1.0',
+        'User-Agent: ChessPatzer/1.0',
         'Accept: application/json',
         'Content-Type: application/x-www-form-urlencoded',
     ];

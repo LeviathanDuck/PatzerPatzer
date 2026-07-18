@@ -21,7 +21,6 @@ const STATIC_ROUTE_SEGMENTS = new Set([
   'openings',
   'opponents',
   'diagnostics',
-  'patzerpro',
   'puzzles',
   'settings',
   'showcase',

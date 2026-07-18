@@ -519,7 +519,7 @@ function addSyncedGames(games: ImportedGame[]): SyncedGamesOutcome {
 const SAMPLE_PGN = '1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7';
 const BLANK_ANALYSIS_PGN = [
   '[Event "?"]',
-  '[Site "PatzerPro"]',
+  '[Site "ChessPatzer"]',
   '[Date "????.??.??"]',
   '[White "?"]',
   '[Black "?"]',
@@ -1103,7 +1103,7 @@ function gameSaveFlowContext(
   }
   return {
     line: 'From Analysis board — manual save',
-    source: 'Board menu — Save to Library (internal update)',
+    source: 'Board menu — Save to Library',
   };
 }
 
