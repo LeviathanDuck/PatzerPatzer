@@ -422,15 +422,19 @@ export async function saveOrpLineToLibrary(
   const tags = buildOrpTags(trainAs, collection, options.extraTags);
   const sourceProvenance = options.sourceProvenance;
 
-  // Build StudyItem (source: 'openings').
+
+
+
+
+
+
   const studyItem: StudyItem = {
+    ...(existingStudy ?? { folders: [] as string[], favorite: false }),
     id:        studyItemId,
     pgn,
     title,
     source:    'openings',
     tags:      options.mergeExistingTags && existingStudy ? mergeUniqueTags(existingStudy.tags, tags) : tags,
-    folders:   [],
-    favorite:  false,
     createdAt: studyCreatedAt,
     updatedAt: now,
   };
