@@ -73,6 +73,14 @@ export function closeDrillCatalog(): void {
   _notice = null;
 }
 
+
+
+export function openDrillCatalogPromotion(record: EngineDrillRecord, redraw: () => void): void {
+  openDrillCatalog({ kind: 'global' }, redraw);
+  _promotion = { stage: 'title', record, title: 'Promoted drill' };
+  writeHashRoute('#/study');
+}
+
 export function openDrillCatalog(scope: DrillCatalogScope, redraw: () => void): void {
   _open = true;
   _scope = scope;

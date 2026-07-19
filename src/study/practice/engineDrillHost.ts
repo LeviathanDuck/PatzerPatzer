@@ -27,6 +27,8 @@ import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
 import { makePgn, defaultHeaders, ChildNode, Node as PgnNode, type PgnNodeData } from 'chessops/pgn';
 import { chainDrillLine } from './drillPromotion';
+import { openDrillCatalogPromotion } from './drillCatalogView';
+import { requestSelectedGameAnalysis } from '../../analyse/pgnExport';
 import { requestPlayMove, cancelPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
 import { engineMode, exitPlayMode } from '../../engine/ctrl';
@@ -648,14 +650,31 @@ export function engineDrillPanelVnode(): VNode {
     };
     return h('div.drill-host', [
       renderDrillResult(finished, {
-        // v1 interim mappings (disclosed): the drill line already lives in the analysis tree, so
-        // Analyze / Open in Analysis close the result and leave the game on the board; full Game
-        // Review integration and D17 promotion ride their own slices.
-        onAnalyze: closeResult,
-        onOpenInAnalysis: closeResult,
+
+
+
+        onAnalyze: () => {
+          const record = _record;
+          if (record !== null) openDrillRecordOnBoard(record);
+          const started = requestSelectedGameAnalysis();
+          if (!started) {
+            _panelNotice = 'The drill game is on the analysis board — start Analyze from the board controls.';
+          }
+          closeResult();
+        },
+        onOpenInAnalysis: () => {
+          const record = _record;
+          if (record !== null) openDrillRecordOnBoard(record);
+          closeResult();
+        },
         onNextDrill: () => startFollowUpDrill(false),
         onRetry: () => startFollowUpDrill(true),
-        onPromote: () => { _panelNotice = 'Promote to Study arrives with the Drill Catalog wave.'; deps?.redraw(); },
+        onPromote: () => {
+          const record = _record;
+          closeResult();
+          if (record !== null) openDrillCatalogPromotion(record, deps?.redraw ?? (() => {}));
+          deps?.redraw();
+        },
       }, autoNext, _secondaryOpen, open => { _secondaryOpen = open; deps?.redraw(); }),
       _panelNotice !== null ? h('div.drill-host__notice', _panelNotice) : null,
     ]);
