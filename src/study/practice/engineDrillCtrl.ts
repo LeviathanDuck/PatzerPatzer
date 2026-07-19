@@ -339,6 +339,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
   // NOTE: the reply's fenAfter is host-resolved (the controller holds no chess rules). The host
   // MUST call `applyReplyPosition(fenAfter)` right after the emit above; see applyReplyPosition.
   function applyReplyPosition(fenAfter: string): void {
+    if (disposed) return;
     const last = moves[moves.length - 1];
     if (last === undefined || last.byLearner || last.fenAfter !== '') return;
     moves[moves.length - 1] = { ...last, fenAfter };
@@ -355,7 +356,8 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
       deps.requestVerdict!(askedFen, (result) => {
         // Exact-FEN + min-depth confidence gate (§12.2): under-depth or off-FEN verdicts never count.
         if (result.fen !== askedFen || result.depth < MIN_GOAL_VERDICT_DEPTH) return;
-        if (phase === 'complete') return;
+
+        if (disposed || phase === 'complete') return;
 
 
         if (askedFen !== currentFen) return;
