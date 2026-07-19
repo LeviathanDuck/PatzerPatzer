@@ -221,6 +221,30 @@ function outcomeOf(state: EngineDrillState, learnerResigned = false): EngineDril
   return null;
 }
 
+
+
+
+
+
+let _lastPropagatedSessionDifficulty: string | null = null;
+
+function propagateSessionDifficulty(drill: EngineDrillController): void {
+  const now = Date.now();
+  const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(now), now);
+  if (resolved.provenance.drillDifficulty !== 'session') return;
+  const want = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
+
+
+
+  if (want === _lastPropagatedSessionDifficulty) return;
+  const state = drill.state();
+  if (state.phase === 'complete') return;
+  _lastPropagatedSessionDifficulty = want;
+  if (state.difficulty === want) return; // already effective — nothing to change
+  drill.setDifficulty(want);
+  _settingsHistory.push({ at: now, requestedDifficulty: want, difficulty: drill.state().difficulty, substituted: drill.state().substituted });
+}
+
 function persistActiveDrill(completionState?: 'interrupted'): void {
   const drill = _drill;
   const d = deps;
@@ -250,6 +274,7 @@ function persistActiveDrill(completionState?: 'interrupted'): void {
 export function engineDrillOnCeval(): void {
   const d = deps;
   if (!d || _drill === null) return;
+  propagateSessionDifficulty(_drill);
   const fen = d.getCurrentFen();
   applyPendingBoardReplyIfAtPosition(fen);
   const ev = d.getEvalForCurrent();
@@ -286,6 +311,7 @@ function cancelAutoNext(): void {
 }
 
 function teardownDrill(): void {
+  _lastPropagatedSessionDifficulty = null;
 
 
   if (_drill !== null) _drill.dispose();
@@ -414,6 +440,7 @@ export function startEngineDrill(config: DrillStartConfig): void {
     _panelNotice = 'Mastery strength needs an engine seam that arrives with a follow-up — '
       + 'running Casual; your requested setting is kept in the drill history.';
   }
+  _lastPropagatedSessionDifficulty = null;
   _settingsHistory = [{
     at: startedAt,
     requestedDifficulty,
