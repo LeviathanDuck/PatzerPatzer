@@ -1161,7 +1161,8 @@ function renderAuthoredTextField(
 
 
 
-let _drillLaunchNotice: string | null = null;
+
+let _drillLaunchNotice: { readonly message: string; readonly path: string } | null = null;
 
 function renderPracticeToolPanel(redraw: () => void): VNode {
   const study = studyDetail();
@@ -1183,7 +1184,9 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
 
 
   const drillBlocked = engineDrillActive() || engineDrillFinished();
-  const launchNotice = _drillLaunchNotice;
+
+  if (_drillLaunchNotice !== null && _drillLaunchNotice.path !== path) _drillLaunchNotice = null;
+  const launchNotice = _drillLaunchNotice?.message ?? null;
   const drillLaunch = h('div.study-tools-col__field', [
     h('button.study-tools-col__drill-from-here', {
       attrs: {
@@ -1210,7 +1213,7 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
           if (launched.ok) {
             writeHashRoute('#/analysis');
           } else if (launched.reason === 'landing-failed') {
-            _drillLaunchNotice = 'Could not open this position on the analysis board — the drill was not started.';
+            _drillLaunchNotice = { message: 'Could not open this position on the analysis board — the drill was not started.', path };
           }
           redraw();
         },
