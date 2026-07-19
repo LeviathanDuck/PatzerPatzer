@@ -2,7 +2,8 @@
 
 
 import type { SaveFlowGameDestination } from '../save/saveFlowCtrl';
-import type { EngineDrillSnapshot } from './practice/engineDrillCtrl';
+import type { EngineDrillSnapshot, DrillGoalResult } from './practice/engineDrillCtrl';
+import type { DrillScore } from '../analyse/evalView';
 import type { SrsSourceVersion } from './practice/srsTypes';
 
 export type StudySource = 'analysis' | 'openings' | 'puzzles' | 'manual' | 'import';
@@ -319,6 +320,12 @@ export interface EngineDrillRecord {
   /** §13 settings/difficulty change history, original settings preserved. */
   readonly settingsHistory: readonly EngineDrillSettingsChange[];
   readonly outcome: EngineDrillOutcome | null;
+
+
+
+
+  readonly finalScore?: DrillScore;
+  readonly goalResults?: readonly DrillGoalResult[];
   readonly completionState: EngineDrillCompletionState;
   /** Linked-attempt chain (§13 "Retries create linked attempts"). */
   readonly retryOfDrillId?: string;

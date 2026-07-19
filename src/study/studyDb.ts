@@ -4452,7 +4452,8 @@ export async function applyAcceptedMerge(accepted: AcceptedMergePlan): Promise<M
  *  closed-record discipline): unknown keys on the input never reach the persisted row. */
 const ENGINE_DRILL_RECORD_FIELDS = [
   'drillId', 'studyItemId', 'studyNodePath', 'startFen', 'snapshot', 'settingsHistory',
-  'outcome', 'completionState', 'retryOfDrillId', 'createdAt', 'updatedAt',
+  'outcome', 'finalScore', 'goalResults', 'completionState', 'retryOfDrillId',
+  'createdAt', 'updatedAt',
 ] as const;
 
 /**

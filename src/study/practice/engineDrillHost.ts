@@ -177,6 +177,10 @@ function persistActiveDrill(completionState?: 'interrupted'): void {
     snapshot: drill.snapshot(),
     settingsHistory: [..._settingsHistory],
     outcome: outcomeOf(state),
+
+
+    ...(state.phase === 'complete' && state.score !== null ? { finalScore: state.score } : {}),
+    ...(state.phase === 'complete' && state.goalResults !== null ? { goalResults: state.goalResults } : {}),
     completionState: completionState ?? (state.phase === 'complete' ? 'complete' : 'partial'),
     updatedAt: d.now(),
   };
