@@ -316,6 +316,10 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   let learn: LearnTabData;
   if (isDrillActive()) {
     learn = { status: 'active', body: renderDrillView(redraw) };
+  } else if (engineDrillActive() || engineDrillFinished()) {
+
+
+    learn = { status: 'error', message: 'Finish or close the engine drill first — Learn opens when the board is free.' };
   } else if (data === null) {
     learn = { status: 'loading' };
   } else if (data.learn === undefined) {

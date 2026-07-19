@@ -28,10 +28,11 @@ import {
   listPracticeDecisionsByLesson,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
-  listAllPositionProgress,
+  listPracticeLinesBounded,
+  getPositionProgressForKeys,
 } from '../studyDb';
-import { listOrpPracticeLines } from '../studyCtrl';
 import { buildLearnSession } from './sessionBuilder';
+import { positionKey } from './scheduler';
 import { resolveOrpSettings, readOrpSessionOverride } from './settings';
 import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
 import type { TrainableSequence } from '../types';
@@ -41,12 +42,14 @@ const DUE_PREVIEW_LIMIT = 50;
 const RESUMABLE_SCAN_LIMIT = 25;
 const DECISION_LIMIT = 500;
 const ATTEMPTS_PER_DECISION_LIMIT = 50;
+const LEARN_LINES_SCAN_LIMIT = 25;
 
 export interface PracticePanelDataDeps {
   readonly listDuePracticeSrs: typeof listDuePracticeSrs;
 
-  readonly listOrpPracticeLines: typeof listOrpPracticeLines;
-  readonly listAllPositionProgress: typeof listAllPositionProgress;
+
+  readonly listPracticeLinesBounded: typeof listPracticeLinesBounded;
+  readonly getPositionProgressForKeys: typeof getPositionProgressForKeys;
   readonly listPracticeSessionsByState: typeof listPracticeSessionsByState;
   readonly listPracticeSessionsByLesson: typeof listPracticeSessionsByLesson;
   readonly listPracticeDecisionsByLesson: typeof listPracticeDecisionsByLesson;
@@ -57,8 +60,8 @@ export interface PracticePanelDataDeps {
 
 const REAL_DEPS: PracticePanelDataDeps = {
   listDuePracticeSrs,
-  listOrpPracticeLines,
-  listAllPositionProgress,
+  listPracticeLinesBounded,
+  getPositionProgressForKeys,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
   listPracticeDecisionsByLesson,
@@ -210,12 +213,16 @@ export async function loadGlobalPracticePanelData(
   }
   let learn: readonly GlobalLearnEntry[] | undefined;
   try {
-    const lines = await deps.listOrpPracticeLines();
-    const activeSequences = lines.filter(v => v.lineState !== 'PAUSED').map(v => v.sequence);
+
+
+
+    const lines = await deps.listPracticeLinesBounded(LEARN_LINES_SCAN_LIMIT);
+    const activeSequences = lines.filter(seq => seq.status === 'active');
     if (activeSequences.length === 0) {
       learn = [];
     } else {
-      const progressList = await deps.listAllPositionProgress();
+      const keys = [...new Set(activeSequences.flatMap(seq => seq.fens.map(positionKey)))];
+      const progressList = await deps.getPositionProgressForKeys(keys);
       const progressMap = new Map(progressList.map(pr => [pr.key, pr]));
       const newSequences = buildLearnSession(activeSequences, progressMap);
       const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(nowMs), nowMs).values.newPerSession);

@@ -1164,6 +1164,70 @@ export async function listAllPositionProgress(): Promise<PositionProgress[]> {
   });
 }
 
+
+
+
+export async function listPracticeLinesBounded(limit: number): Promise<TrainableSequence[]> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const out: TrainableSequence[] = [];
+    let req: IDBRequest<IDBCursorWithValue | null>;
+    try {
+      req = db.transaction('practice-lines', 'readonly').objectStore('practice-lines').openCursor();
+    } catch (e) {
+      recordStudyIdbReadFail('practice-lines', e);
+      reject(e);
+      return;
+    }
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (cursor === null || out.length >= limit) { resolve(out); return; }
+      out.push(cursor.value as TrainableSequence);
+      if (out.length >= limit) { resolve(out); return; }
+      cursor.continue();
+    };
+    req.onerror = () => {
+      recordStudyIdbReadFail('practice-lines', req.error);
+      reject(req.error);
+    };
+  });
+}
+
+
+
+export async function getPositionProgressForKeys(keys: readonly string[]): Promise<PositionProgress[]> {
+  if (keys.length === 0) return [];
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    let store: IDBObjectStore;
+    try {
+      store = db.transaction('position-progress', 'readonly').objectStore('position-progress');
+    } catch (e) {
+      recordStudyIdbReadFail('position-progress', e);
+      reject(e);
+      return;
+    }
+    const out: PositionProgress[] = [];
+    let pending = keys.length;
+    let failed = false;
+    for (const key of keys) {
+      const req = store.get(key);
+      req.onsuccess = () => {
+        if (failed) return;
+        if (req.result !== undefined) out.push(req.result as PositionProgress);
+        pending--;
+        if (pending === 0) resolve(out);
+      };
+      req.onerror = () => {
+        if (failed) return;
+        failed = true;
+        recordStudyIdbReadFail('position-progress', req.error);
+        reject(req.error);
+      };
+    }
+  });
+}
+
 // --- Drill attempts ---
 
 export async function saveDrillAttempt(attempt: DrillAttempt): Promise<void> {
