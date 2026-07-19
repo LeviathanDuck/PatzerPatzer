@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="132" viewBox="0 0 440 132" role="img" aria-label="Chess Patzer compact wordmark for dark backgrounds">
+  <rect width="440" height="132" fill="none"/>
+  <g id="review-lens-mark" transform="translate(6 7) scale(.11328125)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="438" cy="418" r="228" stroke="#F3F4EF" stroke-width="76"/>
+    <path d="M608 590 L780 762" stroke="#F3F4EF" stroke-width="76"/>
+    <path d="M344 438 L438 532 L594 356" stroke="#42BDA8" stroke-width="72"/>
+  </g>
+  <text x="132" y="99" fill="#F3F4EF" font-family="Inter, SF Pro Display, Avenir Next, Helvetica Neue, Arial, sans-serif" font-size="90" font-weight="850" letter-spacing="-3">Patzer</text>
+</svg>

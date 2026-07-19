@@ -134,7 +134,7 @@ function renderDisabledControlWhen(
     : control;
 }
 
-const HEADER_LOGO_SRC = '/images/chess-patzer-review-lens-logo-package/svg/chesspatzer-lockup-horizontal-dark-ui.svg';
+const HEADER_LOGO_SRC = '/images/chess-patzer-review-lens-logo-package/svg/chesspatzer-patzer-only-dark-ui.svg';
 const PLATFORM_DISCLAIMER = 'Chess Patzer is not affiliated with or endorsed by Chess.com or Lichess.';
 
 // --- Module-level header state ---
