@@ -57,8 +57,9 @@ export interface EngineDrillHostDeps {
   navigate(path: string): void;
   /** Apply a UCI move to the live board/tree (engine replies land through here). */
   playUciMove(uci: string): void;
-  /** Live analysis eval of the CURRENT position (white-perspective), with reached depth. */
-  getEvalForCurrent(): { readonly cp?: number; readonly mate?: number; readonly depth?: number } | undefined;
+
+
+  getEvalForCurrent(): { readonly cp?: number; readonly mate?: number; readonly depth?: number; readonly best?: string } | undefined;
 
 
   openPgnOnBoard?(pgn: string): void;
@@ -78,6 +79,13 @@ let _finishedState: EngineDrillState | null = null; // result surface source aft
 let _settingsHistory: EngineDrillSettingsChange[] = [];
 let _lastConfig: DrillStartConfig | null = null;    // for Next drill / Retry
 let _clockTimer: ReturnType<typeof setInterval> | null = null;
+
+
+
+let _pendingBoardReply: { readonly uci: string; readonly forFen: string } | null = null;
+
+let _assistanceThisMove: string[] = [];
+let _revealedBest: { readonly fen: string; readonly san: string } | null = null;
 
 // Pending verdict probes: exact FEN → callbacks, resolved from live-eval ticks at the depth gate.
 const _pendingVerdicts = new Map<string, Array<(r: { readonly fen: string; readonly cp?: number; readonly mate?: number; readonly depth: number }) => void>>();
@@ -197,6 +205,7 @@ export function engineDrillOnCeval(): void {
   const d = deps;
   if (!d || _drill === null) return;
   const fen = d.getCurrentFen();
+  applyPendingBoardReplyIfAtPosition(fen);
   const ev = d.getEvalForCurrent();
   if (ev === undefined || ev.depth === undefined || ev.depth < MIN_GOAL_VERDICT_DEPTH) return;
 
@@ -232,6 +241,9 @@ function cancelAutoNext(): void {
 function teardownDrill(): void {
   clearTimers();
   _pendingVerdicts.clear();
+  _pendingBoardReply = null;
+  _assistanceThisMove = [];
+  _revealedBest = null;
   cancelPlayMove();
   if (engineMode === 'play') exitPlayMode();
   _drill = null;
@@ -261,9 +273,15 @@ function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill
           if (lastMove === undefined || lastMove.byLearner || afterState.phase !== 'awaiting-user') return;
           applyReplyPosition(drill, applied.fen);
           if (engineMode === 'play') exitPlayMode();
-          // Mirror the reply onto the live board only when the board still sits on the bound FEN
-          // (the user may have navigated; the DRILL state stays authoritative either way).
-          if (d.getCurrentFen() === fen) d.playUciMove(uci);
+
+
+
+          if (d.getCurrentFen() === fen) {
+            d.playUciMove(uci);
+          } else {
+            _pendingBoardReply = { uci, forFen: fen };
+            _panelNotice = 'The engine has replied — return to the drill position to see its move.';
+          }
           const terminal = adjudicate(applied.fen, _lastConfig?.learnerIsWhite ?? true);
           if (terminal !== null) drill.applyTerminal(terminal);
           d.redraw();
@@ -371,6 +389,18 @@ export function startEngineDrill(config: DrillStartConfig): void {
   }
 }
 
+
+
+function applyPendingBoardReplyIfAtPosition(boardFen: string): void {
+  const d = deps;
+  const pending = _pendingBoardReply;
+  if (!d || pending === null) return;
+  if (boardFen !== pending.forFen) return;
+  _pendingBoardReply = null;
+  _panelNotice = null;
+  d.playUciMove(pending.uci);
+}
+
 /** The learner played a board move while a drill is active. fenBefore MUST be captured before
  *  the move applied (main.ts onBeforeBoardUserMove); fenAfter/uci/san read after it landed. */
 export function engineDrillOnUserMove(input: {
@@ -381,11 +411,15 @@ export function engineDrillOnUserMove(input: {
 }): void {
   const drill = _drill;
   if (drill === null || _finishedState !== null) return;
+  const assistance = _assistanceThisMove;
+  _assistanceThisMove = [];
+  _revealedBest = null;
   drill.applyUserMove({
     uci: input.uci,
     ...(input.san !== undefined ? { san: input.san } : {}),
     fenBefore: input.fenBefore,
     fenAfter: input.fenAfter,
+    ...(assistance.length > 0 ? { assistance } : {}),
   });
   const terminal = adjudicate(input.fenAfter, _lastConfig?.learnerIsWhite ?? true);
   if (terminal !== null) drill.applyTerminal(terminal);
@@ -492,6 +526,40 @@ function startFollowUpDrill(retry: boolean): void {
   d.redraw();
 }
 
+
+
+function revealDrillHint(kind: 'hint' | 'show-move'): void {
+  const d = deps;
+  if (!d || _drill === null) return;
+  const fen = d.getCurrentFen();
+  const ev = d.getEvalForCurrent();
+  const best = ev?.best;
+  if (best === undefined) {
+    _panelNotice = 'No engine suggestion yet — let the evaluation run a moment.';
+    d.redraw();
+    return;
+  }
+  if (!_assistanceThisMove.includes(kind)) _assistanceThisMove.push(kind);
+  const shown = kind === 'show-move' ? best : `${best.slice(0, 2)}…`;
+  _revealedBest = { fen, san: shown };
+  _panelNotice = null;
+  d.redraw();
+}
+
+
+
+function takebackDrillMove(): void {
+  const d = deps;
+  const drill = _drill;
+  if (!d || drill === null) return;
+  drill.takeback();
+  _assistanceThisMove = [];
+  _revealedBest = null;
+  persistActiveDrill();
+  if (_record !== null) openDrillRecordOnBoard(_record);
+  d.redraw();
+}
+
 function startAutoNextCountdown(): void {
   cancelAutoNext();
   _autoNextSeconds = AUTO_NEXT_COUNTDOWN_S;
@@ -569,6 +637,9 @@ export function engineDrillPanelVnode(): VNode {
       onToggle: enabled => {
         _autoNextEnabled = enabled;
         if (!enabled) cancelAutoNext();
+
+
+        else if (_finishedState !== null && _autoNextTimer === null) startAutoNextCountdown();
         deps?.redraw();
       },
       ...(_autoNextSeconds !== undefined ? { countdownSeconds: _autoNextSeconds } : {}),
@@ -590,16 +661,55 @@ export function engineDrillPanelVnode(): VNode {
     ]);
   }
   if (_drill !== null) {
+
+
+
+
+    const liveEval = deps?.getEvalForCurrent();
+    const bestSan = _revealedBest !== null && _revealedBest.fen === deps?.getCurrentFen()
+      ? _revealedBest.san : null;
     return h('div.drill-host', [
       engineDrillReadoutVnode(),
-      h('button.drill-host__finish', {
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Finish drill',
-          description: 'Ends the drill now and shows the result. Always available.',
-          tier: 'essential',
-        }) },
-        on: { click: () => { finishEngineDrill(); deps?.redraw(); } },
-      }, 'Finish drill'),
+      h('div.drill-host__live-controls', [
+        h('button.drill-host__control', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Hint',
+            description: 'Reveals the piece the engine would move. Counts as assistance on this move.',
+            tier: 'essential',
+          }) },
+          on: { click: () => { revealDrillHint('hint'); } },
+        }, 'Hint'),
+        h('button.drill-host__control', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Show move',
+            description: 'Reveals the engine\u2019s best move. Counts as assistance on this move.',
+            tier: 'essential',
+          }) },
+          on: { click: () => { revealDrillHint('show-move'); } },
+        }, 'Show move'),
+        h('button.drill-host__control', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Takeback',
+            description: 'Takes back your last move. The original stays the scored first attempt.',
+            tier: 'essential',
+          }) },
+          on: { click: () => { takebackDrillMove(); } },
+        }, 'Takeback'),
+        h('button.drill-host__finish', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Finish drill',
+            description: 'Ends the drill now and shows the result. Always available.',
+            tier: 'essential',
+          }) },
+          on: { click: () => { finishEngineDrill(); deps?.redraw(); } },
+        }, 'Finish drill'),
+      ]),
+      bestSan !== null
+        ? h('div.drill-host__hint-reveal', `Engine suggestion: ${bestSan}`)
+        : null,
+      liveEval === undefined && _revealedBest !== null
+        ? h('div.drill-host__hint-reveal', 'Waiting for the engine\u2019s evaluation\u2026')
+        : null,
       _panelNotice !== null ? h('div.drill-host__notice', _panelNotice) : null,
     ]);
   }

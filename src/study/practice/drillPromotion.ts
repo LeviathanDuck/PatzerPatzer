@@ -140,7 +140,11 @@ function positionFromFen(fen: string): Position | null {
  * with chessops; SANs are recomputed from the replay (reply records may lack `san`).
  */
 export function chainDrillLine(record: EngineDrillRecord): ChainedMove[] | null {
-  const all = record.snapshot.moves;
+
+
+
+  const takenBack = new Set(record.snapshot.takenBackIndices ?? []);
+  const all = record.snapshot.moves.filter(m => !(m.byLearner && takenBack.has(m.index)));
   const consumed = new Set<number>();
   const line: ChainedMove[] = [];
   let pos = positionFromFen(record.startFen);
