@@ -147,6 +147,53 @@ async function buildProgressScorecard(
  * Load the live panel feed for one open Study. Per-tab fail-closed: each tab independently lands
  * on ready/empty/error so one failed read never blanks the whole panel.
  */
+
+
+
+
+
+
+export async function loadGlobalPracticePanelData(
+  deps: PracticePanelDataDeps = REAL_DEPS,
+): Promise<StudyPracticePanelData> {
+  const nowMs = deps.now();
+  let review: ReviewTabData;
+  let resumableSessionId: string | undefined;
+  try {
+    const read = await deps.listDuePracticeSrs({ now: nowMs, limit: DUE_PREVIEW_LIMIT });
+    if (!read.ok) {
+      review = { status: 'error', message: 'Could not load your review schedule.' };
+    } else {
+      for (const state of ['partial', 'active'] as SrsSessionState[]) {
+        if (resumableSessionId !== undefined) break;
+        const results = await deps.listPracticeSessionsByState(state, RESUMABLE_SCAN_LIMIT);
+        for (const result of results) {
+          if (result.ok) { resumableSessionId = result.value.sessionId; break; }
+        }
+      }
+      if (read.value.length === 0 && resumableSessionId === undefined) {
+        review = { status: 'empty' };
+      } else {
+        review = {
+          status: 'ready',
+          session: buildReviewPreview(read.value, 'All Studies', nowMs),
+          upcoming: [],
+          nowMs,
+          resumable: resumableSessionId !== undefined,
+        };
+      }
+    }
+  } catch {
+    review = { status: 'error', message: 'Could not load your review schedule.' };
+  }
+  return {
+    review,
+    progress: { status: 'empty' },
+    ...(resumableSessionId !== undefined ? { resumableSessionId } : {}),
+    nowMs,
+  };
+}
+
 export async function loadStudyPracticePanelData(
   input: { readonly lessonId: string },
   deps: PracticePanelDataDeps = REAL_DEPS,

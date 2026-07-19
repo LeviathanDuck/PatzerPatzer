@@ -52,6 +52,8 @@ import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab, ty
 import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode, openDrillRecordOnBoard } from '../study/practice/engineDrillHost';
 import { openDrillCatalog } from '../study/practice/drillCatalogView';
 import { listRecentEngineDrills } from '../study/studyDb';
+import { loadGlobalPracticePanelData, type StudyPracticePanelData } from '../study/practice/practicePanelData';
+import { launchDueReview, resumeDueReview } from '../study/practice/dueReviewLaunch';
 import type { EngineDrillRecord } from '../study/types';
 import type { TreeNode } from '../tree/types';
 
@@ -220,16 +222,56 @@ function analysisPanelDrillsSection(redraw: () => void): PanelDrillsSection {
   };
 }
 
+
+
+let _analysisPanelData: StudyPracticePanelData | null = null;
+let _analysisPanelLoading = false;
+let _analysisPanelGeneration = 0;
+
+function refreshAnalysisPanelData(redraw: () => void): void {
+  if (_analysisPanelLoading) return;
+  _analysisPanelLoading = true;
+  const generation = ++_analysisPanelGeneration;
+  void loadGlobalPracticePanelData().then(data => {
+    if (generation !== _analysisPanelGeneration) return;
+    _analysisPanelData = data;
+    _analysisPanelLoading = false;
+    redraw();
+  }).catch(e => {
+    if (generation !== _analysisPanelGeneration) return;
+    _analysisPanelLoading = false;
+    console.warn('[analysisControls] practice panel feed failed', e);
+    redraw();
+  });
+}
+
 /** Render the Analysis Practice panel, or null while the practice slot is not active. */
 export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   if (!isAnalysisPracticeSlotActive()) return null;
+  if (_analysisPanelData === null && !_analysisPanelLoading) refreshAnalysisPanelData(redraw);
+  const data = _analysisPanelData;
+  const onSessionEnd = (): void => { _analysisPanelData = null; refreshAnalysisPanelData(redraw); };
+  let review: PracticePanelProps['review'];
+  if (data === null) {
+    review = { status: 'loading' };
+  } else if (data.review.status === 'ready') {
+    const resumableId = data.resumableSessionId;
+    review = {
+      ...data.review,
+      ...(resumableId !== undefined
+        ? { onResume: () => { void resumeDueReview(resumableId, {}, redraw, { onSessionEnd }); } }
+        : { onStart: () => { void launchDueReview({}, redraw, { onSessionEnd }); } }),
+    };
+  } else {
+    review = data.review;
+  }
   const props: PracticePanelProps = {
     activeTab: _analysisPracticeTab,
     onSelectTab: (tab: PracticePanelTab) => { _analysisPracticeTab = tab; redraw(); },
     learn: { status: 'ready', entries: [] },
-    review: { status: 'empty' },
+    review,
     practice: { status: 'empty' },
-    progress: { status: 'empty' },
+    progress: data === null ? { status: 'loading' } : data.progress,
     drills: analysisPanelDrillsSection(redraw),
   };
   return h('div.analyse__practice-panel', [
