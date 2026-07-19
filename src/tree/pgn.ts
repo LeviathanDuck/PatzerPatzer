@@ -245,8 +245,17 @@ export function stripPgnAnnotations(pgn: string): string | null {
       walk(child as unknown as { children: { data: PgnNodeData; children: unknown[] }[] });
     }
   };
+
+
+  const HEADER_WHITELIST = new Set([
+    'Event', 'Site', 'Date', 'Round', 'White', 'Black', 'Result',
+    'ECO', 'Opening', 'SetUp', 'FEN', 'Variant', 'TimeControl',
+  ]);
   return games.map(game => {
     walk(game.moves as unknown as { children: { data: PgnNodeData; children: unknown[] }[] });
+    for (const key of [...game.headers.keys()]) {
+      if (!HEADER_WHITELIST.has(key)) game.headers.delete(key);
+    }
     return makePgn(game);
   }).join('\n');
 }
