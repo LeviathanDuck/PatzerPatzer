@@ -1035,7 +1035,7 @@ function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): V
         h('button.orp-study-settings__session', {
           attrs: { type: 'button', ...controlExplainerAttrs({
             label: `${def.label}: this session only`,
-            description: 'Applies everywhere until you close or reload the app; saved nowhere.',
+            description: 'Applies everywhere for up to six hours or until you close or reload — whichever comes first; saved nowhere.',
             tier: 'essential',
           }) },
           on: {
