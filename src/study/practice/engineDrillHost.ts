@@ -188,12 +188,18 @@ function persistActiveDrill(completionState?: 'interrupted'): void {
 /** Live analysis eval landed — called from the same ticks that drive practiceOnCeval. */
 export function engineDrillOnCeval(): void {
   const d = deps;
-  if (!d || _drill === null || _pendingVerdicts.size === 0) return;
+  if (!d || _drill === null) return;
   const fen = d.getCurrentFen();
-  const callbacks = _pendingVerdicts.get(fen);
-  if (callbacks === undefined) return;
   const ev = d.getEvalForCurrent();
   if (ev === undefined || ev.depth === undefined || ev.depth < MIN_GOAL_VERDICT_DEPTH) return;
+
+
+  _drill.attachEvalForFen(fen, {
+    ...(ev.cp !== undefined ? { cp: ev.cp } : {}),
+    ...(ev.mate !== undefined ? { mate: ev.mate } : {}),
+  });
+  const callbacks = _pendingVerdicts.get(fen);
+  if (callbacks === undefined) return;
   _pendingVerdicts.delete(fen);
   const result = {
     fen,

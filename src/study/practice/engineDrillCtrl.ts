@@ -139,6 +139,13 @@ export interface EngineDrillSnapshot {
   readonly phase: DrillPhase;
   readonly endReason: DrillEndReason | null;
   readonly terminal: DrillTerminal | null;
+
+
+
+  readonly takenBackIndices?: readonly number[];
+  readonly holdProgress?: readonly (readonly [number, number])[];
+  readonly holdMet?: readonly number[];
+  readonly promotionSeen?: boolean;
 }
 
 // --- Injected engine seams (real wiring = D14 over playMove.ts; tests inject fakes) ----------------
@@ -174,7 +181,14 @@ export interface EngineDrillConfig {
 export interface EngineDrillController {
   state(): EngineDrillState;
   /** The learner played a move (host-validated legal). fenAfter = the exact position it produced. */
-  applyUserMove(input: { uci: string; san?: string; fenBefore: string; fenAfter: string; assistance?: readonly string[] }): void;
+  applyUserMove(input: {
+    uci: string; san?: string; fenBefore: string; fenAfter: string;
+    assistance?: readonly string[];
+
+
+    evalBefore?: { readonly cp?: number; readonly mate?: number };
+    evalAfter?: { readonly cp?: number; readonly mate?: number };
+  }): void;
   /** The host's board adjudicated a terminal position. */
   applyTerminal(terminal: DrillTerminal): void;
   /** Difficulty change: applies to the NEXT reply; an in-flight reply for the CURRENT position is
@@ -186,6 +200,10 @@ export interface EngineDrillController {
   finish(): void;
   /** Optional wall-clock check the host calls periodically; ends the drill on a time limit. */
   checkTimeLimit(): void;
+
+
+
+  attachEvalForFen(fen: string, ev: { readonly cp?: number; readonly mate?: number }): void;
   snapshot(): EngineDrillSnapshot;
 }
 
@@ -318,6 +336,9 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
         // Exact-FEN + min-depth confidence gate (§12.2): under-depth or off-FEN verdicts never count.
         if (result.fen !== askedFen || result.depth < MIN_GOAL_VERDICT_DEPTH) return;
         if (phase === 'complete') return;
+
+
+        if (askedFen !== currentFen) return;
         const whiteCp = result.mate !== undefined
           ? (result.mate > 0 ? 10_000 : -10_000)
           : (result.cp ?? 0);
@@ -342,6 +363,10 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
         ...(input.san !== undefined ? { san: input.san } : {}),
         fenBefore: input.fenBefore,
         fenAfter: input.fenAfter,
+
+
+        ...(input.evalBefore !== undefined ? { evalBefore: input.evalBefore } : {}),
+        ...(input.evalAfter !== undefined ? { evalAfter: input.evalAfter } : {}),
         byLearner: true,
         // A move played after ANY takeback of a learner move at this or later index is a replay;
         // v1 rule: once a takeback happened, subsequent learner moves at replayed positions are
@@ -409,6 +434,23 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
       if (priorElapsedMs + (deps.now() - startedAt) >= limit) complete('time-limit');
     },
 
+    attachEvalForFen(fen, ev) {
+      if (ev.cp === undefined && ev.mate === undefined) return;
+      let changed = false;
+      for (let i = 0; i < moves.length; i++) {
+        const m = moves[i]!;
+        if (m.fenBefore === fen && m.evalBefore === undefined) {
+          moves[i] = { ...m, evalBefore: { ...(ev.cp !== undefined ? { cp: ev.cp } : {}), ...(ev.mate !== undefined ? { mate: ev.mate } : {}) } };
+          changed = true;
+        }
+        if (m.fenAfter === fen && m.evalAfter === undefined) {
+          moves[i] = { ...moves[i]!, evalAfter: { ...(ev.cp !== undefined ? { cp: ev.cp } : {}), ...(ev.mate !== undefined ? { mate: ev.mate } : {}) } };
+          changed = true;
+        }
+      }
+      if (changed) emit();
+    },
+
     snapshot(): EngineDrillSnapshot {
       return {
         version: 1,
@@ -427,6 +469,10 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
         phase,
         endReason,
         terminal,
+        takenBackIndices: [...mTakenBack],
+        holdProgress: [...holdProgress.entries()],
+        holdMet: [...holdMet.entries()].filter(([, met]) => met).map(([i]) => i),
+        promotionSeen,
       };
     },
   };
@@ -439,14 +485,30 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
   const install = (snap: EngineDrillSnapshot): void => {
     moves = [...snap.moves];
     takebacks = snap.takebacks;
+
+
+    mTakenBack.clear();
+    for (const i of snap.takenBackIndices ?? []) mTakenBack.add(i);
+    holdProgress.clear();
+    for (const [i, run] of snap.holdProgress ?? []) holdProgress.set(i, run);
+    holdMet.clear();
+    for (const i of snap.holdMet ?? []) holdMet.set(i, true);
+    promotionSeen = snap.promotionSeen ?? false;
     difficulty = snap.difficulty;
     substituted = snap.substituted;
     phase = snap.phase === 'complete' ? 'complete' : 'awaiting-user'; // a partial resumes at the user's turn
     endReason = snap.endReason;
     terminal = snap.terminal;
     priorElapsedMs = snap.elapsedMs;
-    const last = moves[moves.length - 1];
-    currentFen = last !== undefined && last.fenAfter !== '' ? last.fenAfter : snap.startFen;
+
+
+
+    let cur = snap.startFen;
+    for (const m of moves) {
+      if (m.byLearner && mTakenBack.has(m.index)) continue;
+      if (m.fenAfter !== '') cur = m.fenAfter;
+    }
+    currentFen = cur;
   };
   (controller as EngineDrillController & { __install: (s: EngineDrillSnapshot) => void }).__install = install;
 
