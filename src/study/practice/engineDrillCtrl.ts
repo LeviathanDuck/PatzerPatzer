@@ -552,7 +552,16 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
     }
 
 
-    if (phase === 'awaiting-reply') requestReplyFor(currentFen);
+
+
+
+
+
+    if (phase === 'awaiting-reply') {
+      queueMicrotask(() => {
+        if (phase === 'awaiting-reply' && replyBoundFen === null) requestReplyFor(currentFen);
+      });
+    }
   };
   (controller as EngineDrillController & { __install: (s: EngineDrillSnapshot) => void }).__install = install;
 
