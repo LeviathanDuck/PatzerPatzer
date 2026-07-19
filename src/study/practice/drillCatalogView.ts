@@ -23,6 +23,27 @@ import {
   deleteEngineDrillRecord, createEngineDrillRecord,
   getStudy, createStudyStrict, saveStudyStrict, savePracticeDecision,
 } from '../studyDb';
+
+
+
+export interface DrillCatalogDeps {
+  readonly listRecentEngineDrills: typeof listRecentEngineDrills;
+  readonly listEngineDrillsByStudyItem: typeof listEngineDrillsByStudyItem;
+  readonly deleteEngineDrillRecord: typeof deleteEngineDrillRecord;
+  readonly createEngineDrillRecord: typeof createEngineDrillRecord;
+  readonly getStudy: typeof getStudy;
+  readonly createStudyStrict: typeof createStudyStrict;
+  readonly saveStudyStrict: typeof saveStudyStrict;
+  readonly savePracticeDecision: typeof savePracticeDecision;
+}
+
+const REAL_CATALOG_DEPS: DrillCatalogDeps = {
+  listRecentEngineDrills, listEngineDrillsByStudyItem,
+  deleteEngineDrillRecord, createEngineDrillRecord,
+  getStudy, createStudyStrict, saveStudyStrict, savePracticeDecision,
+};
+
+let _catalogDeps: DrillCatalogDeps = REAL_CATALOG_DEPS;
 import type { EngineDrillRecord } from '../types';
 import { resumePersistedEngineDrill, startEngineDrill, engineDrillActive, openDrillRecordOnBoard } from './engineDrillHost';
 import { buildSelectedDrillExport, type DrillExportScope } from './orpBundle';
@@ -83,7 +104,8 @@ export function openDrillCatalogPromotion(record: EngineDrillRecord, redraw: () 
   writeHashRoute('#/study');
 }
 
-export function openDrillCatalog(scope: DrillCatalogScope, redraw: () => void): void {
+export function openDrillCatalog(scope: DrillCatalogScope, redraw: () => void, deps: DrillCatalogDeps = REAL_CATALOG_DEPS): void {
+  _catalogDeps = deps;
   _open = true;
   _scope = scope;
   _status = 'loading';
@@ -93,8 +115,8 @@ export function openDrillCatalog(scope: DrillCatalogScope, redraw: () => void): 
   _promotion = null;
   _notice = null;
   const load = scope.kind === 'global'
-    ? listRecentEngineDrills(PAGE_LIMIT)
-    : listEngineDrillsByStudyItem(scope.studyItemId, PAGE_LIMIT);
+    ? _catalogDeps.listRecentEngineDrills(PAGE_LIMIT)
+    : _catalogDeps.listEngineDrillsByStudyItem(scope.studyItemId, PAGE_LIMIT);
   load.then(records => {
     if (!_open) return;
     // Per-Study reads come back in key order; newest-first is the catalog's contract order.
@@ -177,7 +199,7 @@ function retryRecord(record: EngineDrillRecord, redraw: () => void): void {
 function deleteRecords(records: readonly EngineDrillRecord[], redraw: () => void): void {
   if (records.length === 0) return;
   if (_undo !== null) { clearTimeout(_undo.timer); commitUndoExpiry(); }
-  Promise.all(records.map(r => deleteEngineDrillRecord(r.drillId))).then(() => {
+  Promise.all(records.map(r => _catalogDeps.deleteEngineDrillRecord(r.drillId))).then(() => {
     _undo = {
       records: [...records],
       timer: setTimeout(() => { _undo = null; redraw(); }, UNDO_WINDOW_MS),
@@ -198,7 +220,7 @@ function undoDelete(redraw: () => void): void {
   if (undo === null) return;
   clearTimeout(undo.timer);
   _undo = null;
-  Promise.all(undo.records.map(r => createEngineDrillRecord(r))).then(results => {
+  Promise.all(undo.records.map(r => _catalogDeps.createEngineDrillRecord(r))).then(results => {
     if (results.some(r => r.duplicate)) _notice = 'Some drills already existed and were left untouched.';
     _records = [..._records, ...undo.records].sort((a, b) => b.updatedAt - a.updatedAt);
     redraw();
@@ -226,7 +248,7 @@ async function previewPromotion(redraw: () => void): Promise<void> {
   const { record, title } = _promotion;
   const planned = await planDrillPromotion(
     record, { kind: 'complete-drill' }, { kind: 'new-study-item', title },
-    { loadStudy: getStudy },
+    { loadStudy: _catalogDeps.getStudy },
   );
   _promotion = planned.ok
     ? { stage: 'preview', record, plan: planned.plan }
@@ -237,10 +259,10 @@ async function previewPromotion(redraw: () => void): Promise<void> {
 async function confirmPromotion(redraw: () => void): Promise<void> {
   if (_promotion === null || _promotion.stage !== 'preview') return;
   const applied = await applyDrillPromotion(_promotion.plan, {
-    loadStudy: getStudy,
-    createStudy: createStudyStrict,
-    saveStudy: saveStudyStrict,
-    saveDecisionRow: savePracticeDecision,
+    loadStudy: _catalogDeps.getStudy,
+    createStudy: _catalogDeps.createStudyStrict,
+    saveStudy: _catalogDeps.saveStudyStrict,
+    saveDecisionRow: _catalogDeps.savePracticeDecision,
     mintId: () => crypto.randomUUID(),
     now: () => Date.now(),
   });
