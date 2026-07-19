@@ -21,17 +21,27 @@ import type { DrillDifficulty, DrillGoal, EngineDrillState } from './engineDrill
 
 /** The §12.3 goal choices the setup offers (host translates a choice into a DrillGoal). */
 export type DrillGoalChoice =
-  | 'outcome-win' | 'outcome-draw' | 'survive' | 'mate' | 'promote' | 'eval-threshold' | 'max-critical';
+  | 'outcome-win' | 'outcome-draw' | 'survive' | 'mate' | 'mate-in' | 'promote' | 'eval-threshold' | 'max-critical';
 
 export interface DrillSetupProps {
   readonly startLabel: string; // e.g. "Drill from here" (the §12.1 default)
   readonly goal: DrillGoalChoice;
   readonly goalMoves: number;        // survive-N / mate-in-N parameter
+
+  readonly evalThresholdCp: number;
+  readonly evalHoldCount: number;
+  readonly maxCriticalMistakes: number;
   readonly difficulty: DrillDifficulty;
   readonly learnerIsWhite: boolean;
   readonly moveLimit: number | null;
+  readonly timeLimitMinutes: number | null;
   readonly onGoalChange: (goal: DrillGoalChoice) => void;
   readonly onGoalMovesChange: (moves: number) => void;
+  readonly onEvalThresholdChange: (cp: number) => void;
+  readonly onEvalHoldChange: (holdCount: number) => void;
+  readonly onMaxCriticalChange: (max: number) => void;
+  readonly onMoveLimitChange: (moves: number | null) => void;
+  readonly onTimeLimitChange: (minutes: number | null) => void;
   readonly onDifficultyChange: (difficulty: DrillDifficulty) => void;
   readonly onSideChange: (learnerIsWhite: boolean) => void;
   readonly onStart: () => void;
@@ -42,10 +52,39 @@ const GOAL_LABELS: Record<DrillGoalChoice, string> = {
   'outcome-draw': 'Hold a draw',
   'survive': 'Survive N moves',
   'mate': 'Deliver checkmate',
+  'mate-in': 'Mate in N',
   'promote': 'Promote a pawn',
   'eval-threshold': 'Reach and hold an advantage',
-  'max-critical': 'No critical mistakes',
+  'max-critical': 'Limit critical mistakes',
 };
+
+
+function numberField(
+  label: string,
+  value: number | null,
+  opts: { readonly min: number; readonly max: number; readonly placeholder?: string; readonly clearable?: boolean },
+  onChange: (value: number | null) => void,
+): VNode {
+  return h('div.drill-setup__field', [
+    h('span.drill-setup__label', label),
+    h('input.drill-setup__number', {
+      attrs: {
+        type: 'number', min: String(opts.min), max: String(opts.max),
+        value: value === null ? '' : String(value),
+        ...(opts.placeholder !== undefined ? { placeholder: opts.placeholder } : {}),
+        'aria-label': label,
+      },
+      on: {
+        change: (e: Event) => {
+          const raw = (e.target as HTMLInputElement).value.trim();
+          if (raw === '' && opts.clearable) { onChange(null); return; }
+          const v = Number(raw);
+          if (Number.isInteger(v) && v >= opts.min && v <= opts.max) onChange(v);
+        },
+      },
+    }),
+  ]);
+}
 
 export function renderDrillSetup(props: DrillSetupProps): VNode {
   return h('div.drill-setup', [
@@ -69,23 +108,30 @@ export function renderDrillSetup(props: DrillSetupProps): VNode {
           }, GOAL_LABELS[choice]),
         )),
     ]),
-    props.goal === 'survive'
-      ? h('div.drill-setup__field', [
-          h('span.drill-setup__label', 'Moves to survive'),
-          h('input.drill-setup__number', {
-            attrs: {
-              type: 'number', min: '1', max: '99', value: String(props.goalMoves),
-              'aria-label': 'Moves to survive',
-            },
-            on: {
-              change: (e: Event) => {
-                const v = Number((e.target as HTMLInputElement).value);
-                if (Number.isInteger(v) && v > 0) props.onGoalMovesChange(v);
-              },
-            },
-          }),
+    props.goal === 'survive' || props.goal === 'mate-in'
+      ? numberField(props.goal === 'survive' ? 'Moves to survive' : 'Mate within (moves)',
+          props.goalMoves, { min: 1, max: 99 }, v => { if (v !== null) props.onGoalMovesChange(v); })
+      : null,
+    props.goal === 'eval-threshold'
+      ? h('div.drill-setup__param-row', [
+          numberField('Advantage to reach (centipawns)', props.evalThresholdCp,
+            { min: 50, max: 2000 }, v => { if (v !== null) props.onEvalThresholdChange(v); }),
+          numberField('Hold for (consecutive verdicts)', props.evalHoldCount,
+            { min: 1, max: 10 }, v => { if (v !== null) props.onEvalHoldChange(v); }),
         ])
       : null,
+    props.goal === 'max-critical'
+      ? numberField('Critical mistakes allowed', props.maxCriticalMistakes,
+          { min: 0, max: 10 }, v => { if (v !== null) props.onMaxCriticalChange(v); })
+      : null,
+    // Optional limits (§12.3: normal endings unless a goal makes them failures) — LIVE (Sol B4:
+    // moveLimit was previously an inert prop and no time-limit control existed).
+    h('div.drill-setup__param-row', [
+      numberField('Move limit (optional)', props.moveLimit,
+        { min: 1, max: 200, clearable: true, placeholder: 'none' }, props.onMoveLimitChange),
+      numberField('Time limit, minutes (optional)', props.timeLimitMinutes,
+        { min: 1, max: 180, clearable: true, placeholder: 'none' }, props.onTimeLimitChange),
+    ]),
     h('div.drill-setup__field', [
       h('span.drill-setup__label', 'Difficulty'),
       (['casual', 'mastery'] as DrillDifficulty[]).map(d =>

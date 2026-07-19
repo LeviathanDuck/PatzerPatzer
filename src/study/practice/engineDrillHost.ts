@@ -96,6 +96,11 @@ const MAX_PENDING_VERDICT_FENS = 8;
 // Setup surface state (module-owned; the D14 view is stateless).
 let _setupGoal: DrillGoalChoice = 'outcome-win';
 let _setupGoalMoves = 10;
+
+let _setupEvalCp = 100;
+let _setupEvalHold = 3;
+let _setupMaxCritical = 0;
+let _setupTimeLimitMinutes: number | null = null;
 let _setupDifficulty: DrillDifficulty = 'casual';
 let _setupDifficultySynced = false;
 let _setupLearnerIsWhite = true;
@@ -586,9 +591,11 @@ function goalFromChoice(choice: DrillGoalChoice, moves: number): DrillGoal {
     case 'outcome-draw':   return { kind: 'outcome', want: 'draw' };
     case 'survive':        return { kind: 'survive', moves };
     case 'mate':           return { kind: 'mate' };
+    case 'mate-in':        return { kind: 'mate-in', moves };
     case 'promote':        return { kind: 'promote' };
-    case 'eval-threshold': return { kind: 'eval-threshold', cp: 100, holdCount: 3 };
-    case 'max-critical':   return { kind: 'max-critical-mistakes', max: 0 };
+
+    case 'eval-threshold': return { kind: 'eval-threshold', cp: _setupEvalCp, holdCount: _setupEvalHold };
+    case 'max-critical':   return { kind: 'max-critical-mistakes', max: _setupMaxCritical };
   }
 }
 
@@ -607,6 +614,7 @@ function startFromSetup(): void {
     learnerIsWhite,
     goals: [goalFromChoice(_setupGoal, _setupGoalMoves)],
     ...(_setupMoveLimit !== null ? { moveLimit: _setupMoveLimit } : {}),
+    ...(_setupTimeLimitMinutes !== null ? { timeLimitMs: _setupTimeLimitMinutes * 60_000 } : {}),
     difficulty: _setupDifficulty,
   });
   d.redraw();
@@ -749,11 +757,20 @@ export function engineDrillPanelVnode(): VNode {
       startLabel: 'Drill from here',
       goal: _setupGoal,
       goalMoves: _setupGoalMoves,
+      evalThresholdCp: _setupEvalCp,
+      evalHoldCount: _setupEvalHold,
+      maxCriticalMistakes: _setupMaxCritical,
       difficulty: _setupDifficulty,
       learnerIsWhite: _setupLearnerIsWhite,
       moveLimit: _setupMoveLimit,
+      timeLimitMinutes: _setupTimeLimitMinutes,
       onGoalChange: goal => { _setupGoal = goal; deps?.redraw(); },
       onGoalMovesChange: moves => { _setupGoalMoves = moves; deps?.redraw(); },
+      onEvalThresholdChange: cp => { _setupEvalCp = cp; deps?.redraw(); },
+      onEvalHoldChange: hold => { _setupEvalHold = hold; deps?.redraw(); },
+      onMaxCriticalChange: max => { _setupMaxCritical = max; deps?.redraw(); },
+      onMoveLimitChange: moves => { _setupMoveLimit = moves; deps?.redraw(); },
+      onTimeLimitChange: minutes => { _setupTimeLimitMinutes = minutes; deps?.redraw(); },
       onDifficultyChange: difficulty => { _setupDifficulty = difficulty; deps?.redraw(); },
       onSideChange: () => {
         _panelNotice = 'Drill from here plays the side to move. To drill the other side, '
