@@ -248,9 +248,7 @@ function propagateSessionDifficulty(drill: EngineDrillController): void {
   const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(now), now);
   const wantRaw = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
 
-
-
-  const HOST_SUPPORTED_DIFFICULTIES = ['casual'] as const;
+  const HOST_SUPPORTED_DIFFICULTIES = ['casual', 'mastery'] as const;
   const want = (HOST_SUPPORTED_DIFFICULTIES as readonly string[]).includes(wantRaw) ? wantRaw : 'casual';
   const effective = resolveDifficulty(want).difficulty;
   const state = drill.state();
@@ -442,18 +440,14 @@ export function startEngineDrill(config: DrillStartConfig): void {
   _secondaryOpen = false;
   _panelNotice = null;
   _lastConfig = config;
-  // §12.3 nearest-supported substitution, disclosed, original preserved in history: Mastery is
-  // modeled as an uncapped-depth search the host budget-stops (D13 consult) — but the shared
-  // engine has no stop-and-keep seam yet, so an uncapped search could never deliver a usable
-  // bestmove. Until that protocol seam lands (disclosed follow-up), Casual is the only
-  // SUPPORTED live configuration; a Mastery request runs Casual with the substitution recorded.
+
+
+
+
   const requestedDifficulty = config.difficulty;
-  const runDifficulty: DrillDifficulty = 'casual';
-  const substituted = requestedDifficulty !== 'casual';
-  if (substituted) {
-    _panelNotice = 'Mastery strength needs an engine seam that arrives with a follow-up — '
-      + 'running Casual; your requested setting is kept in the drill history.';
-  }
+  const resolvedStart = resolveDifficulty(requestedDifficulty);
+  const runDifficulty: DrillDifficulty = resolvedStart.difficulty;
+  const substituted = resolvedStart.substituted;
   _settingsHistory = [{
     at: startedAt,
     requestedDifficulty,

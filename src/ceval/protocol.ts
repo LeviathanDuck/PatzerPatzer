@@ -550,11 +550,14 @@ export class StockfishProtocol {
   /**
    * Start a single-PV search capped at the given depth, for play-mode move generation.
    */
-  goPlay(depth: number): void {
+  goPlay(depth: number, movetimeMs?: number): void {
     this.send('setoption name MultiPV value 1');
     this._searchGeneration++;
     this._enginePhase = 'analyzing';
-    this.send(`go depth ${depth}`);
+
+
+    const timeClause = movetimeMs !== undefined ? ` movetime ${movetimeMs}` : '';
+    this.send(`go depth ${depth}${timeClause}`);
   }
 
   /** Shut down the engine. */
