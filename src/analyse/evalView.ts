@@ -97,6 +97,9 @@ export interface DrillScoredMove {
   readonly moverIsWhite: boolean;
   /** Only ORIGINAL first attempts contribute to the percentage/critical count (§12.2). */
   readonly firstAttempt: boolean;
+
+
+  readonly moveIndex?: number;
 }
 
 export interface DrillScore {
@@ -106,23 +109,31 @@ export interface DrillScore {
   readonly criticalMistakes: number;
   /** Per-input canonical label (null = fine move or unevaluable/unscored). */
   readonly labeled: readonly (MoveLabel | null)[];
+
+
+  readonly labeledByIndex?: readonly { readonly moveIndex: number; readonly label: MoveLabel | null }[];
 }
 
 export function scoreDrillMoves(moves: readonly DrillScoredMove[]): DrillScore {
   const labeled: (MoveLabel | null)[] = [];
+  const labeledByIndex: { moveIndex: number; label: MoveLabel | null }[] = [];
   const accuracies: number[] = [];
   let criticalMistakes = 0;
+  const recordLabel = (move: DrillScoredMove, label: MoveLabel | null): void => {
+    labeled.push(label);
+    if (move.moveIndex !== undefined) labeledByIndex.push({ moveIndex: move.moveIndex, label });
+  };
   for (const move of moves) {
     const wcBefore = evalWinChances(move.evalBefore);
     const wcAfter = evalWinChances(move.evalAfter);
     if (wcBefore === undefined || wcAfter === undefined || !move.firstAttempt) {
-      labeled.push(null);
+      recordLabel(move, null);
       continue;
     }
     // Mover-perspective win-chance drop; winchances' loss field is delta/2 (see LOSS_THRESHOLDS doc).
     const delta = move.moverIsWhite ? wcBefore - wcAfter : wcAfter - wcBefore;
     const label = classifyLoss(Math.max(0, delta) / 2);
-    labeled.push(label);
+    recordLabel(move, label);
     if (label === 'blunder') criticalMistakes++;
     // Mover-perspective win-PERCENT diff for the Lichess accuracy curve.
     const pctBefore = (wcBefore + 1) / 2 * 100;
@@ -133,7 +144,10 @@ export function scoreDrillMoves(moves: readonly DrillScoredMove[]): DrillScore {
   const moveQualityPct = accuracies.length === 0
     ? null
     : accuracies.reduce((a, b) => a + b, 0) / accuracies.length;
-  return { moveQualityPct, criticalMistakes, labeled };
+  return {
+    moveQualityPct, criticalMistakes, labeled,
+    ...(labeledByIndex.length > 0 ? { labeledByIndex } : {}),
+  };
 }
 
 function standardDeviation(values: readonly number[]): number {

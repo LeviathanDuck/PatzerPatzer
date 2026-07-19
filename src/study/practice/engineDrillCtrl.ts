@@ -245,6 +245,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
         evalAfter: m.evalAfter!,
         moverIsWhite: config.learnerIsWhite,
         firstAttempt: m.firstAttempt,
+        moveIndex: m.index,
       }));
   }
 
