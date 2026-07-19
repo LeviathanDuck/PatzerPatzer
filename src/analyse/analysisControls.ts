@@ -260,6 +260,11 @@ function refreshAnalysisPanelData(redraw: () => void): void {
     _analysisProgressLessons = [];
     redraw();
   });
+
+
+  if (_analysisProgressLesson !== null) {
+    selectAnalysisProgressLesson(_analysisProgressLesson, redraw);
+  }
 }
 
 function selectAnalysisProgressLesson(lessonId: string | null, redraw: () => void): void {
@@ -278,7 +283,9 @@ function selectAnalysisProgressLesson(lessonId: string | null, redraw: () => voi
 function analysisProgressTabData(redraw: () => void): ProgressTabData {
   if (_analysisProgressLesson !== null) {
     const loaded = _analysisProgressData ?? { status: 'loading' };
-    if (loaded.status === 'ready') {
+
+
+    if (loaded.status !== 'picker') {
       return { ...loaded, onBack: () => { selectAnalysisProgressLesson(null, redraw); } };
     }
     return loaded;

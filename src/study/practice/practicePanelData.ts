@@ -246,24 +246,33 @@ export async function loadGlobalPracticePanelData(
 export async function listRecentProgressLessons(
   deps: PracticePanelDataDeps = REAL_DEPS,
 ): Promise<readonly { readonly lessonId: string; readonly label: string }[]> {
+
+
+
   const seen = new Set<string>();
   const ordered: string[] = [];
+  const perState: string[][] = [];
   for (const state of ['partial', 'active', 'completed'] as SrsSessionState[]) {
-    if (ordered.length >= 10) break;
-    let results: Awaited<ReturnType<PracticePanelDataDeps['listPracticeSessionsByState']>>;
     try {
-      results = await deps.listPracticeSessionsByState(state, RESUMABLE_SCAN_LIMIT);
+      const results = await deps.listPracticeSessionsByState(state, RESUMABLE_SCAN_LIMIT);
+      perState.push(results.filter(r => r.ok).map(r => (r as { value: { lessonId: string } }).value.lessonId));
     } catch {
-      continue; // a failed state scan narrows the list; the others still surface
+      perState.push([]); // a failed state scan narrows the list; the others still surface
     }
-    for (const result of results) {
-      if (!result.ok) continue;
-      const id = result.value.lessonId;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      ordered.push(id);
-      if (ordered.length >= 10) break;
+  }
+  for (let i = 0; ordered.length < 10; i++) {
+    let any = false;
+    for (const bucket of perState) {
+      if (i >= bucket.length) continue;
+      any = true;
+      const id = bucket[i]!;
+      if (!seen.has(id)) {
+        seen.add(id);
+        ordered.push(id);
+        if (ordered.length >= 10) break;
+      }
     }
+    if (!any) break;
   }
   const out: { lessonId: string; label: string }[] = [];
   for (const lessonId of ordered) {
@@ -291,7 +300,9 @@ export async function loadLessonProgress(
   try {
     const folded = await buildProgressScorecard(lessonId, label, deps);
     if (folded === 'empty') return { status: 'empty' };
-    return { status: 'ready', scorecard: folded.scorecard };
+
+
+    return { status: 'ready', scorecard: folded.scorecard, ...(folded.truncated ? { truncated: true } : {}) };
   } catch {
     return { status: 'error', message: 'Could not load your accuracy history.' };
   }

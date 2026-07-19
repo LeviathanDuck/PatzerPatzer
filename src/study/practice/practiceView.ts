@@ -120,10 +120,12 @@ export interface ProgressLessonOption {
 }
 
 export type ProgressTabData =
-  | { readonly status: 'loading' }
-  | { readonly status: 'error'; readonly message: string }
-  | { readonly status: 'empty' }
-  | ({ readonly status: 'ready' } & ProgressReadyData & { readonly onBack?: () => void })
+
+
+  | { readonly status: 'loading'; readonly onBack?: () => void }
+  | { readonly status: 'error'; readonly message: string; readonly onBack?: () => void }
+  | { readonly status: 'empty'; readonly onBack?: () => void }
+  | ({ readonly status: 'ready' } & ProgressReadyData & { readonly onBack?: () => void; readonly truncated?: boolean })
   /** the private implementation record: the global mount's drill-down — pick a Study, its per-lesson fold loads. */
   | { readonly status: 'picker'; readonly lessons: readonly ProgressLessonOption[]; readonly onSelect: (lessonId: string) => void };
 
@@ -445,21 +447,28 @@ function renderScorecardFolder(folder: DueReviewScorecardFolder, onOpenFolder: (
   return h('li.orp-practice__score-row.orp-practice__score-row--static', { key: folder.folder }, cells);
 }
 
+
+
+function renderProgressBack(onBack: (() => void) | undefined): VNode | null {
+  if (onBack === undefined) return null;
+  return h('button.orp-practice__picker-back', {
+    attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Back to all Studies' }) },
+    on: { click: onBack },
+  }, '← All Studies');
+}
+
 function renderProgressTab(data: ProgressTabData): VNode {
-  if (data.status === 'loading') return renderLoading('Loading your scorecard…');
-  if (data.status === 'error') return renderError(data.message);
-  if (data.status === 'empty') return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
+  if (data.status === 'loading') return h('div.orp-practice__progress', [renderProgressBack(data.onBack), renderLoading('Loading your scorecard…')]);
+  if (data.status === 'error') return h('div.orp-practice__progress', [renderProgressBack(data.onBack), renderError(data.message)]);
+  if (data.status === 'empty') return h('div.orp-practice__progress', [renderProgressBack(data.onBack), renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody)]);
   if (data.status === 'picker') {
     if (data.lessons.length === 0) return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
     return h('div.orp-practice__progress', [
-      h('div.orp-practice__section-head', 'Progress by Study'),
-      h('ul.orp-practice__score-list', { attrs: { 'aria-label': 'Progress by Study' } },
+      h('div.orp-practice__section-head', 'Studies with practice history'),
+      h('ul.orp-practice__score-list', { attrs: { 'aria-label': 'Studies with practice history' } },
         data.lessons.map(lesson => h('li.orp-practice__picker-row', { key: lesson.lessonId }, [
           h('button.orp-practice__picker-open', {
-            attrs: { type: 'button', ...controlExplainerAttrs({
-              label: `Open progress for ${lesson.label}`,
-              description: 'Shows this Study\'s practice scorecard.', tier: 'essential',
-            }) },
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: `Open progress for ${lesson.label}` }) },
             on: { click: () => { data.onSelect(lesson.lessonId); } },
           }, lesson.label),
         ]))),
@@ -470,14 +479,9 @@ function renderProgressTab(data: ProgressTabData): VNode {
   if (scorecard.total === 0) return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
 
   return h('div.orp-practice__progress', [
-    data.onBack !== undefined
-      ? h('button.orp-practice__picker-back', {
-          attrs: { type: 'button', ...controlExplainerAttrs({
-            label: 'Back to all Studies',
-            description: 'Returns to the Progress-by-Study list.', tier: 'essential',
-          }) },
-          on: { click: data.onBack },
-        }, '← All Studies')
+    renderProgressBack(data.onBack),
+    data.truncated === true
+      ? h('div.orp-practice__truncation-note', 'Showing your most recent practice history — older attempts are not included in these numbers.')
       : null,
     h('div.orp-practice__section-head', scorecardCopy.progressHeading),
     h('ul.orp-practice__score-list', { attrs: { 'aria-label': scorecardCopy.progressHeading } },
