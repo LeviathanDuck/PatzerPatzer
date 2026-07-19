@@ -5,6 +5,11 @@
   "approvalGate": "owner-gate-1-approved",
   "approvedAt": "2026-07-17T20:15:06Z",
   "approvedBy": "owner",
+  "compactWordmarkRule": {
+    "fullMinimumCssWidth": 320,
+    "fullMinimumCssHeight": 80,
+    "selection": "patzer-only-below-either-minimum"
+  },
   "requiredFiles": [
     "README.md",
     "asset-manifest.json",
@@ -21,6 +26,8 @@
     "svg/chesspatzer-lockup-stacked-light-ui.svg",
     "svg/chesspatzer-mark-dark-ui.svg",
     "svg/chesspatzer-mark-light-ui.svg",
+    "svg/chesspatzer-patzer-only-dark-ui.svg",
+    "svg/chesspatzer-patzer-only-light-ui.svg",
     "svg/chesspatzer-social-card.svg",
     "web/android-chrome-192x192.png",
     "web/android-chrome-512x512.png",
