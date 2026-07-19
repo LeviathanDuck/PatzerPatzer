@@ -521,7 +521,11 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
     promotionSeen = snap.promotionSeen ?? false;
     difficulty = snap.difficulty;
     substituted = snap.substituted;
-    phase = snap.phase === 'complete' ? 'complete' : 'awaiting-user'; // a partial resumes at the user's turn
+
+
+
+
+    phase = snap.phase === 'complete' ? 'complete' : snap.phase === 'awaiting-reply' ? 'awaiting-reply' : 'awaiting-user';
     endReason = snap.endReason;
     terminal = snap.terminal;
     priorElapsedMs = snap.elapsedMs;
@@ -546,6 +550,9 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
       }
       currentFen = cur;
     }
+
+
+    if (phase === 'awaiting-reply') requestReplyFor(currentFen);
   };
   (controller as EngineDrillController & { __install: (s: EngineDrillSnapshot) => void }).__install = install;
 
