@@ -4470,16 +4470,18 @@ export function getEngineDrillRecord(drillId: string): Promise<EngineDrillRecord
 export function deleteEngineDrillRecord(drillId: string): Promise<void> {
   return practiceDelete('engine-drills', drillId);
 }
-/** Bounded newest-first list of one Study's drills (`studyItemId` index; in-cursor recency sort is
- *  not available on a one-part index, so callers get insertion order per key — the catalog UI's
- *  date grouping (D16) re-sorts its bounded page). */
+
+
+
+
 export async function listEngineDrillsByStudyItem(
   studyItemId: string,
   limit: number,
 ): Promise<EngineDrillRecord[]> {
   const db = await openDb();
   return collectBoundedPracticeCursor<EngineDrillRecord>(
-    db, 'engine-drills', 'studyItemId', IDBKeyRange.only(studyItemId), 'next', limit,
+    db, 'engine-drills', 'studyItemId_updatedAt',
+    IDBKeyRange.bound([studyItemId, -Infinity], [studyItemId, Infinity]), 'prev', limit,
   );
 }
 /** Bounded newest-first list across all drills via the `updatedAt` index walked descending. */

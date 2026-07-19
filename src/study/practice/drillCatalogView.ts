@@ -312,11 +312,14 @@ function renderRow(r: EngineDrillRecord, redraw: () => void): VNode {
       ].join('')),
     ]),
     h('div.drill-catalog__row-actions', [
-      r.completionState === 'partial'
+
+
+
+      r.completionState === 'partial' || r.completionState === 'interrupted'
         ? h('button.drill-catalog__action', {
             attrs: { type: 'button', ...controlExplainerAttrs({
               label: 'Resume', tier: 'essential',
-              description: 'Continues this partial drill live on the analysis board. Set the board to the drill position to keep playing.',
+              description: 'Continues this unfinished drill live on the analysis board from where it stopped.',
             }) },
             on: { click: () => resumeRecord(r, redraw) },
           }, 'Resume')

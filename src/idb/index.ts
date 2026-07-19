@@ -689,7 +689,10 @@ export const DB_NAME = 'chess-patzer';
 
 
 
-export const DB_VERSION = 29;
+
+
+
+export const DB_VERSION = 30;
 
 let _idb: IDBDatabase | undefined;
 
@@ -946,6 +949,8 @@ export function upgradeGameDbSchema(db: IDBDatabase, event: IDBVersionChangeEven
   ensureIndex(engineDrillsStore, 'updatedAt',       'updatedAt',       { unique: false });
   ensureIndex(engineDrillsStore, 'completionState', 'completionState', { unique: false });
   ensureIndex(engineDrillsStore, 'outcome',         'outcome',         { unique: false });
+
+  ensureIndex(engineDrillsStore, 'studyItemId_updatedAt', ['studyItemId', 'updatedAt'], { unique: false });
 
 
 
