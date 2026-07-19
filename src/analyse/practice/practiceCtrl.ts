@@ -31,6 +31,8 @@ import {
 } from '../../engine/ctrl';
 import { cancelPlayMove, playMoveWithDelay, requestPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
+import { resolveOrpSettings } from '../../study/practice/settings';
+import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
 import {
   clearPremoveQueue,
   executeNextQueuedPremoveAfterComputerReply,
@@ -446,6 +448,12 @@ export function consumePendingPracticeStart(fen: string): { color: 'white' | 'bl
 
 /** Start a practice session from the current position. */
 export function startPractice(): void {
+
+
+
+  if (localStorage.getItem(FEEDBACK_STORAGE_KEY) === null) {
+    _feedbackEnabled = resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, Date.now()).values.moveFeedback;
+  }
   _active = true;
   _running = true;
   _comment = null;

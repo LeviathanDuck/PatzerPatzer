@@ -12,6 +12,8 @@ import { makeSanAndPlay } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { controlExplainerAttrs } from '../../ui/controlExplainer';
+import { resolveOrpSettings } from './settings';
+import { readOrpGlobalDefaults, readOrpStudyOverride } from '../../sync/settingsLiveApply';
 import { createDrillBoardAdapter, type DrillBoardController } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
 import {
@@ -62,6 +64,8 @@ let _drillRunGeneration = 0;
 let _restoreCallback: (() => void) | null = null;
 
 let _teardownCallback: ((reason: string) => void) | null = null;
+
+let _learnStudyItemId: string | null = null;
 const _drillTimers = new Set<ReturnType<typeof setTimeout>>();
 
 // --- Delayed-work scheduling + stale-drop guard (CCW-H03b) ---
@@ -263,6 +267,9 @@ export interface LearnViewConfig {
 
 
   readonly onTeardown?: (reason: string) => void;
+
+
+  readonly studyItemId?: string;
 }
 
 /**
@@ -306,6 +313,7 @@ export function initLearnView(config: LearnViewConfig): void {
 
   if (config.onExitRestore !== undefined) _restoreCallback = config.onExitRestore;
   if (config.onTeardown !== undefined) _teardownCallback = config.onTeardown;
+  _learnStudyItemId = config.studyItemId ?? null;
 
   const run = _drillRunGeneration;
   const adapter = createDrillBoardAdapter({
@@ -525,6 +533,7 @@ export function endDrill(
   _learn    = null;
   _learnSteps = [];
   _learnLastPlayedUci = null;
+  _learnStudyItemId = null;
   // Restore Study only after a still-active embedded drill was actually unmounted. Retained
   // summary may launch Practice Again; preserve its one-shot restore only in that case so the
   // restarted embedded drill can restore Study on its eventual final dismissal.
@@ -994,8 +1003,18 @@ function renderLearnControls(st: LearnState, redraw: () => void): VNode {
   const inRecall = st.phase === 'recall' || st.phase === 'repair';
   const buttons: (VNode | null)[] = [];
 
-  // Hint (Essential — consequential: marks the position assisted/failed).
-  if (st.mode === 'learn' && inRecall) {
+
+
+
+
+
+  const hintsEnabled = resolveOrpSettings(
+    readOrpGlobalDefaults(),
+    _learnStudyItemId !== null ? readOrpStudyOverride(_learnStudyItemId) : undefined,
+    undefined,
+    Date.now(),
+  ).values.hints;
+  if (hintsEnabled && st.mode === 'learn' && inRecall) {
     buttons.push(h('button.drill-btn.drill-btn--hint', {
       attrs: {
         type: 'button',
