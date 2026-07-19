@@ -332,6 +332,7 @@ async function launchGuidedLearn(
     shapesFor: model.shapesFor,
     rootFen: model.rootFen,
     trainAs: sequence.trainAs,
+    studyItemId: sequence.studyItemId,
     redraw,
     onTargetComplete: (completion) => { completions.push(completion); },
     onLineComplete: () => {

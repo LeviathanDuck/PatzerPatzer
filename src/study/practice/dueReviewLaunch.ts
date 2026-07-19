@@ -95,6 +95,7 @@ function presentRepairReplay(
     return;
   }
   let retryClean = false;
+  const replayScopeLessonId = entry.lessonId;
   initLearnView({
     line: model.line,
     content: model.content,
@@ -105,6 +106,7 @@ function presentRepairReplay(
     shapesFor: model.shapesFor,
     rootFen: model.rootFen,
     trainAs: model.line[0]?.learnerSide ?? 'white',
+    studyItemId: replayScopeLessonId,
     redraw,
     onTargetComplete: (completion) => {
       retryClean = completion.attempt.firstAttemptResult === 'clean'
@@ -143,6 +145,7 @@ export function presentNextDueReplay(
   // runtime cursor only advances when the atomic write commits, so advancing early re-presented
   // the SAME target and mis-sequenced persistence on lines without a delayed opponent reply.
   let pendingCompletion: Promise<unknown> | null = null;
+  const replayScopeLessonId = replay.lessonId;
   initLearnView({
     line: model.line,
     content: model.content,
@@ -153,6 +156,7 @@ export function presentNextDueReplay(
     shapesFor: model.shapesFor,
     rootFen: model.rootFen,
     trainAs: model.line[0]?.learnerSide ?? 'white',
+    studyItemId: replayScopeLessonId,
     redraw,
     onTargetComplete: (completion) => { pendingCompletion = runtime.completeTarget(completion); },
     onLineComplete: () => {
