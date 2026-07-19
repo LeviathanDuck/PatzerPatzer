@@ -39,8 +39,7 @@ import {
   createEngineDrill, resumeEngineDrill, applyReplyPosition,
   MIN_GOAL_VERDICT_DEPTH,
   type EngineDrillController, type EngineDrillState, type EngineDrillSnapshot,
-  type DrillGoal, type DrillDifficulty, type DrillTerminal,
-} from './engineDrillCtrl';
+  type DrillGoal, type DrillDifficulty, type DrillTerminal, resolveDifficulty } from './engineDrillCtrl';
 import {
   renderDrillSetup, renderDrillReadout, renderDrillResult,
   type DrillGoalChoice, type DrillAutoNextProps,
@@ -110,6 +109,16 @@ let _setupMaxCritical = 0;
 let _setupTimeLimitMinutes: number | null = null;
 let _setupDifficulty: DrillDifficulty = 'casual';
 let _setupDifficultySynced = false;
+
+
+let _userChoseDifficulty = false;
+
+
+export function setEngineDrillSetupDifficulty(difficulty: DrillDifficulty): void {
+  _setupDifficulty = difficulty;
+  _userChoseDifficulty = true;
+  deps?.redraw();
+}
 let _setupLearnerIsWhite = true;
 let _setupMoveLimit: number | null = null;
 
@@ -226,21 +235,21 @@ function outcomeOf(state: EngineDrillState, learnerResigned = false): EngineDril
 
 
 
-let _lastPropagatedSessionDifficulty: string | null = null;
+
+
+
+
+
+
 
 function propagateSessionDifficulty(drill: EngineDrillController): void {
+  if (_userChoseDifficulty) return; // the explicit panel choice governs this drill
   const now = Date.now();
   const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(now), now);
-  if (resolved.provenance.drillDifficulty !== 'session') return;
   const want = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
-
-
-
-  if (want === _lastPropagatedSessionDifficulty) return;
+  const effective = resolveDifficulty(want).difficulty;
   const state = drill.state();
-  if (state.phase === 'complete') return;
-  _lastPropagatedSessionDifficulty = want;
-  if (state.difficulty === want) return; // already effective — nothing to change
+  if (state.phase === 'complete' || state.difficulty === effective) return;
   drill.setDifficulty(want);
   _settingsHistory.push({ at: now, requestedDifficulty: want, difficulty: drill.state().difficulty, substituted: drill.state().substituted });
 }
@@ -311,7 +320,7 @@ function cancelAutoNext(): void {
 }
 
 function teardownDrill(): void {
-  _lastPropagatedSessionDifficulty = null;
+  _userChoseDifficulty = false;
 
 
   if (_drill !== null) _drill.dispose();
@@ -440,7 +449,6 @@ export function startEngineDrill(config: DrillStartConfig): void {
     _panelNotice = 'Mastery strength needs an engine seam that arrives with a follow-up — '
       + 'running Casual; your requested setting is kept in the drill history.';
   }
-  _lastPropagatedSessionDifficulty = null;
   _settingsHistory = [{
     at: startedAt,
     requestedDifficulty,
@@ -873,7 +881,7 @@ export function engineDrillPanelVnode(): VNode {
       onMaxCriticalChange: max => { _setupMaxCritical = max; deps?.redraw(); },
       onMoveLimitChange: moves => { _setupMoveLimit = moves; deps?.redraw(); },
       onTimeLimitChange: minutes => { _setupTimeLimitMinutes = minutes; deps?.redraw(); },
-      onDifficultyChange: difficulty => { _setupDifficulty = difficulty; deps?.redraw(); },
+      onDifficultyChange: difficulty => { setEngineDrillSetupDifficulty(difficulty); },
       onSideChange: () => {
         _panelNotice = 'Drill from here plays the side to move. To drill the other side, '
           + 'step the board one move first.';
