@@ -1174,11 +1174,14 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
   const decision = _authoringDecisions.find(d => d.identity.authoredPath === path);
   const scope = validateScopeReadiness({ decisions: _authoringDecisions, content: _authoredContent, root });
 
+  let _drillLaunchNotice: string | null = null;
+
 
 
 
 
   const drillBlocked = engineDrillActive() || engineDrillFinished();
+  const launchNotice = _drillLaunchNotice;
   const drillLaunch = h('div.study-tools-col__field', [
     h('button.study-tools-col__drill-from-here', {
       attrs: {
@@ -1201,11 +1204,16 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
             studyNodePath: path,
             difficulty: 'casual',
           });
-          if (launched.ok) writeHashRoute('#/analysis');
+          if (launched.ok) {
+            writeHashRoute('#/analysis');
+          } else if (launched.reason === 'landing-failed') {
+            _drillLaunchNotice = 'Could not open this position on the analysis board — the drill was not started.';
+          }
           redraw();
         },
       },
     }, 'Drill from here'),
+    launchNotice !== null ? h('div.study-tools-col__drill-notice', launchNotice) : null,
   ]);
 
   const children: (VNode | null)[] = [

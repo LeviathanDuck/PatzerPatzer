@@ -173,7 +173,7 @@ export function engineDrillActiveRecord(): EngineDrillRecord | null {
 
 
 
-export type StudyDrillLaunchResult = { readonly ok: true } | { readonly ok: false; readonly reason: 'drill-live' | 'no-board' };
+export type StudyDrillLaunchResult = { readonly ok: true } | { readonly ok: false; readonly reason: 'drill-live' | 'no-board' | 'landing-failed' };
 
 export function requestStudyDrillLaunch(input: {
   readonly pgn: string;
@@ -188,9 +188,15 @@ export function requestStudyDrillLaunch(input: {
 
 
 
+
+
   d.openPgnOnBoard(input.pgn);
   d.navigate(input.path);
   const landedFen = d.getCurrentFen();
+  if (d.getCurrentPath() !== input.path || landedFen === '') {
+    console.warn('engine-drill: study launch aborted — the board did not land on the requested node');
+    return { ok: false, reason: 'landing-failed' };
+  }
   startEngineDrill({
     startFen: landedFen,
     learnerIsWhite: landedFen.split(' ')[1] !== 'b',
@@ -680,7 +686,7 @@ function closeResult(): void {
   deps?.redraw();
 }
 
-function startFollowUpDrill(retry: boolean): void {
+export function startFollowUpDrill(retry: boolean): void {
   const d = deps;
   const config = _lastConfig;
   const priorDrillId = _drillId;
