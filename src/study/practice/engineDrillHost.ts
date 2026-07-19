@@ -595,6 +595,9 @@ export function takebackDrillMove(): void {
   _revealedBest = null;
 
 
+
+
+  if (_pendingBoardReply !== null) _panelNotice = null;
   _pendingBoardReply = null;
   persistActiveDrill();
   if (_record !== null) openDrillRecordOnBoard(_record);
