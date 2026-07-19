@@ -723,6 +723,23 @@ function clampCleanRuns(v: number | undefined): number {
  * back — so the head advances to the NEXT failing target each call (A→B→A→B…), which is the "interleaved"
  * behavior the decision requires, NOT draining one target before the next.
  */
+
+
+
+
+
+export function repairTargetsOf(completions: readonly LearnTargetCompletion[]): string[] {
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const c of completions) {
+    const clean = c.attempt.firstAttemptResult === 'clean' && c.attempt.assistanceTypes.length === 0;
+    if (clean) continue;
+    const id = c.attempt.targetId;
+    if (!seen.has(id)) { seen.add(id); order.push(id); }
+  }
+  return order;
+}
+
 export function createRepairCycleDriver(config: RepairCycleConfig): RepairCycleDriver {
   const cleanRunsRequired = clampCleanRuns(config.cleanRunsRequired);
 

@@ -71,6 +71,8 @@ import { readOrpGlobalDefaults } from '../sync/settingsLiveApply';
 import { launchDueReview } from './practice/dueReviewLaunch';
 import { enrollLearnedLine } from './practice/learnEnrollment';
 import type { LearnTargetCompletion } from './practice/drillCtrl';
+import { createRepairCycleDriver, repairTargetsOf, type RepairCycleDriver } from './practice/drillCtrl';
+import type { LessonModel } from './practice/lessonExtract';
 import { buildReviewSession, buildLearnSession } from './practice/sessionBuilder';
 import { listAllPositionProgress, savePracticeLine, getPracticeLine, deletePracticeLine } from './studyDb';
 import { saveRepertoireLineToOrpLibrary } from './saveAction';
@@ -286,6 +288,52 @@ async function launchOrpLearnSession(redraw: () => void): Promise<void> {
 
 
 
+
+
+
+
+
+
+
+
+function presentLearnRepair(
+  model: LessonModel,
+  trainAs: 'white' | 'black',
+  studyItemId: string,
+  driver: RepairCycleDriver,
+  redraw: () => void,
+  onRepairComplete: () => void,
+): void {
+  const targetId = driver.peek();
+  if (targetId === null) {
+    onRepairComplete();
+    return;
+  }
+  let retryClean = false;
+  initLearnView({
+    line: model.line,
+    content: model.content,
+    replies: model.replies,
+    siblingsAt: model.siblingsAt,
+    targetIds: new Set([targetId]),
+    leadInFenFor: model.leadInFenFor,
+    shapesFor: model.shapesFor,
+    rootFen: model.rootFen,
+    trainAs,
+    studyItemId,
+    redraw,
+    onTargetComplete: (completion) => {
+      retryClean = completion.attempt.firstAttemptResult === 'clean'
+        && completion.attempt.assistanceTypes.length === 0;
+    },
+    onLineComplete: () => {
+      driver.recordRetry(retryClean);
+      presentLearnRepair(model, trainAs, studyItemId, driver, redraw, onRepairComplete);
+    },
+  });
+  redraw();
+}
+
 async function launchGuidedLearn(
   sequences: readonly TrainableSequence[],
   index: number,
@@ -350,8 +398,15 @@ async function launchGuidedLearn(
 
 
 
-          console.info(`[libraryView] line not clean yet (${outcome.unclean.length} target(s)) — repeating for a clean pass`);
-          void launchGuidedLearn(sequences, index, redraw);
+
+          const repairQueue = repairTargetsOf(completions);
+          console.info(`[libraryView] line not clean (${outcome.unclean.length} target(s)) — repair cycle over ${repairQueue.length} target(s), then a clean pass`);
+          presentLearnRepair(
+            model, sequence.trainAs, sequence.studyItemId,
+            createRepairCycleDriver({ failedTargetIds: repairQueue }),
+            redraw,
+            () => { void launchGuidedLearn(sequences, index, redraw); },
+          );
           return;
         } else {
           console.warn(`[libraryView] learn enrollment failed (${outcome.reason})`);
