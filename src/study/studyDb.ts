@@ -431,15 +431,25 @@ export async function createStudyWithDecisionRows(
     }
     tx.oncomplete = () => {
       if (!duplicate) {
-        enqueue('studies', item.id, item, item.updatedAt);
-        for (const row of rows) {
-          enqueue('study-practice-decisions', row.decisionId, row, row.updatedAt ?? item.updatedAt);
+
+
+        try {
+          enqueue('studies', item.id, item, item.updatedAt);
+          for (const row of rows) {
+            enqueue('study-practice-decisions', row.decisionId, row, row.updatedAt ?? item.updatedAt);
+          }
+        } catch (e) {
+          console.warn('[studyDb] promotion outbox enqueue failed', e);
         }
       }
       resolve({ duplicate });
     };
     tx.onerror = () => {
-      if (duplicate) return;
+
+
+
+
+      if (duplicate || rowCollision !== null) return;
       recordStudyTxFail(tx, 'onerror', 'add');
       reject(tx.error);
     };
