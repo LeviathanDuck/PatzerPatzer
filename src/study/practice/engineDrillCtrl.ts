@@ -73,6 +73,18 @@ export type DrillGoal =
 /** Minimum verdict depth an engine-adjudicated goal accepts (the §12.2 confidence/depth gate). */
 export const MIN_GOAL_VERDICT_DEPTH = 12;
 
+
+
+
+export function scoringEvalOf(
+  ev: { readonly cp?: number; readonly mate?: number; readonly depth?: number } | null | undefined,
+): { readonly cp?: number; readonly mate?: number; readonly depth?: number } | null {
+  if (ev == null) return null;
+  if (ev.cp === undefined && ev.mate === undefined) return null;
+  if (ev.depth === undefined || ev.depth < MIN_GOAL_VERDICT_DEPTH) return null;
+  return ev;
+}
+
 // --- Records / state --------------------------------------------------------------------------------
 
 export interface DrillMoveRecord {
@@ -440,12 +452,10 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
       if (ev.cp === undefined && ev.mate === undefined) return;
 
 
-      const better = (existing: { readonly depth?: number; readonly mate?: number } | undefined): boolean => {
-        if (existing === undefined) return true;
-        if (ev.mate !== undefined && existing.mate === undefined) return true;
-        if (ev.mate === undefined && existing.mate !== undefined) return false;
-        return (ev.depth ?? 0) > (existing.depth ?? 0);
-      };
+
+
+      const better = (existing: { readonly depth?: number; readonly mate?: number } | undefined): boolean =>
+        existing === undefined || (ev.depth ?? 0) > (existing.depth ?? 0);
       const pack = () => ({
         ...(ev.cp !== undefined ? { cp: ev.cp } : {}),
         ...(ev.mate !== undefined ? { mate: ev.mate } : {}),
@@ -519,12 +529,19 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
 
 
-    const firstTakenBack = moves.find(m => m.byLearner && mTakenBack.has(m.index));
-    if (firstTakenBack !== undefined) {
-      currentFen = firstTakenBack.fenBefore;
-    } else {
+
+
+
+    {
       let cur = snap.startFen;
+      let skippingRewoundLine = false;
       for (const m of moves) {
+        if (m.byLearner) {
+          if (mTakenBack.has(m.index)) { skippingRewoundLine = true; continue; }
+          skippingRewoundLine = false;
+        } else if (skippingRewoundLine) {
+          continue;
+        }
         if (m.fenAfter !== '') cur = m.fenAfter;
       }
       currentFen = cur;

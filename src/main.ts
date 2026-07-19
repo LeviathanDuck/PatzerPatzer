@@ -329,6 +329,7 @@ import {
   engineDrillOnCeval,
   engineDrillReadoutVnode,
 } from './study/practice/engineDrillHost';
+import { scoringEvalOf } from './study/practice/engineDrillCtrl';
 
 
 
@@ -4396,7 +4397,9 @@ onBeforeBoardUserMove(() => {
 
   if (engineDrillActive()) {
     drillFenBeforeUserMove = ctrl.node.fen;
-    drillEvalBeforeUserMove = evalCache.get(ctrl.path) ?? null;
+
+
+    drillEvalBeforeUserMove = scoringEvalOf(evalCache.get(ctrl.path));
   }
   if (!practiceActive()) return;
   practiceOnUserMove();
