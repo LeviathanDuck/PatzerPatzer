@@ -254,6 +254,9 @@ function cancelAutoNext(): void {
 }
 
 function teardownDrill(): void {
+
+
+  if (_drill !== null) _drill.dispose();
   clearTimers();
   _pendingVerdicts.clear();
   _pendingBoardReply = null;

@@ -218,6 +218,10 @@ export interface EngineDrillController {
 
   attachEvalForFen(fen: string, ev: { readonly cp?: number; readonly mate?: number; readonly depth?: number }): void;
   snapshot(): EngineDrillSnapshot;
+
+
+
+  dispose(): void;
 }
 
 // --- Factory ----------------------------------------------------------------------------------------
@@ -228,6 +232,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
   const resolved = resolveDifficulty(config.difficulty ?? 'casual');
 
   let phase: DrillPhase = 'awaiting-user';
+  let disposed = false;
   let moves: DrillMoveRecord[] = [];
   let difficulty: DrillDifficulty = resolved.difficulty;
   let substituted = resolved.substituted;
@@ -314,6 +319,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
   }
 
   function requestReplyFor(fen: string): void {
+    if (disposed) return;
     replyBoundFen = fen;
     deps.requestReply(fen, strengthFor(difficulty), (uci, forFen) => {
       // EXACT-FEN stale-drop (the binding contract): a reply bound to any other position — or
@@ -442,6 +448,12 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
     finish() { complete('finish-drill'); },
 
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (replyBoundFen !== null) { replyBoundFen = null; deps.cancelReply(); }
+    },
+
     checkTimeLimit() {
       const limit = config.timeLimitMs;
       if (limit === undefined || phase === 'complete') return;
@@ -559,7 +571,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
     if (phase === 'awaiting-reply') {
       queueMicrotask(() => {
-        if (phase === 'awaiting-reply' && replyBoundFen === null) requestReplyFor(currentFen);
+        if (!disposed && phase === 'awaiting-reply' && replyBoundFen === null) requestReplyFor(currentFen);
       });
     }
   };
