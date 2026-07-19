@@ -143,6 +143,11 @@ export function engineDrillFinished(): boolean {
   return _finishedState !== null;
 }
 
+/** Read-only view of the finished drill state (null while live). */
+export function engineDrillFinishedState(): EngineDrillState | null {
+  return _finishedState;
+}
+
 // --- Chess adjudication (host-owned) ----------------------------------------
 
 function positionFromFen(fen: string): Chess | null {
@@ -175,6 +180,33 @@ function adjudicate(fenAfter: string, learnerIsWhite: boolean): DrillTerminal | 
   }
   if (fenAfter.split(' ')[4] === '100') return { kind: 'draw' };
   return null;
+}
+
+
+
+
+
+
+function isThreefoldOnDrillLine(fenAfter: string): boolean {
+  const drill = _drill;
+  const startFen = _lastConfig?.startFen;
+  if (drill === null || startFen === undefined) return false;
+  const epdOf = (fen: string): string => fen.split(' ').slice(0, 4).join(' ');
+  const target = epdOf(fenAfter);
+  const snap = drill.snapshot();
+  const taken = new Set(snap.takenBackIndices ?? []);
+  let count = epdOf(startFen) === target ? 1 : 0;
+  let skippingRewoundLine = false;
+  for (const m of snap.moves) {
+    if (m.byLearner) {
+      if (taken.has(m.index)) { skippingRewoundLine = true; continue; }
+      skippingRewoundLine = false;
+    } else if (skippingRewoundLine) {
+      continue;
+    }
+    if (m.fenAfter !== '' && epdOf(m.fenAfter) === target) count++;
+  }
+  return count >= 3;
 }
 
 // --- Persistence (D15 incremental saves) ------------------------------------
@@ -318,6 +350,7 @@ function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill
           }
           const terminal = adjudicate(applied.fen, _lastConfig?.learnerIsWhite ?? true);
           if (terminal !== null) drill.applyTerminal(terminal);
+          else if (isThreefoldOnDrillLine(applied.fen)) drill.applyTerminal({ kind: 'draw' });
           d.redraw();
         },
         () => {
@@ -464,6 +497,7 @@ export function engineDrillOnUserMove(input: {
   });
   const terminal = adjudicate(input.fenAfter, _lastConfig?.learnerIsWhite ?? true);
   if (terminal !== null) drill.applyTerminal(terminal);
+  else if (isThreefoldOnDrillLine(input.fenAfter)) drill.applyTerminal({ kind: 'draw' });
 }
 
 /** Finish drill — always available (§12.3). */
