@@ -54,6 +54,34 @@ export type LearnTabData =
   | { readonly status: 'active'; readonly body: VNode }
   | { readonly status: 'ready'; readonly entries: readonly LearnEntry[] };
 
+
+
+
+
+export function buildAnalysisLearnTab(input: {
+  readonly learnSessionActive: boolean;
+  readonly engineDrillOwnsBoard: boolean;
+  readonly data: { readonly learn?: readonly { readonly id: string; readonly label: string; readonly sequence: import('../types').TrainableSequence }[] } | null;
+  readonly liveBody: () => VNode;
+  readonly onLaunch: (sequence: import('../types').TrainableSequence) => void;
+}): LearnTabData {
+  if (input.learnSessionActive) return { status: 'active', body: input.liveBody() };
+  if (input.engineDrillOwnsBoard) {
+    return { status: 'error', message: 'Finish or close the engine drill first — Learn opens when the board is free.' };
+  }
+  if (input.data === null) return { status: 'loading' };
+  if (input.data.learn === undefined) return { status: 'error', message: 'Could not load your learnable lines.' };
+  return {
+    status: 'ready',
+    entries: input.data.learn.map(entry => ({
+      id: entry.id,
+      label: entry.label,
+      onStart: () => { input.onLaunch(entry.sequence); },
+    })),
+  };
+}
+
+
 /** Review tab (Review due, D10b): SCHEDULE language only. `dueEntries` = `session.plan.entries`;
  *  `upcoming` = `upcomingTargets(plan, progress, n)`. `nowMs` is a host-supplied instant (no clock read
  *  in the view). `ladderLabelFor` maps a target to a P2-ORP-12 ladder stage label (host owns the config

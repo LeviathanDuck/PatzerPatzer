@@ -56,7 +56,7 @@ import { loadGlobalPracticePanelData, listRecentProgressLessons, loadLessonProgr
 import { launchDueReview, resumeDueReview } from '../study/practice/dueReviewLaunch';
 import { isDrillActive, renderDrillView } from '../study/practice/drillView';
 import { launchGuidedLearn } from '../study/libraryView';
-import type { LearnTabData } from '../study/practice/practiceView';
+import { buildAnalysisLearnTab } from '../study/practice/practiceView';
 import type { EngineDrillRecord } from '../study/types';
 import type { TreeNode } from '../tree/types';
 
@@ -318,29 +318,13 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   } else {
     review = data.review;
   }
-
-
-  let learn: LearnTabData;
-  if (isDrillActive()) {
-    learn = { status: 'active', body: renderDrillView(redraw) };
-  } else if (engineDrillActive() || engineDrillFinished()) {
-
-
-    learn = { status: 'error', message: 'Finish or close the engine drill first — Learn opens when the board is free.' };
-  } else if (data === null) {
-    learn = { status: 'loading' };
-  } else if (data.learn === undefined) {
-    learn = { status: 'error', message: 'Could not load your learnable lines.' };
-  } else {
-    learn = {
-      status: 'ready',
-      entries: data.learn.map(entry => ({
-        id: entry.id,
-        label: entry.label,
-        onStart: () => { void launchGuidedLearn([entry.sequence], 0, redraw); },
-      })),
-    };
-  }
+  const learn = buildAnalysisLearnTab({
+    learnSessionActive: isDrillActive(),
+    engineDrillOwnsBoard: engineDrillActive() || engineDrillFinished(),
+    data,
+    liveBody: () => renderDrillView(redraw),
+    onLaunch: sequence => { void launchGuidedLearn([sequence], 0, redraw); },
+  });
   const props: PracticePanelProps = {
     activeTab: _analysisPracticeTab,
     onSelectTab: (tab: PracticePanelTab) => { _analysisPracticeTab = tab; redraw(); },
