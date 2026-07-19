@@ -21,7 +21,7 @@ import { writeHashRoute } from '../../router';
 import {
   listRecentEngineDrills, listEngineDrillsByStudyItem,
   deleteEngineDrillRecord, createEngineDrillRecord,
-  getStudy, createStudyStrict, saveStudyStrict, savePracticeDecision,
+  getStudy, createStudyStrict, saveStudyStrict, createStudyWithDecisionRows,
 } from '../studyDb';
 
 
@@ -34,13 +34,13 @@ export interface DrillCatalogDeps {
   readonly getStudy: typeof getStudy;
   readonly createStudyStrict: typeof createStudyStrict;
   readonly saveStudyStrict: typeof saveStudyStrict;
-  readonly savePracticeDecision: typeof savePracticeDecision;
+  readonly createStudyWithDecisionRows: typeof createStudyWithDecisionRows;
 }
 
 const REAL_CATALOG_DEPS: DrillCatalogDeps = {
   listRecentEngineDrills, listEngineDrillsByStudyItem,
   deleteEngineDrillRecord, createEngineDrillRecord,
-  getStudy, createStudyStrict, saveStudyStrict, savePracticeDecision,
+  getStudy, createStudyStrict, saveStudyStrict, createStudyWithDecisionRows,
 };
 
 let _catalogDeps: DrillCatalogDeps = REAL_CATALOG_DEPS;
@@ -260,9 +260,9 @@ async function confirmPromotion(redraw: () => void): Promise<void> {
   if (_promotion === null || _promotion.stage !== 'preview') return;
   const applied = await applyDrillPromotion(_promotion.plan, {
     loadStudy: _catalogDeps.getStudy,
-    createStudy: _catalogDeps.createStudyStrict,
+
+    createStudyWithRows: _catalogDeps.createStudyWithDecisionRows,
     saveStudy: _catalogDeps.saveStudyStrict,
-    saveDecisionRow: _catalogDeps.savePracticeDecision,
     mintId: () => crypto.randomUUID(),
     now: () => Date.now(),
   });

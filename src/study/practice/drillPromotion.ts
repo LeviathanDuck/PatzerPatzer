@@ -110,13 +110,14 @@ export interface PromotionPlanDeps {
 }
 
 export interface PromotionApplyDeps extends PromotionPlanDeps {
-  /** Existence-rejecting create (the D15 posture): a key collision must NOT overwrite. */
-  createStudy(item: StudyItem): Promise<{ readonly duplicate: boolean }>;
+
+
+
+  createStudyWithRows(
+    item: StudyItem,
+    rows: readonly StudyPracticeDecisionRow[],
+  ): Promise<{ readonly duplicate: boolean }>;
   saveStudy(item: StudyItem): Promise<void>;
-
-
-
-  saveDecisionRow(row: StudyPracticeDecisionRow): Promise<void>;
   mintId(): string;
   now(): number;
 }
@@ -361,31 +362,30 @@ export async function applyDrillPromotion(
       createdAt: now,
       updatedAt: now,
     };
-    try {
-      const created = await deps.createStudy(item);
-      if (created.duplicate) return { ok: false, reason: 'duplicate-study-id' };
-    } catch (e) {
-      return { ok: false, reason: 'write-failed', detail: String(e) };
-    }
 
 
 
 
+    let rows: StudyPracticeDecisionRow[];
     try {
       const root = pgnToTree(plan.pgn);
       const model = extractLessonModel({
         root, lessonId: item.id, learnerSide: plan.learnerSide, sourceKind: 'pgn',
         content: new Map(), mintId: deps.mintId,
       });
-      for (const decision of model.decisions) {
-        await deps.saveDecisionRow({
-          ...decisionRowOf(decision, { status: 'promoted', now: deps.now() }),
-          role: plan.preview.defaultRole,
-          trainability: 'untrainable',
-        });
-      }
+      rows = model.decisions.map(decision => ({
+        ...decisionRowOf(decision, { status: 'promoted', now: deps.now() }),
+        role: plan.preview.defaultRole,
+        trainability: 'untrainable',
+      }));
     } catch (e) {
-      return { ok: false, reason: 'write-failed', detail: `classification rows failed: ${String(e)}` };
+      return { ok: false, reason: 'write-failed', detail: `classification derivation failed: ${String(e)}` };
+    }
+    try {
+      const created = await deps.createStudyWithRows(item, rows);
+      if (created.duplicate) return { ok: false, reason: 'duplicate-study-id' };
+    } catch (e) {
+      return { ok: false, reason: 'write-failed', detail: String(e) };
     }
     return { ok: true, studyItemId: item.id };
   }
