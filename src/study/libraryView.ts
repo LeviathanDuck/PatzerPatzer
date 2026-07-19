@@ -331,6 +331,13 @@ async function launchGuidedLearn(
           if (outcome.outcome === 'enrolled') {
             console.info(`[libraryView] learned line enrolled: ${outcome.srsRows} tracked decision(s)`);
           }
+        } else if (outcome.reason === 'not-clean') {
+
+
+
+          console.info(`[libraryView] line not clean yet (${outcome.unclean.length} target(s)) — repeating for a clean pass`);
+          void launchGuidedLearn(sequences, index, redraw);
+          return;
         } else {
           console.warn(`[libraryView] learn enrollment failed (${outcome.reason})`);
         }

@@ -132,10 +132,27 @@ export async function loadLearnLessonBundle(
 
   const rowOverlay = overlayFromDecisionRows(decisionRows);
   const rowIds = new Set(decisionRows.map(r => r.decisionId));
+
+
+
+
+
+  const mainlinePaths = new Set<string>();
+  {
+    let node = root;
+    let path = '';
+    while (node.children.length > 0) {
+      const child = node.children[0]!;
+      path += child.id;
+      mainlinePaths.add(path);
+      node = child;
+    }
+  }
   const decisionOverlay = input.treatLineAsRequired
     ? (base: Parameters<typeof rowOverlay>[0]): ReturnType<typeof rowOverlay> => {
         const overlaid = rowOverlay(base);
         if (rowIds.has(base.identity.decisionId)) return overlaid; // persisted classification wins
+        if (!mainlinePaths.has(base.identity.authoredPath)) return overlaid; // never off-line material
         // Mover color from the after-move ply (odd ⇒ white moved — the lessonExtract convention).
         const mover = base.evidence.ply % 2 === 1 ? 'white' : 'black';
         return mover === input.learnerSide ? { ...overlaid, trainability: 'required' } : overlaid;

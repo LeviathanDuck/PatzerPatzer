@@ -14,6 +14,7 @@
 
 
 
+
 import { validateLadderConfig } from './scheduler';
 import { isSrsEnrollable, type LessonDecision } from './material';
 import type { LessonModel } from './lessonExtract';
@@ -53,6 +54,9 @@ export type EnrollLearnedLineResult =
   | { readonly ok: true; readonly outcome: 'enrolled'; readonly decisions: number; readonly srsRows: number }
   | { readonly ok: true; readonly outcome: 'already-enrolled' }
   | { readonly ok: false; readonly reason: 'config-invalid' }
+  /** the private implementation record (contract §7): the traversal was not a full clean unassisted pass over the targeted
+   *  Required material — NOTHING was written; the caller repeats the line instead of enrolling. */
+  | { readonly ok: false; readonly reason: 'not-clean'; readonly unclean: readonly string[] }
   | { readonly ok: false; readonly reason: 'enroll-failed'; readonly detail: string };
 
 /** Build one PRISTINE initial schedule row (enrollment-contract shape: active, ladder floor, zero
@@ -109,19 +113,27 @@ export async function enrollLearnedLine(
   // initial SRS rows ONLY for the Required line decisions (P2-ORP-18: nothing else enrolls).
   const decisions = input.model.decisions.map(d => decisionRowOf(d, { status: 'enrolled', now }));
 
+
+
+
+
+
+
+
   const cleanTargetIds = new Set(
     input.completions
-      .filter(c => c.attempt.firstAttemptResult === 'clean')
+      .filter(c => c.attempt.firstAttemptResult === 'clean' && c.attempt.assistanceTypes.length === 0)
       .map(c => c.attempt.targetId),
   );
-  const srsRows = input.model.line
-    .filter(isSrsEnrollable)
-    .map(d => initialSrsRow(
-      d,
-      input.lessonId,
-      cleanTargetIds.has(d.identity.decisionId) ? now + firstIntervalMs : now,
-      now,
-    ));
+  const enrollable = input.model.line.filter(isSrsEnrollable);
+  const unclean = enrollable
+    .map(d => d.identity.decisionId)
+    .filter(id => !cleanTargetIds.has(id));
+  if (unclean.length > 0) return { ok: false, reason: 'not-clean', unclean };
+
+  // Every enrolled row starts at the ladder floor: the clean traversal IS the step-0 pass.
+  const srsRows = enrollable
+    .map(d => initialSrsRow(d, input.lessonId, now + firstIntervalMs, now));
 
   let result;
   try {
