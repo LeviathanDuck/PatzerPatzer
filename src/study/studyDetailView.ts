@@ -1159,6 +1159,10 @@ function renderAuthoredTextField(
 
 
 
+
+
+let _drillLaunchNotice: string | null = null;
+
 function renderPracticeToolPanel(redraw: () => void): VNode {
   const study = studyDetail();
   const root = detailRoot();
@@ -1173,8 +1177,6 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
   const currentNode = detailNode();
   const decision = _authoringDecisions.find(d => d.identity.authoredPath === path);
   const scope = validateScopeReadiness({ decisions: _authoringDecisions, content: _authoredContent, root });
-
-  let _drillLaunchNotice: string | null = null;
 
 
 
@@ -1197,6 +1199,7 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
       },
       on: {
         click: () => {
+          _drillLaunchNotice = null; // a new attempt clears any stale failure notice
           const launched = requestStudyDrillLaunch({
             pgn: buildStudyPgn(),
             path,
