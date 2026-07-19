@@ -113,11 +113,19 @@ export interface ProgressReadyData {
   /** Optional drill-into a folder row (More-Help). */
   readonly onOpenFolder?: (folder: string) => void;
 }
+
+export interface ProgressLessonOption {
+  readonly lessonId: string;
+  readonly label: string;
+}
+
 export type ProgressTabData =
   | { readonly status: 'loading' }
   | { readonly status: 'error'; readonly message: string }
   | { readonly status: 'empty' }
-  | ({ readonly status: 'ready' } & ProgressReadyData);
+  | ({ readonly status: 'ready' } & ProgressReadyData & { readonly onBack?: () => void })
+  /** the private implementation record: the global mount's drill-down — pick a Study, its per-lesson fold loads. */
+  | { readonly status: 'picker'; readonly lessons: readonly ProgressLessonOption[]; readonly onSelect: (lessonId: string) => void };
 
 /** The full host-supplied props for the practice panel. Pure inputs + callbacks; no ambient state. */
 /** One bounded Recent-drills entry (§13 "Recent drills … live in the Practice panel"). */
@@ -441,11 +449,36 @@ function renderProgressTab(data: ProgressTabData): VNode {
   if (data.status === 'loading') return renderLoading('Loading your scorecard…');
   if (data.status === 'error') return renderError(data.message);
   if (data.status === 'empty') return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
+  if (data.status === 'picker') {
+    if (data.lessons.length === 0) return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
+    return h('div.orp-practice__progress', [
+      h('div.orp-practice__section-head', 'Progress by Study'),
+      h('ul.orp-practice__score-list', { attrs: { 'aria-label': 'Progress by Study' } },
+        data.lessons.map(lesson => h('li.orp-practice__picker-row', { key: lesson.lessonId }, [
+          h('button.orp-practice__picker-open', {
+            attrs: { type: 'button', ...controlExplainerAttrs({
+              label: `Open progress for ${lesson.label}`,
+              description: 'Shows this Study\'s practice scorecard.', tier: 'essential',
+            }) },
+            on: { click: () => { data.onSelect(lesson.lessonId); } },
+          }, lesson.label),
+        ]))),
+    ]);
+  }
 
   const { scorecard } = data;
   if (scorecard.total === 0) return renderEmpty(scorecardCopy.emptyTitle, scorecardCopy.emptyBody);
 
   return h('div.orp-practice__progress', [
+    data.onBack !== undefined
+      ? h('button.orp-practice__picker-back', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: 'Back to all Studies',
+            description: 'Returns to the Progress-by-Study list.', tier: 'essential',
+          }) },
+          on: { click: data.onBack },
+        }, '← All Studies')
+      : null,
     h('div.orp-practice__section-head', scorecardCopy.progressHeading),
     h('ul.orp-practice__score-list', { attrs: { 'aria-label': scorecardCopy.progressHeading } },
       scorecard.folders.map((folder) => renderScorecardFolder(folder, data.onOpenFolder))),

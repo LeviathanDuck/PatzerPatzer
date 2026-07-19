@@ -233,6 +233,63 @@ export async function loadGlobalPracticePanelData(
   };
 }
 
+
+
+
+export async function listRecentProgressLessons(
+  deps: PracticePanelDataDeps = REAL_DEPS,
+): Promise<readonly { readonly lessonId: string; readonly label: string }[]> {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const state of ['partial', 'active', 'completed'] as SrsSessionState[]) {
+    if (ordered.length >= 10) break;
+    let results: Awaited<ReturnType<PracticePanelDataDeps['listPracticeSessionsByState']>>;
+    try {
+      results = await deps.listPracticeSessionsByState(state, RESUMABLE_SCAN_LIMIT);
+    } catch {
+      continue; // a failed state scan narrows the list; the others still surface
+    }
+    for (const result of results) {
+      if (!result.ok) continue;
+      const id = result.value.lessonId;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ordered.push(id);
+      if (ordered.length >= 10) break;
+    }
+  }
+  const out: { lessonId: string; label: string }[] = [];
+  for (const lessonId of ordered) {
+    let label = lessonId;
+    try {
+      const item = await deps.getStudy(lessonId);
+      if (item !== undefined) label = item.title;
+    } catch { /* label falls back to the id */ }
+    out.push({ lessonId, label });
+  }
+  return out;
+}
+
+
+
+export async function loadLessonProgress(
+  lessonId: string,
+  deps: PracticePanelDataDeps = REAL_DEPS,
+): Promise<ProgressTabData> {
+  let label = lessonId;
+  try {
+    const item = await deps.getStudy(lessonId);
+    if (item !== undefined) label = item.title;
+  } catch { /* id label */ }
+  try {
+    const folded = await buildProgressScorecard(lessonId, label, deps);
+    if (folded === 'empty') return { status: 'empty' };
+    return { status: 'ready', scorecard: folded.scorecard };
+  } catch {
+    return { status: 'error', message: 'Could not load your accuracy history.' };
+  }
+}
+
 export async function loadStudyPracticePanelData(
   input: { readonly lessonId: string },
   deps: PracticePanelDataDeps = REAL_DEPS,

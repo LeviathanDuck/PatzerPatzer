@@ -48,11 +48,11 @@ import {
   type WorkspaceInstance,
 } from './workspaceCore';
 import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
-import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab, type PanelDrillsSection } from '../study/practice/practiceView';
+import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab, type PanelDrillsSection, type ProgressTabData, type ProgressLessonOption } from '../study/practice/practiceView';
 import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode, openDrillRecordOnBoard } from '../study/practice/engineDrillHost';
 import { openDrillCatalog } from '../study/practice/drillCatalogView';
 import { listRecentEngineDrills } from '../study/studyDb';
-import { loadGlobalPracticePanelData, type StudyPracticePanelData } from '../study/practice/practicePanelData';
+import { loadGlobalPracticePanelData, listRecentProgressLessons, loadLessonProgress, type StudyPracticePanelData } from '../study/practice/practicePanelData';
 import { launchDueReview, resumeDueReview } from '../study/practice/dueReviewLaunch';
 import { isDrillActive, renderDrillView } from '../study/practice/drillView';
 import { launchGuidedLearn } from '../study/libraryView';
@@ -231,6 +231,11 @@ let _analysisPanelData: StudyPracticePanelData | null = null;
 let _analysisPanelLoading = false;
 let _analysisPanelGeneration = 0;
 
+
+let _analysisProgressLessons: readonly ProgressLessonOption[] | null = null;
+let _analysisProgressLesson: string | null = null;
+let _analysisProgressData: ProgressTabData | null = null;
+
 function refreshAnalysisPanelData(redraw: () => void): void {
   if (_analysisPanelLoading) return;
   _analysisPanelLoading = true;
@@ -246,6 +251,44 @@ function refreshAnalysisPanelData(redraw: () => void): void {
     console.warn('[analysisControls] practice panel feed failed', e);
     redraw();
   });
+  void listRecentProgressLessons().then(lessons => {
+    if (generation !== _analysisPanelGeneration) return;
+    _analysisProgressLessons = lessons;
+    redraw();
+  }).catch(() => {
+    if (generation !== _analysisPanelGeneration) return;
+    _analysisProgressLessons = [];
+    redraw();
+  });
+}
+
+function selectAnalysisProgressLesson(lessonId: string | null, redraw: () => void): void {
+  _analysisProgressLesson = lessonId;
+  _analysisProgressData = lessonId === null ? null : { status: 'loading' };
+  if (lessonId === null) { redraw(); return; }
+  const generation = _analysisPanelGeneration;
+  void loadLessonProgress(lessonId).then(data => {
+    if (generation !== _analysisPanelGeneration || _analysisProgressLesson !== lessonId) return;
+    _analysisProgressData = data;
+    redraw();
+  });
+  redraw();
+}
+
+function analysisProgressTabData(redraw: () => void): ProgressTabData {
+  if (_analysisProgressLesson !== null) {
+    const loaded = _analysisProgressData ?? { status: 'loading' };
+    if (loaded.status === 'ready') {
+      return { ...loaded, onBack: () => { selectAnalysisProgressLesson(null, redraw); } };
+    }
+    return loaded;
+  }
+  if (_analysisProgressLessons === null) return { status: 'loading' };
+  return {
+    status: 'picker',
+    lessons: _analysisProgressLessons,
+    onSelect: (lessonId) => { selectAnalysisProgressLesson(lessonId, redraw); },
+  };
 }
 
 /** Render the Analysis Practice panel, or null while the practice slot is not active. */
@@ -293,7 +336,7 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
     learn,
     review,
     practice: { status: 'empty' },
-    progress: data === null ? { status: 'loading' } : data.progress,
+    progress: analysisProgressTabData(redraw),
     drills: analysisPanelDrillsSection(redraw),
   };
   return h('div.analyse__practice-panel', [
