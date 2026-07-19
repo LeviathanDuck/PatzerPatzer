@@ -85,9 +85,10 @@ export interface DrillMoveRecord {
   /** False for a post-takeback replay — the ORIGINAL stays the scored first attempt (§12.2). */
   readonly firstAttempt: boolean;
   readonly assistanceUsed: readonly string[];
-  /** White-perspective evals when the verdict path captured them (scoring inputs). */
-  readonly evalBefore?: { readonly cp?: number; readonly mate?: number };
-  readonly evalAfter?: { readonly cp?: number; readonly mate?: number };
+
+
+  readonly evalBefore?: { readonly cp?: number; readonly mate?: number; readonly depth?: number };
+  readonly evalAfter?: { readonly cp?: number; readonly mate?: number; readonly depth?: number };
   readonly at: number;
 }
 
@@ -186,8 +187,8 @@ export interface EngineDrillController {
     assistance?: readonly string[];
 
 
-    evalBefore?: { readonly cp?: number; readonly mate?: number };
-    evalAfter?: { readonly cp?: number; readonly mate?: number };
+    evalBefore?: { readonly cp?: number; readonly mate?: number; readonly depth?: number };
+    evalAfter?: { readonly cp?: number; readonly mate?: number; readonly depth?: number };
   }): void;
   /** The host's board adjudicated a terminal position. */
   applyTerminal(terminal: DrillTerminal): void;
@@ -203,7 +204,7 @@ export interface EngineDrillController {
 
 
 
-  attachEvalForFen(fen: string, ev: { readonly cp?: number; readonly mate?: number }): void;
+  attachEvalForFen(fen: string, ev: { readonly cp?: number; readonly mate?: number; readonly depth?: number }): void;
   snapshot(): EngineDrillSnapshot;
 }
 
@@ -437,15 +438,28 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
     attachEvalForFen(fen, ev) {
       if (ev.cp === undefined && ev.mate === undefined) return;
+
+
+      const better = (existing: { readonly depth?: number; readonly mate?: number } | undefined): boolean => {
+        if (existing === undefined) return true;
+        if (ev.mate !== undefined && existing.mate === undefined) return true;
+        if (ev.mate === undefined && existing.mate !== undefined) return false;
+        return (ev.depth ?? 0) > (existing.depth ?? 0);
+      };
+      const pack = () => ({
+        ...(ev.cp !== undefined ? { cp: ev.cp } : {}),
+        ...(ev.mate !== undefined ? { mate: ev.mate } : {}),
+        ...(ev.depth !== undefined ? { depth: ev.depth } : {}),
+      });
       let changed = false;
       for (let i = 0; i < moves.length; i++) {
         const m = moves[i]!;
-        if (m.fenBefore === fen && m.evalBefore === undefined) {
-          moves[i] = { ...m, evalBefore: { ...(ev.cp !== undefined ? { cp: ev.cp } : {}), ...(ev.mate !== undefined ? { mate: ev.mate } : {}) } };
+        if (m.fenBefore === fen && better(m.evalBefore)) {
+          moves[i] = { ...m, evalBefore: pack() };
           changed = true;
         }
-        if (m.fenAfter === fen && m.evalAfter === undefined) {
-          moves[i] = { ...moves[i]!, evalAfter: { ...(ev.cp !== undefined ? { cp: ev.cp } : {}), ...(ev.mate !== undefined ? { mate: ev.mate } : {}) } };
+        if (m.fenAfter === fen && better(moves[i]!.evalAfter)) {
+          moves[i] = { ...moves[i]!, evalAfter: pack() };
           changed = true;
         }
       }
@@ -504,12 +518,17 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
 
 
-    let cur = snap.startFen;
-    for (const m of moves) {
-      if (m.byLearner && mTakenBack.has(m.index)) continue;
-      if (m.fenAfter !== '') cur = m.fenAfter;
+
+    const firstTakenBack = moves.find(m => m.byLearner && mTakenBack.has(m.index));
+    if (firstTakenBack !== undefined) {
+      currentFen = firstTakenBack.fenBefore;
+    } else {
+      let cur = snap.startFen;
+      for (const m of moves) {
+        if (m.fenAfter !== '') cur = m.fenAfter;
+      }
+      currentFen = cur;
     }
-    currentFen = cur;
   };
   (controller as EngineDrillController & { __install: (s: EngineDrillSnapshot) => void }).__install = install;
 

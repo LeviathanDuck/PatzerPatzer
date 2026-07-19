@@ -220,6 +220,7 @@ export function engineDrillOnCeval(): void {
   _drill.attachEvalForFen(fen, {
     ...(ev.cp !== undefined ? { cp: ev.cp } : {}),
     ...(ev.mate !== undefined ? { mate: ev.mate } : {}),
+    ...(ev.depth !== undefined ? { depth: ev.depth } : {}),
   });
   const callbacks = _pendingVerdicts.get(fen);
   if (callbacks === undefined) return;
@@ -418,6 +419,10 @@ export function engineDrillOnUserMove(input: {
   readonly fenAfter: string;
   readonly uci: string;
   readonly san?: string;
+
+
+
+  readonly evalBefore?: { readonly cp?: number; readonly mate?: number; readonly depth?: number };
 }): void {
   const drill = _drill;
   if (drill === null || _finishedState !== null) return;
@@ -429,6 +434,7 @@ export function engineDrillOnUserMove(input: {
     ...(input.san !== undefined ? { san: input.san } : {}),
     fenBefore: input.fenBefore,
     fenAfter: input.fenAfter,
+    ...(input.evalBefore !== undefined ? { evalBefore: input.evalBefore } : {}),
     ...(assistance.length > 0 ? { assistance } : {}),
   });
   const terminal = adjudicate(input.fenAfter, _lastConfig?.learnerIsWhite ?? true);

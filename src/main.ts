@@ -2137,6 +2137,7 @@ let practiceMoveNavigation = false;
 
 
 let drillFenBeforeUserMove: string | null = null;
+let drillEvalBeforeUserMove: { cp?: number; mate?: number; depth?: number; best?: string } | null = null;
 
 function togglePracticeSession(): void {
   if (practiceActive()) {
@@ -4389,9 +4390,14 @@ setExtraArrowSuppressProvider(() => practiceActive() && !isRetroVisibleEngineEna
 // User moves: flag the resulting navigation as move application and set the session
 // running before onJump processes it (lila ctrl.userMove ordering).
 onBeforeBoardUserMove(() => {
-  // Engine Drill: capture the exact pre-move FEN so the host can bind the learner's move
-  // (the drill controller rejects a move whose fenBefore desyncs from drill state).
-  if (engineDrillActive()) drillFenBeforeUserMove = ctrl.node.fen;
+
+
+
+
+  if (engineDrillActive()) {
+    drillFenBeforeUserMove = ctrl.node.fen;
+    drillEvalBeforeUserMove = evalCache.get(ctrl.path) ?? null;
+  }
   if (!practiceActive()) return;
   practiceOnUserMove();
   practiceMoveNavigation = true;
@@ -4402,12 +4408,21 @@ onBoardUserMove(() => {
     const fenBefore = drillFenBeforeUserMove;
     drillFenBeforeUserMove = null;
     const node = ctrl.node;
+    const evalBefore = drillEvalBeforeUserMove;
+    drillEvalBeforeUserMove = null;
     if (engineDrillActive() && node.uci !== undefined && node.fen !== fenBefore) {
       engineDrillOnUserMove({
         fenBefore,
         fenAfter: node.fen,
         uci: node.uci,
         ...(node.san !== undefined ? { san: node.san } : {}),
+        ...(evalBefore !== null && (evalBefore.cp !== undefined || evalBefore.mate !== undefined)
+          ? { evalBefore: {
+              ...(evalBefore.cp !== undefined ? { cp: evalBefore.cp } : {}),
+              ...(evalBefore.mate !== undefined ? { mate: evalBefore.mate } : {}),
+              ...(evalBefore.depth !== undefined ? { depth: evalBefore.depth } : {}),
+            } }
+          : {}),
       });
       redraw();
     }
