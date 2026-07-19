@@ -71,7 +71,7 @@ function numberField(
       attrs: {
         type: 'number', min: String(opts.min), max: String(opts.max),
         value: value === null ? '' : String(value),
-        ...(opts.placeholder !== undefined ? { placeholder: opts.placeholder } : {}),
+        placeholder: opts.placeholder ?? '',
         'aria-label': label,
       },
       on: {
