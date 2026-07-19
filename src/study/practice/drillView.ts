@@ -60,6 +60,8 @@ let _redraw:     () => void           = () => {};
 let _workspaceInstance: WorkspaceInstance | null = null;
 let _drillRunGeneration = 0;
 let _restoreCallback: (() => void) | null = null;
+
+let _teardownCallback: ((reason: string) => void) | null = null;
 const _drillTimers = new Set<ReturnType<typeof setTimeout>>();
 
 // --- Delayed-work scheduling + stale-drop guard (CCW-H03b) ---
@@ -257,6 +259,10 @@ export interface LearnViewConfig {
 
   readonly onTargetComplete?: (completion: LearnTargetCompletion) => void;
   readonly onLineComplete?: () => void;
+
+
+
+  readonly onTeardown?: (reason: string) => void;
 }
 
 /**
@@ -299,6 +305,7 @@ export function initLearnView(config: LearnViewConfig): void {
   });
 
   if (config.onExitRestore !== undefined) _restoreCallback = config.onExitRestore;
+  if (config.onTeardown !== undefined) _teardownCallback = config.onTeardown;
 
   const run = _drillRunGeneration;
   const adapter = createDrillBoardAdapter({
@@ -503,8 +510,13 @@ export function endDrill(
   // Capture and clear the stored instance + restore callback before unmounting.
   const instance = _workspaceInstance;
   const restore  = _restoreCallback;
+  const teardown = _teardownCallback;
   _workspaceInstance = null;
   _restoreCallback   = null;
+  _teardownCallback  = null;
+
+
+  if (teardown) { try { teardown(reason); } catch { /* teardown must complete */ } }
   // Guarded unmount: releases the drill ONLY if it is still the active workspace, so a stale drill
   // exit can never replace a newer Analysis/Study/other workspace.
   const wasActive = instance ? unmountWorkspace(instance, reason) : false;

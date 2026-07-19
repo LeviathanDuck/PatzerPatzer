@@ -268,6 +268,28 @@ export async function startDueReviewSession(
   return { ok: true, runtime: createRuntime(session, primaryLessonId, config, deps, fresh, bundles) };
 }
 
+
+
+
+
+
+
+
+export async function markDueReviewSessionPartial(
+  sessionId: string,
+  deps: DueReviewHostDeps = realDeps(),
+): Promise<void> {
+  try {
+    const read = await deps.getPracticeSession(sessionId);
+    if (read === null || !read.ok) return;
+    const row = read.value;
+    if (row.state !== 'active') return;
+    await deps.savePracticeSession({ ...row, state: 'partial', updatedAt: deps.now() });
+  } catch {
+    // teardown path — never throw; resume tolerates a still-active row.
+  }
+}
+
 /**
  * Resume a persisted (partial/active) session row: live schedule rows are re-read and the frozen
  * plan revalidated (`resumeDueReviewSession`); drifted entries are DROPPED (never replayed),
@@ -365,17 +387,6 @@ function createRuntime(
 
   const sessionDone = (): boolean => nextDeliverableEntry() === undefined;
 
-  const persistProgress = async (): Promise<boolean> => {
-    try {
-      await deps.savePracticeSession(buildDueReviewSessionRow({
-        plan: session.plan, lessonId: primaryLessonId, createdAt, updatedAt: deps.now(), progress,
-      }));
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
   const completeTarget = async (completion: LearnTargetCompletion): Promise<CompleteTargetResult> => {
     const entry = nextDeliverableEntry();
     if (entry === undefined || completion.attempt.targetId !== entry.targetId) {
@@ -443,10 +454,12 @@ function createRuntime(
       completedTargetIds: [...progress.completedTargetIds, entry.targetId],
       appliedAttemptIds: [...progress.appliedAttemptIds, completion.attempt.attemptId],
     };
-    // Durable cursor advance rides the same completion. A failed row-save still leaves the ATTEMPT
-    // persisted (append-only truth) — resume revalidation reconciles; surface it as persist-failed.
-    const savedRow = await persistProgress();
-    if (!savedRow) return { applied: false, reason: 'persist-failed', done: sessionDone() };
+
+
+
+
+
+
     return { applied: true, done: sessionDone() };
   };
 
