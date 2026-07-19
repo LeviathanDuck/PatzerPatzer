@@ -18,7 +18,7 @@
 
 
 
-import { countParseablePgnGames } from '../../tree/pgn';
+import { countParseablePgnGames, stripPgnAnnotations } from '../../tree/pgn';
 import type { StudyItem, EngineDrillRecord } from '../types';
 import type {
   StudyPracticeLessonRow, StudyPracticeDecisionRow, StudyPracticeAuthoredContentRow,
@@ -136,11 +136,18 @@ export function buildOrpBundle(
   if (attempts.length > 0) included.push('attempt-history');
   if (drills.length > 0) included.push('drill-catalog');
 
+
+
+
+
+
+  const exportPgn = (raw: string): string =>
+    mode === 'shareable-lesson' ? (stripPgnAnnotations(raw) ?? '') : raw;
   return {
     schemaVersion: ORP_BUNDLE_SCHEMA_VERSION,
     mode,
     manifest: { includedCategories: included },
-    pgn: input.studies.map(s => ({ studyItemId: s.id, title: s.title, pgn: s.pgn })),
+    pgn: input.studies.map(s => ({ studyItemId: s.id, title: s.title, pgn: exportPgn(s.pgn) })),
     orp: {
       lessons: [...input.lessons],
       decisions: [...input.decisions],

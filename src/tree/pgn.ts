@@ -6,7 +6,7 @@ import type { Position } from 'chessops/chess';
 import { scalachessCharPair } from 'chessops/compat';
 import { makeFen } from 'chessops/fen';
 import type { ChildNode, CommentShape, Game, PgnNodeData } from 'chessops/pgn';
-import { parseComment, parsePgn, startingPosition } from 'chessops/pgn';
+import { makePgn, parseComment, parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSanAndPlay, parseSan } from 'chessops/san';
 
 import type { Glyph, ImportedEval, Shape, TimeControl, TreeComment, TreeNode } from './types';
@@ -219,6 +219,36 @@ export function pgnToTree(pgn: string): TreeNode {
   const game = parsePgn(pgn)[0];
   if (!game) throw new Error('No game found in PGN');
   return pgnGameToTree(game);
+}
+
+
+
+
+
+
+
+
+
+export function stripPgnAnnotations(pgn: string): string | null {
+  let games;
+  try {
+    games = parsePgn(pgn);
+  } catch {
+    return null;
+  }
+  if (games.length === 0) return null;
+  const walk = (node: { children: { data: PgnNodeData; children: unknown[] }[] }): void => {
+    for (const child of node.children) {
+      delete (child.data as { comments?: unknown }).comments;
+      delete (child.data as { startingComments?: unknown }).startingComments;
+      delete (child.data as { nags?: unknown }).nags;
+      walk(child as unknown as { children: { data: PgnNodeData; children: unknown[] }[] });
+    }
+  };
+  return games.map(game => {
+    walk(game.moves as unknown as { children: { data: PgnNodeData; children: unknown[] }[] });
+    return makePgn(game);
+  }).join('\n');
 }
 
 
