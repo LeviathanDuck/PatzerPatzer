@@ -375,6 +375,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
     state: snapshotState,
 
     applyUserMove(input) {
+      if (disposed) return;
       if (phase !== 'awaiting-user') return;
       if (input.fenBefore !== currentFen) return; // stale user move (host desync) — ignored
       moves.push({
@@ -411,12 +412,13 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
     },
 
     applyTerminal(t) {
-      if (phase === 'complete') return;
+      if (disposed || phase === 'complete') return;
       terminal = t;
       complete('terminal');
     },
 
     setDifficulty(next) {
+      if (disposed) return;
       const r = resolveDifficulty(next);
       difficulty = r.difficulty;
       substituted = substituted || r.substituted;
@@ -430,7 +432,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
     },
 
     takeback() {
-      if (phase === 'complete') return;
+      if (disposed || phase === 'complete') return;
       // Find the last learner move not already taken back; mark it (records stay — append-only).
       for (let i = moves.length - 1; i >= 0; i--) {
         const m = moves[i]!;
@@ -446,7 +448,7 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
       }
     },
 
-    finish() { complete('finish-drill'); },
+    finish() { if (disposed) return; complete('finish-drill'); },
 
     dispose() {
       if (disposed) return;
@@ -456,12 +458,12 @@ export function createEngineDrill(config: EngineDrillConfig): EngineDrillControl
 
     checkTimeLimit() {
       const limit = config.timeLimitMs;
-      if (limit === undefined || phase === 'complete') return;
+      if (disposed || limit === undefined || phase === 'complete') return;
       if (priorElapsedMs + (deps.now() - startedAt) >= limit) complete('time-limit');
     },
 
     attachEvalForFen(fen, ev) {
-      if (ev.cp === undefined && ev.mate === undefined) return;
+      if (disposed || (ev.cp === undefined && ev.mate === undefined)) return;
 
 
 
