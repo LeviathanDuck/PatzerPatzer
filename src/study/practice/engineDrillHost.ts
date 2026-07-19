@@ -31,6 +31,8 @@ import { requestPlayMove, cancelPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
 import { engineMode, exitPlayMode } from '../../engine/ctrl';
 import { controlExplainerAttrs } from '../../ui/controlExplainer';
+import { resolveOrpSettings } from './settings';
+import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
 import {
   createEngineDrill, resumeEngineDrill, applyReplyPosition,
   MIN_GOAL_VERDICT_DEPTH,
@@ -85,6 +87,7 @@ const MAX_PENDING_VERDICT_FENS = 8;
 let _setupGoal: DrillGoalChoice = 'outcome-win';
 let _setupGoalMoves = 10;
 let _setupDifficulty: DrillDifficulty = 'casual';
+let _setupDifficultySynced = false;
 let _setupLearnerIsWhite = true;
 let _setupMoveLimit: number | null = null;
 
@@ -600,6 +603,14 @@ export function engineDrillPanelVnode(): VNode {
   // startFromSetup); choosing the other side explains rather than silently overriding.
   const sideToMoveIsWhite = deps !== null ? deps.getCurrentFen().includes(' w ') : true;
   _setupLearnerIsWhite = sideToMoveIsWhite;
+
+
+
+  if (!_setupDifficultySynced) {
+    const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, Date.now()).values;
+    _setupDifficulty = resolved.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
+    _setupDifficultySynced = true;
+  }
   return h('div.drill-host', [
     renderDrillSetup({
       startLabel: 'Drill from here',

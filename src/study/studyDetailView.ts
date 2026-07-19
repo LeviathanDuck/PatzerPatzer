@@ -924,7 +924,12 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
       ...data.review,
       ...(resumableId !== undefined
         ? { onResume: () => { void resumeDueReview(resumableId, {}, redraw, { onSessionEnd }); } }
-        : { onStart: () => { if (lessonId !== null) void launchDueReview({ lessonId }, redraw, { onSessionEnd }); } }),
+        : { onStart: () => {
+            if (lessonId === null) return;
+
+            const resolved = resolveOrpSettings(readOrpGlobalDefaults(), readOrpStudyOverride(lessonId), undefined, Date.now()).values;
+            void launchDueReview({ lessonId, limit: Math.max(1, resolved.duePerSession) }, redraw, { onSessionEnd });
+          } }),
     };
   } else {
     review = data.review;
