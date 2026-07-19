@@ -4378,10 +4378,14 @@ export async function applyAcceptedMerge(accepted: AcceptedMergePlan): Promise<M
         const stampedRevision = existingProv.version.kind === 'linked'
           ? existingProv.version.sourceRevision
           : existingProv.lastLinkedRevision;
-        if (typeof stampedRevision === 'number' && Number.isFinite(stampedRevision) && stampedRevision > planRevision) {
+
+
+
+
+        if (typeof stampedRevision === 'number' && Number.isFinite(stampedRevision) && stampedRevision >= planRevision) {
           abortWith({
             applied: false, reason: 'stale-plan',
-            detail: `study provenance already at revision ${stampedRevision} > plan ${planRevision}`,
+            detail: `study provenance already at revision ${stampedRevision} >= plan ${planRevision}`,
           });
           return;
         }
