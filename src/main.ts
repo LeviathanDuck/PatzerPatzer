@@ -515,10 +515,14 @@ function addSyncedGames(games: ImportedGame[]): SyncedGamesOutcome {
     return { addedCount: 0 };
   }
   setImportedGames([...importedGames, ...dedupedGames]);
-  performance.mark('import-batch-start');
-  void saveGamesToIdb(importedGames).finally(() => {
-    performance.mark('import-batch-end');
-  });
+  // RWP-005 / AUD-0006 (Sol design consult, fix shape B): this callback is
+  // intentionally persistence-free. Account sync already durably persisted
+  // result.newGames via the delta path (saveGamesDeltaToIdb) and resolved that
+  // write BEFORE the header invoked this callback, and enrichment persists each
+  // enriched game via saveGameToIdb before onGameEnriched fires. A full-library
+  // saveGamesToIdb(importedGames) here re-put every existing row, rewrote the
+  // legacy game-library/imported-games aggregate, and enqueued one sync-outbox
+  // item per row — redundant churn racing the authoritative writes. Removed.
   refreshRegisteredAccounts();
 
   enqueueImportEnrichment(dedupedGames, { onGameEnriched: applyEnrichmentPatch });
