@@ -141,6 +141,10 @@ export interface DrillStartConfig {
   readonly timeLimitMs?: number;
   readonly difficulty: string;
   readonly retryOfDrillId?: string;
+
+
+  readonly studyItemId?: string;
+  readonly studyNodePath?: string;
 }
 
 export function initEngineDrillHost(d: EngineDrillHostDeps): void {
@@ -157,6 +161,40 @@ export function engineDrillFinished(): boolean {
 /** Read-only view of the finished drill state (null while live). */
 export function engineDrillFinishedState(): EngineDrillState | null {
   return _finishedState;
+}
+
+
+
+export function engineDrillActiveRecord(): EngineDrillRecord | null {
+  return _record;
+}
+
+
+
+
+
+export function requestStudyDrillLaunch(input: {
+  readonly pgn: string;
+  readonly studyItemId: string;
+  readonly studyNodePath: string;
+  readonly learnerIsWhite: boolean;
+  readonly difficulty: string;
+}): void {
+  const d = deps;
+  if (!d || _drill !== null) return;
+  if (d.openPgnOnBoard === undefined) {
+    console.warn('engine-drill: study launch unavailable — no board seam');
+    return;
+  }
+  d.openPgnOnBoard(input.pgn);
+  startEngineDrill({
+    startFen: d.getCurrentFen(),
+    learnerIsWhite: input.learnerIsWhite,
+    goals: [],
+    difficulty: input.difficulty,
+    studyItemId: input.studyItemId,
+    studyNodePath: input.studyNodePath,
+  });
 }
 
 // --- Chess adjudication (host-owned) ----------------------------------------
@@ -474,6 +512,8 @@ export function startEngineDrill(config: DrillStartConfig): void {
     outcome: null,
     completionState: 'partial',
     ...(config.retryOfDrillId !== undefined ? { retryOfDrillId: config.retryOfDrillId } : {}),
+    ...(config.studyItemId !== undefined ? { studyItemId: config.studyItemId } : {}),
+    ...(config.studyNodePath !== undefined ? { studyNodePath: config.studyNodePath } : {}),
     ...(_userChoseDifficulty ? { explicitDifficulty: true as const } : {}),
     createdAt: startedAt,
     updatedAt: startedAt,

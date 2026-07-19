@@ -26,6 +26,7 @@ import {
 } from '../ui/controlExplainer';
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
+import { requestStudyDrillLaunch } from './practice/engineDrillHost';
 import {
   protocol, engineReady,
   clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved, getOnLiveEvalImproved,
@@ -1173,7 +1174,37 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
   const decision = _authoringDecisions.find(d => d.identity.authoredPath === path);
   const scope = validateScopeReadiness({ decisions: _authoringDecisions, content: _authoredContent, root });
 
+
+
+  const drillNode = detailNode();
+  const drillSideWhite = drillNode !== null && drillNode !== undefined && typeof drillNode.fen === 'string'
+    ? drillNode.fen.split(' ')[1] !== 'b'
+    : true;
+  const drillLaunch = h('div.study-tools-col__field', [
+    h('button.study-tools-col__drill-from-here', {
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: 'Drill from here',
+        description: 'Leaves this Study and starts an engine drill from the current position on the analysis board.',
+        tier: 'essential',
+      }) },
+      on: {
+        click: () => {
+          requestStudyDrillLaunch({
+            pgn: buildStudyPgn(),
+            studyItemId: study.id,
+            studyNodePath: path,
+            learnerIsWhite: drillSideWhite,
+            difficulty: 'casual',
+          });
+          writeHashRoute('#/analysis');
+          redraw();
+        },
+      },
+    }, 'Drill from here'),
+  ]);
+
   const children: (VNode | null)[] = [
+    drillLaunch,
     h('div.study-tools-col__orp-head', [
       h('div.study-tools-col__orp-title', 'Lesson authoring'),
       h('div.study-tools-col__orp-context', [
