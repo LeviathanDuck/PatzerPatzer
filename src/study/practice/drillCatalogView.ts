@@ -63,6 +63,8 @@ let _promotion:
   | null = null;
 let _notice: string | null = null;
 
+let _dialogOpener: HTMLElement | null = null;
+
 export function isDrillCatalogOpen(): boolean { return _open; }
 
 export function closeDrillCatalog(): void {
@@ -381,6 +383,30 @@ function renderRow(r: EngineDrillRecord, redraw: () => void): VNode {
   ]);
 }
 
+
+
+
+function asDialog(label: string, onClose: () => void, children: (VNode | null)[]): VNode {
+  return h('div.drill-catalog__modal', {
+    attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': label, tabindex: '-1' },
+    hook: {
+      insert: (vnode) => {
+        _dialogOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        (vnode.elm as HTMLElement | undefined)?.focus();
+      },
+      destroy: () => {
+        _dialogOpener?.focus();
+        _dialogOpener = null;
+      },
+    },
+    on: {
+      keydown: (e: KeyboardEvent) => {
+        if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+      },
+    },
+  }, children);
+}
+
 function renderExportPreview(redraw: () => void): VNode | null {
   const preview = _exportPreview;
   if (preview === null) return null;
@@ -391,7 +417,10 @@ function renderExportPreview(redraw: () => void): VNode | null {
   const excluded = preview.scope === 'shareable'
     ? ['Personal notes', 'Assistance/feedback/timing detail', 'Results and identities', 'SRS and attempts', 'Engine cache']
     : [];
-  return h('div.drill-catalog__modal', [
+  return asDialog(
+    'Export drills — scope and manifest preview',
+    () => { _exportPreview = null; redraw(); },
+    [
     h('div.drill-catalog__modal-title', `Export ${preview.records.length} drill(s) — ${preview.scope === 'shareable' ? 'Shareable' : 'Personal Backup'} scope`),
     h('div.drill-catalog__manifest', [
       h('div.drill-catalog__manifest-head', 'Included'),
@@ -429,7 +458,7 @@ function renderPromotion(redraw: () => void): VNode | null {
   const promo = _promotion;
   if (promo === null) return null;
   if (promo.stage === 'error') {
-    return h('div.drill-catalog__modal', [
+    return asDialog('Promotion message', () => { _promotion = null; redraw(); }, [
       h('div.drill-catalog__modal-title', 'Promotion'),
       h('div.drill-catalog__modal-note', promo.message),
       h('button.drill-catalog__action', {
@@ -439,7 +468,7 @@ function renderPromotion(redraw: () => void): VNode | null {
     ]);
   }
   if (promo.stage === 'title') {
-    return h('div.drill-catalog__modal', [
+    return asDialog('Promote drill — choose destination', () => { _promotion = null; redraw(); }, [
       h('div.drill-catalog__modal-title', 'Promote drill — choose destination'),
       h('label.drill-catalog__filter', [
         h('span.drill-catalog__filter-label', 'New Study chapter title'),
@@ -464,7 +493,7 @@ function renderPromotion(redraw: () => void): VNode | null {
     ]);
   }
   const preview = promo.plan.preview;
-  return h('div.drill-catalog__modal', [
+  return asDialog('Promotion preview', () => { _promotion = null; redraw(); }, [
     h('div.drill-catalog__modal-title', 'Promotion preview'),
     h('div.drill-catalog__manifest', [
       h('div.drill-catalog__manifest-line', `Destination: ${preview.destinationDescription}`),

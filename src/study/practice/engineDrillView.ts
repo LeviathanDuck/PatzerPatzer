@@ -270,6 +270,9 @@ export function renderDrillResult(
   const goalsMet = state.goalResults?.filter(r => r.met === true).length ?? 0;
   const goalsTotal = state.goalResults?.length ?? 0;
   return h('div.drill-result', [
+
+
+    h('div.drill-result__announce', { attrs: { role: 'status', 'aria-live': 'polite' } }, [
     h('div.drill-result__headline', resultHeadline(state)),
     goalsTotal > 0
       ? h('div.drill-result__goals', `${goalsMet} of ${goalsTotal} goal${goalsTotal === 1 ? '' : 's'} met`)
@@ -284,6 +287,7 @@ export function renderDrillResult(
     ]),
     // Screen 5's schedule-neutrality line, made visible (P2-ORP-14).
     h('div.drill-result__neutral', 'SRS unaffected — Drill mode default'),
+    ]),
     h('div.drill-result__primary', [
       h('button.drill-result__action', {
         attrs: { type: 'button', ...controlExplainerAttrs({
