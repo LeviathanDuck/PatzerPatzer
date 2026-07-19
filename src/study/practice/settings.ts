@@ -118,6 +118,39 @@ export function withGlobalDefaults(
   return { ...global, ...changes };
 }
 
+
+
+
+
+
+const SESSION_OVERRIDE_TTL_MS = 6 * 60 * 60 * 1000;
+let _sessionOverride: OrpSessionOverride | undefined;
+
+/** The live session override, or undefined once expired/cleared (expired stores also drop). */
+export function readOrpSessionOverride(now: number): OrpSessionOverride | undefined {
+  if (_sessionOverride !== undefined && _sessionOverride.expiresAt <= now) _sessionOverride = undefined;
+  return _sessionOverride;
+}
+
+/** "This session only": sets ONE field in the session layer; refreshes the TTL. */
+export function writeOrpSessionOverrideField<K extends OrpSettingsField>(
+  field: K,
+  value: OrpSettingsValues[K],
+  now: number,
+): void {
+  const base = readOrpSessionOverride(now)?.values ?? {};
+  _sessionOverride = makeSessionOverride({ ...base, [field]: value }, now, SESSION_OVERRIDE_TTL_MS);
+}
+
+/** Removes one session field; an emptied layer clears entirely. */
+export function clearOrpSessionOverrideField(field: OrpSettingsField): void {
+  if (_sessionOverride === undefined) return;
+  const { [field]: _removed, ...rest } = _sessionOverride.values;
+  _sessionOverride = Object.keys(rest).length === 0
+    ? undefined
+    : { values: rest, expiresAt: _sessionOverride.expiresAt };
+}
+
 export function makeSessionOverride(
   values: OrpSettingsLayer,
   now: number,

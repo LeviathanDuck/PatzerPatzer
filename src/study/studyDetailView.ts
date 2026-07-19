@@ -75,7 +75,7 @@ import {
 } from './practice/lessonAuthoring';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
-import { resolveOrpSettings, resetToInherited } from './practice/settings';
+import { resolveOrpSettings, resetToInherited, readOrpSessionOverride, writeOrpSessionOverrideField, clearOrpSessionOverrideField } from './practice/settings';
 import { readOrpGlobalDefaults, readOrpStudyOverride, writeOrpStudyOverride } from '../sync/settingsLiveApply';
 import { activeWorkspace } from '../analyse/workspaceCore';
 import { cgInstance, onBoardUserMove, renderBoard, renderPromotionDialog, syncBoard } from '../board/index';
@@ -946,7 +946,7 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
         : { onStart: () => {
             if (lessonId === null) return;
 
-            const resolved = resolveOrpSettings(readOrpGlobalDefaults(), readOrpStudyOverride(lessonId), undefined, Date.now()).values;
+            const resolved = resolveOrpSettings(readOrpGlobalDefaults(), readOrpStudyOverride(lessonId), readOrpSessionOverride(Date.now()), Date.now()).values;
             void launchDueReview({ lessonId, limit: Math.max(1, resolved.duePerSession) }, redraw, { onSessionEnd });
           } }),
     };
@@ -1005,7 +1005,8 @@ const ORP_PROVENANCE_LABELS = {
 function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): VNode {
   const globalDefaults = readOrpGlobalDefaults();
   const overrideLayer = readOrpStudyOverride(studyItemId);
-  const resolved = resolveOrpSettings(globalDefaults, overrideLayer, undefined, Date.now());
+  const nowMs = Date.now();
+  const resolved = resolveOrpSettings(globalDefaults, overrideLayer, readOrpSessionOverride(nowMs), nowMs);
   return h('div.study-tools-col__field.orp-study-settings', [
     h('span.study-tools-col__label', 'Practice settings'),
     ...ORP_STUDY_SETTING_FIELDS.map(def => {
@@ -1029,6 +1030,32 @@ function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): V
           },
         }, def.format(value)),
         h('span.orp-study-settings__scope', ORP_PROVENANCE_LABELS[provenance]),
+
+
+        h('button.orp-study-settings__session', {
+          attrs: { type: 'button', ...controlExplainerAttrs({
+            label: `${def.label}: this session only`,
+            description: 'Applies everywhere until you close or reload the app; saved nowhere.',
+            tier: 'essential',
+          }) },
+          on: {
+            click: () => {
+              const next = def.cycle[(def.cycle.findIndex(c => c === value) + 1) % def.cycle.length]!;
+              writeOrpSessionOverrideField(def.field, next, Date.now());
+              redraw();
+            },
+          },
+        }, 'Session'),
+        provenance === 'session'
+          ? h('button.orp-study-settings__session-clear', {
+              attrs: { type: 'button', ...controlExplainerAttrs({
+                label: `${def.label}: clear the session value`,
+                description: 'Removes the temporary value so the Study or shared default applies again.',
+                tier: 'essential',
+              }) },
+              on: { click: () => { clearOrpSessionOverrideField(def.field); redraw(); } },
+            }, 'Clear')
+          : null,
         overridden
           ? h('button.orp-study-settings__reset', {
               attrs: { type: 'button', ...controlExplainerAttrs({
