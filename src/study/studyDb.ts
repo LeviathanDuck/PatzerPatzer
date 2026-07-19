@@ -1982,6 +1982,107 @@ export async function listAuthoredContentByLesson(
 
 // --- study-practice-srs ----------------------------------------------------
 
+
+
+
+
+
+
+export const INTERVAL_RECOMPUTE_BATCH_SIZE = 100;
+
+const SRS_ROW_ALLOWED_KEYS = new Set([
+  'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
+  'stepIndex', 'cleanStreak', 'enrolledAt', 'lastCompletedAt', 'lastAttemptId', 'updatedAt',
+  'status', 'dueAt',
+]);
+
+export interface RecomputeApplyOutcome {
+  readonly applied: number;
+  readonly noop: number;
+  readonly stale: readonly { readonly targetId: string; readonly reason: string }[];
+}
+
+export async function applyConfirmedIntervalRecomputePlan(
+  plan: import('./practice/settings').IntervalRecomputePlan,
+  confirm: { readonly planId: string },
+  enqueue: (store: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt?: number) => void = enqueueStudyPut,
+  now: () => number = Date.now,
+): Promise<RecomputeApplyOutcome> {
+  if (confirm.planId !== plan.planId) {
+    throw new Error('recompute apply refused: confirmation does not echo the plan');
+  }
+  const db = await openDb();
+  const stale: { targetId: string; reason: string }[] = [];
+  let applied = 0;
+  let noop = 0;
+  const ordered = [...plan.entries].sort((a, b) => (a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0));
+  for (let start = 0; start < ordered.length; start += INTERVAL_RECOMPUTE_BATCH_SIZE) {
+    const batch = ordered.slice(start, start + INTERVAL_RECOMPUTE_BATCH_SIZE);
+    const appliedRows: SrsScheduleRecord[] = await new Promise((resolve, reject) => {
+      const tx = db.transaction('study-practice-srs', 'readwrite');
+      const store = tx.objectStore('study-practice-srs');
+      const batchApplied: SrsScheduleRecord[] = [];
+      tx.oncomplete = () => resolve(batchApplied);
+      tx.onerror = () => { recordStudyTxFail(tx, 'onerror', 'recompute'); reject(tx.error); };
+      tx.onabort = () => { recordStudyTxFail(tx, 'onabort', 'recompute'); reject(tx.error ?? new DOMException('recompute batch aborted', 'AbortError')); };
+      let idx = 0;
+      const next = (): void => {
+        if (idx >= batch.length) return; // tx auto-commits when requests drain
+        const entry = batch[idx++]!;
+        const req = store.get(entry.targetId) as IDBRequest<Record<string, unknown> | undefined>;
+        req.onsuccess = () => {
+          const row = req.result;
+          const fail = (reason: string): void => { stale.push({ targetId: entry.targetId, reason }); next(); };
+          if (row === undefined) { fail('missing'); return; }
+          const keys = Object.keys(row);
+          if (keys.some(k => !SRS_ROW_ALLOWED_KEYS.has(k))) { fail('malformed'); return; }
+          if (row.status !== 'active') { fail('inactive'); return; }
+          if (row.lessonId !== entry.lessonId || row.targetId !== entry.targetId) { fail('identity-mismatch'); return; }
+          if (row.targetRevision !== entry.expectedTargetRevision
+            || row.scheduleRevision !== entry.expectedScheduleRevision
+            || row.configId !== entry.expectedConfigId
+            || row.configVersion !== entry.expectedConfigVersion
+            || row.stepIndex !== entry.expectedStepIndex
+            || row.dueAt !== entry.oldDueAt) { fail('drift'); return; }
+          if (!Number.isFinite(entry.newDueAt)) { fail('invalid-new-due'); return; }
+          const currentRevision = row.scheduleRevision as number;
+          if (!Number.isSafeInteger(currentRevision + 1)) { fail('revision-saturated'); return; }
+          if (entry.newDueAt === entry.oldDueAt) { noop++; next(); return; }
+          const current = row as unknown as SrsScheduleRecord & { readonly status: 'active' };
+          const updated = asPersistableScheduleRecord({
+            targetId: current.targetId,
+            lessonId: current.lessonId,
+            targetRevision: current.targetRevision,
+            scheduleRevision: currentRevision + 1,
+            configId: current.configId,
+            configVersion: current.configVersion,
+            stepIndex: current.stepIndex,
+            cleanStreak: current.cleanStreak,
+            enrolledAt: current.enrolledAt,
+            lastCompletedAt: current.lastCompletedAt,
+            lastAttemptId: current.lastAttemptId,
+            updatedAt: now(),
+            status: 'active',
+            dueAt: entry.newDueAt,
+          });
+          const putReq = store.put(updated);
+          putReq.onsuccess = () => { batchApplied.push(updated); next(); };
+          // a failed put falls through to tx.onerror (batch rolls back)
+        };
+        req.onerror = () => { /* falls through to tx.onerror — batch rolls back */ };
+      };
+      next();
+      if (batch.length === 0) resolve([]);
+    });
+    for (const rowApplied of appliedRows) {
+      applied++;
+      enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
+    }
+  }
+  return { applied, noop, stale };
+}
+
+
 /** Persist a schedule row. Funnels through the B1 closed-record guard so no chess material can be
  *  smuggled onto the row. The store key path is `targetId` (== decisionId). */
 export function savePracticeSrs(schedule: SrsScheduleRecord): Promise<void> {

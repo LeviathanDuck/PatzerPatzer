@@ -181,15 +181,33 @@ export interface RecomputeInputRow {
   /** 0-based ladder step the row currently sits at. */
   readonly step: number;
   readonly dueAt: number;
+
+
+
+  readonly lessonId: string;
+  readonly targetRevision: number;
+  readonly scheduleRevision: number;
+  readonly configId: string;
+  readonly configVersion: number;
 }
 
 export interface RecomputePlanEntry {
   readonly targetId: string;
+  readonly lessonId: string;
+  readonly expectedTargetRevision: number;
+  readonly expectedScheduleRevision: number;
+  readonly expectedConfigId: string;
+  readonly expectedConfigVersion: number;
+  readonly expectedStepIndex: number;
   readonly oldDueAt: number;
   readonly newDueAt: number;
 }
 
 export interface IntervalRecomputePlan {
+  /** Echoed verbatim by the confirmation — a confirm carrying a different planId is refused. */
+  readonly planId: string;
+  /** Explicit scope identity ('all' or a lessonId) — the confirm UI must display it. */
+  readonly scope: string;
   readonly entries: readonly RecomputePlanEntry[];
   readonly skippedInactive: number;
 }
@@ -211,6 +229,8 @@ export function planIntervalRecompute(
   rows: readonly RecomputeInputRow[],
   oldIntervals: readonly number[],
   newIntervals: readonly number[],
+  scope = 'all',
+  planIdSeed?: string,
 ): IntervalRecomputePlan {
   const entries: RecomputePlanEntry[] = [];
   let skippedInactive = 0;
@@ -219,9 +239,16 @@ export function planIntervalRecompute(
     const anchor = row.dueAt - intervalAt(oldIntervals, row.step);
     entries.push({
       targetId: row.targetId,
+      lessonId: row.lessonId,
+      expectedTargetRevision: row.targetRevision,
+      expectedScheduleRevision: row.scheduleRevision,
+      expectedConfigId: row.configId,
+      expectedConfigVersion: row.configVersion,
+      expectedStepIndex: row.step,
       oldDueAt: row.dueAt,
       newDueAt: anchor + intervalAt(newIntervals, row.step),
     });
   }
-  return { entries, skippedInactive };
+  const planId = planIdSeed ?? `recompute-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return { planId, scope, entries, skippedInactive };
 }
