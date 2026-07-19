@@ -28,7 +28,13 @@ import {
   listPracticeDecisionsByLesson,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
+  listAllPositionProgress,
 } from '../studyDb';
+import { listOrpPracticeLines } from '../studyCtrl';
+import { buildLearnSession } from './sessionBuilder';
+import { resolveOrpSettings } from './settings';
+import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
+import type { TrainableSequence } from '../types';
 
 /** Bounded read caps (CR-2 discipline). */
 const DUE_PREVIEW_LIMIT = 50;
@@ -38,6 +44,9 @@ const ATTEMPTS_PER_DECISION_LIMIT = 50;
 
 export interface PracticePanelDataDeps {
   readonly listDuePracticeSrs: typeof listDuePracticeSrs;
+
+  readonly listOrpPracticeLines: typeof listOrpPracticeLines;
+  readonly listAllPositionProgress: typeof listAllPositionProgress;
   readonly listPracticeSessionsByState: typeof listPracticeSessionsByState;
   readonly listPracticeSessionsByLesson: typeof listPracticeSessionsByLesson;
   readonly listPracticeDecisionsByLesson: typeof listPracticeDecisionsByLesson;
@@ -48,6 +57,8 @@ export interface PracticePanelDataDeps {
 
 const REAL_DEPS: PracticePanelDataDeps = {
   listDuePracticeSrs,
+  listOrpPracticeLines,
+  listAllPositionProgress,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
   listPracticeDecisionsByLesson,
@@ -58,9 +69,20 @@ const REAL_DEPS: PracticePanelDataDeps = {
 
 /** The panel feed: per-tab data WITHOUT callbacks (the host attaches Start/Resume — view
  *  callbacks are surface concerns) plus the resumable session id when one exists. */
+
+export interface GlobalLearnEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly sequence: TrainableSequence;
+}
+
 export interface StudyPracticePanelData {
   readonly review: ReviewTabData;
   readonly progress: ProgressTabData;
+
+
+
+  readonly learn?: readonly GlobalLearnEntry[];
 
 
   readonly progressTruncated?: boolean;
@@ -186,9 +208,26 @@ export async function loadGlobalPracticePanelData(
   } catch {
     review = { status: 'error', message: 'Could not load your review schedule.' };
   }
+  let learn: readonly GlobalLearnEntry[] | undefined;
+  try {
+    const lines = await deps.listOrpPracticeLines();
+    const activeSequences = lines.filter(v => v.lineState !== 'PAUSED').map(v => v.sequence);
+    if (activeSequences.length === 0) {
+      learn = [];
+    } else {
+      const progressList = await deps.listAllPositionProgress();
+      const progressMap = new Map(progressList.map(pr => [pr.key, pr]));
+      const newSequences = buildLearnSession(activeSequences, progressMap);
+      const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, nowMs).values.newPerSession);
+      learn = newSequences.slice(0, cap).map(sequence => ({ id: sequence.id, label: sequence.label, sequence }));
+    }
+  } catch {
+    learn = undefined; // the tab surfaces its own error state when the feed is absent
+  }
   return {
     review,
     progress: { status: 'empty' },
+    ...(learn !== undefined ? { learn } : {}),
     ...(resumableSessionId !== undefined ? { resumableSessionId } : {}),
     nowMs,
   };

@@ -334,7 +334,7 @@ function presentLearnRepair(
   redraw();
 }
 
-async function launchGuidedLearn(
+export async function launchGuidedLearn(
   sequences: readonly TrainableSequence[],
   index: number,
   redraw: () => void,
