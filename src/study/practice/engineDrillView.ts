@@ -297,7 +297,7 @@ export function renderDrillResult(
       }, 'Next drill'),
       h('button.drill-result__action', {
         attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Analyze', description: 'Runs engine analysis over this drill game.', tier: 'essential',
+          label: 'Analyze', description: 'Opens this drill game on the analysis board and requests engine analysis when the game supports it.', tier: 'essential',
         }) },
         on: { click: actions.onAnalyze },
       }, 'Analyze'),

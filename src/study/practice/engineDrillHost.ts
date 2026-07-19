@@ -65,6 +65,13 @@ export interface EngineDrillHostDeps {
 
 
   openPgnOnBoard?(pgn: string): void;
+
+
+
+  engineSeam?: {
+    requestReply(fen: string, maxDepth: number, onMove: (uci: string) => void, onError: () => void): void;
+    cancelReply(): void;
+  };
   redraw(): void;
   now(): number;
 }
@@ -260,12 +267,28 @@ function teardownDrill(): void {
 function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill>[0]['deps'] {
   const d = deps!;
   void learnerIsWhite;
+  const dispatchReply = (
+    fen: string,
+    strength: Parameters<typeof requestPlayMove>[0]['strength'],
+    onMove: (uci: string) => void,
+    onError: () => void,
+  ): void => {
+    const seam = d.engineSeam;
+    if (seam !== undefined) {
+      seam.requestReply(fen, strength.maxDepth, onMove, onError);
+      return;
+    }
+    requestPlayMove({
+      position: fenOnlyPositionContext(fen, 'engine-drill-play', 'engine drill reply'),
+      strength,
+      onMove,
+      onError,
+    });
+  };
   return {
     requestReply: (fen, strength, onMove) => {
-      requestPlayMove({
-        position: fenOnlyPositionContext(fen, 'engine-drill-play', 'engine drill reply'),
-        strength,
-        onMove: uci => {
+      dispatchReply(fen, strength,
+        uci => {
           // The controller's exact-FEN stale-drop runs inside onMove; the host resolves the
           // post-reply FEN from the BOUND fen (chessops), never from live board state.
           const drill = _drill;
@@ -294,13 +317,12 @@ function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill
           if (terminal !== null) drill.applyTerminal(terminal);
           d.redraw();
         },
-        onError: () => {
+        () => {
           if (engineMode === 'play') exitPlayMode();
           d.redraw();
-        },
-      });
+        });
     },
-    cancelReply: () => cancelPlayMove(),
+    cancelReply: () => { if (d.engineSeam !== undefined) d.engineSeam.cancelReply(); else cancelPlayMove(); },
     requestVerdict: (fen, onEval) => {
       const existing = _pendingVerdicts.get(fen);
       if (existing !== undefined) { existing.push(onEval); return; }
@@ -564,7 +586,7 @@ function revealDrillHint(kind: 'hint' | 'show-move'): void {
 
 
 
-function takebackDrillMove(): void {
+export function takebackDrillMove(): void {
   const d = deps;
   const drill = _drill;
   if (!d || drill === null) return;
