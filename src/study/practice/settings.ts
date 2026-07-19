@@ -249,6 +249,9 @@ export function planIntervalRecompute(
       newDueAt: anchor + intervalAt(newIntervals, row.step),
     });
   }
-  const planId = planIdSeed ?? `recompute-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const planId = planIdSeed
+    ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? `recompute-${crypto.randomUUID()}`
+      : `recompute-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
   return { planId, scope, entries, skippedInactive };
 }

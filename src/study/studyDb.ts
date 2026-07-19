@@ -2002,6 +2002,21 @@ export interface RecomputeApplyOutcome {
   readonly stale: readonly { readonly targetId: string; readonly reason: string }[];
 }
 
+
+
+function isRuntimeValidActiveSrsRow(row: Record<string, unknown>): boolean {
+  const finite = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v);
+  return typeof row.targetId === 'string' && row.targetId.length > 0
+    && typeof row.lessonId === 'string' && row.lessonId.length > 0
+    && finite(row.targetRevision) && finite(row.scheduleRevision)
+    && typeof row.configId === 'string'
+    && finite(row.configVersion) && finite(row.stepIndex) && finite(row.cleanStreak)
+    && finite(row.enrolledAt) && finite(row.updatedAt)
+    && (row.lastCompletedAt === null || finite(row.lastCompletedAt))
+    && (row.lastAttemptId === null || typeof row.lastAttemptId === 'string')
+    && row.status === 'active' && finite(row.dueAt);
+}
+
 export async function applyConfirmedIntervalRecomputePlan(
   plan: import('./practice/settings').IntervalRecomputePlan,
   confirm: { readonly planId: string },
@@ -2010,6 +2025,11 @@ export async function applyConfirmedIntervalRecomputePlan(
 ): Promise<RecomputeApplyOutcome> {
   if (confirm.planId !== plan.planId) {
     throw new Error('recompute apply refused: confirmation does not echo the plan');
+  }
+
+
+  if (plan.scope !== 'all' && plan.entries.some(e => e.lessonId !== plan.scope)) {
+    throw new Error('recompute apply refused: plan entries outside the declared scope');
   }
   const db = await openDb();
   const stale: { targetId: string; reason: string }[] = [];
@@ -2037,6 +2057,7 @@ export async function applyConfirmedIntervalRecomputePlan(
           const keys = Object.keys(row);
           if (keys.some(k => !SRS_ROW_ALLOWED_KEYS.has(k))) { fail('malformed'); return; }
           if (row.status !== 'active') { fail('inactive'); return; }
+          if (!isRuntimeValidActiveSrsRow(row)) { fail('malformed'); return; }
           if (row.lessonId !== entry.lessonId || row.targetId !== entry.targetId) { fail('identity-mismatch'); return; }
           if (row.targetRevision !== entry.expectedTargetRevision
             || row.scheduleRevision !== entry.expectedScheduleRevision
