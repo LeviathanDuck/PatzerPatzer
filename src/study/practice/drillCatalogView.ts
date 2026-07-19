@@ -21,7 +21,7 @@ import { writeHashRoute } from '../../router';
 import {
   listRecentEngineDrills, listEngineDrillsByStudyItem,
   deleteEngineDrillRecord, createEngineDrillRecord,
-  getStudy, createStudyStrict, saveStudyStrict,
+  getStudy, createStudyStrict, saveStudyStrict, savePracticeDecision,
 } from '../studyDb';
 import type { EngineDrillRecord } from '../types';
 import { resumePersistedEngineDrill, startEngineDrill, engineDrillActive, openDrillRecordOnBoard } from './engineDrillHost';
@@ -230,6 +230,7 @@ async function confirmPromotion(redraw: () => void): Promise<void> {
     loadStudy: getStudy,
     createStudy: createStudyStrict,
     saveStudy: saveStudyStrict,
+    saveDecisionRow: savePracticeDecision,
     mintId: () => crypto.randomUUID(),
     now: () => Date.now(),
   });

@@ -31,6 +31,10 @@ import {
 import type { EngineDrillRecord } from '../types';
 import type { StudyItem } from '../types';
 import type { BranchRole } from './material';
+import type { StudyPracticeDecisionRow } from '../studyDb';
+import { pgnToTree } from '../../tree/pgn';
+import { extractLessonModel } from './lessonExtract';
+import { decisionRowOf } from './lessonPersistence';
 
 // --- Selections and destinations --------------------------------------------
 
@@ -48,6 +52,9 @@ export type PromotionFailureReason =
   | 'empty-line'
   | 'unchainable-record'
   | 'invalid-range'
+  /** the private implementation record (Sol B10): the contract sanctions exactly three pairings — complete drill/move
+   *  range → NEW chapter; continuation → variation at a matched node. Anything else refuses. */
+  | 'unsanctioned-pairing'
   | 'missing-study'
   | 'study-parse-failed'
   | 'unmatched-node'
@@ -84,6 +91,9 @@ export interface DrillPromotionPlan {
   /** Complete PGN text for new-study-item destinations. */
   readonly pgn?: string;
   readonly moves: readonly ChainedMove[];
+
+
+  readonly learnerSide: 'white' | 'black';
 }
 
 export type PlanResult =
@@ -103,6 +113,10 @@ export interface PromotionApplyDeps extends PromotionPlanDeps {
   /** Existence-rejecting create (the D15 posture): a key collision must NOT overwrite. */
   createStudy(item: StudyItem): Promise<{ readonly duplicate: boolean }>;
   saveStudy(item: StudyItem): Promise<void>;
+
+
+
+  saveDecisionRow(row: StudyPracticeDecisionRow): Promise<void>;
   mintId(): string;
   now(): number;
 }
@@ -211,6 +225,13 @@ export async function planDrillPromotion(
   destination: PromotionDestination,
   deps: PromotionPlanDeps,
 ): Promise<PlanResult> {
+
+
+
+  const sanctioned =
+    (selection.kind === 'continuation') === (destination.kind === 'variation');
+  if (!sanctioned) return { ok: false, reason: 'unsanctioned-pairing' };
+
   const line = chainDrillLine(record);
   if (line === null) return { ok: false, reason: 'unchainable-record' };
   const slice = selectionSlice(line, selection);
@@ -246,6 +267,7 @@ export async function planDrillPromotion(
         },
         pgn,
         moves: slice.moves,
+        learnerSide: record.snapshot.learnerIsWhite ? 'white' : 'black',
       },
     };
   }
@@ -271,6 +293,7 @@ export async function planDrillPromotion(
         destinationDescription: `Variation in “${study.title}” at the matched position`,
       },
       moves: slice.moves,
+      learnerSide: record.snapshot.learnerIsWhite ? 'white' : 'black',
     },
   };
 }
@@ -339,6 +362,26 @@ export async function applyDrillPromotion(
       if (created.duplicate) return { ok: false, reason: 'duplicate-study-id' };
     } catch (e) {
       return { ok: false, reason: 'write-failed', detail: String(e) };
+    }
+
+
+
+
+    try {
+      const root = pgnToTree(plan.pgn);
+      const model = extractLessonModel({
+        root, lessonId: item.id, learnerSide: plan.learnerSide, sourceKind: 'pgn',
+        content: new Map(), mintId: deps.mintId,
+      });
+      for (const decision of model.decisions) {
+        await deps.saveDecisionRow({
+          ...decisionRowOf(decision, { status: 'promoted', now: deps.now() }),
+          role: plan.preview.defaultRole,
+          trainability: 'untrainable',
+        });
+      }
+    } catch (e) {
+      return { ok: false, reason: 'write-failed', detail: `classification rows failed: ${String(e)}` };
     }
     return { ok: true, studyItemId: item.id };
   }
