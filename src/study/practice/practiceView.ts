@@ -481,7 +481,7 @@ function renderProgressTab(data: ProgressTabData): VNode {
   return h('div.orp-practice__progress', [
     renderProgressBack(data.onBack),
     data.truncated === true
-      ? h('div.orp-practice__truncation-note', 'Showing your most recent practice history — older attempts are not included in these numbers.')
+      ? h('div.orp-practice__truncation-note', 'Showing part of your practice history — not every attempt is included in these numbers.')
       : null,
     h('div.orp-practice__section-head', scorecardCopy.progressHeading),
     h('ul.orp-practice__score-list', { attrs: { 'aria-label': scorecardCopy.progressHeading } },
