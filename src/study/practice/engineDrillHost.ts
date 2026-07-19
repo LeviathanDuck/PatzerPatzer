@@ -33,7 +33,7 @@ import { requestPlayMove, cancelPlayMove } from '../../engine/playMove';
 import { fenOnlyPositionContext } from '../../engine/positionContext';
 import { engineMode, exitPlayMode } from '../../engine/ctrl';
 import { controlExplainerAttrs } from '../../ui/controlExplainer';
-import { resolveOrpSettings } from './settings';
+import { resolveOrpSettings, readOrpSessionOverride } from './settings';
 import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
 import {
   createEngineDrill, resumeEngineDrill, applyReplyPosition,
@@ -822,7 +822,8 @@ export function engineDrillPanelVnode(): VNode {
 
 
   if (!_setupDifficultySynced) {
-    const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, Date.now()).values;
+    const setupNow = Date.now();
+    const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(setupNow), setupNow).values;
     _setupDifficulty = resolved.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
     _setupDifficultySynced = true;
   }

@@ -32,7 +32,7 @@ import {
 } from '../studyDb';
 import { listOrpPracticeLines } from '../studyCtrl';
 import { buildLearnSession } from './sessionBuilder';
-import { resolveOrpSettings } from './settings';
+import { resolveOrpSettings, readOrpSessionOverride } from './settings';
 import { readOrpGlobalDefaults } from '../../sync/settingsLiveApply';
 import type { TrainableSequence } from '../types';
 
@@ -218,7 +218,7 @@ export async function loadGlobalPracticePanelData(
       const progressList = await deps.listAllPositionProgress();
       const progressMap = new Map(progressList.map(pr => [pr.key, pr]));
       const newSequences = buildLearnSession(activeSequences, progressMap);
-      const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, nowMs).values.newPerSession);
+      const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(nowMs), nowMs).values.newPerSession);
       learn = newSequences.slice(0, cap).map(sequence => ({ id: sequence.id, label: sequence.label, sequence }));
     }
   } catch {

@@ -66,7 +66,7 @@ import {
 import { isDrillActive, isDrillSummary, initDrillView, initLearnView, renderDrillView, endDrill } from './practice/drillView';
 import { loadLearnLessonBundle } from './practice/lessonHost';
 import { isDrillCatalogOpen, closeDrillCatalog, renderDrillCatalog } from './practice/drillCatalogView';
-import { resolveOrpSettings } from './practice/settings';
+import { resolveOrpSettings, readOrpSessionOverride } from './practice/settings';
 import { readOrpGlobalDefaults } from '../sync/settingsLiveApply';
 import { launchDueReview } from './practice/dueReviewLaunch';
 import { enrollLearnedLine } from './practice/learnEnrollment';
@@ -206,7 +206,8 @@ async function launchOrpDueSession(redraw: () => void): Promise<void> {
 
     _orpDrillPending = true;
 
-    const dueSettings = resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, Date.now()).values;
+    const dueNow = Date.now();
+    const dueSettings = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(dueNow), dueNow).values;
     const startedNew = await launchDueReview({ limit: Math.max(1, dueSettings.duePerSession) }, redraw);
     if (startedNew.ok) return;
     _orpDrillPending = false;
@@ -268,7 +269,8 @@ async function launchOrpLearnSession(redraw: () => void): Promise<void> {
 
 
 
-    const orpSettings = resolveOrpSettings(readOrpGlobalDefaults(), undefined, undefined, Date.now()).values;
+    const learnNow = Date.now();
+    const orpSettings = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(learnNow), learnNow).values;
     const queue = newSequences.slice(0, Math.max(1, orpSettings.newPerSession));
 
 

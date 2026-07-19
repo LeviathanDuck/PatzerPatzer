@@ -12,7 +12,7 @@ import { makeSanAndPlay } from 'chessops/san';
 import { parseUci } from 'chessops/util';
 import { h, type VNode } from 'snabbdom';
 import { controlExplainerAttrs } from '../../ui/controlExplainer';
-import { resolveOrpSettings } from './settings';
+import { resolveOrpSettings, readOrpSessionOverride } from './settings';
 import { readOrpGlobalDefaults, readOrpStudyOverride } from '../../sync/settingsLiveApply';
 import { createDrillBoardAdapter, type DrillBoardController } from './boardAdapter';
 import { createDrillSession, type DrillSession, type DrillMode } from './drillCtrl';
@@ -1008,11 +1008,12 @@ function renderLearnControls(st: LearnState, redraw: () => void): VNode {
 
 
 
+  const hintsNow = Date.now();
   const hintsEnabled = resolveOrpSettings(
     readOrpGlobalDefaults(),
     _learnStudyItemId !== null ? readOrpStudyOverride(_learnStudyItemId) : undefined,
-    undefined,
-    Date.now(),
+    readOrpSessionOverride(hintsNow),
+    hintsNow,
   ).values.hints;
   if (hintsEnabled && st.mode === 'learn' && inRecall) {
     buttons.push(h('button.drill-btn.drill-btn--hint', {
