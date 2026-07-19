@@ -321,10 +321,13 @@ function renderRow(r: EngineDrillRecord, redraw: () => void): VNode {
             on: { click: () => resumeRecord(r, redraw) },
           }, 'Resume')
         : null,
+
+
+
       h('button.drill-catalog__action', {
         attrs: { type: 'button', ...controlExplainerAttrs({
-          label: 'Analyze', tier: 'essential',
-          description: 'Opens this drill game on the analysis board for engine review.',
+          label: 'Analysis', tier: 'essential',
+          description: 'Opens this drill game on the analysis board.',
         }) },
         on: {
           click: () => {
@@ -333,7 +336,7 @@ function renderRow(r: EngineDrillRecord, redraw: () => void): VNode {
             redraw();
           },
         },
-      }, 'Analyze'),
+      }, 'Analysis'),
       h('button.drill-catalog__action', {
         attrs: { type: 'button', ...controlExplainerAttrs({
           label: 'Retry', tier: 'essential',

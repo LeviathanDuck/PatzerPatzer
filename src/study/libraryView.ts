@@ -292,7 +292,12 @@ async function launchGuidedLearn(
   redraw: () => void,
 ): Promise<void> {
   if (index >= sequences.length) {
-    redraw(); // chain complete — the refreshed library state shows the enrolled lines
+
+
+
+
+    endDrill('guided-chain-complete', 'dismiss');
+    redraw();
     return;
   }
   const sequence = sequences[index]!;
