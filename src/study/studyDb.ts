@@ -408,13 +408,20 @@ export async function createStudyStrict(item: StudyItem): Promise<{ readonly dup
 
 
 
+
+
+
+
 export async function createStudyWithDecisionRows(
   item: StudyItem,
   rows: readonly StudyPracticeDecisionRow[],
+  // Injectable so the promotion suite can observe outbox ordering; production uses the default.
+  enqueue: (store: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt?: number) => void = enqueueStudyPut,
 ): Promise<{ readonly duplicate: boolean }> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     let duplicate = false;
+    let rowCollision: string | null = null;
     let tx: IDBTransaction;
     try {
       tx = db.transaction(['studies', 'study-practice-decisions'], 'readwrite');
@@ -423,7 +430,12 @@ export async function createStudyWithDecisionRows(
       return;
     }
     tx.oncomplete = () => {
-      if (!duplicate) enqueueStudyPut('studies', item.id, item, item.updatedAt);
+      if (!duplicate) {
+        enqueue('studies', item.id, item, item.updatedAt);
+        for (const row of rows) {
+          enqueue('study-practice-decisions', row.decisionId, row, row.updatedAt ?? item.updatedAt);
+        }
+      }
       resolve({ duplicate });
     };
     tx.onerror = () => {
@@ -433,6 +445,10 @@ export async function createStudyWithDecisionRows(
     };
     tx.onabort = () => {
       if (duplicate) { resolve({ duplicate: true }); return; }
+      if (rowCollision !== null) {
+        reject(new DOMException(`promotion decision row already exists: ${rowCollision}`, 'ConstraintError'));
+        return;
+      }
       recordStudyTxFail(tx, 'onabort', 'add');
       reject(tx.error ?? new DOMException('promotion create transaction aborted', 'AbortError'));
     };
@@ -453,7 +469,17 @@ export async function createStudyWithDecisionRows(
     };
     req.onsuccess = () => {
       const decisions = tx.objectStore('study-practice-decisions');
-      for (const row of rows) decisions.put(row);
+      for (const row of rows) {
+        const rowReq = decisions.add(row);
+        rowReq.onerror = (event: Event) => {
+          const err = rowReq.error;
+          if (err && err.name === 'ConstraintError') {
+            rowCollision = row.decisionId;
+            event.preventDefault();
+            try { tx.abort(); } catch { /* nothing must commit against a row collision */ }
+          }
+        };
+      }
     };
   });
 }
