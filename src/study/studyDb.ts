@@ -2489,6 +2489,44 @@ export async function listPracticeSessionsByState(
 
 
 
+
+export async function markPracticeSessionPartialTx(
+  sessionId: string,
+  now: number,
+): Promise<{ readonly marked: boolean }> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    let marked = false;
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction('study-practice-sessions', 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
+    tx.oncomplete = () => resolve({ marked });
+    tx.onerror = () => { recordStudyTxFail(tx, 'onerror', 'put'); reject(tx.error); };
+    tx.onabort = () => {
+      recordStudyTxFail(tx, 'onabort', 'put');
+      reject(tx.error ?? new DOMException('mark-partial transaction aborted', 'AbortError'));
+    };
+    const store = tx.objectStore('study-practice-sessions');
+    const req = store.get(sessionId);
+    req.onsuccess = () => {
+      const row = req.result as { state?: unknown } | undefined;
+      if (!row || typeof row !== 'object' || row.state !== 'active') return; // typed no-op — tx completes
+      store.put({ ...row, state: 'partial', updatedAt: now });
+      marked = true;
+    };
+  });
+}
+
+
+
+
+
+
+
 export async function listPracticeSessionsByLesson(
   lessonId: string,
   states: readonly SrsSessionState[],

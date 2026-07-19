@@ -47,6 +47,7 @@ import { loadLearnLessonBundle } from './lessonHost';
 import {
   completeStudySrsAttempt,
   getPracticeSession,
+  markPracticeSessionPartialTx,
   getPracticeSrs,
   getStudy,
   listDuePracticeSrs,
@@ -74,6 +75,7 @@ export interface DueReviewHostDeps {
   readonly listDuePracticeSrs: typeof listDuePracticeSrs;
   readonly getPracticeSrs: typeof getPracticeSrs;
   readonly getPracticeSession: typeof getPracticeSession;
+  readonly markPracticeSessionPartialTx: typeof markPracticeSessionPartialTx;
   readonly savePracticeSession: typeof savePracticeSession;
   readonly completeStudySrsAttempt: typeof completeStudySrsAttempt;
   readonly loadLearnLessonBundle: typeof loadLearnLessonBundle;
@@ -87,6 +89,7 @@ function realDeps(): DueReviewHostDeps {
     listDuePracticeSrs,
     getPracticeSrs,
     getPracticeSession,
+    markPracticeSessionPartialTx,
     savePracticeSession,
     completeStudySrsAttempt,
     loadLearnLessonBundle,
@@ -280,11 +283,10 @@ export async function markDueReviewSessionPartial(
   deps: DueReviewHostDeps = realDeps(),
 ): Promise<void> {
   try {
-    const read = await deps.getPracticeSession(sessionId);
-    if (read === null || !read.ok) return;
-    const row = read.value;
-    if (row.state !== 'active') return;
-    await deps.savePracticeSession({ ...row, state: 'partial', updatedAt: deps.now() });
+
+
+
+    await deps.markPracticeSessionPartialTx(sessionId, deps.now());
   } catch {
     // teardown path — never throw; resume tolerates a still-active row.
   }
