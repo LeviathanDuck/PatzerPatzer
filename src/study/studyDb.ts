@@ -2489,6 +2489,34 @@ export async function listPracticeSessionsByState(
 
 
 
+export async function listPracticeSessionsByLesson(
+  lessonId: string,
+  states: readonly SrsSessionState[],
+  limit: number,
+): Promise<SrsPracticeSessionRow[]> {
+  const db = await openDb();
+  const wanted = new Set<string>(states);
+  const raw = await collectBoundedPracticeCursor<unknown>(
+    db, 'study-practice-sessions', 'lessonId', IDBKeyRange.only(lessonId), 'next', limit,
+    value => {
+      const state = (value as { state?: unknown }).state;
+      return typeof state === 'string' && wanted.has(state);
+    },
+  );
+  const rows: SrsPracticeSessionRow[] = [];
+  for (const value of raw) {
+    const validated = validatePersistedSessionRow(value);
+    if (validated.ok) rows.push(validated.value);
+  }
+  return rows;
+}
+
+
+
+
+
+
+
 
 
 

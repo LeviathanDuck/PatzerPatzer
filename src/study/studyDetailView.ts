@@ -157,8 +157,13 @@ function ensureAuthoringModel(study: StudyItem, root: TreeNode, redraw?: () => v
 
 
   const loadedFor = study.id;
+  const loadGeneration = ++_authoringEditGeneration;
   void loadAuthoringState(loadedFor, detailOrientation()).then(result => {
     if (_authoringStudyId !== loadedFor) return; // stale — a different Study opened meanwhile
+
+
+
+    if (loadGeneration !== _authoringEditGeneration) return;
     if (!result.ok || !result.state.hasPersistedState) return;
     const reloaded = extractLessonModel({
       root,
@@ -177,7 +182,12 @@ function ensureAuthoringModel(study: StudyItem, root: TreeNode, redraw?: () => v
   });
 }
 
+
+
+let _authoringEditGeneration = 0;
+
 function replaceAuthoringDecision(next: LessonDecision): void {
+  _authoringEditGeneration++;
   _authoringDecisions = _authoringDecisions.map(d =>
     d.identity.decisionId === next.identity.decisionId ? next : d);
   _authoringPreviewAt = null; // any classification/trainability change re-opens validation
@@ -189,6 +199,7 @@ function replaceAuthoringDecision(next: LessonDecision): void {
 }
 
 function setAuthoredContent(next: AuthoredLessonContent): void {
+  _authoringEditGeneration++;
   const map = new Map(_authoredContent);
   map.set(next.decisionId, next);
   _authoredContent = map;
@@ -834,15 +845,23 @@ let _panelDataFor: string | null = null;
 let _panelData: StudyPracticePanelData | null = null;
 let _panelLoading = false;
 
+
+
+
+let _panelRefreshGeneration = 0;
+
 function refreshPanelData(lessonId: string, redraw: () => void): void {
   _panelLoading = true;
+  const generation = ++_panelRefreshGeneration;
   void loadStudyPracticePanelData({ lessonId }).then(data => {
     if (_panelDataFor !== lessonId) return; // stale — a different Study opened meanwhile
+    if (generation !== _panelRefreshGeneration) return; // stale — a newer refresh superseded this one
     _panelData = data;
     _panelLoading = false;
     redraw();
   }).catch(e => {
     if (_panelDataFor !== lessonId) return;
+    if (generation !== _panelRefreshGeneration) return;
     _panelLoading = false;
     console.warn('[studyDetailView] practice panel data load failed', e);
     redraw();
@@ -947,6 +966,11 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
   return h('div.study-tools-col__field', [
     h('span.study-tools-col__label', 'Practice & progress'),
     renderPracticePanel(props),
+
+    data?.progressTruncated
+      ? h('div.orp-progress-truncated-note',
+          'Progress shows a partial history — this Study has more attempts than the scorecard fold reads.')
+      : null,
     lessonId !== null ? renderStudyPracticeSettings(lessonId, redraw) : null,
   ]);
 }

@@ -27,6 +27,7 @@ import {
   listPracticeAttemptsByDecision,
   listPracticeDecisionsByLesson,
   listPracticeSessionsByState,
+  listPracticeSessionsByLesson,
 } from '../studyDb';
 
 /** Bounded read caps (CR-2 discipline). */
@@ -38,6 +39,7 @@ const ATTEMPTS_PER_DECISION_LIMIT = 50;
 export interface PracticePanelDataDeps {
   readonly listDuePracticeSrs: typeof listDuePracticeSrs;
   readonly listPracticeSessionsByState: typeof listPracticeSessionsByState;
+  readonly listPracticeSessionsByLesson: typeof listPracticeSessionsByLesson;
   readonly listPracticeDecisionsByLesson: typeof listPracticeDecisionsByLesson;
   readonly listPracticeAttemptsByDecision: typeof listPracticeAttemptsByDecision;
   readonly getStudy: typeof getStudy;
@@ -47,6 +49,7 @@ export interface PracticePanelDataDeps {
 const REAL_DEPS: PracticePanelDataDeps = {
   listDuePracticeSrs,
   listPracticeSessionsByState,
+  listPracticeSessionsByLesson,
   listPracticeDecisionsByLesson,
   listPracticeAttemptsByDecision,
   getStudy,
@@ -58,6 +61,9 @@ const REAL_DEPS: PracticePanelDataDeps = {
 export interface StudyPracticePanelData {
   readonly review: ReviewTabData;
   readonly progress: ProgressTabData;
+
+
+  readonly progressTruncated?: boolean;
   readonly resumableSessionId?: string;
   readonly nowMs: number;
 }
@@ -90,20 +96,16 @@ function buildReviewPreview(
   return { plan, replays: [], scope: 'full' };
 }
 
-/** Find the first resumable (partial, else active) persisted session for this lesson. */
+
+
+
 async function findResumableSession(
   lessonId: string,
   deps: PracticePanelDataDeps,
 ): Promise<string | undefined> {
-  for (const state of ['partial', 'active'] as SrsSessionState[]) {
-    const results = await deps.listPracticeSessionsByState(state, RESUMABLE_SCAN_LIMIT);
-    for (const result of results) {
-      if (!result.ok) continue; // a malformed row never blocks the scan (typed elsewhere)
-      const row: SrsPracticeSessionRow = result.value;
-      if (row.lessonId === lessonId) return row.sessionId;
-    }
-  }
-  return undefined;
+  const rows = await deps.listPracticeSessionsByLesson(lessonId, ['partial', 'active'], RESUMABLE_SCAN_LIMIT);
+  const partial = rows.find(r => r.state === 'partial');
+  return (partial ?? rows[0])?.sessionId;
 }
 
 /** Fold persisted first-attempt results into the scorecard shape (single Study folder). */
@@ -111,14 +113,19 @@ async function buildProgressScorecard(
   lessonId: string,
   label: string,
   deps: PracticePanelDataDeps,
-): Promise<DueReviewScorecard | 'empty'> {
-  const decisions = await deps.listPracticeDecisionsByLesson(lessonId, DECISION_LIMIT);
+): Promise<{ scorecard: DueReviewScorecard; truncated: boolean } | 'empty'> {
+
+
+  const decisions = await deps.listPracticeDecisionsByLesson(lessonId, DECISION_LIMIT + 1);
+  let truncated = decisions.length > DECISION_LIMIT;
+  const folded = decisions.slice(0, DECISION_LIMIT);
   let clean = 0;
   let failed = 0;
   let assisted = 0;
-  for (const decision of decisions) {
-    const attempts = await deps.listPracticeAttemptsByDecision(decision.decisionId, ATTEMPTS_PER_DECISION_LIMIT);
-    for (const attempt of attempts) {
+  for (const decision of folded) {
+    const attempts = await deps.listPracticeAttemptsByDecision(decision.decisionId, ATTEMPTS_PER_DECISION_LIMIT + 1);
+    if (attempts.length > ATTEMPTS_PER_DECISION_LIMIT) truncated = true;
+    for (const attempt of attempts.slice(0, ATTEMPTS_PER_DECISION_LIMIT)) {
       if (attempt.assistanceTypes.length > 0) assisted++;
       else if (attempt.firstAttemptResult === 'clean') clean++;
       else failed++;
@@ -128,8 +135,11 @@ async function buildProgressScorecard(
   if (total === 0) return 'empty';
   const accuracy = clean / total;
   return {
-    folders: [{ folder: label, total, clean, failed, assisted, accuracy }],
-    total, clean, failed, assisted, accuracy,
+    scorecard: {
+      folders: [{ folder: label, total, clean, failed, assisted, accuracy }],
+      total, clean, failed, assisted, accuracy,
+    },
+    truncated,
   };
 }
 
@@ -176,9 +186,15 @@ export async function loadStudyPracticePanelData(
   }
 
   let progress: ProgressTabData;
+  let progressTruncated = false;
   try {
-    const scorecard = await buildProgressScorecard(input.lessonId, label, deps);
-    progress = scorecard === 'empty' ? { status: 'empty' } : { status: 'ready', scorecard };
+    const folded = await buildProgressScorecard(input.lessonId, label, deps);
+    if (folded === 'empty') {
+      progress = { status: 'empty' };
+    } else {
+      progress = { status: 'ready', scorecard: folded.scorecard };
+      progressTruncated = folded.truncated;
+    }
   } catch {
     progress = { status: 'error', message: 'Could not load your accuracy history.' };
   }
@@ -186,6 +202,7 @@ export async function loadStudyPracticePanelData(
   return {
     review,
     progress,
+    ...(progressTruncated ? { progressTruncated: true } : {}),
     ...(resumableSessionId !== undefined ? { resumableSessionId } : {}),
     nowMs,
   };
