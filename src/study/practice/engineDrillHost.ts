@@ -20,6 +20,7 @@
 
 
 
+import type { EngineStrengthConfig } from '../../engine/types';
 import { h, type VNode } from 'snabbdom';
 import { parseFen, makeFen, INITIAL_FEN } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
@@ -68,7 +69,8 @@ export interface EngineDrillHostDeps {
 
 
   engineSeam?: {
-    requestReply(fen: string, maxDepth: number, onMove: (uci: string) => void, onError: () => void): void;
+
+    requestReply(fen: string, strength: EngineStrengthConfig, onMove: (uci: string) => void, onError: () => void): void;
     cancelReply(): void;
   };
   redraw(): void;
@@ -348,7 +350,7 @@ function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill
   ): void => {
     const seam = d.engineSeam;
     if (seam !== undefined) {
-      seam.requestReply(fen, strength.maxDepth, onMove, onError);
+      seam.requestReply(fen, strength, onMove, onError);
       return;
     }
     requestPlayMove({
