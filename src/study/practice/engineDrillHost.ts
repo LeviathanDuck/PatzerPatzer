@@ -334,6 +334,9 @@ export function startEngineDrill(config: DrillStartConfig): void {
   if (!d || _drill !== null) return;
   const drillId = mintDrillId();
   const startedAt = d.now();
+
+
+  _setupDifficultySynced = false;
   _drillId = drillId;
   _startPath = d.getCurrentPath();
   _finishedState = null;
@@ -562,6 +565,9 @@ function takebackDrillMove(): void {
   drill.takeback();
   _assistanceThisMove = [];
   _revealedBest = null;
+
+
+  _pendingBoardReply = null;
   persistActiveDrill();
   if (_record !== null) openDrillRecordOnBoard(_record);
   d.redraw();
