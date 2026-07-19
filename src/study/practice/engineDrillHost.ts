@@ -246,7 +246,12 @@ function propagateSessionDifficulty(drill: EngineDrillController): void {
   if (_userChoseDifficulty) return; // the explicit panel choice governs this drill
   const now = Date.now();
   const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(now), now);
-  const want = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
+  const wantRaw = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
+
+
+
+  const HOST_SUPPORTED_DIFFICULTIES = ['casual'] as const;
+  const want = (HOST_SUPPORTED_DIFFICULTIES as readonly string[]).includes(wantRaw) ? wantRaw : 'casual';
   const effective = resolveDifficulty(want).difficulty;
   const state = drill.state();
   if (state.phase === 'complete' || state.difficulty === effective) return;
@@ -473,6 +478,7 @@ export function startEngineDrill(config: DrillStartConfig): void {
     outcome: null,
     completionState: 'partial',
     ...(config.retryOfDrillId !== undefined ? { retryOfDrillId: config.retryOfDrillId } : {}),
+    ...(_userChoseDifficulty ? { explicitDifficulty: true as const } : {}),
     createdAt: startedAt,
     updatedAt: startedAt,
   };
@@ -522,6 +528,9 @@ export function engineDrillOnUserMove(input: {
   const assistance = _assistanceThisMove;
   _assistanceThisMove = [];
   _revealedBest = null;
+
+
+  propagateSessionDifficulty(drill);
   drill.applyUserMove({
     uci: input.uci,
     ...(input.san !== undefined ? { san: input.san } : {}),
@@ -602,6 +611,9 @@ export function resumePersistedEngineDrill(record: EngineDrillRecord): void {
     ...(snapshot.timeLimitMs !== undefined ? { timeLimitMs: snapshot.timeLimitMs } : {}),
     difficulty: snapshot.difficulty,
   };
+
+
+  _userChoseDifficulty = record.explicitDifficulty === true;
   _drill = resumeEngineDrill(snapshot, buildDeps(snapshot.learnerIsWhite), onDrillStateChange);
   if (snapshot.timeLimitMs !== undefined) {
     _clockTimer = setInterval(() => {
