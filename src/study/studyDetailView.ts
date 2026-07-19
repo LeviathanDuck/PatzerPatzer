@@ -26,7 +26,7 @@ import {
 } from '../ui/controlExplainer';
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
-import { requestStudyDrillLaunch } from './practice/engineDrillHost';
+import { requestStudyDrillLaunch, engineDrillActive, engineDrillFinished } from './practice/engineDrillHost';
 import {
   protocol, engineReady,
   clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved, getOnLiveEvalImproved,
@@ -1176,27 +1176,32 @@ function renderPracticeToolPanel(redraw: () => void): VNode {
 
 
 
-  const drillNode = detailNode();
-  const drillSideWhite = drillNode !== null && drillNode !== undefined && typeof drillNode.fen === 'string'
-    ? drillNode.fen.split(' ')[1] !== 'b'
-    : true;
+
+
+  const drillBlocked = engineDrillActive() || engineDrillFinished();
   const drillLaunch = h('div.study-tools-col__field', [
     h('button.study-tools-col__drill-from-here', {
-      attrs: { type: 'button', ...controlExplainerAttrs({
-        label: 'Drill from here',
-        description: 'Leaves this Study and starts an engine drill from the current position on the analysis board.',
-        tier: 'essential',
-      }) },
+      attrs: {
+        type: 'button',
+        disabled: drillBlocked ? 'true' : false,
+        ...controlExplainerAttrs({
+          label: drillBlocked ? 'Drill from here (unavailable)' : 'Drill from here',
+          description: drillBlocked
+            ? 'An engine drill is already open — finish or close it on the analysis board first.'
+            : 'Leaves this Study and starts an engine drill from the current position on the analysis board.',
+          tier: 'essential',
+        }),
+      },
       on: {
         click: () => {
-          requestStudyDrillLaunch({
+          const launched = requestStudyDrillLaunch({
             pgn: buildStudyPgn(),
+            path,
             studyItemId: study.id,
             studyNodePath: path,
-            learnerIsWhite: drillSideWhite,
             difficulty: 'casual',
           });
-          writeHashRoute('#/analysis');
+          if (launched.ok) writeHashRoute('#/analysis');
           redraw();
         },
       },

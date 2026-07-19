@@ -173,28 +173,33 @@ export function engineDrillActiveRecord(): EngineDrillRecord | null {
 
 
 
+export type StudyDrillLaunchResult = { readonly ok: true } | { readonly ok: false; readonly reason: 'drill-live' | 'no-board' };
+
 export function requestStudyDrillLaunch(input: {
   readonly pgn: string;
+  readonly path: string;
   readonly studyItemId: string;
   readonly studyNodePath: string;
-  readonly learnerIsWhite: boolean;
   readonly difficulty: string;
-}): void {
+}): StudyDrillLaunchResult {
   const d = deps;
-  if (!d || _drill !== null) return;
-  if (d.openPgnOnBoard === undefined) {
-    console.warn('engine-drill: study launch unavailable — no board seam');
-    return;
-  }
+  if (!d || d.openPgnOnBoard === undefined) return { ok: false, reason: 'no-board' };
+  if (_drill !== null) return { ok: false, reason: 'drill-live' };
+
+
+
   d.openPgnOnBoard(input.pgn);
+  d.navigate(input.path);
+  const landedFen = d.getCurrentFen();
   startEngineDrill({
-    startFen: d.getCurrentFen(),
-    learnerIsWhite: input.learnerIsWhite,
+    startFen: landedFen,
+    learnerIsWhite: landedFen.split(' ')[1] !== 'b',
     goals: [],
     difficulty: input.difficulty,
     studyItemId: input.studyItemId,
     studyNodePath: input.studyNodePath,
   });
+  return { ok: true };
 }
 
 // --- Chess adjudication (host-owned) ----------------------------------------
@@ -646,6 +651,10 @@ export function resumePersistedEngineDrill(record: EngineDrillRecord): void {
     ...(snapshot.moveLimit !== undefined ? { moveLimit: snapshot.moveLimit } : {}),
     ...(snapshot.timeLimitMs !== undefined ? { timeLimitMs: snapshot.timeLimitMs } : {}),
     difficulty: snapshot.difficulty,
+
+
+    ...(record.studyItemId !== undefined ? { studyItemId: record.studyItemId } : {}),
+    ...(record.studyNodePath !== undefined ? { studyNodePath: record.studyNodePath } : {}),
   };
 
 
