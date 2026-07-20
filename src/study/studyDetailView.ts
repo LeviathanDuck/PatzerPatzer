@@ -1016,7 +1016,7 @@ const RECOMPUTE_LADDER_PRESETS: readonly { readonly label: string; readonly inte
 let _recomputeState:
   | { readonly stage: 'idle' }
   | { readonly stage: 'preview'; readonly studyItemId: string; readonly plan: import('./practice/settings').IntervalRecomputePlan; readonly oldIntervals: readonly number[]; readonly newIntervals: readonly number[]; readonly truncated: boolean }
-  | { readonly stage: 'result'; readonly studyItemId: string; readonly applied: number; readonly noop: number; readonly stale: readonly { readonly targetId: string; readonly reason: string }[]; readonly truncated: boolean }
+  | { readonly stage: 'result'; readonly studyItemId: string; readonly applied: number; readonly noop: number; readonly stale: readonly { readonly targetId: string; readonly reason: string }[]; readonly truncated: boolean; readonly ladderOutcome: 'saved' | 'unchanged' | 'save-failed' }
   = { stage: 'idle' };
 let _recomputeBusy = false;
 
@@ -1057,8 +1057,17 @@ function confirmRecompute(redraw: () => void): void {
 
 
 
-      writeOrpStudyOverride(st.studyItemId, { ...readOrpStudyOverride(st.studyItemId), intervals: [...st.newIntervals] });
-      _recomputeState = { stage: 'result', studyItemId: st.studyItemId, applied: out.applied, noop: out.noop, stale: out.stale, truncated: st.truncated };
+
+      let ladderOutcome: 'saved' | 'unchanged' | 'save-failed' = 'unchanged';
+      if (out.applied > 0) {
+        try {
+          writeOrpStudyOverride(st.studyItemId, { ...readOrpStudyOverride(st.studyItemId), intervals: [...st.newIntervals] });
+          ladderOutcome = 'saved';
+        } catch {
+          ladderOutcome = 'save-failed';
+        }
+      }
+      _recomputeState = { stage: 'result', studyItemId: st.studyItemId, applied: out.applied, noop: out.noop, stale: out.stale, truncated: st.truncated, ladderOutcome };
     } catch {
       _recomputeState = { stage: 'idle' };
     } finally {
@@ -1116,6 +1125,9 @@ function renderRecomputeSection(studyItemId: string, currentIntervals: readonly 
     return h('div.orp-recompute', [
       h('div.study-tools-col__label', 'Recompute complete'),
       h('div.orp-recompute__line', `${st.applied} moved · ${st.noop} already correct · ${st.stale.length} skipped`),
+      st.ladderOutcome === 'saved' ? h('div.orp-recompute__line', 'The new ladder is saved as this Study\'s interval setting.') : null,
+      st.ladderOutcome === 'unchanged' ? h('div.orp-recompute__line', 'No dates moved — the ladder setting was NOT changed.') : null,
+      st.ladderOutcome === 'save-failed' ? h('div.orp-recompute__warn', 'Dates moved, but the new ladder could not be saved as this Study\'s setting — retry it from the settings above.') : null,
       st.truncated ? h('div.orp-recompute__warn', 'Rows beyond the 500-row preview were not part of this recompute and are untouched.') : null,
       st.stale.length > 0
         ? h('div.orp-recompute__warn', 'Skipped (changed since the preview — run a new preview to move them):')
