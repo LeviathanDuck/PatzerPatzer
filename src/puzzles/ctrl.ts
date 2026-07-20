@@ -18,14 +18,14 @@ import { makeFen, parseFen } from 'chessops/fen';
 import { chessgroundDests } from 'chessops/compat';
 import { Chess } from 'chessops/chess';
 import { parseUci, roleToChar } from 'chessops/util';
-import type { Move, Role } from 'chessops';
+import type { Role } from 'chessops';
 import { makeSan } from 'chessops/san';
-import { scalachessCharPair } from 'chessops/compat';
 import { parsePgn } from 'chessops/pgn';
 import type { VNode } from 'snabbdom';
 import type { TreeNode, TreePath } from '../tree/types';
 import { nodeAtPath, mainlineNodeList, nodeListAt, addNode, deleteNodeAt, pathInit } from '../tree/ops';
 import { pgnToTree } from '../tree/pgn';
+import { applyLegalMove } from '../tree/legalApply';
 import { listPuzzleDefinitions, listPuzzleDefinitionsBySource, countPuzzleDefinitionsBySource, getPuzzleDefinition, savePuzzleDefinition, saveAttempt, getAttempts, getAllAttemptsByPuzzle, getMeta, saveMeta, getUserPuzzlePerf, saveUserPuzzlePerf, getPuzzleRatedEligibility, appendRatingHistory, syncRatedLadder, findRatedPuzzleInShards } from './puzzleDb';
 import {
   activeWorkspace,
@@ -104,35 +104,23 @@ function uciToSanAtPos(pos: Chess, uci: string): string {
   try { return makeSan(pos, move); } catch { return uci; }
 }
 
-/**
- * True when `move` advances a pawn to the back rank WITHOUT a promotion role.
- * Playing such a move via chessops leaves a PAWN on the 8th/1st rank (an illegal
- * position) instead of promoting — the source of the puzzle tree corruption
- * (BUG-2026-07-10-025, empirically reproduced). Every raw-play site guards against it so
- * only suffixed promotion UCIs (produced by the promotion chooser) ever enter a position.
- * This is a targeted promotion-path guard, NOT a general isLegal() gate (arbitrary
- * malformed-definition hardening is explicitly out of this lane's scope).
- */
-function isUnsuffixedBackRankPawnMove(pos: Chess, move: Move): boolean {
-  if (!('from' in move)) return false; // drops never occur in standard puzzle play
-  if (move.promotion) return false;
-  if (pos.board.get(move.from)?.role !== 'pawn') return false;
-  const destRank = move.to >> 3; // 0-based rank; 7 = 8th rank, 0 = 1st rank
-  return destRank === 7 || destRank === 0;
-}
+
+
+
+
+
+
 
 function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined {
   const setup = parseFen(fen);
   if (setup.isErr) return undefined;
   const pos = Chess.fromSetup(setup.value);
   if (pos.isErr) return undefined;
-  const chess = pos.value;
+  let chess = pos.value;
   for (const uci of uciMoves) {
-    const move = parseUci(uci);
-    if (!move) return undefined;
-    // Never raw-play an unsuffixed back-rank pawn move — it corrupts the position.
-    if (isUnsuffixedBackRankPawnMove(chess, move)) return undefined;
-    chess.play(move);
+    const result = applyLegalMove(chess, { notation: 'uci', value: uci });
+    if (!result.ok) return undefined;
+    chess = result.value.position;
   }
   return chess;
 }
@@ -335,37 +323,33 @@ function buildInitialPuzzleTree(
  * Returns undefined if the move or FEN is invalid.
  */
 function makeTreeNode(fen: string, uci: string, ply: number): TreeNode | undefined {
-  const setup = parseFen(fen);
-  if (setup.isErr) return undefined;
-  const pos = Chess.fromSetup(setup.value);
-  if (pos.isErr) return undefined;
-  const move = parseUci(uci);
-  if (!move) return undefined;
-  // Never build a tree node from an unsuffixed back-rank pawn move — playing it leaves a
-  // pawn on the 8th/1st rank (illegal). Only suffixed promotion UCIs may reach here.
-  if (isUnsuffixedBackRankPawnMove(pos.value, move)) return undefined;
-  const san = makeSan(pos.value, move);
-  const id = scalachessCharPair(move);
-  pos.value.play(move);
-  const newFen = makeFen(pos.value.toSetup());
-  return { id, ply, uci, san, fen: newFen, children: [] };
+
+
+
+  const result = applyLegalMove(fen, { notation: 'uci', value: uci });
+  if (!result.ok) return undefined;
+  const { node } = result.value;
+  return { id: node.id, ply, uci: node.uci, san: node.san, fen: node.fen, children: [] };
 }
 
 /**
  * Append the next solution move pair (user move + opponent reply) to the puzzle tree.
  * Called after the user plays a correct move and the opponent replies.
  */
-function appendSolutionMoveToTree(rc: PuzzleRoundCtrl, uci: string): void {
+function appendSolutionMoveToTree(rc: PuzzleRoundCtrl, uci: string): TreeNode | undefined {
   // Find the FEN at the current tree leaf
   const parentNode = rc.treeNode;
   const newPly = parentNode.ply + 1;
   const newNode = makeTreeNode(parentNode.fen, uci, newPly);
-  if (!newNode) return;
+  // Fail closed: a rejected (malformed/illegal) stored move mutates no tree/path state
+  // and the caller must not advance progress on the strength of an unapplied move.
+  if (!newNode) return undefined;
   addNode(rc.treeRoot, rc.treePath, newNode);
   rc.treePath = rc.treePath + newNode.id;
   rc.livePath = rc.treePath;
   rc.treeNode = newNode;
   rc.treeMainline = mainlineNodeList(rc.treeRoot);
+  return newNode;
 }
 
 /**
@@ -377,7 +361,10 @@ function completeSolutionTree(rc: PuzzleRoundCtrl): void {
   // The tree has: root -> trigger? -> solution[0..progressPly-1]
   // We need to add solution[progressPly..end]
   for (let i = rc.progressPly; i < rc.solutionLine.length; i++) {
-    appendSolutionMoveToTree(rc, rc.solutionLine[i]!);
+
+
+    const appended = appendSolutionMoveToTree(rc, rc.solutionLine[i]!);
+    if (!appended) break;
   }
 }
 
@@ -811,10 +798,15 @@ export class PuzzleRoundCtrl {
       return quality;
     }
 
-    // Compute positions before and after the played move to get evals.
-    // "Before" = fenBefore. "After" = position after applying playedUci.
-    const setupBefore = parseFen(fenBefore);
-    if (setupBefore.isErr) {
+
+
+
+
+
+
+
+    const appliedPlayed = applyLegalMove(fenBefore, { notation: 'uci', value: playedUci });
+    if (!appliedPlayed.ok) {
       const quality: PuzzleMoveQuality = {
         playedUci,
         expectedUci,
@@ -824,44 +816,6 @@ export class PuzzleRoundCtrl {
       };
       this.moveQualities.push(quality);
       return quality;
-    }
-
-    const posBefore = Chess.fromSetup(setupBefore.value);
-    if (posBefore.isErr) {
-      const quality: PuzzleMoveQuality = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: 'blunder',
-        fenBefore,
-      };
-      this.moveQualities.push(quality);
-      return quality;
-    }
-
-    // Derive the position after the played move
-    const posAfterPlayed = posBefore.value.clone();
-    const move = parseUci(playedUci);
-    if (!move || isUnsuffixedBackRankPawnMove(posBefore.value, move)) {
-      // Unparseable, or an unsuffixed back-rank pawn move whose raw play would corrupt
-      // the position — record structure without playing it.
-      const quality: PuzzleMoveQuality = {
-        playedUci,
-        expectedUci,
-        matched: false,
-        quality: 'blunder',
-        fenBefore,
-      };
-      this.moveQualities.push(quality);
-      return quality;
-    }
-    posAfterPlayed.play(move);
-
-    // Also derive position after the expected (solution) move for comparison
-    const posAfterExpected = posBefore.value.clone();
-    const expectedMove = parseUci(expectedUci);
-    if (expectedMove) {
-      posAfterExpected.play(expectedMove);
     }
 
     // Get static evaluation via shared engine eval if available.
@@ -1030,9 +984,16 @@ export class PuzzleRoundCtrl {
       return { accepted: false };
     }
 
-    // Compute the FEN before this move for quality evaluation.
+
+
+
+
     const posBefore = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    const fenBefore = posBefore ? makeFen(posBefore.toSetup()) : this.definition.startFen;
+    if (!posBefore) {
+      recordPuzzleInvalidStateTransition('replay:failed', 'replay:reconstructed', 'submit-user-move');
+      return { accepted: false };
+    }
+    const fenBefore = makeFen(posBefore.toSetup());
 
     const matched = uciMatches(uci, expected);
 
@@ -1051,35 +1012,38 @@ export class PuzzleRoundCtrl {
     // stored remaining solution), and never schedules an opponent reply — the board
     // move handler's solved-status short-circuit relies on status being 'solved' here.
     // Adapted from lichess-org/lila: ui/puzzle/src/moveTest.ts
-    const submittedMove = parseUci(uci);
-    if (submittedMove && posBefore && posBefore.isLegal(submittedMove)) {
-      const posAfter = posBefore.clone();
-      posAfter.play(submittedMove);
-      if (posAfter.isCheckmate()) {
-        // Play move sound for the actual mating move.
-        if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
-        this.feedback = 'good';
-        this.progressPly++;
-        // Append the ACTUAL mating move to the tree — not the stored line's move.
-        appendSolutionMoveToTree(this, uci);
-        this.setRoundStatus('solved', 'submit-user-move');
-        this.setPuzzleMode('view', 'submit-user-move');
-        this.recordAttempt();
-        // Sync board to allow both sides to move in analysis mode.
-        syncPuzzleBoard();
-        this.redraw();
-        return { accepted: true };
+    const appliedSubmitted = applyLegalMove(posBefore, { notation: 'uci', value: uci });
+    if (appliedSubmitted.ok && appliedSubmitted.value.position.isCheckmate()) {
+
+
+      if (!appendSolutionMoveToTree(this, uci)) {
+        recordPuzzleInvalidStateTransition('append:rejected', 'append:applied', 'submit-user-move');
+        return { accepted: false };
       }
+      // Play move sound for the actual mating move.
+      playMoveSound(uciToSanAtPos(posBefore, uci));
+      this.feedback = 'good';
+      this.progressPly++;
+      this.setRoundStatus('solved', 'submit-user-move');
+      this.setPuzzleMode('view', 'submit-user-move');
+      this.recordAttempt();
+      // Sync board to allow both sides to move in analysis mode.
+      syncPuzzleBoard();
+      this.redraw();
+      return { accepted: true };
     }
 
     if (matched) {
+
+
+      if (!appendSolutionMoveToTree(this, uci)) {
+        recordPuzzleInvalidStateTransition('append:rejected', 'append:applied', 'submit-user-move');
+        return { accepted: false };
+      }
       // Play move sound
-      if (posBefore) playMoveSound(uciToSanAtPos(posBefore, uci));
+      playMoveSound(uciToSanAtPos(posBefore, uci));
       this.feedback = 'good';
       this.progressPly++;
-
-      // Append the correct user move to the tree
-      appendSolutionMoveToTree(this, uci);
 
       // Check if puzzle is solved (all solution moves played)
       if (this.progressPly >= this.solutionLine.length) {
@@ -1218,12 +1182,19 @@ export class PuzzleRoundCtrl {
       return;
     }
 
-    // Play opponent move sound
     const preOpponentPos = positionAfterMoves(this.definition.startFen, this.allMovesPlayed());
-    if (preOpponentPos) playMoveSound(uciToSanAtPos(preOpponentPos, opponentUci));
 
-    // Append opponent move to tree and advance progress
-    appendSolutionMoveToTree(this, opponentUci);
+
+
+
+    const appendedOpponent = appendSolutionMoveToTree(this, opponentUci);
+    if (!appendedOpponent) {
+      recordPuzzleInvalidStateTransition('opponent-reply:rejected', 'opponent-reply:applied', 'opponent-reply');
+      return;
+    }
+
+    // Play opponent move sound, then advance progress.
+    if (preOpponentPos) playMoveSound(uciToSanAtPos(preOpponentPos, opponentUci));
     this.progressPly++;
 
     // Check if puzzle is solved after opponent reply (shouldn't happen normally,
