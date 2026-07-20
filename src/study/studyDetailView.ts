@@ -1077,14 +1077,23 @@ function confirmRecompute(redraw: () => void): void {
   })();
 }
 
+
+
+
+export function retainRecomputeStateOnMismatch(state: typeof _recomputeState): boolean {
+  return state.stage === 'result' && state.ladderOutcome === 'save-failed';
+}
+
 function renderRecomputeSection(studyItemId: string, currentIntervals: readonly number[], redraw: () => void): VNode {
   const fmt = (ms: number): string => (ms >= 86_400_000 ? `${Math.round(ms / 86_400_000)}d` : `${Math.round(ms / 3_600_000)}h`);
   const ladderLabel = (iv: readonly number[]): string => iv.map(fmt).join(' · ');
   const exact = (ms: number): string => new Date(ms).toLocaleString();
 
 
+
   if (_recomputeState.stage !== 'idle' && _recomputeState.studyItemId !== studyItemId) {
-    _recomputeState = { stage: 'idle' };
+    if (!retainRecomputeStateOnMismatch(_recomputeState)) _recomputeState = { stage: 'idle' };
+    else return h('div.orp-recompute', []); // retained but hidden while on another Study
   }
   if (_recomputeState.stage === 'preview') {
     const st = _recomputeState;
