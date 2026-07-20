@@ -1480,10 +1480,8 @@ function evalCacheFromStoredNodes(nodes: Record<string, StoredNodeEntry>): Map<s
 /**
  * Load a game into the analysis board by PGN.
  * Resets analysis state and re-evaluates if engine is on.
- * When called with source:'queue' the background review queue is driving the load —
- * skip the full reset so the queue state and eval cache are not destroyed.
  */
-function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; syntheticCreatedAt?: number }): void {
+function loadGame(pgn: string | null, opts?: { syntheticCreatedAt?: number }): void {
   performance.mark('game-load-start');
 
 
@@ -1519,13 +1517,6 @@ function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; synthe
   // not-yet-merged tree under the new gameId (which would clobber that game's stored edits).
   markUserTreeSaveBaseline();
   performance.mark('pgn-parse-end');
-
-  if (opts?.source === 'queue') {
-    // Background queue advance: rebuild ctrl only, do not reset review status or eval cache.
-    restoreGeneration++;
-    performance.mark('game-load-end');
-    return;
-  }
 
   clearEvalCache();
   resetCurrentEval();
