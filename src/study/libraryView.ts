@@ -2688,11 +2688,22 @@ function renderOrpRow(view: OrpPracticeLineView, redraw: () => void): VNode {
       on: { click: (e: Event) => {
         e.stopPropagation();
         if (confirm(`Remove "${sequence.label || title}" from Opening Repetition Practice?`)) {
+
+
+
+
+
+
+
+
+
+
+
           void deletePracticeLine(sequence.id).then(() => {
             _orpLoaded      = false;
             _orpLoadPending = false;
             loadOrpLines(redraw);
-          });
+          }).catch(e => console.warn('[libraryView] ORP line delete failed', e));
         }
       }},
     }, '×'),

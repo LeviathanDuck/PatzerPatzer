@@ -2282,10 +2282,20 @@ function renderPracticeLinesPanel(studyId: string, redraw: () => void): VNode {
             h('button.study-practice-line__btn.study-practice-line__btn--danger', {
               attrs: iconControlExplainerAttrs({ label: 'Delete practice line', description: 'Permanently deletes this saved practice line.' }),
               on: { click: () => {
+
+
+
+
+
+
+
+
+
+
                 void deletePracticeLine(line.id).then(() => {
                   _practiceLines = _practiceLines.filter(l => l.id !== line.id);
                   redraw();
-                });
+                }).catch(e => console.warn('[studyDetailView] practice line delete failed', e));
               }},
             }, '✕'),
           ]),
