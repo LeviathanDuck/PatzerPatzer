@@ -86,6 +86,7 @@ import {
 } from './ceval/view';
 import {
   renderAnalysisControls, downloadPgn, initPgnExport, copyLinePgn, isMainlinePath, buildPgn,
+  boardReviewSyntheticId, boardReviewResultBinds,
 } from './analyse/pgnExport';
 import { initPersist, scheduleGamePersist, flushPendingGamePersist } from './analyse/persist';
 import {
@@ -183,7 +184,8 @@ import {
   applyReviewDepthToActiveQueue, fenceReviewQueueForDataManagement, subscribeAcceptedReviewResults,
   subscribeReviewQueueState,
   suspendReviewQueueForLfym, getQueueSummary,
-  type AcceptedReviewResult,
+  requestBoardTreeReview, evictBoardTreeReview, subscribeBoardTreeReviewCompletion,
+  type AcceptedReviewResult, type BoardTreeReviewCompletion,
 } from './engine/reviewQueue';
 import type { ReviewRunSourceContext } from './engine/reviewRun';
 import { setMissedMoments, clearMissedMoments, getMissedMoments } from './engine/tactics';
@@ -1233,6 +1235,94 @@ let restoreGeneration = 0;
 let reviewedStateHydrationGeneration = 0;
 let navStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+
+
+
+
+
+
+const boardReviewPageSessionUuid: string = (() => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch { /* fall through to the time+random id below */ }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+})();
+
+interface ActiveBoardReview {
+  id:            string;   // board-review:<page-session-uuid>:<board-generation>
+  pgnSnapshot:   string;   // immutable snapshot of the tree at request time
+  capturedRoot:  TreeNode; // the ctrl.root captured at request time (identity check on hydrate)
+  generation:    number;   // restoreGeneration captured at request time
+  engine?:       { engineName?: string; depth?: number }; // filled on completion
+}
+
+let activeBoardReview: ActiveBoardReview | null = null;
+
+
+function evictActiveBoardReview(): void {
+  if (activeBoardReview === null) return;
+  const evictedId = activeBoardReview.id;
+  activeBoardReview = null;
+  evictBoardTreeReview(evictedId);
+}
+
+
+
+
+
+
+
+function requestBoardTreeAnalysis(): boolean {
+  // A previous board-tree review on this same board is superseded by a new request.
+  evictActiveBoardReview();
+
+  const generation  = restoreGeneration;
+  const capturedRoot = ctrl.root;
+  const pgnSnapshot  = buildPgn(false);
+  const boardReviewId = boardReviewSyntheticId(boardReviewPageSessionUuid, generation);
+
+  const result = requestBoardTreeReview(
+    // SYNTHETIC record — id is the board-review id, pgn is the immutable snapshot. Never an
+    // imported game; never added to `importedGames` or any games-store.
+    { id: boardReviewId, pgn: pgnSnapshot },
+    boardReviewId,
+  );
+  if (result.kind !== 'enqueued') return false;
+
+  activeBoardReview = { id: boardReviewId, pgnSnapshot, capturedRoot, generation };
+  return true;
+}
+
+
+function onBoardTreeReviewCompletion(evt: BoardTreeReviewCompletion): void {
+  const active = activeBoardReview;
+  if (active === null || active.id !== evt.boardReviewId) return; // stale / already evicted
+
+  if (evt.status === 'error') {
+    // Non-resumable memory-only run failed — just drop the registry; nothing durable to clean up.
+    activeBoardReview = null;
+    redraw();
+    return;
+  }
+
+  // A board replacement since the request means this completion is stale — the results were bound to
+  // a tree that is no longer on the board (mirrors the hydrate-gate generation check).
+  if (active.generation !== restoreGeneration || active.capturedRoot !== ctrl.root) {
+    activeBoardReview = null;
+    redraw();
+    return;
+  }
+
+  active.engine = { ...(evt.engineName !== undefined ? { engineName: evt.engineName } : {}),
+                    ...(evt.depth !== undefined ? { depth: evt.depth } : {}) };
+  // Flip runtime completion so the post-game summary, move labels, and Re-Analyze affordance light
+  // up off the foreground evalCache the accepted-result listener already populated. No IDB write.
+  setAnalysisComplete(true);
+  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMergeAnalysisData() retro call.
+  ctrl.retro?.onMergeAnalysisData();
+  redraw();
+}
+
 function scheduleNavStateSave(path = ctrl.path): void {
   if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
   const selectedId = selectedGameId;
@@ -1450,6 +1540,10 @@ function evalCacheFromStoredNodes(nodes: Record<string, StoredNodeEntry>): Map<s
  */
 function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; syntheticCreatedAt?: number }): void {
   performance.mark('game-load-start');
+
+
+
+  evictActiveBoardReview();
   // A game/board switch replaces the tree the practice session was playing on.
   endPracticeSession('game-switch');
 
@@ -1828,13 +1922,34 @@ function evalEntriesMatch(a: PositionEval | undefined, b: PositionEval): boolean
 }
 
 function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult): void {
-  if (!isImportedGameAnalysisRoute(currentRoute)) return;
-  if (selectedGameId !== result.gameId) return;
-  if ((currentRoute.params['id'] ?? '') !== result.gameId) return;
 
-  const node = nodeAtPath(ctrl.root, result.nodePath);
-  if (!node || node.fen !== result.fen) return;
 
+
+
+  const boardReview = activeBoardReview;
+  const isBoardTreeResult = boardReview !== null && boardReview.id === result.gameId;
+
+  if (isBoardTreeResult) {
+    const node = nodeAtPath(ctrl.root, result.nodePath);
+    if (!boardReviewResultBinds({
+      activeBoardReviewId:   boardReview.id,
+      activeGeneration:      boardReview.generation,
+      currentGeneration:     restoreGeneration,
+      capturedRootIsCurrent: boardReview.capturedRoot === ctrl.root,
+      resultGameId:          result.gameId,
+      nodeFenAtResultPath:   node?.fen,
+      resultFen:             result.fen,
+    })) return;
+  } else {
+    if (!isImportedGameAnalysisRoute(currentRoute)) return;
+    if (selectedGameId !== result.gameId) return;
+    if ((currentRoute.params['id'] ?? '') !== result.gameId) return;
+
+    const node = nodeAtPath(ctrl.root, result.nodePath);
+    if (!node || node.fen !== result.fen) return;
+  }
+
+  const node = nodeAtPath(ctrl.root, result.nodePath)!;
   const existing = evalCache.get(result.nodePath);
   if (existing?.depth !== undefined && result.eval.depth !== undefined && existing.depth > result.eval.depth) return;
   if (evalEntriesMatch(existing, result.eval)) return;
@@ -4260,6 +4375,9 @@ initPgnExport({
   getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw,
+
+  requestBoardTreeAnalysis,
+  getActiveBoardReviewId: () => activeBoardReview?.id ?? null,
 });
 
 
@@ -4580,6 +4698,8 @@ subscribeReviewQueueState(() => {
   analysisBulkReviewRunningMirror = isBulkRunning();
 });
 subscribeAcceptedReviewResults(hydrateOpenDisplayFromAcceptedReviewResult);
+
+subscribeBoardTreeReviewCompletion(onBoardTreeReviewCompletion);
 preloadBoardSounds();
 
 bindKeyboardHandlers({

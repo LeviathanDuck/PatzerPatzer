@@ -30,6 +30,14 @@ let _getSelectedGameId: () => string | null                      = () => null;
 let _clearGameAnalysis: (gameId: string) => void                 = () => {};
 let _redraw:            () => void                               = () => {};
 
+
+
+
+
+
+let _requestBoardTreeAnalysis: () => boolean                     = () => false;
+let _getActiveBoardReviewId:   () => string | null               = () => null;
+
 // Legacy NAG ids the importer renders into node.glyphs ($1-$6); mirrors
 // LEGACY_RENDERED_NAG_IDS in src/tree/pgn.ts. Used to avoid double-emitting a NAG
 // that is present both as a rendered glyph and as a raw imported nag.
@@ -202,12 +210,66 @@ export function initPgnExport(deps: {
   getSelectedGameId:  () => string | null;
   clearGameAnalysis:  (gameId: string) => void;
   redraw:             () => void;
+  requestBoardTreeAnalysis?: () => boolean;
+  getActiveBoardReviewId?:   () => string | null;
 }): void {
   _getCtrl           = deps.getCtrl;
   _getImportedGames  = deps.getImportedGames;
   _getSelectedGameId = deps.getSelectedGameId;
   _clearGameAnalysis = deps.clearGameAnalysis;
   _redraw            = deps.redraw;
+  if (deps.requestBoardTreeAnalysis) _requestBoardTreeAnalysis = deps.requestBoardTreeAnalysis;
+  if (deps.getActiveBoardReviewId)   _getActiveBoardReviewId   = deps.getActiveBoardReviewId;
+}
+
+
+
+/**
+ * The synthetic id for a board-tree Game Review: `board-review:<page-session-uuid>:<board-generation>`.
+ * Identity is NEVER derived solely from PGN/FEN (consult §(a)) — two identical drill trees loaded on
+ * separate board generations are distinct board sessions, so the monotonic generation is load-bearing.
+ */
+export function boardReviewSyntheticId(pageSessionUuid: string, boardGeneration: number): string {
+  return `board-review:${pageSessionUuid}:${boardGeneration}`;
+}
+
+export interface BoardReviewBindInput {
+  /** The active board-review synthetic id, or null when no board-tree review is registered. */
+  activeBoardReviewId: string | null;
+  /** The board generation captured when the active review was registered. */
+  activeGeneration:    number | null;
+  /** The current live board/restore generation. */
+  currentGeneration:   number;
+  /** True only while the captured `ctrl.root` reference is still the live root. */
+  capturedRootIsCurrent: boolean;
+  /** `AcceptedReviewResult.gameId` — the id the queue tagged this result with. */
+  resultGameId:        string;
+  /** FEN of the node found at the result's path in the CURRENT tree, or undefined if absent. */
+  nodeFenAtResultPath: string | undefined;
+  /** `AcceptedReviewResult.fen` — the exact FEN the engine searched. */
+  resultFen:           string;
+}
+
+/**
+ * Whether an accepted board-tree review result may hydrate the foreground display (consult §(b)).
+ * ALL of the following must hold, or the result is stale-dropped (mirrors Lichess `onNewCeval`'s
+ * `node.fen !== ev.fen → return`):
+ *   1. a board-tree review is registered (`activeBoardReviewId !== null`);
+ *   2. the result belongs to it (`resultGameId === activeBoardReviewId`);
+ *   3. the captured board generation is still current AND the captured root is still live (no board
+ *      replacement since the request);
+ *   4. the node still exists at the result's path AND its FEN exactly equals the searched FEN.
+ * Any mismatch — wrong FEN, replaced root, stale generation, or an old synthetic id — returns false.
+ */
+export function boardReviewResultBinds(input: BoardReviewBindInput): boolean {
+  if (input.activeBoardReviewId === null) return false;
+  if (input.resultGameId !== input.activeBoardReviewId) return false;
+  if (input.activeGeneration === null) return false;
+  if (input.activeGeneration !== input.currentGeneration) return false;
+  if (!input.capturedRootIsCurrent) return false;
+  if (input.nodeFenAtResultPath === undefined) return false;
+  if (input.nodeFenAtResultPath !== input.resultFen) return false;
+  return true;
 }
 
 // --- PGN building ---
@@ -401,13 +463,22 @@ export function requestSelectedGameAnalysis(): boolean {
   // accuracy formula to operate on noisy low-depth evals and inflate scores.
   clearEvalCache();
   resetCurrentEval();
+
+
+
+
+  if (selectedGameId === null) {
+    return _requestBoardTreeAnalysis();
+  }
   return enqueueSelectedGameForReview();
 }
 
 function selectedGameReviewProgress(): { active: boolean; done: number; total: number } {
-  const selectedGameId = _getSelectedGameId();
+
+
+  const progressGameId = _getSelectedGameId() ?? _getActiveBoardReviewId();
   const summary = getQueueSummary();
-  if (!selectedGameId || summary.currentGameId !== selectedGameId || !summary.running) {
+  if (!progressGameId || summary.currentGameId !== progressGameId || !summary.running) {
     return { active: false, done: 0, total: 0 };
   }
   return {
