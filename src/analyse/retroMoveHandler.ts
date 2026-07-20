@@ -96,6 +96,12 @@ export function initRetroMoveHandler(getCtrl: () => AnalyseCtrl): { unsubscribe:
       parentPath:      cand.parentPath,
       solvingPath:     ctrl.path,
       isExactBest,
+
+
+
+
+
+      solvingMoveDeliveredMate: info.san.endsWith('#'),
     });
 
     // Win was already handled by the before-move hook; skip the fail/eval path.

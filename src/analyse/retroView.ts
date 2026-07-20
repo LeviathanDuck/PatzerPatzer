@@ -1053,13 +1053,20 @@ export function renderRetroStrip(deps: RetroStripDeps): VNode | null {
     // User found a good move.
     // Mirrors lichess-org/lila: retroView.ts feedback.win()
     const wk = retro.winKind();
+
+
+
+
+
+    const solvingMoveDeliveredMate = !!retro.getSolvingMoveSnapshot()?.solvingMoveDeliveredMate;
     const winMsg = wk === 'near-best' ? msg.winNearBest : msg.winExact;
+    const winLabel = solvingMoveDeliveredMate ? `Checkmate! ${winMsg}` : winMsg;
     feedbackContent = [
       h('div.retro-half.retro-half--top',
         h('div.retro-player', [
-          h('div.retro-icon.retro-icon--win', '✓'),
+          h('div.retro-icon.retro-icon--win', solvingMoveDeliveredMate ? '♚' : '✓'),
           h('div.retro-instruction', [
-            h('strong', winMsg),
+            h('strong', winLabel),
             renderDualEvalBoxes(retro),
             renderReasonNote(cand, wk === 'exact', candBestSan),
             renderSaveToLibrary(cand, retro, 'force-save', opponentName, redraw),

@@ -50,6 +50,12 @@ export interface SolvingMoveSnapshot {
   // When set, renderDualEvalBoxes short-circuits directly to ✓ for both boxes,
   // bypassing diff computation entirely (avoids depth-horizon false positives).
   isExactBest:     boolean;
+
+
+
+
+
+  solvingMoveDeliveredMate: boolean;
 }
 
 /**
@@ -357,6 +363,7 @@ export function makeRetroCtrl(
       parentPath: prev?.parentPath ?? candidate.parentPath,
       solvingPath: prev?.solvingPath ?? '',
       isExactBest: prev?.isExactBest ?? false,
+      solvingMoveDeliveredMate: prev?.solvingMoveDeliveredMate ?? false,
     };
   }
 
