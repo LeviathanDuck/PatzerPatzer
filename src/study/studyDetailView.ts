@@ -27,6 +27,7 @@ import {
 import { renderCommentPanel, renderGlyphToolbar, GLYPHS } from './annotationView';
 import { updateCurrentNodeGlyphs, updateCurrentNodeShapes, toggleBookmark, isBookmarked, buildStudyPgn } from './studyDetailCtrl';
 import { requestStudyDrillLaunch, engineDrillActive, engineDrillFinished } from './practice/engineDrillHost';
+import { listPracticeSrsByLesson, applyConfirmedIntervalRecomputePlan } from './studyDb';
 import {
   protocol, engineReady,
   clearEvalPositionOverride, setEvalPositionOverride, evalCurrentPosition, setOnLiveEvalImproved, getOnLiveEvalImproved,
@@ -76,7 +77,7 @@ import {
 } from './practice/lessonAuthoring';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
-import { resolveOrpSettings, resetToInherited, readOrpSessionOverride, writeOrpSessionOverrideField, clearOrpSessionOverrideField } from './practice/settings';
+import { resolveOrpSettings, resetToInherited, readOrpSessionOverride, writeOrpSessionOverrideField, clearOrpSessionOverrideField, planIntervalRecompute, summarizeRecomputePlan } from './practice/settings';
 import { readOrpGlobalDefaults, readOrpStudyOverride, writeOrpStudyOverride } from '../sync/settingsLiveApply';
 import { activeWorkspace } from '../analyse/workspaceCore';
 import { cgInstance, onBoardUserMove, renderBoard, renderPromotionDialog, syncBoard } from '../board/index';
@@ -1003,6 +1004,121 @@ const ORP_PROVENANCE_LABELS = {
   session: 'Session (temporary)',
 } as const;
 
+
+
+
+
+const RECOMPUTE_LADDER_PRESETS: readonly { readonly label: string; readonly intervals: readonly number[] }[] = [
+  { label: 'Gentle (1d · 3d · 7d · 14d · 30d)', intervals: [86_400_000, 259_200_000, 604_800_000, 1_209_600_000, 2_592_000_000] },
+  { label: 'Standard (4h · 1d · 3d · 7d · 21d)', intervals: [14_400_000, 86_400_000, 259_200_000, 604_800_000, 1_814_400_000] },
+  { label: 'Aggressive (4h · 12h · 1d · 3d · 7d)', intervals: [14_400_000, 43_200_000, 86_400_000, 259_200_000, 604_800_000] },
+];
+let _recomputeState:
+  | { readonly stage: 'idle' }
+  | { readonly stage: 'preview'; readonly plan: import('./practice/settings').IntervalRecomputePlan; readonly newIntervals: readonly number[]; readonly truncated: boolean }
+  | { readonly stage: 'result'; readonly applied: number; readonly noop: number; readonly stale: readonly { readonly targetId: string; readonly reason: string }[] }
+  = { stage: 'idle' };
+let _recomputeBusy = false;
+
+function startRecomputePreview(studyItemId: string, newIntervals: readonly number[], redraw: () => void): void {
+  if (_recomputeBusy) return;
+  _recomputeBusy = true;
+  void (async () => {
+    try {
+      const nowMs = Date.now();
+      const current = resolveOrpSettings(readOrpGlobalDefaults(), readOrpStudyOverride(studyItemId), readOrpSessionOverride(nowMs), nowMs).values.intervals;
+      const read = await listPracticeSrsByLesson(studyItemId, 500);
+      const inputs = read.rows.map(r => ({
+        targetId: r.targetId, status: r.status, step: r.stepIndex,
+        dueAt: (r as { dueAt: number | null }).dueAt ?? 0,
+        lessonId: r.lessonId, targetRevision: r.targetRevision, scheduleRevision: r.scheduleRevision,
+        configId: r.configId, configVersion: r.configVersion,
+      }));
+      const plan = planIntervalRecompute(inputs, current, newIntervals, studyItemId);
+      _recomputeState = { stage: 'preview', plan, newIntervals, truncated: read.truncated };
+    } catch {
+      _recomputeState = { stage: 'idle' };
+    } finally {
+      _recomputeBusy = false;
+      redraw();
+    }
+  })();
+}
+
+function confirmRecompute(redraw: () => void): void {
+  if (_recomputeBusy || _recomputeState.stage !== 'preview') return;
+  const plan = _recomputeState.plan;
+  _recomputeBusy = true;
+  void (async () => {
+    try {
+      const out = await applyConfirmedIntervalRecomputePlan(plan, { planId: plan.planId });
+      _recomputeState = { stage: 'result', applied: out.applied, noop: out.noop, stale: out.stale };
+    } catch {
+      _recomputeState = { stage: 'idle' };
+    } finally {
+      _recomputeBusy = false;
+      redraw();
+    }
+  })();
+}
+
+function renderRecomputeSection(studyItemId: string, currentIntervals: readonly number[], redraw: () => void): VNode {
+  const fmt = (ms: number): string => (ms >= 86_400_000 ? `${Math.round(ms / 86_400_000)}d` : `${Math.round(ms / 3_600_000)}h`);
+  const ladderLabel = (iv: readonly number[]): string => iv.map(fmt).join(' · ');
+  if (_recomputeState.stage === 'preview') {
+    const st = _recomputeState;
+    const summary = summarizeRecomputePlan(st.plan, Date.now());
+    return h('div.orp-recompute', [
+      h('div.study-tools-col__label', 'Recompute due dates — preview'),
+      h('div.orp-recompute__line', `Scope: this Study. Ladder ${ladderLabel(currentIntervals)} → ${ladderLabel(st.newIntervals)}`),
+      h('div.orp-recompute__line', `${summary.affected} active dates affected · ${summary.skippedInactive} inactive skipped`),
+      h('div.orp-recompute__line', `${summary.movedEarlier} earlier · ${summary.movedLater} later · ${summary.unchanged} unchanged · ${summary.dueImmediately} become due now`),
+      st.truncated ? h('div.orp-recompute__warn', 'This Study has more scheduled rows than the preview covers — showing the first 500; the rest are untouched.') : null,
+      h('div.orp-recompute__line', 'Steps, mastery/status, and attempt history will not change. Frozen review sessions covering moved rows become stale and will revalidate. Rows that change between this preview and your confirmation are skipped — preview again for them.'),
+      h('ul.orp-recompute__rows', st.plan.entries.slice(0, 8).map(e =>
+        h('li.orp-recompute__row', { key: e.targetId }, `${e.targetId.slice(0, 8)}… ${new Date(e.oldDueAt).toLocaleDateString()} → ${new Date(e.newDueAt).toLocaleDateString()}`))),
+      h('button.orp-recompute__confirm', {
+        attrs: { type: 'button', ...controlExplainerAttrs({
+          label: `Recompute ${summary.affected} due dates`,
+          description: 'Moves the previewed due dates onto the new ladder. Nothing else about your progress changes.',
+          tier: 'essential',
+        }) },
+        on: { click: () => { confirmRecompute(redraw); } },
+      }, `Recompute ${summary.affected} due dates`),
+      h('button.orp-recompute__cancel', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel the recompute preview' }) },
+        on: { click: () => { _recomputeState = { stage: 'idle' }; redraw(); } },
+      }, 'Cancel'),
+    ]);
+  }
+  if (_recomputeState.stage === 'result') {
+    const st = _recomputeState;
+    return h('div.orp-recompute', [
+      h('div.study-tools-col__label', 'Recompute complete'),
+      h('div.orp-recompute__line', `${st.applied} moved · ${st.noop} already correct · ${st.stale.length} skipped`),
+      st.stale.length > 0
+        ? h('div.orp-recompute__warn', 'Skipped rows changed since the preview — run a new preview to move them.')
+        : null,
+      h('button.orp-recompute__done', {
+        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Dismiss the recompute result' }) },
+        on: { click: () => { _recomputeState = { stage: 'idle' }; redraw(); } },
+      }, 'Done'),
+    ]);
+  }
+  return h('div.orp-recompute', [
+    h('div.study-tools-col__label', `Interval ladder: ${ladderLabel(currentIntervals)}`),
+    ...RECOMPUTE_LADDER_PRESETS.map(preset => h('button.orp-recompute__preset', {
+      key: preset.label,
+      attrs: { type: 'button', ...controlExplainerAttrs({
+        label: `Preview recompute onto ${preset.label}`,
+        description: 'Shows exactly which due dates would move before anything changes; a separate confirmation applies it.',
+        tier: 'essential',
+      }) },
+      on: { click: () => { startRecomputePreview(studyItemId, preset.intervals, redraw); } },
+    }, preset.label)),
+  ]);
+}
+
 function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): VNode {
   const globalDefaults = readOrpGlobalDefaults();
   const overrideLayer = readOrpStudyOverride(studyItemId);
@@ -1010,6 +1126,7 @@ function renderStudyPracticeSettings(studyItemId: string, redraw: () => void): V
   const resolved = resolveOrpSettings(globalDefaults, overrideLayer, readOrpSessionOverride(nowMs), nowMs);
   return h('div.study-tools-col__field.orp-study-settings', [
     h('span.study-tools-col__label', 'Practice settings'),
+    renderRecomputeSection(studyItemId, resolved.values.intervals, redraw),
     ...ORP_STUDY_SETTING_FIELDS.map(def => {
       const provenance = resolved.provenance[def.field];
       const value = resolved.values[def.field];
