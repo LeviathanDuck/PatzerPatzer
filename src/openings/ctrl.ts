@@ -421,10 +421,43 @@ export function addCollection(c: ResearchCollection): void {
   _collections = [c, ..._collections];
 }
 
-/** Delete a collection by id. */
-export async function removeCollection(id: string, redraw: () => void): Promise<void> {
-  await dbDeleteCollection(id);
+/**
+ * Injectable delete seam for removeCollection. Production always uses the openings DB; the deps
+ * argument exists so tests can drive the FAILED-removal branch, which db.deleteCollection cannot
+ * currently produce on its own (it swallows its own errors and resolves — see the note below).
+ * Mirrors the OpeningsSourceRefreshDeps read seam used by refreshOpeningsSource.
+ */
+export interface OpeningsRemoveCollectionDeps {
+  deleteCollection: (id: string) => Promise<void>;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function removeCollection(
+  id: string,
+  redraw: () => void,
+  deps: OpeningsRemoveCollectionDeps = { deleteCollection: dbDeleteCollection },
+): Promise<void> {
+  await deps.deleteCollection(id);
   _collections = _collections.filter(c => c.id !== id);
+  _collectionsLoadError = false;
   redraw();
 }
 
