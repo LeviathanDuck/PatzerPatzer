@@ -7209,6 +7209,16 @@ body.analysis-layout-resizing {
     font-weight: 600;
   }
 
+
+
+
+
+  .retro-save__error {
+    font-size: 0.8rem;
+    color: var(--app-danger);
+    font-weight: 600;
+  }
+
   // "Show engine" link floats over the bottom-right corner instead of taking up
   // its own row, so the terminal-state action button can stay flush to the edge.
   .retro-feedback {
