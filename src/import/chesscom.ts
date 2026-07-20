@@ -539,11 +539,18 @@ export async function importChesscom(callbacks: ImportCallbacks): Promise<void> 
     // Archives are complete months, so an un-cursored fetch covers the whole
     // requested range ('all' covers the account's full history).
     const oldest = useCursor ? null : rangeStart ?? 0;
-    await recordAccountSync(acctId, newest, oldest, filterKey);
     if (games.length === 0) {
+      // No games to persist — advance the cursor as before (an empty fetch loses nothing).
+      await recordAccountSync(acctId, newest, oldest, filterKey);
       chesscom.error = 'No games found matching current filters.';
     } else {
-      callbacks.addGames(games, games[0]!); // addGames calls loadGame which calls redraw
+      const persisted = await callbacks.addGames(games, games[0]!); // addGames calls loadGame which calls redraw
+
+
+
+
+
+      if (persisted) await recordAccountSync(acctId, newest, oldest, filterKey);
     }
   } catch (err) {
     chesscom.error = err instanceof Error ? err.message : 'Import failed.';

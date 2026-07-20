@@ -447,7 +447,7 @@ function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[])
 // Callbacks injected into import adapters so they can mutate app state
 // without creating a circular import on main.ts.
 const importCallbacks = {
-  addGames(games: ImportedGame[], _first: ImportedGame): void {
+  async addGames(games: ImportedGame[], _first: ImportedGame): Promise<boolean> {
     const dedupedGames = dedupeImportedGames(importedGames, games);
     const chesscomIncomingCount = games.filter(game => game.source === 'chesscom').length;
     if (chesscomIncomingCount > 0) {
@@ -472,7 +472,9 @@ const importCallbacks = {
     const first = dedupedGames[0];
     if (!first) {
       redraw();
-      return;
+      // Nothing new to persist (every incoming game was already in the library): the batch is
+      // durably covered by prior writes, so report success — the caller's cursor advance is honest.
+      return true;
     }
     setImportedGames([...importedGames, ...dedupedGames]);
 
@@ -480,31 +482,31 @@ const importCallbacks = {
 
     flushPendingGamePersist();
     selectedGameId = first.id;
+    refreshRegisteredAccounts(); // adapters may have registered a new account
+
+    enqueueImportEnrichment(dedupedGames, { onGameEnriched: applyEnrichmentPatch });
+    loadGame(first.pgn); // calls redraw — the board/library update above is synchronous and is
+    // never blocked on the durable write awaited below (import UI stays responsive).
     performance.mark('import-batch-start');
 
 
 
 
 
-
-    void saveGamesToIdb(importedGames).then(persisted => {
-      performance.mark('import-batch-end');
-      if (!persisted) {
-        recordDiagnostic({
-          kind: 'lifecycle',
-          severity: Severity.Warn,
-          source: 'main.importCallbacks',
-          sourceTag: 'import',
-          message: 'import-batch-persist-failed',
-          metadata: { batchSize: importedGames.length },
-          redactionClass: 'safe',
-        });
-      }
-    });
-    refreshRegisteredAccounts(); // adapters may have registered a new account
-
-    enqueueImportEnrichment(dedupedGames, { onGameEnriched: applyEnrichmentPatch });
-    loadGame(first.pgn); // calls redraw
+    const persisted = await saveGamesToIdb(importedGames);
+    performance.mark('import-batch-end');
+    if (!persisted) {
+      recordDiagnostic({
+        kind: 'lifecycle',
+        severity: Severity.Warn,
+        source: 'main.importCallbacks',
+        sourceTag: 'import',
+        message: 'import-batch-persist-failed',
+        metadata: { batchSize: importedGames.length },
+        redactionClass: 'safe',
+      });
+    }
+    return persisted;
   },
   redraw(): void { redraw(); },
 };

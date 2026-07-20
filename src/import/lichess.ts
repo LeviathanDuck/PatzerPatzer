@@ -376,11 +376,18 @@ export async function importLichess(callbacks: ImportCallbacks): Promise<void> {
         ? (timestamps.length > 0 ? Math.min(...timestamps) : null)
         : rangeStart ?? 0;
     }
-    await recordAccountSync(acctId, newest, oldest, filterKey);
     if (games.length === 0) {
+      // No games to persist — advance the cursor as before (an empty fetch loses nothing).
+      await recordAccountSync(acctId, newest, oldest, filterKey);
       lichess.error = 'No games found matching current filters.';
     } else {
-      callbacks.addGames(games, games[0]!); // addGames calls loadGame which calls redraw
+      const persisted = await callbacks.addGames(games, games[0]!); // addGames calls loadGame which calls redraw
+
+
+
+
+
+      if (persisted) await recordAccountSync(acctId, newest, oldest, filterKey);
     }
   } catch (err) {
     lichess.error = err instanceof Error ? err.message : 'Import failed.';

@@ -67,7 +67,7 @@ function recordPgnBatchDiagnostics(entries: string[]): void {
   }
 }
 
-export function importPgn(callbacks: ImportCallbacks): void {
+export async function importPgn(callbacks: ImportCallbacks): Promise<void> {
   const input = pgnState.input;
   const raw = input.trim();
   if (!raw) {
@@ -118,9 +118,17 @@ export function importPgn(callbacks: ImportCallbacks): void {
       // importedUsername not set: PGN paste has no reliable importing-user identity
     };
     pgnState.error = null;
-    pgnState.input = '';
-    pgnState.key++;  // new key causes Snabbdom to recreate the textarea (clears it)
-    callbacks.addGames([game], game); // addGames calls loadGame which calls redraw
+
+
+
+
+
+    const persisted = await callbacks.addGames([game], game); // addGames calls loadGame which calls redraw
+    if (persisted) {
+      pgnState.input = '';
+      pgnState.key++;  // new key causes Snabbdom to recreate the textarea (clears it)
+    }
+    callbacks.redraw();
   } catch (err) {
     recordPgnImportEvent('PGN import failed', Severity.Error, {
       errorClass: 'ParseError',
