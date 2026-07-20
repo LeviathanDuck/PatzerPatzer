@@ -77,7 +77,7 @@ import {
 } from './practice/lessonAuthoring';
 import { reportIssue } from '../diagnostics/reporting/reportAction';
 import { contextFromNodeList, fenOnlyPositionContext, type EnginePositionContext } from '../engine/positionContext';
-import { resolveOrpSettings, resetToInherited, readOrpSessionOverride, writeOrpSessionOverrideField, clearOrpSessionOverrideField, planIntervalRecompute, summarizeRecomputePlan } from './practice/settings';
+import { resolveOrpSettings, resetToInherited, readOrpSessionOverride, writeOrpSessionOverrideField, clearOrpSessionOverrideField, planIntervalRecompute, summarizeRecomputePlan, retainRecomputeStateOnMismatch } from './practice/settings';
 import { readOrpGlobalDefaults, readOrpStudyOverride, writeOrpStudyOverride } from '../sync/settingsLiveApply';
 import { activeWorkspace } from '../analyse/workspaceCore';
 import { cgInstance, onBoardUserMove, renderBoard, renderPromotionDialog, syncBoard } from '../board/index';
@@ -1075,13 +1075,6 @@ function confirmRecompute(redraw: () => void): void {
       redraw();
     }
   })();
-}
-
-
-
-
-export function retainRecomputeStateOnMismatch(state: typeof _recomputeState): boolean {
-  return state.stage === 'result' && state.ladderOutcome === 'save-failed';
 }
 
 function renderRecomputeSection(studyItemId: string, currentIntervals: readonly number[], redraw: () => void): VNode {

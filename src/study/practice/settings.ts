@@ -233,6 +233,14 @@ export function summarizeRecomputePlan(plan: IntervalRecomputePlan, nowMs: numbe
   return { affected: plan.entries.length, skippedInactive: plan.skippedInactive, movedEarlier, movedLater, unchanged, dueImmediately };
 }
 
+
+
+
+
+export function retainRecomputeStateOnMismatch(state: { readonly stage: string; readonly ladderOutcome?: string }): boolean {
+  return state.stage === 'result' && state.ladderOutcome === 'save-failed';
+}
+
 function intervalAt(intervals: readonly number[], step: number): number {
   if (intervals.length === 0) return 0;
   const clamped = Math.min(Math.max(step, 0), intervals.length - 1);
