@@ -107,6 +107,17 @@ export function parsePackedResearchAnalysisRouteId(routeId: string): PackedResea
   }
 }
 
+/**
+ * Serialize a packed research analysis route id (inverse of `parsePackedResearchAnalysisRouteId`).
+ * Mirrors the packing done at the openings surface (`src/openings/view.ts`): each of `collectionId`
+ * and `gameId` is percent-encoded so embedded delimiters survive a round-trip, and `ply` is appended
+ * as the final segment. `parsePackedResearchAnalysisRouteId(packResearchAnalysisRouteId(c, g, p))`
+ * yields `{ collectionId: c, gameId: g, ply: p }`, so the packed domain is closed under parse/pack.
+ */
+export function packResearchAnalysisRouteId(collectionId: string, gameId: string, ply: number): string {
+  return `${RESEARCH_ROUTE_PREFIX}${encodeURIComponent(collectionId)}:${encodeURIComponent(gameId)}:${ply}`;
+}
+
 function queryFromInput(input: string): string {
   const queryStart = input.indexOf('?');
   const query = queryStart >= 0 ? input.slice(queryStart + 1) : input;
