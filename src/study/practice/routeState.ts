@@ -28,6 +28,7 @@
 
 
 import type { Route } from '../../router';
+import { parsePackedResearchAnalysisRouteId } from '../../analyse/routeState';
 import { parseStudyDetailRouteState, studyDetailRouteSelectsPractice } from '../detailRouteState';
 
 // --- Opaque resume reference (content-free at C5) --------------------------------------------------
@@ -87,9 +88,27 @@ function practiceRouteOwnerFromRoute(route: Route): PracticeRouteOwner | null {
   }
   if (route.name === 'analysis-game') {
     const id = route.params['id'];
-    return id ? { host: 'analysis-game', target: id } : null;
+    return id ? { host: 'analysis-game', target: analysisOwnerTarget(id) } : null;
   }
   return null;
+}
+
+/**
+ * Canonical durable owner target for an Analysis game route, EXCLUDING ply.
+ *
+ * Packed RESEARCH route ids carry `collection`, `game`, and `ply` in one segment
+ * (`src/analyse/routeState.ts`); ply is a within-owner P0 navigation refinement, never a new Practice
+ * owner — two positions in the same research game are the same owner (see the module contract above).
+ * We reuse the canonical packed-id parser (no duplicated parsing here) and rebuild identity on the
+ * ply-less collection+game pair, tagged as JSON so distinct games stay distinct and delimiter-bearing
+ * ids cannot collide. Non-research ids (imported games, or anything the parser rejects) pass through
+ * BYTE-IDENTICAL, so their owner identity is unchanged. This mirrors `analysisSaveFlowGameIdentity`
+ * in main.ts, which already excludes ply for the Analysis save-flow owner.
+ */
+function analysisOwnerTarget(id: string): string {
+  const research = parsePackedResearchAnalysisRouteId(id);
+  if (research === null) return id;
+  return `research:${JSON.stringify([research.collectionId, research.gameId])}`;
 }
 
 /**
