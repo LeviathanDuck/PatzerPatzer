@@ -206,6 +206,7 @@ import {
   type ImportedGame, restoreGameIdCounter,
 } from './import/types';
 import { enqueueImportEnrichment, enqueueOpponentDeltaBackfill } from './import/enrichment';
+import { createImportDurabilityCoordinator, dedupeImportedGames } from './import/importDurability';
 import {
   ANALYSIS_VERSION, backfillOpenings, buildAnalysisNodes, clearAnalysisFromIdb,
   isStoredAnalysisLoadable, listAnalysisLibraryClassificationFromIdb, listGameSummaries,
@@ -405,44 +406,12 @@ const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 const PLATFORM_DISCLAIMER = 'Chess Patzer is not affiliated with or endorsed by Chess.com or Lichess.';
 const NAV_STATE_SAVE_MS = 500;
 
-/** True when the game id is a canonical platform game id (set by the import adapters). */
-function hasPlatformGameId(game: ImportedGame): boolean {
-  return game.id.startsWith('lichess:') || game.id.startsWith('chesscom:');
-}
 
-/**
- * Composite fallback key for games without a platform id (PGN paste, or
- * adapter games whose game URL failed to parse).
- * Avoids holding full PGN strings in the dedup Set (anti-pattern AP-6).
- * Format: "white:black:date:result" — compact (~40 chars vs ~10 KB per PGN).
- */
-function gameCompositeKey(game: ImportedGame): string {
-  return `${game.white ?? ''}:${game.black ?? ''}:${game.date ?? ''}:${game.result ?? ''}`;
-}
 
-/**
- * Dedupe by canonical game id: platform ids are globally unique, so re-imports
- * and overlapping batches drop out by construction, while distinct same-day
- * games against the same opponent both survive. Games without a platform id
- * fall back to the composite key so pasting the same PGN twice still dedupes.
- */
-function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
-  const seenIds = new Set(existing.map(g => g.id));
-  const seenKeys = new Set(existing.filter(g => !hasPlatformGameId(g)).map(gameCompositeKey));
-  const deduped: ImportedGame[] = [];
-  const importedAt = Date.now();
-  for (const game of incoming) {
-    if (seenIds.has(game.id)) continue;
-    if (!hasPlatformGameId(game)) {
-      const key = gameCompositeKey(game);
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-    }
-    seenIds.add(game.id);
-    deduped.push({ ...game, importedAt });
-  }
-  return deduped;
-}
+
+
+
+const importDurability = createImportDurabilityCoordinator(saveGamesToIdb);
 
 // Callbacks injected into import adapters so they can mutate app state
 // without creating a circular import on main.ts.
@@ -472,10 +441,16 @@ const importCallbacks = {
     const first = dedupedGames[0];
     if (!first) {
       redraw();
-      // Nothing new to persist (every incoming game was already in the library): the batch is
-      // durably covered by prior writes, so report success — the caller's cursor advance is honest.
-      return true;
+
+
+
+
+
+      return importDurability.ensureIncomingDurable(games, () => importedGames);
     }
+
+
+    importDurability.markOptimisticAddition(dedupedGames);
     setImportedGames([...importedGames, ...dedupedGames]);
 
 
@@ -493,7 +468,8 @@ const importCallbacks = {
 
 
 
-    const persisted = await saveGamesToIdb(importedGames);
+
+    const persisted = await importDurability.ensureIncomingDurable(dedupedGames, () => importedGames);
     performance.mark('import-batch-end');
     if (!persisted) {
       recordDiagnostic({

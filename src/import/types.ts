@@ -133,6 +133,12 @@ export interface ImportCallbacks {
 
 
 
+
+
+
+
+
+
   addGames: (games: ImportedGame[], first: ImportedGame) => Promise<boolean>;
   redraw: () => void;
 }
