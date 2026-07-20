@@ -87,7 +87,6 @@ export function extractPuzzleCandidates(
     }
   }
   puzzleCandidates = candidates;
-  console.log('[puzzles] extracted', candidates.length, 'candidates', candidates);
   return candidates;
 }
 
