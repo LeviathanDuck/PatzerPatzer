@@ -132,6 +132,17 @@ export class StockfishProtocol {
 
 
   private _searchGeneration = 0;
+
+
+
+
+
+
+
+
+
+
+  private _pendingStopCount = 0;
   private _positionContext: EnginePositionContext | null = null;
 
   // Device capability snapshot — read once at engine-start for error correlation.
@@ -471,9 +482,38 @@ export class StockfishProtocol {
     return this._positionContext;
   }
 
-  /** True only while this protocol instance has an active `go` search outstanding. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   isAnalyzing(): boolean {
     return this._enginePhase === 'analyzing';
+  }
+
+
+
+
+
+
+
+
+
+  isEngineSettled(): boolean {
+    return this._enginePhase !== 'analyzing' && this._pendingStopCount === 0;
   }
 
   /**
@@ -518,6 +558,14 @@ export class StockfishProtocol {
 
   stop(): void {
     const generationAtSend = this._searchGeneration;
+
+
+
+
+
+
+
+    if (this._enginePhase === 'analyzing') this._pendingStopCount++;
     this.send('stop');
     if (this._searchGeneration === generationAtSend) this._enginePhase = 'idle';
   }
@@ -587,6 +635,10 @@ export class StockfishProtocol {
       this.engineName = parts.slice(2).join(' ');
     } else if (parts[0] === 'bestmove') {
       this._enginePhase = 'idle';
+
+
+
+      if (this._pendingStopCount > 0) this._pendingStopCount--;
     } else if (parts[0] === 'uciok') {
       // Analysis mode + no contempt.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected()
