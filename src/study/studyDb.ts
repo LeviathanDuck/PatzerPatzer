@@ -2004,7 +2004,11 @@ export interface RecomputeApplyOutcome {
 
 
 
-function isRuntimeValidActiveSrsRow(row: Record<string, unknown>): boolean {
+const SRS_STATUS_UNION = new Set(['active', 'graduated', 'suspended', 'archived']);
+
+
+
+function isRuntimeValidSrsRowShape(row: Record<string, unknown>): boolean {
   const finite = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v);
   return typeof row.targetId === 'string' && row.targetId.length > 0
     && typeof row.lessonId === 'string' && row.lessonId.length > 0
@@ -2014,7 +2018,8 @@ function isRuntimeValidActiveSrsRow(row: Record<string, unknown>): boolean {
     && finite(row.enrolledAt) && finite(row.updatedAt)
     && (row.lastCompletedAt === null || finite(row.lastCompletedAt))
     && (row.lastAttemptId === null || typeof row.lastAttemptId === 'string')
-    && row.status === 'active' && finite(row.dueAt);
+    && typeof row.status === 'string' && SRS_STATUS_UNION.has(row.status)
+    && (row.status !== 'active' ? true : finite(row.dueAt));
 }
 
 export async function applyConfirmedIntervalRecomputePlan(
@@ -2038,7 +2043,27 @@ export async function applyConfirmedIntervalRecomputePlan(
   const ordered = [...plan.entries].sort((a, b) => (a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0));
   for (let start = 0; start < ordered.length; start += INTERVAL_RECOMPUTE_BATCH_SIZE) {
     const batch = ordered.slice(start, start + INTERVAL_RECOMPUTE_BATCH_SIZE);
-    const appliedRows: SrsScheduleRecord[] = await new Promise((resolve, reject) => {
+
+
+
+    let appliedRows: SrsScheduleRecord[];
+    try {
+      appliedRows = await runRecomputeBatch(batch);
+    } catch {
+      for (const entry of batch) {
+        if (!stale.some(st => st.targetId === entry.targetId)) stale.push({ targetId: entry.targetId, reason: 'batch-failed' });
+      }
+      continue;
+    }
+    for (const rowApplied of appliedRows) {
+      applied++;
+      enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
+    }
+  }
+  return { applied, noop, stale };
+
+  function runRecomputeBatch(batch: readonly import('./practice/settings').RecomputePlanEntry[]): Promise<SrsScheduleRecord[]> {
+    return new Promise((resolve, reject) => {
       const tx = db.transaction('study-practice-srs', 'readwrite');
       const store = tx.objectStore('study-practice-srs');
       const batchApplied: SrsScheduleRecord[] = [];
@@ -2056,8 +2081,8 @@ export async function applyConfirmedIntervalRecomputePlan(
           if (row === undefined) { fail('missing'); return; }
           const keys = Object.keys(row);
           if (keys.some(k => !SRS_ROW_ALLOWED_KEYS.has(k))) { fail('malformed'); return; }
+          if (!isRuntimeValidSrsRowShape(row)) { fail('malformed'); return; }
           if (row.status !== 'active') { fail('inactive'); return; }
-          if (!isRuntimeValidActiveSrsRow(row)) { fail('malformed'); return; }
           if (row.lessonId !== entry.lessonId || row.targetId !== entry.targetId) { fail('identity-mismatch'); return; }
           if (row.targetRevision !== entry.expectedTargetRevision
             || row.scheduleRevision !== entry.expectedScheduleRevision
@@ -2095,12 +2120,7 @@ export async function applyConfirmedIntervalRecomputePlan(
       next();
       if (batch.length === 0) resolve([]);
     });
-    for (const rowApplied of appliedRows) {
-      applied++;
-      enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
-    }
   }
-  return { applied, noop, stale };
 }
 
 
