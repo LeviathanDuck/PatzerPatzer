@@ -400,7 +400,7 @@ window.addEventListener(SETTINGS_LIVE_APPLY_EVENT, () => {
   reloadNavigatorAppearancePreferences();
   redraw();
 });
-const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/PatzerPatzer';
+const PUBLIC_SOURCE_URL = 'https://github.com/LeviathanDuck/ChessPatzer';
 const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 const PLATFORM_DISCLAIMER = 'Chess Patzer is not affiliated with or endorsed by Chess.com or Lichess.';
 const NAV_STATE_SAVE_MS = 500;
