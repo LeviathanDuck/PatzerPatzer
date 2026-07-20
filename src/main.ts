@@ -86,8 +86,8 @@ import {
 } from './ceval/view';
 import {
   renderAnalysisControls, downloadPgn, initPgnExport, copyLinePgn, isMainlinePath, buildPgn,
-  boardReviewSyntheticId, boardReviewResultBinds,
 } from './analyse/pgnExport';
+import { createBoardReviewState, type BoardReviewState } from './analyse/boardReviewState';
 import { initPersist, scheduleGamePersist, flushPendingGamePersist } from './analyse/persist';
 import {
   initAnalysisControls, renderMoveNavBar, renderActionMenu, renderAnalysisPracticePanel,
@@ -184,8 +184,8 @@ import {
   applyReviewDepthToActiveQueue, fenceReviewQueueForDataManagement, subscribeAcceptedReviewResults,
   subscribeReviewQueueState,
   suspendReviewQueueForLfym, getQueueSummary,
-  requestBoardTreeReview, evictBoardTreeReview, subscribeBoardTreeReviewCompletion,
-  type AcceptedReviewResult, type BoardTreeReviewCompletion,
+  requestBoardTreeReview, evictBoardTreeReview, cancelBoardTreeReview, subscribeBoardTreeReviewCompletion,
+  type AcceptedReviewResult,
 } from './engine/reviewQueue';
 import type { ReviewRunSourceContext } from './engine/reviewRun';
 import { setMissedMoments, clearMissedMoments, getMissedMoments } from './engine/tactics';
@@ -1248,80 +1248,25 @@ const boardReviewPageSessionUuid: string = (() => {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 })();
 
-interface ActiveBoardReview {
-  id:            string;   // board-review:<page-session-uuid>:<board-generation>
-  pgnSnapshot:   string;   // immutable snapshot of the tree at request time
-  capturedRoot:  TreeNode; // the ctrl.root captured at request time (identity check on hydrate)
-  generation:    number;   // restoreGeneration captured at request time
-  engine?:       { engineName?: string; depth?: number }; // filled on completion
-}
-
-let activeBoardReview: ActiveBoardReview | null = null;
-
-
-function evictActiveBoardReview(): void {
-  if (activeBoardReview === null) return;
-  const evictedId = activeBoardReview.id;
-  activeBoardReview = null;
-  evictBoardTreeReview(evictedId);
-}
 
 
 
 
 
-
-
-function requestBoardTreeAnalysis(): boolean {
-  // A previous board-tree review on this same board is superseded by a new request.
-  evictActiveBoardReview();
-
-  const generation  = restoreGeneration;
-  const capturedRoot = ctrl.root;
-  const pgnSnapshot  = buildPgn(false);
-  const boardReviewId = boardReviewSyntheticId(boardReviewPageSessionUuid, generation);
-
-  const result = requestBoardTreeReview(
-    // SYNTHETIC record — id is the board-review id, pgn is the immutable snapshot. Never an
-    // imported game; never added to `importedGames` or any games-store.
-    { id: boardReviewId, pgn: pgnSnapshot },
-    boardReviewId,
-  );
-  if (result.kind !== 'enqueued') return false;
-
-  activeBoardReview = { id: boardReviewId, pgnSnapshot, capturedRoot, generation };
-  return true;
-}
-
-
-function onBoardTreeReviewCompletion(evt: BoardTreeReviewCompletion): void {
-  const active = activeBoardReview;
-  if (active === null || active.id !== evt.boardReviewId) return; // stale / already evicted
-
-  if (evt.status === 'error') {
-    // Non-resumable memory-only run failed — just drop the registry; nothing durable to clean up.
-    activeBoardReview = null;
-    redraw();
-    return;
-  }
-
-  // A board replacement since the request means this completion is stale — the results were bound to
-  // a tree that is no longer on the board (mirrors the hydrate-gate generation check).
-  if (active.generation !== restoreGeneration || active.capturedRoot !== ctrl.root) {
-    activeBoardReview = null;
-    redraw();
-    return;
-  }
-
-  active.engine = { ...(evt.engineName !== undefined ? { engineName: evt.engineName } : {}),
-                    ...(evt.depth !== undefined ? { depth: evt.depth } : {}) };
-  // Flip runtime completion so the post-game summary, move labels, and Re-Analyze affordance light
-  // up off the foreground evalCache the accepted-result listener already populated. No IDB write.
-  setAnalysisComplete(true);
-  // Mirrors lichess-org/lila: ui/analyse/src/ctrl.ts onMergeAnalysisData() retro call.
-  ctrl.retro?.onMergeAnalysisData();
-  redraw();
-}
+const boardReview: BoardReviewState = createBoardReviewState({
+  getCtrl:            () => ctrl,
+  getGeneration:      () => restoreGeneration,
+  pageSessionUuid:    boardReviewPageSessionUuid,
+  buildPgnSnapshot:   () => buildPgn(false),
+  nodeAtPath,
+  applyAcceptedEval,
+  setAnalysisComplete,
+  clearPartialEval:   clearBoardReviewPartialEval,
+  redraw,
+  requestBoardTreeReview,
+  evictBoardTreeReview,
+  cancelBoardTreeReview,
+});
 
 function scheduleNavStateSave(path = ctrl.path): void {
   if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
@@ -1543,7 +1488,7 @@ function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; synthe
 
 
 
-  evictActiveBoardReview();
+  boardReview.evict();
   // A game/board switch replaces the tree the practice session was playing on.
   endPracticeSession('game-switch');
 
@@ -1926,30 +1871,27 @@ function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult
 
 
 
-  const boardReview = activeBoardReview;
-  const isBoardTreeResult = boardReview !== null && boardReview.id === result.gameId;
 
-  if (isBoardTreeResult) {
-    const node = nodeAtPath(ctrl.root, result.nodePath);
-    if (!boardReviewResultBinds({
-      activeBoardReviewId:   boardReview.id,
-      activeGeneration:      boardReview.generation,
-      currentGeneration:     restoreGeneration,
-      capturedRootIsCurrent: boardReview.capturedRoot === ctrl.root,
-      resultGameId:          result.gameId,
-      nodeFenAtResultPath:   node?.fen,
-      resultFen:             result.fen,
-    })) return;
-  } else {
-    if (!isImportedGameAnalysisRoute(currentRoute)) return;
-    if (selectedGameId !== result.gameId) return;
-    if ((currentRoute.params['id'] ?? '') !== result.gameId) return;
 
-    const node = nodeAtPath(ctrl.root, result.nodePath);
-    if (!node || node.fen !== result.fen) return;
-  }
+  if (boardReview.tryHydrateAccepted(result)) return;
 
-  const node = nodeAtPath(ctrl.root, result.nodePath)!;
+  if (!isImportedGameAnalysisRoute(currentRoute)) return;
+  if (selectedGameId !== result.gameId) return;
+  if ((currentRoute.params['id'] ?? '') !== result.gameId) return;
+
+  const node = nodeAtPath(ctrl.root, result.nodePath);
+  if (!node || node.fen !== result.fen) return;
+
+  applyAcceptedEval(result, node);
+}
+
+/**
+ * Apply an accepted, already exact-FEN-bound review result to the foreground eval display. Shared by
+ * BOTH the imported-game hydration path above and the board-tree state machine (via its injected
+ * `applyAcceptedEval` dep) so the display mutation is single-sourced. Callers MUST have validated the
+ * node/FEN binding first — this only guards depth/no-op churn, then writes.
+ */
+function applyAcceptedEval(result: AcceptedReviewResult, node: TreeNode): void {
   const existing = evalCache.get(result.nodePath);
   if (existing?.depth !== undefined && result.eval.depth !== undefined && existing.depth > result.eval.depth) return;
   if (evalEntriesMatch(existing, result.eval)) return;
@@ -1961,6 +1903,18 @@ function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult
     syncArrow();
   }
   redraw();
+}
+
+
+
+
+
+
+function clearBoardReviewPartialEval(): void {
+  clearEvalCache();
+  resetCurrentEval();
+  bumpEvalCacheRevision();
+  syncArrow();
 }
 
 async function hydrateReviewedStateFromIdb(): Promise<void> {
@@ -4376,8 +4330,10 @@ initPgnExport({
   clearGameAnalysis,
   redraw,
 
-  requestBoardTreeAnalysis,
-  getActiveBoardReviewId: () => activeBoardReview?.id ?? null,
+
+  requestBoardTreeAnalysis: () => boardReview.request(),
+  getActiveBoardReviewId:   () => boardReview.getActiveId(),
+  cancelBoardTreeReview:    () => boardReview.cancelFromControl(),
 });
 
 
@@ -4699,7 +4655,7 @@ subscribeReviewQueueState(() => {
 });
 subscribeAcceptedReviewResults(hydrateOpenDisplayFromAcceptedReviewResult);
 
-subscribeBoardTreeReviewCompletion(onBoardTreeReviewCompletion);
+subscribeBoardTreeReviewCompletion(evt => boardReview.onCompletion(evt));
 preloadBoardSounds();
 
 bindKeyboardHandlers({

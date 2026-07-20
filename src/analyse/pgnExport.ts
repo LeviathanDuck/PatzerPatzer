@@ -38,6 +38,11 @@ let _redraw:            () => void                               = () => {};
 let _requestBoardTreeAnalysis: () => boolean                     = () => false;
 let _getActiveBoardReviewId:   () => string | null               = () => null;
 
+
+
+
+let _cancelBoardTreeReview:    () => boolean                      = () => false;
+
 // Legacy NAG ids the importer renders into node.glyphs ($1-$6); mirrors
 // LEGACY_RENDERED_NAG_IDS in src/tree/pgn.ts. Used to avoid double-emitting a NAG
 // that is present both as a rendered glyph and as a raw imported nag.
@@ -212,6 +217,7 @@ export function initPgnExport(deps: {
   redraw:             () => void;
   requestBoardTreeAnalysis?: () => boolean;
   getActiveBoardReviewId?:   () => string | null;
+  cancelBoardTreeReview?:    () => boolean;
 }): void {
   _getCtrl           = deps.getCtrl;
   _getImportedGames  = deps.getImportedGames;
@@ -220,6 +226,7 @@ export function initPgnExport(deps: {
   _redraw            = deps.redraw;
   if (deps.requestBoardTreeAnalysis) _requestBoardTreeAnalysis = deps.requestBoardTreeAnalysis;
   if (deps.getActiveBoardReviewId)   _getActiveBoardReviewId   = deps.getActiveBoardReviewId;
+  if (deps.cancelBoardTreeReview)    _cancelBoardTreeReview    = deps.cancelBoardTreeReview;
 }
 
 
@@ -527,7 +534,10 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
 
   const reviewClick = () => {
     if (reviewProgress.active) {
-      pauseBulkReview();
+
+
+
+      if (!_cancelBoardTreeReview()) pauseBulkReview();
       _redraw();
       return;
     }
