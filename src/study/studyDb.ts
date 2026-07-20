@@ -2047,16 +2047,25 @@ export async function applyConfirmedIntervalRecomputePlan(
 
 
 
+    let result: RecomputeBatchResult;
     try {
-      const result = await runRecomputeBatch(batch);
-      for (const [tid, reason] of result.batchStale) staleByTarget.set(tid, reason);
-      noop += result.batchNoop;
-      for (const rowApplied of result.appliedRows) {
-        applied++;
-        enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
-      }
+      result = await runRecomputeBatch(batch);
     } catch {
       for (const entry of batch) staleByTarget.set(entry.targetId, 'batch-failed');
+      continue;
+    }
+
+
+
+    for (const [tid, reason] of result.batchStale) staleByTarget.set(tid, reason);
+    noop += result.batchNoop;
+    for (const rowApplied of result.appliedRows) {
+      applied++;
+      try {
+        enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
+      } catch (e) {
+        console.warn('[studyDb] recompute outbox enqueue failed', rowApplied.targetId, e);
+      }
     }
   }
   return { applied, noop, stale: [...staleByTarget.entries()].map(([targetId, reason]) => ({ targetId, reason })) };
