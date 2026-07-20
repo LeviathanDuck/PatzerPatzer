@@ -5678,6 +5678,12 @@ export function cancelBulkReview(): void {
     postReviewChannelMessage({ type: 'cancel', tabId });
     return;
   }
+
+
+
+
+  const cancelledActiveEntryWasBoardTree = activeEntryIsBoardTree();
+  const queueWasBoardTreeOnly = queue.length > 0 && queue.every(entry => entry.origin.kind === 'board-tree');
   clearWatchdog();
   clearDispatchDefer();
   clearDispatchBarrier();
@@ -5721,14 +5727,20 @@ export function cancelBulkReview(): void {
   queuePauseReason = null;
   hiddenSuspendedOwnerTabId = null;
   reviewStorageHealth = 'ok';
-  setActiveReviewRunState('canceled');
+
+
+
+
+  if (!cancelledActiveEntryWasBoardTree) setActiveReviewRunState('canceled');
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
 
   reconcileReviewStaleWatch();
 
 
-  void reviewPersistenceSinks.clearReviewQueueManifest();
+
+
+  if (!queueWasBoardTreeOnly) void reviewPersistenceSinks.clearReviewQueueManifest();
   notifyReviewQueueStateChanged();
 }
 

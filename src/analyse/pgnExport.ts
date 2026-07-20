@@ -505,12 +505,19 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
   let reviewTitle: string;
   let reviewContent: (VNode | string)[];
   const reviewProgress = selectedGameReviewProgress();
+
+
+
+
+  const runningIsBoardTree = reviewProgress.active && _getSelectedGameId() === null;
   const runningProgressLabel = reviewProgress.active
     ? formatReviewPositionProgress(reviewProgress.done, reviewProgress.total)
     : null;
   if (reviewProgress.active) {
     const percent = reviewProgressPercent(reviewProgress.done, reviewProgress.total);
-    reviewTitle = 'Analysis in progress — click to pause';
+    reviewTitle = runningIsBoardTree
+      ? 'Analyzing this position — click to cancel and discard the in-progress analysis'
+      : 'Analysis in progress — click to pause';
     reviewContent = [
       h('span.btn-review__bolt.--breathing', '⚡'),
       h('span.btn-review__label', ['Analyzing · ', h('span.btn-review__pct', `${percent}%`)]),
@@ -571,8 +578,13 @@ export function renderAnalysisControls(extraButtons?: VNode[]): VNode {
           'btn-review--running':  reviewProgress.active,
         },
         attrs: controlExplainerAttrs({
-          label: reviewProgress.active ? 'Pause analysis' : analysisComplete ? 'Re-Analyze game' : 'Analyze game',
+          label: reviewProgress.active
+            ? (runningIsBoardTree ? 'Cancel analysis' : 'Pause analysis')
+            : analysisComplete ? 'Re-Analyze game' : 'Analyze game',
           description: reviewTitle,
+          // Cancel-and-discard is consequential/destructive → Essential help; pause keeps the
+          // default richer-help tier.
+          tier: runningIsBoardTree ? 'essential' : 'more-help',
         }),
         on: { click: reviewClick },
       }, reviewContent) : renderDisabledControlExplainer({
