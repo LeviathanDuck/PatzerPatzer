@@ -111,7 +111,13 @@ function uciToSanAtPos(pos: Chess, uci: string): string {
 
 
 
-function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined {
+
+
+
+
+
+
+export function positionAfterMoves(fen: string, uciMoves: string[]): Chess | undefined {
   const setup = parseFen(fen);
   if (setup.isErr) return undefined;
   const pos = Chess.fromSetup(setup.value);
@@ -785,18 +791,9 @@ export class PuzzleRoundCtrl {
     matched: boolean,
     fenBefore: string,
   ): PuzzleMoveQuality {
-    // If matched, classify as 'best' immediately — no engine eval needed.
-    if (matched) {
-      const quality: PuzzleMoveQuality = {
-        playedUci,
-        expectedUci,
-        matched: true,
-        quality: 'best',
-        fenBefore,
-      };
-      this.moveQualities.push(quality);
-      return quality;
-    }
+
+
+
 
 
 
@@ -807,11 +804,22 @@ export class PuzzleRoundCtrl {
 
     const appliedPlayed = applyLegalMove(fenBefore, { notation: 'uci', value: playedUci });
     if (!appliedPlayed.ok) {
-      const quality: PuzzleMoveQuality = {
+      return {
         playedUci,
         expectedUci,
         matched: false,
         quality: 'blunder',
+        fenBefore,
+      };
+    }
+
+    // If matched (and legal), classify as 'best' immediately — no engine eval needed.
+    if (matched) {
+      const quality: PuzzleMoveQuality = {
+        playedUci,
+        expectedUci,
+        matched: true,
+        quality: 'best',
         fenBefore,
       };
       this.moveQualities.push(quality);
