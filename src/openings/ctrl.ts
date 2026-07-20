@@ -10,7 +10,7 @@ import type { ResearchCollection, ResearchGame, ResearchSource, OpeningsTool } f
 import {
   loadCollections, saveCollection, deleteCollection as dbDeleteCollection,
   saveSessionState, loadSessionState, clearSessionState,
-  type StoredOpeningsSession,
+  type StoredOpeningsSession, type OpeningsDeleteOutcome,
 } from './db';
 import { createAccountResearchCollection } from './routeTarget';
 import { engineEnabled } from '../engine/ctrl';
@@ -131,6 +131,19 @@ let _collectionsLoaded = false;
 
 
 let _collectionsLoadError = false;
+
+
+
+
+
+
+
+let _collectionsLoadErrorEpoch = 0;
+/** Latch the collections-load error and advance its provenance cursor. Every SET must go through here. */
+function latchCollectionsLoadError(): void {
+  _collectionsLoadError = true;
+  _collectionsLoadErrorEpoch++;
+}
 
 
 
@@ -421,15 +434,25 @@ export function addCollection(c: ResearchCollection): void {
   _collections = [c, ..._collections];
 }
 
-/**
- * Injectable delete seam for removeCollection. Production always uses the openings DB; the deps
- * argument exists so tests can drive the FAILED-removal branch, which db.deleteCollection cannot
- * currently produce on its own (it swallows its own errors and resolves — see the note below).
- * Mirrors the OpeningsSourceRefreshDeps read seam used by refreshOpeningsSource.
- */
+
+
+
+
+
+
+
+
+
+
 export interface OpeningsRemoveCollectionDeps {
-  deleteCollection: (id: string) => Promise<void>;
+  deleteCollection: (id: string) => Promise<OpeningsDeleteOutcome>;
 }
+
+
+
+
+
+
 
 
 
@@ -454,11 +477,18 @@ export async function removeCollection(
   id: string,
   redraw: () => void,
   deps: OpeningsRemoveCollectionDeps = { deleteCollection: dbDeleteCollection },
-): Promise<void> {
-  await deps.deleteCollection(id);
+): Promise<boolean> {
+  const errorEpochAtStart = _collectionsLoadErrorEpoch;
+  const outcome = await deps.deleteCollection(id);
+  if (!outcome.ok) {
+    // Nothing was deleted: keep the collection in the list and keep whatever error is latched.
+    // No state changed, so there is nothing to redraw.
+    return false;
+  }
   _collections = _collections.filter(c => c.id !== id);
-  _collectionsLoadError = false;
+  if (_collectionsLoadErrorEpoch === errorEpochAtStart) _collectionsLoadError = false;
   redraw();
+  return true;
 }
 
 /** Rename a collection. */
@@ -1804,7 +1834,7 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
   } catch (e) {
     console.warn('[openings] failed to load collections', e);
     _collections = [];
-    _collectionsLoadError = true;
+    latchCollectionsLoadError();
     _collectionsLoaded = true;
     redraw();
     return;
@@ -1843,7 +1873,7 @@ export async function loadSavedCollections(redraw: () => void): Promise<void> {
       console.warn('[openings] failed to resume saved session', e);
       // Resume-not-possible: keep the loaded collections (never wipe them), do not fabricate a
       // session, and surface the storage error. _currentPage stays 'library' (fresh-entry path).
-      _collectionsLoadError = true;
+      latchCollectionsLoadError();
     }
   }
 
@@ -1978,7 +2008,7 @@ export async function refreshOpeningsSource(
     if (generation !== _sourceRefreshGeneration) return;
 
 
-    _collectionsLoadError = true;
+    latchCollectionsLoadError();
     redraw();
     return;
   }
