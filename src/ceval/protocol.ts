@@ -142,7 +142,11 @@ export class StockfishProtocol {
 
 
 
-  private _pendingStopCount = 0;
+
+
+
+
+  private _outstandingSearches = 0;
   private _positionContext: EnginePositionContext | null = null;
 
   // Device capability snapshot — read once at engine-start for error correlation.
@@ -512,8 +516,12 @@ export class StockfishProtocol {
 
 
 
+
+
+
+
   isEngineSettled(): boolean {
-    return this._enginePhase !== 'analyzing' && this._pendingStopCount === 0;
+    return this._outstandingSearches === 0;
   }
 
   /**
@@ -538,6 +546,9 @@ export class StockfishProtocol {
     const timeClause = movetime !== undefined ? ` movetime ${movetime}` : '';
     this._searchGeneration++;
     this._enginePhase = 'analyzing';
+
+
+    this._outstandingSearches++;
     this.send(`go depth ${depth}${timeClause}`);
   }
 
@@ -563,9 +574,6 @@ export class StockfishProtocol {
 
 
 
-
-
-    if (this._enginePhase === 'analyzing') this._pendingStopCount++;
     this.send('stop');
     if (this._searchGeneration === generationAtSend) this._enginePhase = 'idle';
   }
@@ -604,6 +612,9 @@ export class StockfishProtocol {
     this._enginePhase = 'analyzing';
 
 
+    this._outstandingSearches++;
+
+
     const timeClause = movetimeMs !== undefined ? ` movetime ${movetimeMs}` : '';
     this.send(`go depth ${depth}${timeClause}`);
   }
@@ -613,6 +624,10 @@ export class StockfishProtocol {
     this.send('quit');
     this.module = undefined;
     this._enginePhase = 'idle';
+
+
+
+
   }
 
   private send(cmd: string): void {
@@ -638,7 +653,7 @@ export class StockfishProtocol {
 
 
 
-      if (this._pendingStopCount > 0) this._pendingStopCount--;
+      if (this._outstandingSearches > 0) this._outstandingSearches--;
     } else if (parts[0] === 'uciok') {
       // Analysis mode + no contempt.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected()
