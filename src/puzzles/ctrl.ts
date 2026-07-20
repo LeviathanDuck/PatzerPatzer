@@ -826,6 +826,30 @@ export class PuzzleRoundCtrl {
       return quality;
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+    if (appliedPlayed.value.position.isCheckmate()) {
+      const quality: PuzzleMoveQuality = {
+        playedUci,
+        expectedUci,
+        matched: false,
+        quality: 'best',
+        fenBefore,
+      };
+      this.moveQualities.push(quality);
+      return quality;
+    }
+
     // Get static evaluation via shared engine eval if available.
     // Note: full engine eval requires async analysis — for the synchronous path
     // we record the structure and leave evalBefore/evalAfter undefined.
