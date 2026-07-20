@@ -1015,8 +1015,8 @@ const RECOMPUTE_LADDER_PRESETS: readonly { readonly label: string; readonly inte
 ];
 let _recomputeState:
   | { readonly stage: 'idle' }
-  | { readonly stage: 'preview'; readonly plan: import('./practice/settings').IntervalRecomputePlan; readonly newIntervals: readonly number[]; readonly truncated: boolean }
-  | { readonly stage: 'result'; readonly applied: number; readonly noop: number; readonly stale: readonly { readonly targetId: string; readonly reason: string }[] }
+  | { readonly stage: 'preview'; readonly studyItemId: string; readonly plan: import('./practice/settings').IntervalRecomputePlan; readonly oldIntervals: readonly number[]; readonly newIntervals: readonly number[]; readonly truncated: boolean }
+  | { readonly stage: 'result'; readonly studyItemId: string; readonly applied: number; readonly noop: number; readonly stale: readonly { readonly targetId: string; readonly reason: string }[]; readonly truncated: boolean }
   = { stage: 'idle' };
 let _recomputeBusy = false;
 
@@ -1035,7 +1035,9 @@ function startRecomputePreview(studyItemId: string, newIntervals: readonly numbe
         configId: r.configId, configVersion: r.configVersion,
       }));
       const plan = planIntervalRecompute(inputs, current, newIntervals, studyItemId);
-      _recomputeState = { stage: 'preview', plan, newIntervals, truncated: read.truncated };
+
+
+      _recomputeState = { stage: 'preview', studyItemId, plan, oldIntervals: current, newIntervals, truncated: read.truncated };
     } catch {
       _recomputeState = { stage: 'idle' };
     } finally {
@@ -1047,12 +1049,16 @@ function startRecomputePreview(studyItemId: string, newIntervals: readonly numbe
 
 function confirmRecompute(redraw: () => void): void {
   if (_recomputeBusy || _recomputeState.stage !== 'preview') return;
-  const plan = _recomputeState.plan;
+  const st = _recomputeState;
   _recomputeBusy = true;
   void (async () => {
     try {
-      const out = await applyConfirmedIntervalRecomputePlan(plan, { planId: plan.planId });
-      _recomputeState = { stage: 'result', applied: out.applied, noop: out.noop, stale: out.stale };
+      const out = await applyConfirmedIntervalRecomputePlan(st.plan, { planId: st.plan.planId });
+
+
+
+      writeOrpStudyOverride(st.studyItemId, { ...readOrpStudyOverride(st.studyItemId), intervals: [...st.newIntervals] });
+      _recomputeState = { stage: 'result', studyItemId: st.studyItemId, applied: out.applied, noop: out.noop, stale: out.stale, truncated: st.truncated };
     } catch {
       _recomputeState = { stage: 'idle' };
     } finally {
@@ -1065,30 +1071,44 @@ function confirmRecompute(redraw: () => void): void {
 function renderRecomputeSection(studyItemId: string, currentIntervals: readonly number[], redraw: () => void): VNode {
   const fmt = (ms: number): string => (ms >= 86_400_000 ? `${Math.round(ms / 86_400_000)}d` : `${Math.round(ms / 3_600_000)}h`);
   const ladderLabel = (iv: readonly number[]): string => iv.map(fmt).join(' · ');
+  const exact = (ms: number): string => new Date(ms).toLocaleString();
+
+
+  if (_recomputeState.stage !== 'idle' && _recomputeState.studyItemId !== studyItemId) {
+    _recomputeState = { stage: 'idle' };
+  }
   if (_recomputeState.stage === 'preview') {
     const st = _recomputeState;
     const summary = summarizeRecomputePlan(st.plan, Date.now());
+    const moving = summary.movedEarlier + summary.movedLater;
+    const shown = st.plan.entries.slice(0, 8);
+    const remainder = st.plan.entries.length - shown.length;
     return h('div.orp-recompute', [
       h('div.study-tools-col__label', 'Recompute due dates — preview'),
-      h('div.orp-recompute__line', `Scope: this Study. Ladder ${ladderLabel(currentIntervals)} → ${ladderLabel(st.newIntervals)}`),
+      h('div.orp-recompute__line', `Scope: this Study. Ladder ${ladderLabel(st.oldIntervals)} → ${ladderLabel(st.newIntervals)}`),
       h('div.orp-recompute__line', `${summary.affected} active dates affected · ${summary.skippedInactive} inactive skipped`),
       h('div.orp-recompute__line', `${summary.movedEarlier} earlier · ${summary.movedLater} later · ${summary.unchanged} unchanged · ${summary.dueImmediately} become due now`),
-      st.truncated ? h('div.orp-recompute__warn', 'This Study has more scheduled rows than the preview covers — showing the first 500; the rest are untouched.') : null,
-      h('div.orp-recompute__line', 'Steps, mastery/status, and attempt history will not change. Frozen review sessions covering moved rows become stale and will revalidate. Rows that change between this preview and your confirmation are skipped — preview again for them.'),
-      h('ul.orp-recompute__rows', st.plan.entries.slice(0, 8).map(e =>
-        h('li.orp-recompute__row', { key: e.targetId }, `${e.targetId.slice(0, 8)}… ${new Date(e.oldDueAt).toLocaleDateString()} → ${new Date(e.newDueAt).toLocaleDateString()}`))),
+      st.truncated ? h('div.orp-recompute__warn', 'This Study has more scheduled rows than the preview covers — showing the first 500; the rest stay untouched.') : null,
+      h('div.orp-recompute__line', 'Steps, mastery/status, and attempt history will not change. The new ladder also becomes this Study\'s interval setting. Frozen review sessions covering moved rows become stale and will revalidate. Rows that change between this preview and your confirmation are skipped — preview again for them.'),
+      h('ul.orp-recompute__rows', shown.map(e =>
+        h('li.orp-recompute__row', { key: e.targetId }, `${e.targetId} — ${exact(e.oldDueAt)} → ${exact(e.newDueAt)}`))),
+      remainder > 0 ? h('div.orp-recompute__line', `…and ${remainder} more`) : null,
       h('button.orp-recompute__confirm', {
-        attrs: { type: 'button', ...controlExplainerAttrs({
-          label: `Recompute ${summary.affected} due dates`,
-          description: 'Moves the previewed due dates onto the new ladder. Nothing else about your progress changes.',
-          tier: 'essential',
-        }) },
+        attrs: {
+          type: 'button',
+          disabled: _recomputeBusy ? 'true' : false,
+          ...controlExplainerAttrs(_recomputeBusy
+            ? { label: 'Recompute in progress', description: 'The confirmed recompute is being applied — controls unlock when it finishes.', tier: 'essential' }
+            : { label: `Recompute ${moving} due dates`, description: 'Moves the previewed due dates onto the new ladder and saves that ladder as this Study\'s interval setting.', tier: 'essential' }),
+        },
         on: { click: () => { confirmRecompute(redraw); } },
-      }, `Recompute ${summary.affected} due dates`),
-      h('button.orp-recompute__cancel', {
-        attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel the recompute preview' }) },
-        on: { click: () => { _recomputeState = { stage: 'idle' }; redraw(); } },
-      }, 'Cancel'),
+      }, `Recompute ${moving} due dates`),
+      _recomputeBusy
+        ? null // committed work cannot be cancelled — Cancel is hidden during apply
+        : h('button.orp-recompute__cancel', {
+            attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Cancel the recompute preview' }) },
+            on: { click: () => { _recomputeState = { stage: 'idle' }; redraw(); } },
+          }, 'Cancel'),
     ]);
   }
   if (_recomputeState.stage === 'result') {
@@ -1096,8 +1116,13 @@ function renderRecomputeSection(studyItemId: string, currentIntervals: readonly 
     return h('div.orp-recompute', [
       h('div.study-tools-col__label', 'Recompute complete'),
       h('div.orp-recompute__line', `${st.applied} moved · ${st.noop} already correct · ${st.stale.length} skipped`),
+      st.truncated ? h('div.orp-recompute__warn', 'Rows beyond the 500-row preview were not part of this recompute and are untouched.') : null,
       st.stale.length > 0
-        ? h('div.orp-recompute__warn', 'Skipped rows changed since the preview — run a new preview to move them.')
+        ? h('div.orp-recompute__warn', 'Skipped (changed since the preview — run a new preview to move them):')
+        : null,
+      st.stale.length > 0
+        ? h('ul.orp-recompute__rows', st.stale.map(sr =>
+            h('li.orp-recompute__row', { key: sr.targetId }, `${sr.targetId} — ${sr.reason}`)))
         : null,
       h('button.orp-recompute__done', {
         attrs: { type: 'button', ...controlExplainerAttrs({ label: 'Dismiss the recompute result' }) },
@@ -1109,11 +1134,13 @@ function renderRecomputeSection(studyItemId: string, currentIntervals: readonly 
     h('div.study-tools-col__label', `Interval ladder: ${ladderLabel(currentIntervals)}`),
     ...RECOMPUTE_LADDER_PRESETS.map(preset => h('button.orp-recompute__preset', {
       key: preset.label,
-      attrs: { type: 'button', ...controlExplainerAttrs({
-        label: `Preview recompute onto ${preset.label}`,
-        description: 'Shows exactly which due dates would move before anything changes; a separate confirmation applies it.',
-        tier: 'essential',
-      }) },
+      attrs: {
+        type: 'button',
+        disabled: _recomputeBusy ? 'true' : false,
+        ...controlExplainerAttrs(_recomputeBusy
+          ? { label: `Preview onto ${preset.label} (busy)`, description: 'A preview or apply is in progress — presets unlock when it finishes.', tier: 'essential' }
+          : { label: `Preview recompute onto ${preset.label}`, description: 'Shows which due dates would move (up to the first 500 scheduled rows) before anything changes; a separate confirmation applies it.', tier: 'essential' }),
+      },
       on: { click: () => { startRecomputePreview(studyItemId, preset.intervals, redraw); } },
     }, preset.label)),
   ]);
