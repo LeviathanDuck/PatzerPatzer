@@ -1146,8 +1146,23 @@ function recordReviewEngineInitFailure(initStartedAt: number, error: unknown): v
 
 // --- Types ---
 
+
+
+
+
+
+
+
+
+export type ReviewOrigin =
+  | { kind: 'library' }
+  | { kind: 'board-tree'; boardReviewId: string };
+
 export interface ReviewQueueEntry {
   game:   ImportedGame;
+
+
+  origin: ReviewOrigin;
   // Nulled once `finishEntry` confirms the complete IDB write — see AP-7 (unbounded
   // in-memory caches). A 'complete' entry's full move tree and eval cache are durably
   // saved, so retaining them in memory for the rest of the session is wasted heap on
@@ -1876,6 +1891,7 @@ async function mirrorQueueFromManifest(): Promise<boolean> {
     // display-only fields (done/total/status) below never depend on `pgn`.
     return {
       game: game ?? { id: record.gameId, pgn: '' },
+      origin: { kind: 'library' },
       ctrl: null,
       cache: null,
       serializedNodes: null,
@@ -2114,6 +2130,9 @@ function clearActiveReviewPauseNoticeAfterProgress(): void {
 
 function persistReviewRunPauseNoticeToManifest(): void {
   if (!isCurrentLeader || !activeReviewRun) return;
+  // A board-tree (memory-only) entry never persists a pause/stale notice into the library run
+  // manifest, even when a paused library run coexists (finding 1).
+  if (activeEntryIsBoardTree()) return;
   activeReviewRun.pauseNotice = currentReviewPauseNotice
     ? {
         reason:     currentReviewPauseNotice.reason,
@@ -2261,14 +2280,29 @@ publishReviewQueueAnalysisSignal();
 
 function persistActiveReviewRun(): void {
   if (activeReviewRun) {
-    void saveReviewRunManifest(activeReviewRun).then(saved => {
+    void reviewPersistenceSinks.saveReviewRunManifest(activeReviewRun).then(saved => {
       if (!saved) markReviewStorageWriteFailed('run-manifest-write-failed');
     });
   }
 }
 
+
+
+
+
+
+
+
+
+
+function activeEntryIsBoardTree(): boolean {
+  return activeIndex >= 0 && queue[activeIndex]?.origin.kind === 'board-tree';
+}
+
 function setActiveReviewRunState(lifecycleState: ReviewRunLifecycleState): void {
   if (!activeReviewRun) return;
+  // A board-tree (memory-only) entry never mutates the durable library run manifest (finding 1).
+  if (activeEntryIsBoardTree()) return;
   activeReviewRun.lifecycleState = lifecycleState;
   activeReviewRun.updatedAt = Date.now();
   persistActiveReviewRun();
@@ -2558,7 +2592,7 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry, opts: { incrementAttem
   };
   failedGameAttempts.set(key, state);
   markActiveReviewRunGameFailed(entry.game.id, attempts, state.lastFailedAt);
-  void saveReviewFailureRecord({
+  void reviewPersistenceSinks.saveReviewFailureRecord({
     key,
     gameId:       entry.game.id,
     depth:        entry.depth,
@@ -2596,12 +2630,14 @@ function scheduleFailedGameRetry(entry: ReviewQueueEntry, opts: { incrementAttem
 function clearFailedGameState(gameId: string, depth: number): void {
   const key = failedGameKey(gameId, depth);
   failedGameAttempts.delete(key);
-  void deleteReviewFailureRecord(key);
+
+
+  void reviewPersistenceSinks.deleteReviewFailureRecord(key);
 }
 
 function saveFailedGameState(state: FailedGameState): void {
   const key = failedGameKey(state.gameId, state.depth);
-  void saveReviewFailureRecord({
+  void reviewPersistenceSinks.saveReviewFailureRecord({
     key,
     gameId:       state.gameId,
     depth:        state.depth,
@@ -2620,7 +2656,7 @@ function migrateFailedGameStateDepth(entry: ReviewQueueEntry, oldDepth: number, 
   const wasRetrying = failedGameRetryEntry === entry || state.retrying;
   if (wasRetrying) clearFailedGameRetryTimer();
   failedGameAttempts.delete(oldKey);
-  void deleteReviewFailureRecord(oldKey);
+  void reviewPersistenceSinks.deleteReviewFailureRecord(oldKey);
   const newState: FailedGameState = {
     ...state,
     depth: newDepth,
@@ -2665,7 +2701,7 @@ function persistSkippedFailedGameState(entry: ReviewQueueEntry): void {
     skippedAt:    Date.now(),
   };
   failedGameAttempts.set(key, state);
-  void saveReviewFailureRecord({
+  void reviewPersistenceSinks.saveReviewFailureRecord({
     key,
     gameId:       state.gameId,
     depth:        state.depth,
@@ -2730,8 +2766,40 @@ function markReviewStorageWriteFailed(health: Exclude<ReviewStorageHealth, 'ok'>
   notifyReviewQueueStateChanged();
 }
 
+
+
+
+
+
+
+
+
+
+const reviewPersistenceSinks = {
+  saveAnalysisToIdbStrict,
+  saveReviewQueueManifest,
+  clearReviewQueueManifestEntry,
+  clearReviewQueueManifest,
+  saveReviewFailureRecord,
+  deleteReviewFailureRecord,
+  saveReviewRunManifest,
+  saveGameSummary,
+};
+
+
+export function __setReviewPersistenceSinksForTest(
+  overrides: Partial<typeof reviewPersistenceSinks>,
+): () => void {
+  const previous = { ...reviewPersistenceSinks };
+  Object.assign(reviewPersistenceSinks, overrides);
+  return () => { Object.assign(reviewPersistenceSinks, previous); };
+}
+
 function persistManifestEntry(entry: ReviewQueueEntry): void {
-  void saveReviewQueueManifest({
+
+
+  if (entry.origin.kind === 'board-tree') return;
+  void reviewPersistenceSinks.saveReviewQueueManifest({
     gameId: entry.game.id,
     status: entry.status,
     depth:  entry.depth,
@@ -2784,8 +2852,12 @@ function flushReviewCheckpoint(): void {
 
 
 
+  if (entry.origin.kind === 'board-tree') return;
+
+
+
   const flushStartedAt = Date.now();
-  void saveAnalysisToIdbStrict('partial', entry.game.id, entry.serializedNodes, entryMinimumDepth(entry))
+  void reviewPersistenceSinks.saveAnalysisToIdbStrict('partial', entry.game.id, entry.serializedNodes, entryMinimumDepth(entry))
     .then(() => {
       checkpointLastFlushAt = Date.now();
       recordReviewCheckpointFlushed(entry, flushStartedAt, flushedPositionCount);
@@ -2806,6 +2878,10 @@ function flushReviewCheckpoint(): void {
  * the last flush, otherwise schedules a trailing flush for whichever is sooner.
  */
 function scheduleReviewCheckpoint(entry: ReviewQueueEntry): void {
+
+
+
+  if (entry.origin.kind === 'board-tree') return;
   checkpointPendingEntry = entry;
   checkpointPositionsPending++;
   const elapsed = Date.now() - Math.max(checkpointLastFlushAt, checkpointLastAttemptAt);
@@ -3364,6 +3440,22 @@ function markActiveEntryErrored(reason: string, error?: unknown): void {
     console.error('[review-engine] marking game errored:', reason);
   }
 
+  if (entry && entry.origin.kind === 'board-tree') {
+
+
+
+    entry.status = 'error';
+    if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
+    entry.ctrl  = null;
+    entry.cache = null;
+    entry.serializedNodes = null;
+    recordReviewGameErrored(entry, error, lastPositionIndex, false);
+    notifyBoardTreeReviewCompletion({ boardReviewId: entry.origin.boardReviewId, status: 'error' });
+    notifyReviewQueueStateChanged();
+    advanceQueue();
+    return;
+  }
+
   if (entry) {
     entry.status = 'error';
     persistManifestEntry(entry);
@@ -3502,6 +3594,41 @@ function notifyAcceptedReviewResult(result: AcceptedReviewResult): void {
       listener(result);
     } catch (error) {
       console.warn('[review-queue] accepted-result listener failed', error);
+    }
+  }
+}
+
+
+
+
+
+export interface BoardTreeReviewCompletion {
+  boardReviewId: string;
+
+
+
+
+  status:        'complete' | 'error' | 'cancelled';
+  engineName?:   string;
+  depth?:        number;
+}
+
+const boardTreeReviewCompletionListeners = new Set<(evt: BoardTreeReviewCompletion) => void>();
+
+/** Subscribe to board-tree (memory-only) review terminal events; returns an unsubscribe cleanup. */
+export function subscribeBoardTreeReviewCompletion(
+  listener: (evt: BoardTreeReviewCompletion) => void,
+): () => void {
+  boardTreeReviewCompletionListeners.add(listener);
+  return () => { boardTreeReviewCompletionListeners.delete(listener); };
+}
+
+function notifyBoardTreeReviewCompletion(evt: BoardTreeReviewCompletion): void {
+  for (const listener of boardTreeReviewCompletionListeners) {
+    try {
+      listener(evt);
+    } catch (error) {
+      console.warn('[review-queue] board-tree completion listener failed', error);
     }
   }
 }
@@ -4387,7 +4514,48 @@ function runReviewRunHygieneCadence(manifest: ReviewRunManifest): void {
 }
 
 function finishEntry(entry: ReviewQueueEntry): void {
+
+
+  if (entry.origin.kind === 'board-tree') {
+    finishBoardTreeEntry(entry);
+    return;
+  }
   void finishEntryAfterDurableSave(entry);
+}
+
+
+
+
+
+
+
+function finishBoardTreeEntry(entry: ReviewQueueEntry): void {
+  if (entry.origin.kind !== 'board-tree') return; // narrowing guard
+  if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
+  // The user may have replaced/cancelled the board while the last result was landing.
+  if (activeIndex < 0 || queue[activeIndex] !== entry) return;
+
+  const engineName = reviewProtocol.engineName;
+  const completionDepth = entryMinimumDepth(entry);
+  entry.status = 'complete';
+  markReviewQueueProgress(true);
+
+  // Release the heavy per-entry objects immediately — nothing durable was saved, so retaining the
+  // full move tree/eval cache would be wasted heap (mirrors the library eviction below finishEntry).
+  entry.ctrl  = null;
+  entry.cache = null;
+  entry.serializedNodes = null;
+  recordReviewCtrlCacheEvicted(entry);
+
+  reviewDebugLog('[review-engine] board-tree review complete:', entry.origin.boardReviewId);
+  notifyBoardTreeReviewCompletion({
+    boardReviewId: entry.origin.boardReviewId,
+    status: 'complete',
+    ...(engineName !== undefined ? { engineName } : {}),
+    depth: completionDepth,
+  });
+  notifyReviewQueueStateChanged();
+  advanceQueue();
 }
 
 async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<void> {
@@ -4415,7 +4583,7 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
       movetimeMs:     entry.feed === 'bulk' ? (bulkReviewMovetime ?? null) : null,
     });
 
-    await saveAnalysisToIdbStrict(
+    await reviewPersistenceSinks.saveAnalysisToIdbStrict(
       'complete',
       entry.game.id,
       buildAnalysisNodes(ctrl.mainline, p => cache.get(p)),
@@ -4459,7 +4627,7 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
         moments,
         completionDepth,
       );
-      void saveGameSummary(gameSummary);
+      void reviewPersistenceSinks.saveGameSummary(gameSummary);
       invalidateSummariesCache();
     }
 
@@ -4473,7 +4641,7 @@ async function finishEntryAfterDurableSave(entry: ReviewQueueEntry): Promise<voi
 
     // Terminal state: the full analysis is now durably saved in analysis-library,
     // so the lightweight queue manifest entry is no longer needed.
-    void clearReviewQueueManifestEntry(entry.game.id);
+    void reviewPersistenceSinks.clearReviewQueueManifestEntry(entry.game.id);
 
     reviewDebugLog('[review-engine] game complete:', entry.game.id);
     notifyReviewQueueStateChanged();
@@ -4589,12 +4757,16 @@ function advanceQueue(): void {
     return;
   }
 
-  setActiveReviewRunState('running');
-  ensureReviewBatchElapsedStarted();
-  markReviewQueueProgress();
+  // Commit the active slot BEFORE the run-state/progress writes so `activeEntryIsBoardTree()` sees
+  // the incoming entry: advancing into a board-tree (memory-only) entry must not persist the library
+  // run manifest even when a paused library run coexists (finding 1). setActiveReviewRunState and
+  // markReviewQueueProgress both no-op the durable write for a board-tree active entry.
   activeIndex = nextIndex;
   const entry = queue[activeIndex]!;
   entry.status = 'analyzing';
+  setActiveReviewRunState('running');
+  ensureReviewBatchElapsedStarted();
+  markReviewQueueProgress();
   persistManifestEntry(entry);
   // This is the authoritative idle/pending -> active engine-ownership boundary. Consumers such
   // as Opening Tree eval must observe the real queue transition rather than infer it from enqueue
@@ -4734,6 +4906,7 @@ function enqueueBulkReviewAsLeader(
       : estimatePlyCountFromPgn(game.pgn);
     const entry: ReviewQueueEntry = {
       game,
+      origin: { kind: 'library' },
       ctrl,
       cache:  lazy ? null : new Map<string, PositionEval>(),
       serializedNodes: lazy ? null : {},
@@ -4877,6 +5050,7 @@ function enqueueAtFrontAsLeader(orderedGames: ImportedGame[], entryDepth: number
       : estimatePlyCountFromPgn(game.pgn);
     newEntries.push({
       game,
+      origin: { kind: 'library' },
       ctrl,
       cache:  lazy ? null : new Map<string, PositionEval>(),
       serializedNodes: lazy ? null : {},
@@ -4944,6 +5118,251 @@ export function enqueueAtFront(games: ImportedGame[], depth?: number, feed: 'bul
     return;
   }
   enqueueAtFrontAsLeader(orderedGames, entryDepth, feed);
+}
+
+
+
+export type BoardTreeEnqueueResult =
+  | { kind: 'enqueued'; boardReviewId: string }
+  | { kind: 'empty-board' }
+  | { kind: 'owner-busy' };
+
+
+
+
+
+
+
+
+
+
+
+
+export function requestBoardTreeReview(
+  game: ImportedGame,
+  boardReviewId: string,
+  depth?: number,
+): BoardTreeEnqueueResult {
+  if (!game.pgn || game.pgn.trim().length === 0) return { kind: 'empty-board' };
+  // Non-resumable + memory-only ⇒ never write an observer manifest for another tab to pick up.
+  // If this tab does not own the queue, refuse with a typed result instead.
+  if (!isCurrentLeader) return { kind: 'owner-busy' };
+
+  preemptTreeEvalLease('board-tree-review-enqueued');
+  const entryDepth = depth ?? bulkReviewDepth;
+
+  const ctrl  = new AnalyseCtrl(pgnToTree(game.pgn));
+  const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
+  const entry: ReviewQueueEntry = {
+    game,
+    origin: { kind: 'board-tree', boardReviewId },
+    ctrl,
+    cache: new Map<string, PositionEval>(),
+    serializedNodes: {},
+    done:  0,
+    total,
+    status: 'pending',
+    depth:  entryDepth,
+
+
+    feed: 'one-off',
+  };
+
+  // Insert immediately after the active entry so it is next in line (mirrors enqueueAtFront), but
+  // with NO persistManifestEntry — board-tree entries never touch the manifest.
+  const insertAt = activeIndex >= 0 ? activeIndex + 1 : 0;
+  queue.splice(insertAt, 0, entry);
+  recordReviewGameEnqueued(entry.game.id, insertAt);
+  notifyReviewQueueStateChanged();
+
+  if (!reviewEngineInitStarted && !reviewEngineFailed) {
+    void initReviewEngine('/stockfish-web');
+  }
+  if (activeIndex < 0 && !reviewEngineFailed) {
+    advanceQueue();
+  }
+  return { kind: 'enqueued', boardReviewId };
+}
+
+
+
+
+
+
+
+export function evictBoardTreeReview(boardReviewId: string): void {
+  removeBoardTreeEntry(boardReviewId, false);
+}
+
+
+
+
+
+
+
+
+
+export function cancelBoardTreeReview(boardReviewId: string): void {
+  removeBoardTreeEntry(boardReviewId, true);
+}
+
+/**
+ * Remove a board-tree entry from the queue with no durable write. When `emitCancelled` is true a
+ * terminal `cancelled` completion signal is fired (explicit user cancellation); when false the
+ * removal is a silent supersession (board replacement / next board-review request).
+ */
+function removeBoardTreeEntry(boardReviewId: string, emitCancelled: boolean): void {
+  const index = queue.findIndex(
+    e => e.origin.kind === 'board-tree' && e.origin.boardReviewId === boardReviewId,
+  );
+  if (index < 0) return;
+  const entry = queue[index]!;
+  const isActive = index === activeIndex;
+  if (isActive) {
+    // Drain any search still owed a reply so the next game does not consume this entry's leftover
+    // bestmove (same discipline as markActiveEntryErrored).
+    if (searchOwnerOutstanding(reviewSearchOwner) > 0) {
+      searchOwnerMarkAllStale(reviewSearchOwner);
+      reviewProtocol.stop();
+    }
+    reviewSearchActive = false;
+    clearReviewSearchIdentity();
+    reviewItemQueue = [];
+    reviewItemIndex = 0;
+    reviewItemQueueOwner = null;
+  }
+  if (checkpointPendingEntry === entry) cancelReviewCheckpoint();
+  entry.ctrl = null;
+  entry.cache = null;
+  entry.serializedNodes = null;
+  queue.splice(index, 1);
+  if (isActive) {
+    activeIndex = -1;
+    advanceQueue();
+  } else if (index < activeIndex) {
+    activeIndex--;
+  }
+  // Fire the terminal signal AFTER the queue is settled so a listener that re-enters sees the
+  // evicted state. Memory-only: no persistence is touched here.
+  if (emitCancelled) {
+    notifyBoardTreeReviewCompletion({ boardReviewId, status: 'cancelled' });
+  }
+  notifyReviewQueueStateChanged();
+}
+
+
+
+
+
+
+/** Test-only: force this tab's leader flag so requestBoardTreeReview enqueues deterministically. */
+export function __setReviewLeaderForTest(value: boolean): void {
+  isCurrentLeader = value;
+}
+
+/**
+ * Test-only: force the engine-failed flag. With it true, requestBoardTreeReview skips both the
+ * Stockfish init and the advanceQueue→startEntryBatch dispatch (there is no WASM engine in node),
+ * so the enqueue/entry-shape assertions run without spinning up or hanging on the engine.
+ */
+export function __setReviewEngineFailedForTest(value: boolean): void {
+  reviewEngineFailed = value;
+}
+
+/** Test-only: install `entry` as the sole, active queue entry. */
+export function __installActiveReviewEntryForTest(entry: ReviewQueueEntry): void {
+  queue = [entry];
+  activeIndex = 0;
+}
+
+/** Test-only: read-only view of the current queue entries. */
+export function __getReviewQueueEntriesForTest(): readonly ReviewQueueEntry[] {
+  return queue;
+}
+
+/** Test-only: reset queue/checkpoint/active state to a clean slate. */
+export function __resetReviewQueueForTest(): void {
+  queue = [];
+  activeIndex = -1;
+  checkpointPendingEntry = null;
+  checkpointPositionsPending = 0;
+  if (checkpointTimer !== null) { clearTimeout(checkpointTimer); checkpointTimer = null; }
+
+
+  activeReviewRun = null;
+  queuePaused = false;
+  queuePauseReason = null;
+  currentReviewPauseNotice = null;
+  lastReviewPauseNotice = null;
+}
+
+/** Test-only: run the completion seam for the active entry (finishEntry routing). */
+export function __runActiveEntryFinishForTest(): void {
+  if (activeIndex >= 0 && queue[activeIndex]) finishEntry(queue[activeIndex]!);
+}
+
+/** Test-only: run the error seam for the active entry (markActiveEntryErrored routing). */
+export function __runActiveEntryErrorForTest(reason: string): void {
+  markActiveEntryErrored(reason);
+}
+
+/** Test-only: run the checkpoint seam for the active entry (schedule + forced flush). */
+export function __runActiveEntryCheckpointForTest(): void {
+  if (activeIndex < 0 || !queue[activeIndex]) return;
+  scheduleReviewCheckpoint(queue[activeIndex]!);
+  flushReviewCheckpoint();
+}
+
+
+
+
+
+
+
+
+export function __installCoexistingPausedLibraryRunForTest(): void {
+  isCurrentLeader = true;
+  activeReviewRun = createReviewRunManifest({
+    sourceMode:     'selected-games',
+    sourceGameIds:  ['coexisting-library-game'],
+    reviewDepth:    18,
+    activeBatchIds: ['coexisting-library-game'],
+  });
+  activeReviewRun.lifecycleState = 'stale';
+  const notice: ReviewPauseNotice = { reason: 'user-paused', message: 'paused', active: true, recordedAt: Date.now() };
+  currentReviewPauseNotice = notice;
+  lastReviewPauseNotice = notice;
+  activeReviewRun.pauseNotice = { reason: notice.reason, message: notice.message, active: notice.active, recordedAt: notice.recordedAt };
+  queuePaused = true;
+  queuePauseReason = 'user';
+}
+
+/** Test-only: the current library run manifest (byte-identical assertion for finding 1). */
+export function __getActiveReviewRunManifestForTest(): ReviewRunManifest | null {
+  return activeReviewRun;
+}
+
+
+
+
+
+
+
+
+export function __teardownReviewQueueForTest(): void {
+  if (leaderHeartbeatTimer !== null) { clearInterval(leaderHeartbeatTimer); leaderHeartbeatTimer = null; }
+  if (observerPollTimer !== null)    { clearInterval(observerPollTimer);    observerPollTimer = null; }
+  if (reviewStaleWatchTimer !== null){ clearInterval(reviewStaleWatchTimer); reviewStaleWatchTimer = null; }
+  if (checkpointTimer !== null)      { clearTimeout(checkpointTimer);        checkpointTimer = null; }
+  clearFailedGameRetryTimer();
+  clearWatchdog();
+  clearDispatchDefer();
+  clearDispatchBarrier();
+  clearTreeEvalPreemptDrain();
+  if (leaderChannel !== null) {
+    try { leaderChannel.close(); } catch { /* already closed */ }
+    leaderChannel = null;
+  }
 }
 
 /**
@@ -5088,6 +5507,7 @@ export async function resumeReviewQueueFromManifest(games: ImportedGame[]): Prom
     const total = ctrl.mainline.length > 1 ? ctrl.mainline.length - 1 : 0;
     rebuilt.push({
       game,
+      origin: { kind: 'library' },
       ctrl,
       cache,
       serializedNodes,
@@ -5258,6 +5678,12 @@ export function cancelBulkReview(): void {
     postReviewChannelMessage({ type: 'cancel', tabId });
     return;
   }
+
+
+
+
+  const cancelledActiveEntryWasBoardTree = activeEntryIsBoardTree();
+  const queueWasBoardTreeOnly = queue.length > 0 && queue.every(entry => entry.origin.kind === 'board-tree');
   clearWatchdog();
   clearDispatchDefer();
   clearDispatchBarrier();
@@ -5282,6 +5708,14 @@ export function cancelBulkReview(): void {
   // pending checkpoint — writing it would just be immediately wiped out.
   cancelReviewCheckpoint();
   recordReviewQueueLifecycleEvent('review-queue-cleared', Severity.Info);
+
+
+
+  for (const entry of queue) {
+    if (entry.origin.kind === 'board-tree') {
+      notifyBoardTreeReviewCompletion({ boardReviewId: entry.origin.boardReviewId, status: 'cancelled' });
+    }
+  }
   queue       = [];
   activeIndex = -1;
 
@@ -5293,12 +5727,26 @@ export function cancelBulkReview(): void {
   queuePauseReason = null;
   hiddenSuspendedOwnerTabId = null;
   reviewStorageHealth = 'ok';
-  setActiveReviewRunState('canceled');
+
+
+
+
+
+
+
+
+
+
+  if (!queueWasBoardTreeOnly && !cancelledActiveEntryWasBoardTree) setActiveReviewRunState('canceled');
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
 
   reconcileReviewStaleWatch();
-  void clearReviewQueueManifest();
+
+
+
+
+  if (!queueWasBoardTreeOnly) void reviewPersistenceSinks.clearReviewQueueManifest();
   notifyReviewQueueStateChanged();
 }
 

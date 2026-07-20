@@ -4,6 +4,10 @@ export interface EngineStrengthConfig {
   level: number;
   uciElo: number;
   maxDepth: number;
+
+
+
+  movetimeMs?: number;
 }
 
 

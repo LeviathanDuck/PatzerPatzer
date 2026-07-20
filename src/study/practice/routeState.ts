@@ -28,6 +28,7 @@
 
 
 import type { Route } from '../../router';
+import { packResearchAnalysisRouteId, parsePackedResearchAnalysisRouteId } from '../../analyse/routeState';
 import { parseStudyDetailRouteState, studyDetailRouteSelectsPractice } from '../detailRouteState';
 
 // --- Opaque resume reference (content-free at C5) --------------------------------------------------
@@ -87,9 +88,32 @@ function practiceRouteOwnerFromRoute(route: Route): PracticeRouteOwner | null {
   }
   if (route.name === 'analysis-game') {
     const id = route.params['id'];
-    return id ? { host: 'analysis-game', target: id } : null;
+    return id ? { host: 'analysis-game', target: analysisOwnerTarget(id) } : null;
   }
   return null;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function analysisOwnerTarget(id: string): string {
+  const research = parsePackedResearchAnalysisRouteId(id);
+  if (research === null) return id;
+  return packResearchAnalysisRouteId(research.collectionId, research.gameId, 0);
 }
 
 /**

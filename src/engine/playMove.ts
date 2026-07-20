@@ -38,7 +38,7 @@ export function requestPlayMove(req: PlayMoveRequest): void {
   const dispatch = () => {
     setPlayMoveCallback(req.onMove);
     protocol.setPositionContext(req.position);
-    protocol.goPlay(req.strength.maxDepth);
+    protocol.goPlay(req.strength.maxDepth, req.strength.movetimeMs);
   };
   // Every request enters through the readiness owner. Mutable mode/strength cannot prove that a
   // predecessor search has drained, and a rapid same-strength restart must remain latest-wins.

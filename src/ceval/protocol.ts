@@ -132,6 +132,21 @@ export class StockfishProtocol {
 
 
   private _searchGeneration = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  private _outstandingSearches = 0;
   private _positionContext: EnginePositionContext | null = null;
 
   // Device capability snapshot — read once at engine-start for error correlation.
@@ -471,9 +486,42 @@ export class StockfishProtocol {
     return this._positionContext;
   }
 
-  /** True only while this protocol instance has an active `go` search outstanding. */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   isAnalyzing(): boolean {
     return this._enginePhase === 'analyzing';
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+  isEngineSettled(): boolean {
+    return this._outstandingSearches === 0;
   }
 
   /**
@@ -498,6 +546,9 @@ export class StockfishProtocol {
     const timeClause = movetime !== undefined ? ` movetime ${movetime}` : '';
     this._searchGeneration++;
     this._enginePhase = 'analyzing';
+
+
+    this._outstandingSearches++;
     this.send(`go depth ${depth}${timeClause}`);
   }
 
@@ -518,6 +569,11 @@ export class StockfishProtocol {
 
   stop(): void {
     const generationAtSend = this._searchGeneration;
+
+
+
+
+
     this.send('stop');
     if (this._searchGeneration === generationAtSend) this._enginePhase = 'idle';
   }
@@ -550,11 +606,17 @@ export class StockfishProtocol {
   /**
    * Start a single-PV search capped at the given depth, for play-mode move generation.
    */
-  goPlay(depth: number): void {
+  goPlay(depth: number, movetimeMs?: number): void {
     this.send('setoption name MultiPV value 1');
     this._searchGeneration++;
     this._enginePhase = 'analyzing';
-    this.send(`go depth ${depth}`);
+
+
+    this._outstandingSearches++;
+
+
+    const timeClause = movetimeMs !== undefined ? ` movetime ${movetimeMs}` : '';
+    this.send(`go depth ${depth}${timeClause}`);
   }
 
   /** Shut down the engine. */
@@ -562,6 +624,10 @@ export class StockfishProtocol {
     this.send('quit');
     this.module = undefined;
     this._enginePhase = 'idle';
+
+
+
+
   }
 
   private send(cmd: string): void {
@@ -584,6 +650,10 @@ export class StockfishProtocol {
       this.engineName = parts.slice(2).join(' ');
     } else if (parts[0] === 'bestmove') {
       this._enginePhase = 'idle';
+
+
+
+      if (this._outstandingSearches > 0) this._outstandingSearches--;
     } else if (parts[0] === 'uciok') {
       // Analysis mode + no contempt.
       // Mirrors lichess-org/lila: ui/lib/src/ceval/protocol.ts connected()

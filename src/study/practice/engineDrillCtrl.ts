@@ -34,7 +34,7 @@ export const CASUAL_STRENGTH: EngineStrengthConfig = { level: 8, uciElo: 3200, m
  * MODELED as an uncapped-depth search the host budget-stops at 60s (consult §7 disclosed
  * approximation; a movetime seam is a candidate engine-protocol follow-up — NOT added here).
  */
-export const MASTERY_STRENGTH: EngineStrengthConfig = { level: 8, uciElo: 3200, maxDepth: 99 };
+export const MASTERY_STRENGTH: EngineStrengthConfig = { level: 8, uciElo: 3200, maxDepth: 99, movetimeMs: 60_000 };
 export const MASTERY_TIME_BUDGET_MS = 60_000;
 
 export function strengthFor(difficulty: DrillDifficulty): EngineStrengthConfig {

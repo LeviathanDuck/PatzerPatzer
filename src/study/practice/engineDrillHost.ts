@@ -20,6 +20,7 @@
 
 
 
+import type { EngineStrengthConfig } from '../../engine/types';
 import { h, type VNode } from 'snabbdom';
 import { parseFen, makeFen, INITIAL_FEN } from 'chessops/fen';
 import { Chess } from 'chessops/chess';
@@ -39,8 +40,7 @@ import {
   createEngineDrill, resumeEngineDrill, applyReplyPosition,
   MIN_GOAL_VERDICT_DEPTH,
   type EngineDrillController, type EngineDrillState, type EngineDrillSnapshot,
-  type DrillGoal, type DrillDifficulty, type DrillTerminal,
-} from './engineDrillCtrl';
+  type DrillGoal, type DrillDifficulty, type DrillTerminal, resolveDifficulty } from './engineDrillCtrl';
 import {
   renderDrillSetup, renderDrillReadout, renderDrillResult,
   type DrillGoalChoice, type DrillAutoNextProps,
@@ -69,7 +69,8 @@ export interface EngineDrillHostDeps {
 
 
   engineSeam?: {
-    requestReply(fen: string, maxDepth: number, onMove: (uci: string) => void, onError: () => void): void;
+
+    requestReply(fen: string, strength: EngineStrengthConfig, onMove: (uci: string) => void, onError: () => void): void;
     cancelReply(): void;
   };
   redraw(): void;
@@ -110,6 +111,16 @@ let _setupMaxCritical = 0;
 let _setupTimeLimitMinutes: number | null = null;
 let _setupDifficulty: DrillDifficulty = 'casual';
 let _setupDifficultySynced = false;
+
+
+let _userChoseDifficulty = false;
+
+
+export function setEngineDrillSetupDifficulty(difficulty: DrillDifficulty): void {
+  _setupDifficulty = difficulty;
+  _userChoseDifficulty = true;
+  deps?.redraw();
+}
 let _setupLearnerIsWhite = true;
 let _setupMoveLimit: number | null = null;
 
@@ -130,6 +141,10 @@ export interface DrillStartConfig {
   readonly timeLimitMs?: number;
   readonly difficulty: string;
   readonly retryOfDrillId?: string;
+
+
+  readonly studyItemId?: string;
+  readonly studyNodePath?: string;
 }
 
 export function initEngineDrillHost(d: EngineDrillHostDeps): void {
@@ -146,6 +161,51 @@ export function engineDrillFinished(): boolean {
 /** Read-only view of the finished drill state (null while live). */
 export function engineDrillFinishedState(): EngineDrillState | null {
   return _finishedState;
+}
+
+
+
+export function engineDrillActiveRecord(): EngineDrillRecord | null {
+  return _record;
+}
+
+
+
+
+
+export type StudyDrillLaunchResult = { readonly ok: true } | { readonly ok: false; readonly reason: 'drill-live' | 'no-board' | 'landing-failed' };
+
+export function requestStudyDrillLaunch(input: {
+  readonly pgn: string;
+  readonly path: string;
+  readonly studyItemId: string;
+  readonly studyNodePath: string;
+  readonly difficulty: string;
+}): StudyDrillLaunchResult {
+  const d = deps;
+  if (!d || d.openPgnOnBoard === undefined) return { ok: false, reason: 'no-board' };
+  if (_drill !== null) return { ok: false, reason: 'drill-live' };
+
+
+
+
+
+  d.openPgnOnBoard(input.pgn);
+  d.navigate(input.path);
+  const landedFen = d.getCurrentFen();
+  if (d.getCurrentPath() !== input.path || landedFen === '') {
+    console.warn('engine-drill: study launch aborted — the board did not land on the requested node');
+    return { ok: false, reason: 'landing-failed' };
+  }
+  startEngineDrill({
+    startFen: landedFen,
+    learnerIsWhite: landedFen.split(' ')[1] !== 'b',
+    goals: [],
+    difficulty: input.difficulty,
+    studyItemId: input.studyItemId,
+    studyNodePath: input.studyNodePath,
+  });
+  return { ok: true };
 }
 
 // --- Chess adjudication (host-owned) ----------------------------------------
@@ -226,21 +286,24 @@ function outcomeOf(state: EngineDrillState, learnerResigned = false): EngineDril
 
 
 
-let _lastPropagatedSessionDifficulty: string | null = null;
+
+
+
+
+
+
 
 function propagateSessionDifficulty(drill: EngineDrillController): void {
+  if (_userChoseDifficulty) return; // the explicit panel choice governs this drill
   const now = Date.now();
   const resolved = resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(now), now);
-  if (resolved.provenance.drillDifficulty !== 'session') return;
-  const want = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
+  const wantRaw = resolved.values.drillDifficulty === 'mastery' ? 'mastery' : 'casual';
 
-
-
-  if (want === _lastPropagatedSessionDifficulty) return;
+  const HOST_SUPPORTED_DIFFICULTIES = ['casual', 'mastery'] as const;
+  const want = (HOST_SUPPORTED_DIFFICULTIES as readonly string[]).includes(wantRaw) ? wantRaw : 'casual';
+  const effective = resolveDifficulty(want).difficulty;
   const state = drill.state();
-  if (state.phase === 'complete') return;
-  _lastPropagatedSessionDifficulty = want;
-  if (state.difficulty === want) return; // already effective — nothing to change
+  if (state.phase === 'complete' || state.difficulty === effective) return;
   drill.setDifficulty(want);
   _settingsHistory.push({ at: now, requestedDifficulty: want, difficulty: drill.state().difficulty, substituted: drill.state().substituted });
 }
@@ -311,7 +374,7 @@ function cancelAutoNext(): void {
 }
 
 function teardownDrill(): void {
-  _lastPropagatedSessionDifficulty = null;
+  _userChoseDifficulty = false;
 
 
   if (_drill !== null) _drill.dispose();
@@ -336,7 +399,7 @@ function buildDeps(learnerIsWhite: boolean): Parameters<typeof createEngineDrill
   ): void => {
     const seam = d.engineSeam;
     if (seam !== undefined) {
-      seam.requestReply(fen, strength.maxDepth, onMove, onError);
+      seam.requestReply(fen, strength, onMove, onError);
       return;
     }
     requestPlayMove({
@@ -428,19 +491,14 @@ export function startEngineDrill(config: DrillStartConfig): void {
   _secondaryOpen = false;
   _panelNotice = null;
   _lastConfig = config;
-  // §12.3 nearest-supported substitution, disclosed, original preserved in history: Mastery is
-  // modeled as an uncapped-depth search the host budget-stops (D13 consult) — but the shared
-  // engine has no stop-and-keep seam yet, so an uncapped search could never deliver a usable
-  // bestmove. Until that protocol seam lands (disclosed follow-up), Casual is the only
-  // SUPPORTED live configuration; a Mastery request runs Casual with the substitution recorded.
+
+
+
+
   const requestedDifficulty = config.difficulty;
-  const runDifficulty: DrillDifficulty = 'casual';
-  const substituted = requestedDifficulty !== 'casual';
-  if (substituted) {
-    _panelNotice = 'Mastery strength needs an engine seam that arrives with a follow-up — '
-      + 'running Casual; your requested setting is kept in the drill history.';
-  }
-  _lastPropagatedSessionDifficulty = null;
+  const resolvedStart = resolveDifficulty(requestedDifficulty);
+  const runDifficulty: DrillDifficulty = resolvedStart.difficulty;
+  const substituted = resolvedStart.substituted;
   _settingsHistory = [{
     at: startedAt,
     requestedDifficulty,
@@ -465,6 +523,9 @@ export function startEngineDrill(config: DrillStartConfig): void {
     outcome: null,
     completionState: 'partial',
     ...(config.retryOfDrillId !== undefined ? { retryOfDrillId: config.retryOfDrillId } : {}),
+    ...(config.studyItemId !== undefined ? { studyItemId: config.studyItemId } : {}),
+    ...(config.studyNodePath !== undefined ? { studyNodePath: config.studyNodePath } : {}),
+    ...(_userChoseDifficulty ? { explicitDifficulty: true as const } : {}),
     createdAt: startedAt,
     updatedAt: startedAt,
   };
@@ -514,6 +575,9 @@ export function engineDrillOnUserMove(input: {
   const assistance = _assistanceThisMove;
   _assistanceThisMove = [];
   _revealedBest = null;
+
+
+  propagateSessionDifficulty(drill);
   drill.applyUserMove({
     uci: input.uci,
     ...(input.san !== undefined ? { san: input.san } : {}),
@@ -593,7 +657,14 @@ export function resumePersistedEngineDrill(record: EngineDrillRecord): void {
     ...(snapshot.moveLimit !== undefined ? { moveLimit: snapshot.moveLimit } : {}),
     ...(snapshot.timeLimitMs !== undefined ? { timeLimitMs: snapshot.timeLimitMs } : {}),
     difficulty: snapshot.difficulty,
+
+
+    ...(record.studyItemId !== undefined ? { studyItemId: record.studyItemId } : {}),
+    ...(record.studyNodePath !== undefined ? { studyNodePath: record.studyNodePath } : {}),
   };
+
+
+  _userChoseDifficulty = record.explicitDifficulty === true;
   _drill = resumeEngineDrill(snapshot, buildDeps(snapshot.learnerIsWhite), onDrillStateChange);
   if (snapshot.timeLimitMs !== undefined) {
     _clockTimer = setInterval(() => {
@@ -615,7 +686,7 @@ function closeResult(): void {
   deps?.redraw();
 }
 
-function startFollowUpDrill(retry: boolean): void {
+export function startFollowUpDrill(retry: boolean): void {
   const d = deps;
   const config = _lastConfig;
   const priorDrillId = _drillId;
@@ -873,7 +944,7 @@ export function engineDrillPanelVnode(): VNode {
       onMaxCriticalChange: max => { _setupMaxCritical = max; deps?.redraw(); },
       onMoveLimitChange: moves => { _setupMoveLimit = moves; deps?.redraw(); },
       onTimeLimitChange: minutes => { _setupTimeLimitMinutes = minutes; deps?.redraw(); },
-      onDifficultyChange: difficulty => { _setupDifficulty = difficulty; deps?.redraw(); },
+      onDifficultyChange: difficulty => { setEngineDrillSetupDifficulty(difficulty); },
       onSideChange: () => {
         _panelNotice = 'Drill from here plays the side to move. To drill the other side, '
           + 'step the board one move first.';

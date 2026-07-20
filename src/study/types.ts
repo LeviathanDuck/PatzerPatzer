@@ -329,6 +329,9 @@ export interface EngineDrillRecord {
   readonly completionState: EngineDrillCompletionState;
   /** Linked-attempt chain (§13 "Retries create linked attempts"). */
   readonly retryOfDrillId?: string;
+
+
+  readonly explicitDifficulty?: true;
   readonly createdAt: number;
   readonly updatedAt: number;
 }

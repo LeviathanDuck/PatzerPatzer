@@ -201,22 +201,27 @@ function buildGraduatedNext(
   };
 }
 
-/**
- * Pure spaced-repetition transition. Given the current schedule row, a completed scored-target
- * result, and a validated ladder config, returns exactly one outcome:
- *
- *   - `applied`   — the only mutating outcome; carries the next schedule record.
- *   - `duplicate` — this exact attempt (by `attemptId`) was already applied to the row (idempotent no-op).
- *   - `stale`     — a new attempt frozen against a superseded schedule snapshot/target revision.
- *   - `inactive`  — the target is graduated/suspended/archived and no longer scheduled.
- *   - `invalid`   — malformed input (non-finite clock, wrong target, out-of-range record, etc.).
- *
- * Rules (memo §2, binding): the injected `completedAt` is the ONLY clock; a clean result increments
- * the streak and advances `advanceBy` capped at the ceiling, scheduling from `completedAt`, graduating
- * only when the config's threshold is met; a failed OR assisted result (P2-ORP-10) resets the streak
- * and the step to `resetStep`, scheduling that interval from `completedAt`. Config changes are
- * prospective — `dueAt` moves only here, at a scheduling event, never on mere load.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export const transitionSchedule: SrsTransitionFn = (current, completed, config) => {
   // 1. Completion time is the only clock; reject a non-finite instant outright.
   if (!Number.isFinite(completed.completedAt)) {

@@ -87,6 +87,7 @@ import {
 import {
   renderAnalysisControls, downloadPgn, initPgnExport, copyLinePgn, isMainlinePath, buildPgn,
 } from './analyse/pgnExport';
+import { createBoardReviewState, type BoardReviewState } from './analyse/boardReviewState';
 import { initPersist, scheduleGamePersist, flushPendingGamePersist } from './analyse/persist';
 import {
   initAnalysisControls, renderMoveNavBar, renderActionMenu, renderAnalysisPracticePanel,
@@ -183,6 +184,7 @@ import {
   applyReviewDepthToActiveQueue, fenceReviewQueueForDataManagement, subscribeAcceptedReviewResults,
   subscribeReviewQueueState,
   suspendReviewQueueForLfym, getQueueSummary,
+  requestBoardTreeReview, evictBoardTreeReview, cancelBoardTreeReview, subscribeBoardTreeReviewCompletion,
   type AcceptedReviewResult,
 } from './engine/reviewQueue';
 import type { ReviewRunSourceContext } from './engine/reviewRun';
@@ -515,10 +517,14 @@ function addSyncedGames(games: ImportedGame[]): SyncedGamesOutcome {
     return { addedCount: 0 };
   }
   setImportedGames([...importedGames, ...dedupedGames]);
-  performance.mark('import-batch-start');
-  void saveGamesToIdb(importedGames).finally(() => {
-    performance.mark('import-batch-end');
-  });
+  // RWP-005 / AUD-0006 (Sol design consult, fix shape B): this callback is
+  // intentionally persistence-free. Account sync already durably persisted
+  // result.newGames via the delta path (saveGamesDeltaToIdb) and resolved that
+  // write BEFORE the header invoked this callback, and enrichment persists each
+  // enriched game via saveGameToIdb before onGameEnriched fires. A full-library
+  // saveGamesToIdb(importedGames) here re-put every existing row, rewrote the
+  // legacy game-library/imported-games aggregate, and enqueued one sync-outbox
+  // item per row — redundant churn racing the authoritative writes. Removed.
   refreshRegisteredAccounts();
 
   enqueueImportEnrichment(dedupedGames, { onGameEnriched: applyEnrichmentPatch });
@@ -1229,6 +1235,39 @@ let restoreGeneration = 0;
 let reviewedStateHydrationGeneration = 0;
 let navStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
+
+
+
+
+
+
+const boardReviewPageSessionUuid: string = (() => {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch { /* fall through to the time+random id below */ }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+})();
+
+
+
+
+
+
+const boardReview: BoardReviewState = createBoardReviewState({
+  getCtrl:            () => ctrl,
+  getGeneration:      () => restoreGeneration,
+  pageSessionUuid:    boardReviewPageSessionUuid,
+  buildPgnSnapshot:   () => buildPgn(false),
+  nodeAtPath,
+  applyAcceptedEval,
+  setAnalysisComplete,
+  clearPartialEval:   clearBoardReviewPartialEval,
+  redraw,
+  requestBoardTreeReview,
+  evictBoardTreeReview,
+  cancelBoardTreeReview,
+});
+
 function scheduleNavStateSave(path = ctrl.path): void {
   if (navStateSaveTimer !== null) clearTimeout(navStateSaveTimer);
   const selectedId = selectedGameId;
@@ -1446,6 +1485,10 @@ function evalCacheFromStoredNodes(nodes: Record<string, StoredNodeEntry>): Map<s
  */
 function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; syntheticCreatedAt?: number }): void {
   performance.mark('game-load-start');
+
+
+
+  boardReview.evict();
   // A game/board switch replaces the tree the practice session was playing on.
   endPracticeSession('game-switch');
 
@@ -1824,6 +1867,14 @@ function evalEntriesMatch(a: PositionEval | undefined, b: PositionEval): boolean
 }
 
 function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult): void {
+
+
+
+
+
+
+  if (boardReview.tryHydrateAccepted(result)) return;
+
   if (!isImportedGameAnalysisRoute(currentRoute)) return;
   if (selectedGameId !== result.gameId) return;
   if ((currentRoute.params['id'] ?? '') !== result.gameId) return;
@@ -1831,6 +1882,16 @@ function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult
   const node = nodeAtPath(ctrl.root, result.nodePath);
   if (!node || node.fen !== result.fen) return;
 
+  applyAcceptedEval(result, node);
+}
+
+/**
+ * Apply an accepted, already exact-FEN-bound review result to the foreground eval display. Shared by
+ * BOTH the imported-game hydration path above and the board-tree state machine (via its injected
+ * `applyAcceptedEval` dep) so the display mutation is single-sourced. Callers MUST have validated the
+ * node/FEN binding first — this only guards depth/no-op churn, then writes.
+ */
+function applyAcceptedEval(result: AcceptedReviewResult, node: TreeNode): void {
   const existing = evalCache.get(result.nodePath);
   if (existing?.depth !== undefined && result.eval.depth !== undefined && existing.depth > result.eval.depth) return;
   if (evalEntriesMatch(existing, result.eval)) return;
@@ -1842,6 +1903,18 @@ function hydrateOpenDisplayFromAcceptedReviewResult(result: AcceptedReviewResult
     syncArrow();
   }
   redraw();
+}
+
+
+
+
+
+
+function clearBoardReviewPartialEval(): void {
+  clearEvalCache();
+  resetCurrentEval();
+  bumpEvalCacheRevision();
+  syncArrow();
 }
 
 async function hydrateReviewedStateFromIdb(): Promise<void> {
@@ -4256,6 +4329,11 @@ initPgnExport({
   getSelectedGameId: () => selectedGameId,
   clearGameAnalysis,
   redraw,
+
+
+  requestBoardTreeAnalysis: () => boardReview.request(),
+  getActiveBoardReviewId:   () => boardReview.getActiveId(),
+  cancelBoardTreeReview:    () => boardReview.cancelFromControl(),
 });
 
 
@@ -4576,6 +4654,8 @@ subscribeReviewQueueState(() => {
   analysisBulkReviewRunningMirror = isBulkRunning();
 });
 subscribeAcceptedReviewResults(hydrateOpenDisplayFromAcceptedReviewResult);
+
+subscribeBoardTreeReviewCompletion(evt => boardReview.onCompletion(evt));
 preloadBoardSounds();
 
 bindKeyboardHandlers({

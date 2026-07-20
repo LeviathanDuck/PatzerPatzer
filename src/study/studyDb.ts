@@ -1982,6 +1982,179 @@ export async function listAuthoredContentByLesson(
 
 // --- study-practice-srs ----------------------------------------------------
 
+
+
+
+
+
+
+export const INTERVAL_RECOMPUTE_BATCH_SIZE = 100;
+
+const SRS_ROW_ALLOWED_KEYS = new Set([
+  'targetId', 'lessonId', 'targetRevision', 'scheduleRevision', 'configId', 'configVersion',
+  'stepIndex', 'cleanStreak', 'enrolledAt', 'lastCompletedAt', 'lastAttemptId', 'updatedAt',
+  'status', 'dueAt',
+]);
+
+export interface RecomputeApplyOutcome {
+  readonly applied: number;
+  readonly noop: number;
+  readonly stale: readonly { readonly targetId: string; readonly reason: string }[];
+}
+
+
+
+const SRS_STATUS_UNION = new Set(['active', 'graduated', 'suspended', 'archived']);
+
+
+
+function isRuntimeValidSrsRowShape(row: Record<string, unknown>): boolean {
+  const finite = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v);
+  return typeof row.targetId === 'string' && row.targetId.length > 0
+    && typeof row.lessonId === 'string' && row.lessonId.length > 0
+    && finite(row.targetRevision) && finite(row.scheduleRevision)
+    && typeof row.configId === 'string'
+    && finite(row.configVersion) && finite(row.stepIndex) && finite(row.cleanStreak)
+    && finite(row.enrolledAt) && finite(row.updatedAt)
+    && (row.lastCompletedAt === null || finite(row.lastCompletedAt))
+    && (row.lastAttemptId === null || typeof row.lastAttemptId === 'string')
+    && typeof row.status === 'string' && SRS_STATUS_UNION.has(row.status)
+    && (row.status !== 'active' ? true : finite(row.dueAt));
+}
+
+export async function applyConfirmedIntervalRecomputePlan(
+  plan: import('./practice/settings').IntervalRecomputePlan,
+  confirm: { readonly planId: string },
+  enqueue: (store: RemoteSyncStoreName, itemKey: string, payload: unknown, updatedAt?: number) => void = enqueueStudyPut,
+  now: () => number = Date.now,
+): Promise<RecomputeApplyOutcome> {
+  if (confirm.planId !== plan.planId) {
+    throw new Error('recompute apply refused: confirmation does not echo the plan');
+  }
+
+
+  if (plan.scope !== 'all' && plan.entries.some(e => e.lessonId !== plan.scope)) {
+    throw new Error('recompute apply refused: plan entries outside the declared scope');
+  }
+  const db = await openDb();
+  const staleByTarget = new Map<string, string>();
+  let applied = 0;
+  let noop = 0;
+  const ordered = [...plan.entries].sort((a, b) => (a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0));
+  for (let start = 0; start < ordered.length; start += INTERVAL_RECOMPUTE_BATCH_SIZE) {
+    const batch = ordered.slice(start, start + INTERVAL_RECOMPUTE_BATCH_SIZE);
+
+
+
+
+    let result: RecomputeBatchResult;
+    try {
+      result = await runRecomputeBatch(batch);
+    } catch {
+      for (const entry of batch) staleByTarget.set(entry.targetId, 'batch-failed');
+      continue;
+    }
+
+
+
+    for (const [tid, reason] of result.batchStale) staleByTarget.set(tid, reason);
+    noop += result.batchNoop;
+    for (const rowApplied of result.appliedRows) {
+      applied++;
+      try {
+        enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
+      } catch (e) {
+        console.warn('[studyDb] recompute outbox enqueue failed', rowApplied.targetId, e);
+      }
+    }
+  }
+  return { applied, noop, stale: [...staleByTarget.entries()].map(([targetId, reason]) => ({ targetId, reason })) };
+
+  interface RecomputeBatchResult {
+    readonly appliedRows: SrsScheduleRecord[];
+    readonly batchStale: Map<string, string>;
+    readonly batchNoop: number;
+  }
+
+  function runRecomputeBatch(batch: readonly import('./practice/settings').RecomputePlanEntry[]): Promise<RecomputeBatchResult> {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('study-practice-srs', 'readwrite');
+      const store = tx.objectStore('study-practice-srs');
+      const batchApplied: SrsScheduleRecord[] = [];
+      const batchStale = new Map<string, string>();
+      let batchNoop = 0;
+      tx.oncomplete = () => resolve({ appliedRows: batchApplied, batchStale, batchNoop });
+      tx.onerror = () => { recordStudyTxFail(tx, 'onerror', 'recompute'); reject(tx.error); };
+      tx.onabort = () => { recordStudyTxFail(tx, 'onabort', 'recompute'); reject(tx.error ?? new DOMException('recompute batch aborted', 'AbortError')); };
+      let idx = 0;
+      const next = (): void => {
+        if (idx >= batch.length) return; // tx auto-commits when requests drain
+        const entry = batch[idx++]!;
+        const req = store.get(entry.targetId) as IDBRequest<Record<string, unknown> | undefined>;
+        req.onsuccess = () => {
+          const row = req.result;
+          const fail = (reason: string): void => { batchStale.set(entry.targetId, reason); next(); };
+          if (row === undefined) { fail('missing'); return; }
+          const keys = Object.keys(row);
+          if (keys.some(k => !SRS_ROW_ALLOWED_KEYS.has(k))) { fail('malformed'); return; }
+          if (!isRuntimeValidSrsRowShape(row)) { fail('malformed'); return; }
+          if (row.status !== 'active') { fail('inactive'); return; }
+          if (row.lessonId !== entry.lessonId || row.targetId !== entry.targetId) { fail('identity-mismatch'); return; }
+          if (row.targetRevision !== entry.expectedTargetRevision
+            || row.scheduleRevision !== entry.expectedScheduleRevision
+            || row.configId !== entry.expectedConfigId
+            || row.configVersion !== entry.expectedConfigVersion
+            || row.stepIndex !== entry.expectedStepIndex
+            || row.dueAt !== entry.oldDueAt) { fail('drift'); return; }
+          if (!Number.isFinite(entry.newDueAt)) { fail('invalid-new-due'); return; }
+          const currentRevision = row.scheduleRevision as number;
+          if (!Number.isSafeInteger(currentRevision + 1)) { fail('revision-saturated'); return; }
+          if (entry.newDueAt === entry.oldDueAt) { batchNoop++; next(); return; }
+          const current = row as unknown as SrsScheduleRecord & { readonly status: 'active' };
+          const updated = asPersistableScheduleRecord({
+            targetId: current.targetId,
+            lessonId: current.lessonId,
+            targetRevision: current.targetRevision,
+            scheduleRevision: currentRevision + 1,
+            configId: current.configId,
+            configVersion: current.configVersion,
+            stepIndex: current.stepIndex,
+            cleanStreak: current.cleanStreak,
+            enrolledAt: current.enrolledAt,
+            lastCompletedAt: current.lastCompletedAt,
+            lastAttemptId: current.lastAttemptId,
+            updatedAt: now(),
+            status: 'active',
+            dueAt: entry.newDueAt,
+          });
+          const putReq = store.put(updated);
+          putReq.onsuccess = () => { batchApplied.push(updated); next(); };
+          // a failed put falls through to tx.onerror (batch rolls back)
+        };
+        req.onerror = () => { /* falls through to tx.onerror — batch rolls back */ };
+      };
+      next();
+      if (batch.length === 0) resolve({ appliedRows: [], batchStale, batchNoop });
+    });
+  }
+}
+
+
+
+
+
+export async function listPracticeSrsByLesson(
+  lessonId: string,
+  limit: number,
+): Promise<{ readonly rows: SrsScheduleRecord[]; readonly truncated: boolean }> {
+  const db = await openDb();
+  const rows = await collectBoundedPracticeCursor<SrsScheduleRecord>(
+    db, 'study-practice-srs', 'lessonId_dueAt',
+    IDBKeyRange.bound([lessonId, -Infinity], [lessonId, Infinity]), 'next', limit + 1,
+  );
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit };
+}
+
 /** Persist a schedule row. Funnels through the B1 closed-record guard so no chess material can be
  *  smuggled onto the row. The store key path is `targetId` (== decisionId). */
 export function savePracticeSrs(schedule: SrsScheduleRecord): Promise<void> {
