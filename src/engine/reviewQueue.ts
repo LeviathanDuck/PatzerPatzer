@@ -5731,7 +5731,13 @@ export function cancelBulkReview(): void {
 
 
 
-  if (!cancelledActiveEntryWasBoardTree) setActiveReviewRunState('canceled');
+
+
+
+
+
+
+  if (!queueWasBoardTreeOnly && !cancelledActiveEntryWasBoardTree) setActiveReviewRunState('canceled');
   syncReviewUnattendedWakeLock();
   resetReviewBatchElapsed();
 
