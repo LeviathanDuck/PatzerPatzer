@@ -481,8 +481,25 @@ const importCallbacks = {
     flushPendingGamePersist();
     selectedGameId = first.id;
     performance.mark('import-batch-start');
-    void saveGamesToIdb(importedGames).finally(() => {
+
+
+
+
+
+
+    void saveGamesToIdb(importedGames).then(persisted => {
       performance.mark('import-batch-end');
+      if (!persisted) {
+        recordDiagnostic({
+          kind: 'lifecycle',
+          severity: Severity.Warn,
+          source: 'main.importCallbacks',
+          sourceTag: 'import',
+          message: 'import-batch-persist-failed',
+          metadata: { batchSize: importedGames.length },
+          redactionClass: 'safe',
+        });
+      }
     });
     refreshRegisteredAccounts(); // adapters may have registered a new account
 
