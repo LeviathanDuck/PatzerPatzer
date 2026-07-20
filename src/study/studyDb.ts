@@ -2037,7 +2037,7 @@ export async function applyConfirmedIntervalRecomputePlan(
     throw new Error('recompute apply refused: plan entries outside the declared scope');
   }
   const db = await openDb();
-  const stale: { targetId: string; reason: string }[] = [];
+  const staleByTarget = new Map<string, string>();
   let applied = 0;
   let noop = 0;
   const ordered = [...plan.entries].sort((a, b) => (a.targetId < b.targetId ? -1 : a.targetId > b.targetId ? 1 : 0));
@@ -2046,28 +2046,35 @@ export async function applyConfirmedIntervalRecomputePlan(
 
 
 
-    let appliedRows: SrsScheduleRecord[];
+
     try {
-      appliedRows = await runRecomputeBatch(batch);
-    } catch {
-      for (const entry of batch) {
-        if (!stale.some(st => st.targetId === entry.targetId)) stale.push({ targetId: entry.targetId, reason: 'batch-failed' });
+      const result = await runRecomputeBatch(batch);
+      for (const [tid, reason] of result.batchStale) staleByTarget.set(tid, reason);
+      noop += result.batchNoop;
+      for (const rowApplied of result.appliedRows) {
+        applied++;
+        enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
       }
-      continue;
-    }
-    for (const rowApplied of appliedRows) {
-      applied++;
-      enqueue('study-practice-srs', rowApplied.targetId, rowApplied, rowApplied.updatedAt);
+    } catch {
+      for (const entry of batch) staleByTarget.set(entry.targetId, 'batch-failed');
     }
   }
-  return { applied, noop, stale };
+  return { applied, noop, stale: [...staleByTarget.entries()].map(([targetId, reason]) => ({ targetId, reason })) };
 
-  function runRecomputeBatch(batch: readonly import('./practice/settings').RecomputePlanEntry[]): Promise<SrsScheduleRecord[]> {
+  interface RecomputeBatchResult {
+    readonly appliedRows: SrsScheduleRecord[];
+    readonly batchStale: Map<string, string>;
+    readonly batchNoop: number;
+  }
+
+  function runRecomputeBatch(batch: readonly import('./practice/settings').RecomputePlanEntry[]): Promise<RecomputeBatchResult> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction('study-practice-srs', 'readwrite');
       const store = tx.objectStore('study-practice-srs');
       const batchApplied: SrsScheduleRecord[] = [];
-      tx.oncomplete = () => resolve(batchApplied);
+      const batchStale = new Map<string, string>();
+      let batchNoop = 0;
+      tx.oncomplete = () => resolve({ appliedRows: batchApplied, batchStale, batchNoop });
       tx.onerror = () => { recordStudyTxFail(tx, 'onerror', 'recompute'); reject(tx.error); };
       tx.onabort = () => { recordStudyTxFail(tx, 'onabort', 'recompute'); reject(tx.error ?? new DOMException('recompute batch aborted', 'AbortError')); };
       let idx = 0;
@@ -2077,7 +2084,7 @@ export async function applyConfirmedIntervalRecomputePlan(
         const req = store.get(entry.targetId) as IDBRequest<Record<string, unknown> | undefined>;
         req.onsuccess = () => {
           const row = req.result;
-          const fail = (reason: string): void => { stale.push({ targetId: entry.targetId, reason }); next(); };
+          const fail = (reason: string): void => { batchStale.set(entry.targetId, reason); next(); };
           if (row === undefined) { fail('missing'); return; }
           const keys = Object.keys(row);
           if (keys.some(k => !SRS_ROW_ALLOWED_KEYS.has(k))) { fail('malformed'); return; }
@@ -2093,7 +2100,7 @@ export async function applyConfirmedIntervalRecomputePlan(
           if (!Number.isFinite(entry.newDueAt)) { fail('invalid-new-due'); return; }
           const currentRevision = row.scheduleRevision as number;
           if (!Number.isSafeInteger(currentRevision + 1)) { fail('revision-saturated'); return; }
-          if (entry.newDueAt === entry.oldDueAt) { noop++; next(); return; }
+          if (entry.newDueAt === entry.oldDueAt) { batchNoop++; next(); return; }
           const current = row as unknown as SrsScheduleRecord & { readonly status: 'active' };
           const updated = asPersistableScheduleRecord({
             targetId: current.targetId,
@@ -2118,11 +2125,26 @@ export async function applyConfirmedIntervalRecomputePlan(
         req.onerror = () => { /* falls through to tx.onerror — batch rolls back */ };
       };
       next();
-      if (batch.length === 0) resolve([]);
+      if (batch.length === 0) resolve({ appliedRows: [], batchStale, batchNoop });
     });
   }
 }
 
+
+
+
+
+export async function listPracticeSrsByLesson(
+  lessonId: string,
+  limit: number,
+): Promise<{ readonly rows: SrsScheduleRecord[]; readonly truncated: boolean }> {
+  const db = await openDb();
+  const rows = await collectBoundedPracticeCursor<SrsScheduleRecord>(
+    db, 'study-practice-srs', 'lessonId_dueAt',
+    IDBKeyRange.bound([lessonId, -Infinity], [lessonId, Infinity]), 'next', limit + 1,
+  );
+  return { rows: rows.slice(0, limit), truncated: rows.length > limit };
+}
 
 /** Persist a schedule row. Funnels through the B1 closed-record guard so no chess material can be
  *  smuggled onto the row. The store key path is `targetId` (== decisionId). */

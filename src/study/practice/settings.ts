@@ -212,6 +212,27 @@ export interface IntervalRecomputePlan {
   readonly skippedInactive: number;
 }
 
+
+export interface RecomputePlanSummary {
+  readonly affected: number;
+  readonly skippedInactive: number;
+  readonly movedEarlier: number;
+  readonly movedLater: number;
+  readonly unchanged: number;
+  readonly dueImmediately: number;
+}
+
+export function summarizeRecomputePlan(plan: IntervalRecomputePlan, nowMs: number): RecomputePlanSummary {
+  let movedEarlier = 0, movedLater = 0, unchanged = 0, dueImmediately = 0;
+  for (const e of plan.entries) {
+    if (e.newDueAt < e.oldDueAt) movedEarlier++;
+    else if (e.newDueAt > e.oldDueAt) movedLater++;
+    else unchanged++;
+    if (e.newDueAt <= nowMs && e.oldDueAt > nowMs) dueImmediately++;
+  }
+  return { affected: plan.entries.length, skippedInactive: plan.skippedInactive, movedEarlier, movedLater, unchanged, dueImmediately };
+}
+
 function intervalAt(intervals: readonly number[], step: number): number {
   if (intervals.length === 0) return 0;
   const clamped = Math.min(Math.max(step, 0), intervals.length - 1);
