@@ -1,14 +1,22 @@
-// Games tab rendering: filter bar, sort controls, game table, compact game list.
-// Game metadata helpers (getUserColor, gameResult, gameSourceUrl, renderCompactGameRow)
-// live here so main.ts stays as bootstrap-only code.
-//
-// Operates on importedGames in-memory — no separate data system.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { h, type VNode } from 'snabbdom';
 import { parsePgnHeader, type ImportedGame } from '../import/types';
 import type { ChessAccount } from '../accounts';
-import { chesscom } from '../import/chesscom';
-import { lichess } from '../import/lichess';
+import { gameResult, getUserColor, opponentLabel, rowSides } from './rowTruths';
 import {
   enqueueBulkReview, enqueueAtFront, appendBulkReviewRunSource, getReviewProgress, isBulkRunning, isBulkPaused, getQueueSummary,
   getReviewQueueItems,
@@ -117,28 +125,10 @@ function playedTimestamp(game: ImportedGame): number | null {
   return exactPlayedTimestamp(game) ?? parseGameDateOnly(game.date);
 }
 
-/** Determine which side the importing user played in a given game. */
-export function getUserColor(game: ImportedGame): 'white' | 'black' | null {
-  // Prefer importedUsername stored at import time (reliable after IDB restore).
-  // Fall back to current adapter usernames for games imported before this field existed.
-  const knownNames = [game.importedUsername, chesscom.username, lichess.username]
-    .map(n => n?.trim().toLowerCase())
-    .filter((n): n is string => !!n);
-  if (knownNames.length === 0) return null;
-  if (game.white && knownNames.includes(game.white.toLowerCase())) return 'white';
-  if (game.black && knownNames.includes(game.black.toLowerCase())) return 'black';
-  return null;
-}
-
-/** Derive win/loss/draw relative to user. Returns null when user color cannot be determined. */
-export function gameResult(game: ImportedGame): 'win' | 'loss' | 'draw' | null {
-  const color = getUserColor(game);
-  if (!game.result) return null;
-  if (game.result.includes('1/2')) return 'draw';
-  if (!color) return null;
-  if (color === 'white') return game.result === '1-0' ? 'win' : 'loss';
-  return game.result === '0-1' ? 'win' : 'loss';
-}
+// Re-exported from the shared derived-truths owner (./rowTruths) so this module's existing
+// importers (main.ts, itemListView.ts, tests) keep their import path while there is exactly ONE
+// implementation of each fact. These are NOT defined here any more.
+export { getUserColor, gameResult };
 
 /** Returns the source platform URL for a game, extracted from PGN headers. */
 export function gameSourceUrl(game: ImportedGame): string | undefined {
@@ -188,14 +178,6 @@ function renderCompactTacticIcons(gameId: string, hasMissedTactic: boolean): VNo
   return h('span.grl__tactic-icons', icons);
 }
 
-function importedAccountColor(game: ImportedGame): 'white' | 'black' | null {
-  const username = game.importedUsername?.trim().toLowerCase();
-  if (!username) return null;
-  if (game.white?.trim().toLowerCase() === username) return 'white';
-  if (game.black?.trim().toLowerCase() === username) return 'black';
-  return null;
-}
-
 
 
 
@@ -227,11 +209,16 @@ export function renderCompactGameRow(
   accuracy?: { user: number | null; opp: number | null },
   extras?: CompactRowExtras,
 ): (VNode | null)[] {
-  const result    = gameResult(game);
-  const userColor = getUserColor(game);
-  const opponent  = userColor === 'white' ? (game.black ?? game.id)
-    : userColor === 'black' ? (game.white ?? game.id)
-    : (game.white && game.black ? `${game.white} vs ${game.black}` : game.id);
+
+
+
+
+
+
+  const sides     = rowSides(game);
+  const result    = sides.result;
+  const userColor = sides.userColor;
+  const opponent  = sides.opponentName ?? '–';
 
   const isNewImport = isRecentlyImported(game);
   const openingLabel = game.opening?.trim() || null;
@@ -251,28 +238,22 @@ export function renderCompactGameRow(
   // Line 1 -- per-player dot + name (chip + rating + delta) -> vs pill -> imported account (dot +
   // name + chip + rating + delta), each followed by inline accuracy once Game Review data exists
   // (V4 design, desktop compact section). Opponent NEVER truncates; account shrinks first (CSS).
-  const oppColor  = userColor === 'white' ? 'black' : userColor === 'black' ? 'white' : null;
+  const oppColor  = sides.opponentColor;
   const oppChip   = oppColor ? h('span.color-chip.--' + oppColor) : null;
-  const oppRating = userColor === 'white' ? game.blackRating : userColor === 'black' ? game.whiteRating : undefined;
+  const oppRating = sides.opponentRating;
   const oppDelta  = userColor === 'white' ? deltas.black : userColor === 'black' ? deltas.white : null;
   const oppAccNode = accuracy?.opp !== null && accuracy?.opp !== undefined
     ? h('span.grl__accuracy', `${Math.round(accuracy.opp)}%`)
     : null;
 
-  const acctColor  = importedAccountColor(game);
+
+
+
+
+  const acctColor  = userColor;
   const acctChip   = acctColor ? h('span.color-chip.--' + acctColor) : null;
-
-
-
-
-
-
-
-  const acctUsername = game.importedUsername?.trim() || null;
-  const acctName   = userColor === 'white' ? (game.white ?? acctUsername)
-    : userColor === 'black' ? (game.black ?? acctUsername)
-    : acctUsername;
-  const acctRating = acctColor === 'white' ? game.whiteRating : acctColor === 'black' ? game.blackRating : undefined;
+  const acctName   = sides.accountName;
+  const acctRating = sides.accountRating;
   const acctDelta  = userColor === 'white' ? deltas.white : userColor === 'black' ? deltas.black : null;
   const acctAccNode = accuracy?.user !== null && accuracy?.user !== undefined
     ? h('span.grl__accuracy', `${Math.round(accuracy.user)}%`)
@@ -1338,15 +1319,14 @@ export function getCompactGameListIdsForTests(deps: GamesViewDeps): string[] {
   return filteredCompactGameListGames(deps).map(game => game.id);
 }
 
+
+
+
 function opponentName(
   game: ImportedGame,
   getUserColor: (g: ImportedGame) => 'white' | 'black' | null,
 ): string | undefined {
-  const color = getUserColor(game);
-  if (color === 'white') return game.black;
-  if (color === 'black') return game.white;
-  // If user color unknown, show white vs black
-  return (game.white && game.black) ? `${game.white} vs ${game.black}` : undefined;
+  return opponentLabel(game, getUserColor(game)) ?? undefined;
 }
 
 

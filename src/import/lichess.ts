@@ -19,14 +19,16 @@ import {
   importSyncFilterKey,
   type ImportSpeed,
 } from './filters';
-import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating, timeClassFromTimeControl } from './types';
+import { importPlatformUsernames, type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating, timeClassFromTimeControl } from './types';
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
 import { classifyOpening } from '../openings/eco';
 import { record, Severity } from '../diagnostics';
 
 export const lichess = {
-  username: '',
+
+  get username(): string { return importPlatformUsernames.lichess; },
+  set username(value: string) { importPlatformUsernames.lichess = value; },
   loading:  false,
   error:    null as string | null,
   /** Count of games parsed so far during an active import. */

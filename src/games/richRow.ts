@@ -9,47 +9,26 @@
 
 
 
+
+
+
+
 import { h, type VNode } from 'snabbdom';
 import { type ImportedGame, parsePgnHeader } from '../import/types';
-import { chesscom } from '../import/chesscom';
-import { lichess } from '../import/lichess';
 import { parsePgn } from 'chessops/pgn';
 import { thumbnailFen } from './thumbPosition';
-
-
-
 import {
-  questionnaireBranch, findQuestionnaireOption, STORY_OPTIONS, DECIDER_OPTIONS,
-  type QuestionnaireOption,
-} from '../analyse/questionnaire/model';
+  accountLabel,
+  gameResult,
+  getUserColor,
+  opponentLabel,
+  primaryStoryChipOption,
+} from './rowTruths';
 import {
   controlExplainerAttrs,
   iconControlExplainerAttrs,
   renderDisabledControlExplainer,
 } from '../ui/controlExplainer';
-
-// ---------------------------------------------------------------------------
-// Minimal local duplicates of view.ts's getUserColor / gameResult (see file header).
-// ---------------------------------------------------------------------------
-
-function getUserColor(game: ImportedGame): 'white' | 'black' | null {
-  const knownNames = [game.importedUsername, chesscom.username, lichess.username]
-    .map(n => n?.trim().toLowerCase())
-    .filter((n): n is string => !!n);
-  if (knownNames.length === 0) return null;
-  if (game.white && knownNames.includes(game.white.toLowerCase())) return 'white';
-  if (game.black && knownNames.includes(game.black.toLowerCase())) return 'black';
-  return null;
-}
-
-function gameResult(game: ImportedGame): 'win' | 'loss' | 'draw' | null {
-  const color = getUserColor(game);
-  if (!game.result) return null;
-  if (game.result.includes('1/2')) return 'draw';
-  if (!color) return null;
-  if (color === 'white') return game.result === '1-0' ? 'win' : 'loss';
-  return game.result === '0-1' ? 'win' : 'loss';
-}
 
 
 
@@ -766,21 +745,6 @@ function storyChipIcon(slug: string): VNode {
 }
 
 /**
- * Resolves the games-list story chip's option (P2-QST-7): the PRIMARY decider (`deciders[0]`,
- * ranks 2-3 never chip here — left-column-only per the v2 lookbook §03/§08) when one was picked,
- * falling back to the Game story pick otherwise (no decider recorded). Returns undefined for an
- * unstudied game or one whose recorded ids no longer resolve in the option pool (never renders a
- * broken chip).
- */
-function primaryStoryChipOption(game: ImportedGame): QuestionnaireOption | undefined {
-  const q = game.questionnaire;
-  if (!q) return undefined;
-  const branch = questionnaireBranch(q);
-  const primary = q.deciders[0] ? findQuestionnaireOption(DECIDER_OPTIONS[branch], q.deciders[0]) : undefined;
-  return primary ?? findQuestionnaireOption(STORY_OPTIONS[branch], q.story);
-}
-
-/**
  * Games-list story chip (P2-QST-7) — inherits the primary decider's (or story fallback's)
  * semantic hue family + icon glyph; single source of truth is
  * `src/analyse/questionnaire/model.ts`. Shared by the full card's chips row and the compact row's
@@ -921,18 +885,6 @@ function renderMatchupGrid(opp: PlayerBlockOpts, acct: PlayerBlockOpts): VNode {
       renderAccuracyCell('account', acct.accuracy),
     ] : []),
   ]);
-}
-
-function opponentLabel(game: ImportedGame, userColor: 'white' | 'black' | null): string {
-  if (userColor === 'white') return game.black ?? game.id;
-  if (userColor === 'black') return game.white ?? game.id;
-  return game.white && game.black ? `${game.white} vs ${game.black}` : game.id;
-}
-
-function accountLabel(game: ImportedGame, userColor: 'white' | 'black' | null): string | null {
-  if (userColor === 'white') return game.white ?? game.importedUsername ?? null;
-  if (userColor === 'black') return game.black ?? game.importedUsername ?? null;
-  return game.importedUsername ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1160,7 +1112,11 @@ export function renderRichGameRow(game: ImportedGame, deps: RichGameRowDeps): VN
     renderThumbnail(game, resultCls, userColor === 'black'),
     h('div.grr__body', [
       renderMatchupGrid(
-        { variant: 'opponent', name: opponentLabel(game, userColor), rating: oppRating,
+
+
+
+
+        { variant: 'opponent', name: opponentLabel(game, userColor) ?? '–', rating: oppRating,
           color: oppColorChip, delta: oppDelta, accuracy: deps.accuracy?.opp },
         { variant: 'account', name: accountLabel(game, userColor) ?? '–', rating: acctRating,
           color: userColor, delta: acctDelta, accuracy: deps.accuracy?.user },

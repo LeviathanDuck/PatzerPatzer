@@ -3,6 +3,25 @@
 
 import type { QuestionnaireAnswers } from '../analyse/questionnaire/model';
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export const importPlatformUsernames: { chesscom: string; lichess: string } = {
+  chesscom: '',
+  lichess: '',
+};
+
 export interface ImportedGame {
   id: string;
   pgn: string;

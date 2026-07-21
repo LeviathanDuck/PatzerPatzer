@@ -9,7 +9,7 @@ import {
   importSyncFilterKey,
   type ImportSpeed,
 } from './filters';
-import { type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating } from './types';
+import { importPlatformUsernames, type ImportCallbacks, type ImportedGame, nextGameId, parsePgnHeader, parseRating } from './types';
 import { accountId, getAccount, recordAccountSync, registerAccount } from '../accounts';
 import { pgnToTree } from '../tree/pgn';
 import { classifyOpening } from '../openings/eco';
@@ -89,7 +89,12 @@ function archiveMonthFromUrl(url: string): string | null {
  * Mirrors the cutoff logic in filters.ts filterGamesByDate().
  */
 export const chesscom = {
-  username: '',
+
+
+
+
+  get username(): string { return importPlatformUsernames.chesscom; },
+  set username(value: string) { importPlatformUsernames.chesscom = value; },
   loading:  false,
   error:    null as string | null,
   /** Live count of games parsed so far during an active import. */

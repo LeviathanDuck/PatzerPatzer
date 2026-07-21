@@ -102,8 +102,12 @@ import {
   iconControlExplainerAttrs,
   renderDisabledControlExplainer,
 } from '../ui/controlExplainer';
-import type { ImportedGame } from '../import/types';
 import type { StudyItem } from './types';
+import {
+  studyRowModifier,
+  type StudyRowDensity,
+  type StudyRowModifier,
+} from './gameRowModifier';
 import { renderCompactGameRow, type CompactRowExtras } from '../games/view';
 import { renderRichGameRow, type RichGameRowDeps, type ReviewControlState } from '../games/richRow';
 import {
@@ -146,35 +150,12 @@ import { openBulkTagDialog } from './bulkTagDialog';
 import { openBulkAddToOrpDialog } from './bulkAddToOrp';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
-export type ItemListDensity = 'compact' | 'full';
 
-// ---------------------------------------------------------------------------------------------
-// StudyItem -> ImportedGame-compatible adapter
-// ---------------------------------------------------------------------------------------------
 
-/**
- * Minimal, structurally ImportedGame-compatible view over a StudyItem so this pane can call the
- * existing games-list row renderers without forking them. Only the fields both shapes share are
- * populated; StudyItem carries no chess.com/lichess platform metadata (rating, timeClass,
- * importedUsername, source), so those stay absent and the reused renderers' own existing null-safe
- * branches apply -- e.g. getUserColor() falls back to matching the logged-in account's own
- * registered username against white/black (still resolves correctly for "My Played Games" items
- * saved from the user's own games); NO_CLOCK_ICON's own "Study import - No clock" fallback already
- * exists for exactly the no-time-control case; rating spans are conditionally rendered and simply
- * omitted. exactOptionalPropertyTypes (tsconfig.base.json) forbids assigning `undefined` to an
- * optional field explicitly, hence the conditional spreads below rather than plain field copies.
- */
-function studyItemAsGameRow(item: StudyItem): ImportedGame {
-  return {
-    id: item.id,
-    pgn: item.pgn,
-    ...(item.white !== undefined ? { white: item.white } : {}),
-    ...(item.black !== undefined ? { black: item.black } : {}),
-    ...(item.result !== undefined ? { result: item.result } : {}),
-    ...(item.opening !== undefined ? { opening: item.opening } : {}),
-    ...(item.eco !== undefined ? { eco: item.eco } : {}),
-  };
-}
+
+
+
+export type ItemListDensity = StudyRowDensity;
 
 // Inert placeholder review state shared by both density modes: this slice performs no engine/
 // reviewQueue cross-referencing (StudyItem -> sourceGameId -> reviewedStatusIndex is out of scope --
@@ -437,27 +418,17 @@ function toggleRailExpanded(id: string, redraw: () => void): void {
   redraw();
 }
 
-interface RailActionDef {
-  glyph: string;
-  title: string;
-}
 
-const RAIL_ACTIONS: readonly RailActionDef[] = [
-  { glyph: '#', title: 'Add tag' },
-  { glyph: '★', title: 'Add to Favorites' },
-  { glyph: '▶', title: 'Add to ORP queue' },
-  { glyph: '↗', title: 'Open workspace, new tab' },
-  { glyph: '↓', title: 'Export as annotated PGN' },
-];
 
-function renderActionRail(itemId: string, redraw: () => void): VNode {
+
+function renderActionRail(modifier: StudyRowModifier, itemId: string, redraw: () => void): VNode {
   const expanded = _expandedRailIds.has(itemId);
   return h('div.sentry-rail', { class: { '--expanded': expanded } }, [
     expanded
-      ? h('div.sentry-rail__actions', RAIL_ACTIONS.map(action => renderDisabledControlExplainer(
-          { label: action.title, description: `${action.title} is not available yet.` },
+      ? h('div.sentry-rail__actions', modifier.rail.map(action => renderDisabledControlExplainer(
+          { label: action.title, description: `${action.description} Not available yet.` },
           h('button.sentry-rail__btn', {
-            key: action.title,
+            key: action.key,
             attrs: { type: 'button', disabled: true },
           }, action.glyph),
         )))
@@ -822,7 +793,10 @@ function renderItemRow(
   itemsById: ReadonlyMap<string, StudyItem>,
   currentFolderId: string | null,
 ): VNode {
-  const gameLike = studyItemAsGameRow(item);
+
+
+  const modifier = studyRowModifier(item, density);
+  const gameLike = modifier.game;
   const extras: CompactRowExtras = { reviewState: INERT_REVIEW_STATE, addLibrary: null };
   const selected = isSelected(item.id);
 
@@ -865,7 +839,7 @@ function renderItemRow(
 
 
       tabindex: '0',
-      ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`, description: 'Changes this game selection for Study bulk actions.' }),
+      ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${modifier.title.text}`, description: 'Changes this game selection for Study bulk actions.' }),
     },
     class: {
       'sentry-row--selected': selected,
@@ -944,8 +918,8 @@ function renderItemRow(
     h('input.sentry-checkbox', {
       attrs: {
         type: 'checkbox',
-        'aria-label': `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`,
-        ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`, description: 'Changes this game selection for Study bulk actions.' }),
+        'aria-label': `${selected ? 'Deselect' : 'Select'} ${modifier.title.text}`,
+        ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${modifier.title.text}`, description: 'Changes this game selection for Study bulk actions.' }),
       },
       props: { checked: selected },
       on: {
@@ -965,7 +939,22 @@ function renderItemRow(
 
 
         isAlias ? navIcon('corner-down-right', { size: 11, className: 'sentry-alias-badge' }) : null,
-        h('div.sentry-title', item.title || 'Untitled'),
+
+
+
+
+        h('div.sentry-title', {
+          class: { 'sentry-title--untitled': modifier.title.untitled },
+          attrs: modifier.title.untitled ? { style: 'opacity:0.6;font-style:italic' } : {},
+        }, modifier.title.text),
+
+
+        modifier.signals.orp ? h('span.sentry-alias-chip.sentry-orp-chip', {
+          attrs: { title: 'Linked to Opening Repertoire Practice material' },
+        }, 'ORP') : null,
+        modifier.signals.hasNotes ? h('span.sentry-alias-chip.sentry-notes-chip', {
+          attrs: { title: 'This game has notes' },
+        }, 'Notes') : null,
 
 
 
@@ -979,7 +968,7 @@ function renderItemRow(
       isAlias && density === 'full' ? h('div.sentry-alias-from', `↳ from ${homeName}`) : null,
       reusedRow,
     ]),
-    renderActionRail(item.id, redraw),
+    renderActionRail(modifier, item.id, redraw),
   ]);
 }
 
