@@ -310,6 +310,9 @@ let _includeDescendants: boolean = false;
 
 
 
+
+
+
 let _navigatorFolderId: string | null = null;
 
 // --- Navigation index (Phase 2 T5-D04) ---
