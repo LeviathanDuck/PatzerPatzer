@@ -48,6 +48,7 @@ import {
   detailLoadRouteKey, hydrateStudyDetailRoute, navigateTo, navigateFirst, navigateLast, navigatePrev, navigateNext,
   flipStudyBoard, studyDetailRouteSnapshot, detailOrientation, mountStudyWorkspace,
   rememberStudyDetailRouteQuery, isStudyWorkspaceActive, reconcileStudyPracticeSlot,
+  reconcileOrdinaryStudySlot,
 } from './studyDetailCtrl';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './detailRouteState';
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
@@ -2497,6 +2498,12 @@ export function renderStudyDetail(id: string, redraw: () => void, routeQuery = '
       renderDrillView(redraw),
     ]);
   }
+
+
+
+
+
+  reconcileOrdinaryStudySlot(redraw);
 
   return h('div.study-detail', [
 

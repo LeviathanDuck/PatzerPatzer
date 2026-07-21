@@ -526,6 +526,46 @@ export function reconcileStudyPracticeSlot(requested: boolean, redraw: () => voi
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export function reconcileOrdinaryStudySlot(redraw: () => void): void {
+  if (!_session) return;
+  if (isSourcePreviewOpen()) return;                 // preview owns the slot
+  if (_practiceWorkspaceInstance !== null) return;   // Practice owns the slot (reconcileStudyPracticeSlot)
+  if (isStudyWorkspaceActive()) return;              // already the active ordinary Study slot — no-op
+  // Ordinary Study was superseded (Analysis excursion) and hydration skipped the re-mount. Re-mount it
+  // so ordinary Study is the active slot BEFORE the board-wrap re-inserts in this render; its insert
+  // hook (studyDetailView renderStudyBoardArea) then paints the authored shapes once, after layout.
+  // Do NOT syncStudyBoard here: that would run during render, before the board is laid out, and
+  // Chessground would draw shapes with NaN geometry (bounds not yet measured).
+  //
+  // INVARIANT (relied on, currently guaranteed): reaching here means a NON-Study workspace owns the
+  // slot while the ordinary Study board is rendering. That state is only ever produced by a path that
+  // rendered a DIFFERENT subtree (route-exit full remount, or the drill/preview/practice takeovers,
+  // whose short-circuits render their own surface) — so `div.study-board-wrap` (keyed) fresh-INSERTS
+  // on this render and its insert hook fires. If a future change kept study-detail's board-wrap
+  // mounted while swapping the workspace under it (reuse, no re-insert), the insert hook would not
+  // fire and this omission would leave shapes empty; such a change must add a post-layout resync here.
+  mountStudyWorkspace(redraw);
+}
+
 // --- Orientation ---
 
 export function flipStudyBoard(redraw: () => void): void {
