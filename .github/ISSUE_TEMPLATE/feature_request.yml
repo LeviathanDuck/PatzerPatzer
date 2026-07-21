@@ -1,0 +1,52 @@
+name: Feature request
+description: Suggest a public Chess Patzer product improvement without private development material.
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Public product ideas are welcome. Keep internal planning, diagnostics, accounts, and infrastructure out of the request.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options:
+        - Analysis
+        - Games
+        - Puzzles
+        - Study
+        - Openings or Repertoire
+        - Account or Sync
+        - New public product area
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Explain the public user need without internal plans or private operational context.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional public product alternatives only.
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy_acknowledgement
+    attributes:
+      label: Public-request privacy check
+      description: Public issues are visible to everyone and may be copied or archived.
+      options:
+        - label: I confirm this request contains no credentials, authorization material, private identifiers, PGN/FEN or move records, raw logs or payloads, screenshots or attachments, local computer paths, or hosting and deployment details.
+          required: true
