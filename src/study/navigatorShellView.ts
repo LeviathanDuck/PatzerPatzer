@@ -59,6 +59,7 @@ import {
   hasAnyExpanded,
   nonInternalTagCounts,
   renderNavigationPane,
+  revealFolderRow,
   SYSTEM_LENSES,
   SYSTEM_SMART_TAGS,
   type StudyLensId,
@@ -75,7 +76,7 @@ import { PaneResizeController } from './paneResize';
 import { applyNavigatorSettings } from './navigatorSettings';
 
 
-import { setTagMutationHandlers } from './navigatorContextMenu';
+import { setNavigatorFolderNavigation, setTagMutationHandlers } from './navigatorContextMenu';
 import { requestAdvancedAppearance } from '../appearance/entryPoints';
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
 import {
@@ -238,6 +239,90 @@ function buildSelectionIndex(
     index.set(selectionKey(selection), selection);
   }
   return index;
+}
+
+
+
+
+
+
+interface FolderRowLocation {
+  selection: { kind: 'folder'; sectionId: StudySectionId; folderId: string };
+  ancestorFolderIds: string[];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+function locateFolderRows(tree: StudyNavigationTree, folderId: string): FolderRowLocation[] {
+  const found: FolderRowLocation[] = [];
+  const walk = (
+    sectionId: StudySectionId,
+    groups: readonly StudyNavigationFolderGroup[],
+    ancestors: readonly string[],
+  ): void => {
+    for (const group of groups) {
+      if (group.id === folderId) {
+        found.push({ selection: { kind: 'folder', sectionId, folderId }, ancestorFolderIds: [...ancestors] });
+      }
+      walk(sectionId, group.children, [...ancestors, group.id]);
+    }
+  };
+  for (const section of tree.sections) walk(section.id, section.folders, []);
+  return found;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function navigateToFolderRow(
+  tree: StudyNavigationTree,
+  folderId: string,
+  onSelect: (selection: NavigatorSelection) => void,
+): boolean {
+  const found = locateFolderRows(tree, folderId);
+  if (found.length === 0) return false;
+  const browsedSectionId = _selection ? selectionSectionId(_selection) : null;
+  const target = found.find(row => row.selection.sectionId === browsedSectionId) ?? found[0]!;
+  revealFolderRow(target.selection.sectionId, target.ancestorFolderIds);
+  onSelect(target.selection);
+  return true;
+}
+
+
+
+
+
+
+
+let _folderNavigationToken = 0;
+
+function releaseFolderNavigation(token: number): void {
+  if (token === _folderNavigationToken) setNavigatorFolderNavigation(null);
 }
 
 
@@ -1841,8 +1926,15 @@ function renderGameOpenShell(
     onOpenDrillCatalog: () => { openDrillCatalog({ kind: 'global' }, redraw); redraw(); },
   };
 
+
+
+
+
+
+  const navigationToken = _folderNavigationToken;
   return h('div.lib-shell.lib-shell--game-open', {
     attrs: { style: _itemListDivider.styleDeclaration() },
+    hook: { destroy: () => releaseFolderNavigation(navigationToken) },
   }, [
     renderRail(railContext),
     h('div.lib-items-wrap', {
@@ -1909,12 +2001,11 @@ export function renderNavigatorShell(
     },
   });
 
-  if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen);
 
-  if (_selection === null) _selection = defaultSelection();
 
-  const keyIndex = buildSelectionIndex(tree, allItems);
-  const activeKey = selectionKey(_selection);
+
+
+
   const onSelect = (selection: NavigatorSelection): void => {
 
 
@@ -1932,6 +2023,38 @@ export function renderNavigatorShell(
     if (scopeChanged) clearSelection();
     redraw();
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const navigationToken = ++_folderNavigationToken;
+  setNavigatorFolderNavigation(folderId =>
+    navigationToken === _folderNavigationToken && navigateToFolderRow(tree, folderId, onSelect));
+
+  if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen);
+
+  if (_selection === null) _selection = defaultSelection();
+
+  const keyIndex = buildSelectionIndex(tree, allItems);
+  const activeKey = selectionKey(_selection);
 
   const navPane = renderNavigationPane(tree, redraw, allItems, SYSTEM_LENSES, _reorderMode);
 
@@ -1958,6 +2081,8 @@ export function renderNavigatorShell(
 
 
   const currentFolderId = selection.kind === 'folder' ? selection.folderId : null;
+
+
 
 
 
@@ -2092,11 +2217,14 @@ export function renderNavigatorShell(
 
   return h('div.lib-shell', {
     attrs: { style: _navDivider.styleDeclaration() },
-    // Finding #1 (NN attach/cleanup lifecycle): detach the document keydown listener and drop the
-    // retained deps when this State-1 shell unmounts (route leaves `#/study`, or the game-open
-    // shell -- a different root sel -- replaces it). A later render re-attaches via
-    // `bindNavigatorKeyboard` above.
-    hook: { destroy: () => unbindNavigatorKeyboard() },
+
+
+
+
+
+
+
+    hook: { destroy: () => { unbindNavigatorKeyboard(); releaseFolderNavigation(navigationToken); } },
   }, [
     renderRail({
       ...DEFAULT_RAIL_CONTEXT,

@@ -250,6 +250,21 @@ export function expandAllSections(): void {
   _collapsedIds.clear();
 }
 
+
+
+
+
+
+
+
+
+
+
+export function revealFolderRow(sectionId: StudySectionId, ancestorFolderIds: readonly string[]): void {
+  _collapsedIds.delete(sectionId);
+  for (const ancestorId of ancestorFolderIds) _collapsedIds.delete(folderCollapseKey(sectionId, ancestorId));
+}
+
 /** Collapses every section/folder in the CURRENT tree. */
 export function collapseAllSections(tree: StudyNavigationTree): void {
   for (const id of collectCollapsibleIds(tree)) _collapsedIds.add(id);

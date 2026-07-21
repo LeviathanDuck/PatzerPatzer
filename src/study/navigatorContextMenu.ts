@@ -71,7 +71,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
-import { controlExplainerAttrs, renderDisabledControlExplainer } from '../ui/controlExplainer';
+import { controlExplainerAttrs, renderDisabledControlExplainer, type ControlExplainer } from '../ui/controlExplainer';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import type { StudyItem } from './types';
 import {
@@ -163,6 +163,35 @@ export interface GameMenuContext {
   isPinned: (id: string) => boolean;
   /** Item-list-owned pin toggle over a set of ids (single [id] or the whole multi-selection). */
   onTogglePin: (ids: readonly string[]) => void;
+}
+
+
+
+
+
+
+
+
+
+
+
+export type NavigatorFolderNavigation = (folderId: string) => boolean;
+
+let _navigatorFolderNavigation: NavigatorFolderNavigation | null = null;
+
+/** Idempotent: the shell re-registers on every render (same pattern as `setTagMutationHandlers`). */
+export function setNavigatorFolderNavigation(handler: NavigatorFolderNavigation | null): void {
+  _navigatorFolderNavigation = handler;
+}
+
+
+
+
+
+
+
+export function navigateNavigatorToFolder(folderId: string): boolean {
+  return _navigatorFolderNavigation?.(folderId) === true;
 }
 
 interface ResolvedTargets {
@@ -427,7 +456,25 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
           key: 'go-home',
           label: 'Go to home folder',
           icon: 'folder-open',
-          onClick: () => { setActiveFolderId(homeId); redraw(); },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          onClick: () => {
+            if (!navigateNavigatorToFolder(homeId)) setActiveFolderId(homeId);
+            redraw();
+          },
         }));
       }
     }
@@ -551,17 +598,34 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
     const hasSubmenu = entry.submenu.length > 0;
     const submenuOpen = hasSubmenu && _openSubmenuKey === entry.key;
 
-    const description = entry.warning
-      ? 'Permanently removes the named Study data after confirmation.'
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const explainer: ControlExplainer = entry.warning
+      ? {
+          label: entry.label,
+          description: 'Permanently removes the named Study data after confirmation.',
+          tier: 'essential',
+        }
       : hasSubmenu
-        ? 'Opens a submenu of available destinations or choices.'
-        : undefined;
+        ? { label: entry.label, description: 'Opens a submenu of available destinations or choices.' }
+        : { label: entry.label };
     const button = h('button.nav-ctx-menu__item', {
         class: {
           'nav-ctx-menu__item--warning': entry.warning,
           'nav-ctx-menu__item--disabled': entry.disabled,
         },
-        attrs: { type: 'button', role: 'menuitem', 'aria-haspopup': hasSubmenu ? 'true' : 'false', ...controlExplainerAttrs({ label: entry.label, description: description ?? 'Runs this Study menu action.' }) },
+        attrs: { type: 'button', role: 'menuitem', 'aria-haspopup': hasSubmenu ? 'true' : 'false', ...controlExplainerAttrs(explainer) },
         on: {
           click: (e: Event) => {
             e.stopPropagation();
