@@ -340,6 +340,7 @@ import { scoringEvalOf } from './study/practice/engineDrillCtrl';
 import QuestionnaireCtrl from './analyse/questionnaire/questionnaireCtrl';
 import renderQuestionnaire from './analyse/questionnaire/questionnaireView';
 import { renderStudyLibrary, renderStudyDetailShell } from './study/libraryView';
+import { renderStudyNavigatorOverlayHost } from './study/navigatorOverlayHost';
 import EditorCtrl, { type EditorConfig } from './editor/ctrl';
 import renderEditor, { resetEditorSaveFlow } from './editor/view';
 import { saveCurrentToLibrary } from './study/saveAction';
@@ -3628,6 +3629,20 @@ function view(route: Route): VNode {
     renderReviewErrorSubmitOverlay(),
     renderActiveLfymSaveFlowModal(),
     renderActiveGameSaveFlowModal(),
+
+
+
+
+
+
+
+
+
+
+
+    route.name === 'study' || route.name === 'study-detail'
+      ? renderStudyNavigatorOverlayHost(redraw)
+      : null,
     puzzleCreateMsg ? h('div.puzzle-create-toast', puzzleCreateMsg) : null,
     h('footer.app-legal', [
       h('div.app-legal__notice', PLATFORM_DISCLAIMER),

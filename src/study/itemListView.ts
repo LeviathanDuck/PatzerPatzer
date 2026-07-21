@@ -130,7 +130,6 @@ import { deriveHomeFolderId } from './studyDb';
 import { navIcon, type NavIconNameOrAlias } from './navIcons';
 import {
   openGameContextMenu,
-  renderGameContextMenu,
   type GameMenuContext,
 } from './navigatorContextMenu';
 import {
@@ -140,9 +139,11 @@ import {
   endDrag,
   shouldSuppressClick,
 } from './navigatorDragDrop';
-import { openMoveAliasDialog, renderMoveAliasDialog } from './moveAliasDialog';
-import { openBulkTagDialog, renderBulkTagDialog } from './bulkTagDialog';
-import { openBulkAddToOrpDialog, renderBulkAddToOrpDialog } from './bulkAddToOrp';
+
+
+import { openMoveAliasDialog } from './moveAliasDialog';
+import { openBulkTagDialog } from './bulkTagDialog';
+import { openBulkAddToOrpDialog } from './bulkAddToOrp';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
 export type ItemListDensity = 'compact' | 'full';
@@ -1168,9 +1169,14 @@ export function renderItemListPane(
         : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)),
     ]),
     renderBulkActionBar(redraw, folderContext),
-    renderGameContextMenu(redraw),
-    renderMoveAliasDialog(redraw),
-    renderBulkTagDialog(redraw),
-    renderBulkAddToOrpDialog(redraw),
+
+
+
+
+
+
+
+
+
   ]);
 }

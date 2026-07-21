@@ -105,6 +105,11 @@ let _listener: ((event: KeyboardEvent) => void) | null = null;
 
 
 
+
+
+
+
+
 const DIALOG_SELECTOR =
   '[role="dialog"], [aria-modal="true"], .study-modal-backdrop, .study-modal, .sentry-move-dialog-overlay';
 

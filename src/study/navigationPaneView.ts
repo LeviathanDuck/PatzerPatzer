@@ -88,11 +88,12 @@ import {
 } from './navigatorDragDrop';
 import { shortcuts, type ShortcutEntry } from './shortcuts';
 import { isHidden, showHiddenItems } from './hiddenItems';
+
+
+
 import {
   openFolderContextMenu,
   openTagContextMenu,
-  renderFolderContextMenu,
-  renderTagContextMenu,
 } from './navigatorContextMenu';
 
 
@@ -1589,9 +1590,7 @@ export function renderNavigationPane(
 
 
 
-    renderFolderContextMenu(redraw),
 
 
-    renderTagContextMenu(redraw),
   ]);
 }

@@ -722,9 +722,32 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
   });
 }
 
-/** Clamps the menu's fixed position so it never renders off-screen — same measure-and-clamp
- * technique as src/main.ts's own `positionContextMenu` (re-derived here, not imported, since that
- * function is private to main.ts, a no-touch file for this slice). */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clampMenuPosition(el: HTMLElement, x: number, y: number): void {
   const menuWidth = el.offsetWidth + 4;
   const menuHeight = el.offsetHeight + 4;
@@ -734,12 +757,21 @@ function clampMenuPosition(el: HTMLElement, x: number, y: number): void {
   el.style.top = `${top}px`;
 }
 
-/** Renders the currently-open game context menu, or null when closed. Callers (itemListView.ts)
- * include this in their own render tree once per render pass; it is a no-op when no menu is open. */
+
+
+
+
 export function renderGameContextMenu(redraw: () => void): VNode | null {
   if (!_menu) return null;
   const { entries, x, y } = _menu;
   return h('div.nav-ctx-overlay', {
+
+
+
+
+
+
+    key: 'nav-game-context-menu',
     attrs: { 'aria-label': 'Close game menu', ...controlExplainerAttrs({ label: 'Close game menu' }) },
     on: {
       click: () => { closeGameContextMenu(); redraw(); },
@@ -818,13 +850,14 @@ export function isFolderContextMenuOpen(): boolean {
   return _folderMenu !== null;
 }
 
-/** Renders the currently-open folder context menu, or null when closed. Callers
- * (navigationPaneView.ts) include this in their own render tree once per render pass; it is a
- * no-op when no menu is open — mirrors `renderGameContextMenu`'s own shape exactly. */
+
+
+
 export function renderFolderContextMenu(redraw: () => void): VNode | null {
   if (!_folderMenu) return null;
   const { entries, x, y } = _folderMenu;
   return h('div.nav-ctx-overlay', {
+    key: 'nav-folder-context-menu', // distinct key — see `renderGameContextMenu`'s own key comment
     attrs: { 'aria-label': 'Close folder menu', ...controlExplainerAttrs({ label: 'Close folder menu' }) },
     on: {
       click: () => { closeFolderContextMenu(); redraw(); },
@@ -1000,13 +1033,14 @@ export function isTagContextMenuOpen(): boolean {
   return _tagMenu !== null;
 }
 
-/** Renders the currently-open tag context menu, or null when closed. Callers
- * (navigationPaneView.ts) include this in their own render tree once per render pass; it is a
- * no-op when no menu is open — mirrors `renderFolderContextMenu`'s own shape exactly. */
+
+
+
 export function renderTagContextMenu(redraw: () => void): VNode | null {
   if (!_tagMenu) return null;
   const { entries, x, y } = _tagMenu;
   return h('div.nav-ctx-overlay', {
+    key: 'nav-tag-context-menu', // distinct key — see `renderGameContextMenu`'s own key comment
     attrs: { 'aria-label': 'Close tag menu', ...controlExplainerAttrs({ label: 'Close tag menu' }) },
     on: {
       click: () => { closeTagContextMenu(); redraw(); },

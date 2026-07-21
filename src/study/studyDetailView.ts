@@ -861,6 +861,24 @@ let _panelLoading = false;
 let _panelRefreshGeneration = 0;
 
 function refreshPanelData(lessonId: string, redraw: () => void): void {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  _studyOrpSourceEpoch.bump();
+  _studyOrpSourceOpenNotice = null;
+  _studyActiveLearnProvenance = null;
+  _studyLearnLaunchInFlight = false;
   _panelLoading = true;
   const generation = ++_panelRefreshGeneration;
   void loadStudyPracticePanelData({ lessonId }).then(data => {
@@ -966,6 +984,14 @@ export function setGuidedLearnLauncher(launcher: GuidedLearnLauncher | null): vo
 
 
 
+
+
+
+
+
+
+
+
 const _studyOrpSourceEpoch = createOpenEpoch();
 let _studyOrpSourceOpenInFlight = false;
 let _studyOrpSourceOpenNotice: string | null = null;
@@ -1006,17 +1032,6 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
     _panelData = null;
 
 
-
-
-
-
-
-
-
-    _studyOrpSourceEpoch.bump();
-    _studyOrpSourceOpenNotice = null;
-    _studyActiveLearnProvenance = null;
-    _studyLearnLaunchInFlight = false;
     refreshPanelData(lessonId, redraw);
   }
 

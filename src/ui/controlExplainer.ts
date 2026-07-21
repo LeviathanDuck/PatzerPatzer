@@ -20,6 +20,76 @@ const TARGET_GAP_PX = 8;
 
 let installedCleanup: (() => void) | null = null;
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const activeOverlays = new Set<string>();
+const overlayChangeListeners = new Set<() => void>();
+
+function notifyOverlayChange(): void {
+  for (const listener of [...overlayChangeListeners]) listener();
+}
+
+/**
+ * Mark a dialog, menu, context menu or other conflicting overlay as open or closed.
+ *
+ * While any overlay is active no control explainer opens, and an already-open one closes.
+ * Idempotent per `name`.
+ */
+export function setControlExplainerOverlayActive(name: string, active: boolean): void {
+  const key = name.trim();
+  if (!key) throw new TypeError('A control-explainer overlay name must not be blank.');
+  const changed = active ? !activeOverlays.has(key) : activeOverlays.delete(key);
+  if (active) activeOverlays.add(key);
+  if (changed) notifyOverlayChange();
+}
+
+/** True while at least one registered overlay is open. Exposed for tests and overlay authors. */
+export function isControlExplainerOverlayActive(): boolean {
+  return activeOverlays.size > 0;
+}
+
+/**
+ * Snabbdom `hook` fragment that registers an overlay for the lifetime of its root element.
+ *
+ * Spread onto the overlay's outermost vnode:
+ *
+ * ```ts
+ * h('div.my-overlay', { hook: { ...controlExplainerOverlayHooks('my-overlay') } }, children)
+ * ```
+ *
+ * Mount/unmount is the right lifetime because it is the only one that survives the overlay's own
+ * internal re-renders, route changes and error-fallback teardown alike — the element is in the
+ * document exactly while the overlay is on screen.
+ */
+export function controlExplainerOverlayHooks(name: string): { insert: () => void; destroy: () => void } {
+  return {
+    insert: () => setControlExplainerOverlayActive(name, true),
+    destroy: () => setControlExplainerOverlayActive(name, false),
+  };
+}
+
 function normalizedExplainer(explainer: ControlExplainer): ControlExplainer {
   const label = explainer.label.trim();
   if (!label) throw new TypeError('A control explainer label must not be blank.');
@@ -293,6 +363,11 @@ export function initControlExplainers(helpController?: Pick<ControlHelpControlle
     return Boolean(label && visibleText && label.localeCompare(visibleText, undefined, { sensitivity: 'accent' }) === 0);
   };
   const eligible = (target: HTMLElement): boolean => {
+
+
+
+
+    if (activeOverlays.size > 0) return false;
     const tier = targetTier(target);
     return tier !== null && tierVisible(currentMode(), tier) && !repeatsVisibleLabel(target);
   };
@@ -477,6 +552,16 @@ export function initControlExplainers(helpController?: Pick<ControlHelpControlle
     }
   }) ?? (() => {});
 
+
+
+
+
+  const onOverlayChange = (): void => {
+    cancelPending();
+    if (activeTarget && !eligible(activeTarget)) hide();
+  };
+  overlayChangeListeners.add(onOverlayChange);
+
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('pointerover', onPointerOver);
   document.addEventListener('pointerout', onPointerOut);
@@ -516,6 +601,7 @@ export function initControlExplainers(helpController?: Pick<ControlHelpControlle
     cancelPending();
     if (activeTarget) removeDescribedBy(activeTarget);
     unsubscribeHelp();
+    overlayChangeListeners.delete(onOverlayChange);
     observer?.disconnect();
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('pointerover', onPointerOver);
