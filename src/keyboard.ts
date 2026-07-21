@@ -17,6 +17,27 @@ import { getActiveRoundCtrl, puzzlePrev, puzzleNext, puzzleFirst, puzzleLast } f
 import { clearPremoveQueue, getPremoveQueueState } from './board/premoves';
 import { iconControlExplainerAttrs } from './ui/controlExplainer';
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type BoardKeydownRouting = 'surface-owned' | 'ignore' | 'analysis-shortcuts';
+export function routeBoardKeydown(routeName: string, hasSurfaceOwnedInput: boolean): BoardKeydownRouting {
+  if (hasSurfaceOwnedInput) return 'surface-owned';
+  if (routeName === 'study') return 'ignore';
+  return 'analysis-shortcuts';
+}
+
 // --- Injected deps ---
 
 let _getCtrl:     () => AnalyseCtrl                                      = () => { throw new Error('keyboard not initialised'); };
@@ -85,16 +106,25 @@ export function bindKeyboardHandlers(deps: {
       return; // swallow other keys on puzzle page to avoid analysis board conflicts
     }
 
-    // Consult the active workspace's board-input module before running the Analysis shortcut
-    // block. A `surface-owned` module (future drill / read-only / puzzle) owns its own keys and
-    // its own preventDefault, suppressing Analysis navigation/flip/engine shortcuts. The handle is
-    // the guarded instance facade, so a superseded module cannot receive keys. Analysis (no
-    // module) and Study (`analysis-default`) fall through to the block below unchanged.
-    const input = activeWorkspace()?.boardInputModule;
-    if (input?.keyboardPolicy.kind === 'surface-owned') {
-      input.keyboardPolicy.handleKeydown(e);
-      return;
-    }
+
+
+
+
+
+
+
+
+
+
+
+
+    const policy = activeWorkspace()?.boardInputModule?.keyboardPolicy;
+    const hasSurfaceOwnedInput = policy?.kind === 'surface-owned';
+    const routing = routeBoardKeydown(routeName, hasSurfaceOwnedInput);
+    // The inner kind check re-narrows `policy` to its surface-owned variant for `handleKeydown`
+    // (routing==='surface-owned' already implies it; TS can't infer that across the predicate).
+    if (routing === 'surface-owned') { if (policy?.kind === 'surface-owned') policy.handleKeydown(e); return; }
+    if (routing === 'ignore') return;
 
     if (e.shiftKey) {
       if (e.key === 'ArrowLeft')       { e.preventDefault(); previousBranch(); _redraw(); }
