@@ -54,7 +54,14 @@ import { parseStudyDetailRouteState, serializeStudyDetailRouteState } from './de
 import { normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
 import { writeHashRoute } from '../router';
 import { isDrillActive, isDrillSummary, initDrillView, renderDrillView, endDrill } from './practice/drillView';
-import { renderPracticePanel, type PracticePanelTab, type PracticePanelProps, type PanelDrillsSection } from './practice/practiceView';
+import {
+  renderPracticePanel, buildAnalysisLearnTab, resolveAndOpenOrpSource, createOpenEpoch,
+  reconcileLearnLaunchState,
+  type PracticePanelTab, type PracticePanelProps, type PanelDrillsSection,
+} from './practice/practiceView';
+import { openPgnOnAnalysisBoard } from './practice/engineDrillHost';
+import { getStudy } from './studyDb';
+import type { OrpSourceProvenance } from './types';
 import { listRecentEngineDrills } from './studyDb';
 import { openDrillRecordOnBoard } from './practice/engineDrillHost';
 import { openDrillCatalog } from './practice/drillCatalogView';
@@ -924,12 +931,92 @@ function studyPanelDrillsSection(studyItemId: string | null, redraw: () => void)
 
 
 
+
+
+
+export type GuidedLearnLauncher = (
+  sequences: readonly TrainableSequence[],
+  index: number,
+  redraw: () => void,
+) => Promise<void>;
+
+let _guidedLearnLauncher: GuidedLearnLauncher | null = null;
+
+/** Idempotent; called once at libraryView module init. */
+export function setGuidedLearnLauncher(launcher: GuidedLearnLauncher | null): void {
+  _guidedLearnLauncher = launcher;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const _studyOrpSourceEpoch = createOpenEpoch();
+let _studyOrpSourceOpenInFlight = false;
+let _studyOrpSourceOpenNotice: string | null = null;
+let _studyActiveLearnProvenance: OrpSourceProvenance | null = null;
+let _studyLearnLaunchInFlight = false;
+let _studyLastDrillActiveObserved = false;
+
+function openStudyOrpSourceGame(provenance: OrpSourceProvenance, redraw: () => void): void {
+  _studyOrpSourceOpenNotice = null;
+  void resolveAndOpenOrpSource<number>(provenance, {
+    tryBeginOpen: () => { if (_studyOrpSourceOpenInFlight) return false; _studyOrpSourceOpenInFlight = true; return true; },
+    endOpen: () => { _studyOrpSourceOpenInFlight = false; },
+    loadOriginalPgn: async id => (await getStudy(id))?.pgn,
+    openOnAnalysisBoard: pgn => openPgnOnAnalysisBoard(pgn),
+    captureContext: () => _studyOrpSourceEpoch.capture(),
+    contextStillValid: token => _studyOrpSourceEpoch.stillValid(token),
+    onFailure: reason => { _studyOrpSourceOpenNotice = reason; redraw(); },
+    onOpened: () => { _studyOrpSourceOpenNotice = null; },
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
 function renderStudyPracticePanel(redraw: () => void): VNode {
   const study = studyDetail();
   const lessonId = study?.id ?? null;
   if (lessonId !== null && _panelDataFor !== lessonId) {
     _panelDataFor = lessonId;
     _panelData = null;
+
+
+
+
+
+
+
+
+
+    _studyOrpSourceEpoch.bump();
+    _studyOrpSourceOpenNotice = null;
+    _studyActiveLearnProvenance = null;
+    _studyLearnLaunchInFlight = false;
     refreshPanelData(lessonId, redraw);
   }
 
@@ -957,10 +1044,51 @@ function renderStudyPracticePanel(redraw: () => void): VNode {
     review = data.review;
   }
 
+
+
+
+  const drillActive = isDrillActive();
+  if (_studyLastDrillActiveObserved && !drillActive) _studyOrpSourceEpoch.bump();
+  _studyLastDrillActiveObserved = drillActive;
+  {
+    const next = reconcileLearnLaunchState(
+      { provenance: _studyActiveLearnProvenance, launchInFlight: _studyLearnLaunchInFlight },
+      drillActive,
+    );
+    _studyActiveLearnProvenance = next.provenance;
+    _studyLearnLaunchInFlight = next.launchInFlight;
+  }
+  const learn = buildAnalysisLearnTab({
+    learnSessionActive: drillActive,
+    engineDrillOwnsBoard: engineDrillActive() || engineDrillFinished(),
+    data,
+
+
+
+
+
+
+
+
+    liveBody: () => h('div.orp-practice__learn-elsewhere', 'This line is being drilled on the Study board.'),
+    onLaunch: sequence => {
+      const launcher = _guidedLearnLauncher;
+      if (launcher === null) return; // no launcher registered (never in the app; guards tests)
+      _studyActiveLearnProvenance = sequence.orpSourceProvenance ?? null;
+      _studyOrpSourceOpenNotice = null;
+      _studyOrpSourceEpoch.bump(); // a new drill is a context change
+      _studyLearnLaunchInFlight = true;
+      void launcher([sequence], 0, redraw).finally(() => { _studyLearnLaunchInFlight = false; });
+    },
+    onOpenSource: provenance => { openStudyOrpSourceGame(provenance, redraw); },
+    ...(_studyActiveLearnProvenance !== null ? { activeSourceProvenance: _studyActiveLearnProvenance } : {}),
+    ...(_studyOrpSourceOpenNotice !== null ? { openNotice: _studyOrpSourceOpenNotice } : {}),
+  });
+
   const props: PracticePanelProps = {
     activeTab: _practiceTab,
     onSelectTab: (tab: PracticePanelTab) => { _practiceTab = tab; redraw(); },
-    learn: { status: 'ready', entries: [] },
+    learn,
     review,
     practice: { status: 'empty' },
     progress: data === null ? (_panelLoading ? { status: 'loading' } : { status: 'empty' }) : data.progress,

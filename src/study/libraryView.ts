@@ -40,7 +40,7 @@ import {
   type OrpPracticeLineView,
 } from './studyCtrl';
 import { renderNavigatorShell, normalizeStudyToolTab, type StudyToolTabId } from './navigatorShellView';
-import { renderStudyDetail, renderStudyToolPanel } from './studyDetailView';
+import { renderStudyDetail, renderStudyToolPanel, setGuidedLearnLauncher } from './studyDetailView';
 import { parseStudyDetailRouteState, serializeStudyDetailRouteState, STUDY_DETAIL_PRACTICE_TOOL_TAB } from './detailRouteState';
 import { serializeAnalysisRouteWithPly, serializeAnalysisSelectedGameRoute } from '../analyse/routeState';
 import { renderCompactGameRow } from '../games/view';
@@ -442,6 +442,12 @@ function loadOrpLines(redraw: () => void): void {
     redraw();
   });
 }
+
+
+
+
+
+setGuidedLearnLauncher(launchGuidedLearn);
 
 // --- Repertoire source section ---
 

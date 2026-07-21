@@ -28,6 +28,7 @@ import {
   listPracticeDecisionsByLesson,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
+  listPracticeLines,
   listPracticeLinesBounded,
   getPositionProgressForKeys,
 } from '../studyDb';
@@ -49,6 +50,11 @@ export interface PracticePanelDataDeps {
 
 
   readonly listPracticeLinesBounded: typeof listPracticeLinesBounded;
+
+
+
+
+  readonly listPracticeLines: typeof listPracticeLines;
   readonly getPositionProgressForKeys: typeof getPositionProgressForKeys;
   readonly listPracticeSessionsByState: typeof listPracticeSessionsByState;
   readonly listPracticeSessionsByLesson: typeof listPracticeSessionsByLesson;
@@ -61,6 +67,7 @@ export interface PracticePanelDataDeps {
 const REAL_DEPS: PracticePanelDataDeps = {
   listDuePracticeSrs,
   listPracticeLinesBounded,
+  listPracticeLines,
   getPositionProgressForKeys,
   listPracticeSessionsByState,
   listPracticeSessionsByLesson,
@@ -85,12 +92,45 @@ export interface StudyPracticePanelData {
 
 
 
+
+
+
+
   readonly learn?: readonly GlobalLearnEntry[];
 
 
   readonly progressTruncated?: boolean;
   readonly resumableSessionId?: string;
   readonly nowMs: number;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function deriveLearnEntries(
+  sequences: readonly TrainableSequence[],
+  nowMs: number,
+  deps: PracticePanelDataDeps,
+): Promise<readonly GlobalLearnEntry[]> {
+  const activeSequences = sequences.filter(seq => seq.status === 'active');
+  if (activeSequences.length === 0) return [];
+  const keys = [...new Set(activeSequences.flatMap(seq => seq.fens.map(positionKey)))];
+  const progressList = await deps.getPositionProgressForKeys(keys);
+  const progressMap = new Map(progressList.map(pr => [pr.key, pr]));
+  const newSequences = buildLearnSession(activeSequences, progressMap);
+  const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(nowMs), nowMs).values.newPerSession);
+  return newSequences.slice(0, cap).map(sequence => ({ id: sequence.id, label: sequence.label, sequence }));
 }
 
 /** Build the Review preview: a PURE plan over the due rows under synthetic ids. Never persisted. */
@@ -216,18 +256,7 @@ export async function loadGlobalPracticePanelData(
 
 
 
-    const lines = await deps.listPracticeLinesBounded(LEARN_LINES_SCAN_LIMIT);
-    const activeSequences = lines.filter(seq => seq.status === 'active');
-    if (activeSequences.length === 0) {
-      learn = [];
-    } else {
-      const keys = [...new Set(activeSequences.flatMap(seq => seq.fens.map(positionKey)))];
-      const progressList = await deps.getPositionProgressForKeys(keys);
-      const progressMap = new Map(progressList.map(pr => [pr.key, pr]));
-      const newSequences = buildLearnSession(activeSequences, progressMap);
-      const cap = Math.max(1, resolveOrpSettings(readOrpGlobalDefaults(), undefined, readOrpSessionOverride(nowMs), nowMs).values.newPerSession);
-      learn = newSequences.slice(0, cap).map(sequence => ({ id: sequence.id, label: sequence.label, sequence }));
-    }
+    learn = await deriveLearnEntries(await deps.listPracticeLinesBounded(LEARN_LINES_SCAN_LIMIT), nowMs, deps);
   } catch {
     learn = undefined; // the tab surfaces its own error state when the feed is absent
   }
@@ -346,6 +375,29 @@ export async function loadStudyPracticePanelData(
     review = { status: 'error', message: 'Could not load your review schedule.' };
   }
 
+
+
+
+
+
+  let learn: readonly GlobalLearnEntry[] | undefined;
+  try {
+    const lines = await deps.listPracticeLines(input.lessonId);
+
+
+
+
+
+
+    learn = await deriveLearnEntries(
+      lines.filter(seq => seq.status === 'active').slice(0, LEARN_LINES_SCAN_LIMIT),
+      nowMs,
+      deps,
+    );
+  } catch {
+    learn = undefined; // the tab surfaces its own error state when the feed is absent
+  }
+
   let progress: ProgressTabData;
   let progressTruncated = false;
   try {
@@ -363,6 +415,7 @@ export async function loadStudyPracticePanelData(
   return {
     review,
     progress,
+    ...(learn !== undefined ? { learn } : {}),
     ...(progressTruncated ? { progressTruncated: true } : {}),
     ...(resumableSessionId !== undefined ? { resumableSessionId } : {}),
     nowMs,
