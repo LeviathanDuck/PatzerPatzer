@@ -104,6 +104,19 @@ interface ContextMenuItemEntry {
   onClick: () => void;
   disabled: boolean;
   warning: boolean;
+
+
+
+
+
+
+
+
+
+
+
+
+  description?: string;
   submenu: ContextMenuEntry[]; // empty = no submenu
 }
 
@@ -121,6 +134,7 @@ function menuItem(opts: {
   onClick: () => void;
   disabled?: boolean;
   warning?: boolean;
+  description?: string;
   submenu?: ContextMenuEntry[];
 }): ContextMenuItemEntry {
   return {
@@ -131,6 +145,7 @@ function menuItem(opts: {
     onClick: opts.onClick,
     disabled: opts.disabled ?? false,
     warning: opts.warning ?? false,
+    ...(opts.description !== undefined ? { description: opts.description } : {}),
     submenu: opts.submenu ?? [],
   };
 }
@@ -276,6 +291,11 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       key: 'remove-tag',
       label: isMulti ? `Remove tag from ${count} games` : 'Remove tag',
       icon: 'minus',
+
+
+      description: isMulti
+        ? `Immediately removes the tag "${onlyTag}" from all ${count} selected games — there is no confirmation step.`
+        : `Immediately removes the tag "${onlyTag}" from this game — there is no confirmation step.`,
       onClick: () => {
         for (const id of ids) {
           const item = ctx.itemsById.get(id);
@@ -293,6 +313,12 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
         key: `remove-tag-${tag}`,
         label: tag,
         icon: 'minus',
+
+
+
+        description: isMulti
+          ? `Immediately removes the tag "${tag}" from all ${count} selected games — there is no confirmation step.`
+          : `Immediately removes the tag "${tag}" from this game — there is no confirmation step.`,
         onClick: () => {
           for (const id of ids) {
             const item = ctx.itemsById.get(id);
@@ -305,6 +331,11 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       key: 'remove-all-tags',
       label: isMulti ? `Remove all tags from ${count} games` : 'Remove all tags',
       icon: 'x',
+
+
+      description: isMulti
+        ? `Immediately strips every tag from all ${count} selected games — there is no confirmation step.`
+        : 'Immediately strips every tag from this game — there is no confirmation step.',
       onClick: () => {
         for (const id of ids) void updateStudy({ id, tags: [] }).then(redraw);
       },
@@ -370,6 +401,12 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       key: 'hide-game',
       label: isGameHidden ? 'Unhide game' : 'Hide game',
       icon: isGameHidden ? 'eye' : 'eye-off',
+
+
+
+      description: isGameHidden
+        ? 'Shows this game in the normal item list again on this device.'
+        : 'Hides this game from the item list on this device; it is not deleted, and the eye toggle shows hidden items again.',
       onClick: () => {
         if (isGameHidden) unhideItem('game', hideTargetId);
         else hideItem('game', hideTargetId);
@@ -401,6 +438,16 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
       key: `move-${folder.id}`,
       label: folder.name,
       icon: 'folder-input',
+
+
+
+
+
+      description: isMulti
+        ? `Adds all ${count} selected games to "${folder.name}"; they stay in the folders they are already in.`
+        : ctx.currentFolderId !== null && ctx.currentFolderId !== folder.id
+          ? `Moves this game to "${folder.name}" and removes it from the folder you opened this menu from.`
+          : `Moves this game to "${folder.name}".`,
       onClick: () => {
         if (isMulti) {
           void bulkAddToFolder(folder.id).then(redraw);
@@ -449,6 +496,10 @@ function buildGameMenuEntries(ctx: GameMenuContext, redraw: () => void): Context
         key: 'remove-alias',
         label: 'Remove alias from this folder',
         icon: 'x',
+
+
+
+        description: 'Immediately removes this game from the current folder only; the game itself is not deleted and stays in its home folder.',
         onClick: () => { void removeAliasFromFolder(targetId, ctx.currentFolderId!).then(redraw); },
       }));
       if (homeId !== null) {
@@ -611,6 +662,11 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
 
 
 
+
+
+
+
+
     const explainer: ControlExplainer = entry.warning
       ? {
           label: entry.label,
@@ -619,7 +675,9 @@ function renderEntries(entries: readonly ContextMenuEntry[], redraw: () => void,
         }
       : hasSubmenu
         ? { label: entry.label, description: 'Opens a submenu of available destinations or choices.' }
-        : { label: entry.label };
+        : entry.description !== undefined
+          ? { label: entry.label, description: entry.description, tier: 'essential' }
+          : { label: entry.label };
     const button = h('button.nav-ctx-menu__item', {
         class: {
           'nav-ctx-menu__item--warning': entry.warning,
@@ -725,6 +783,11 @@ function buildFolderMenuEntries(ctx: FolderMenuContext, redraw: () => void): Con
       key: 'hide-folder',
       label: hidden ? 'Unhide folder' : 'Hide folder',
       icon: hidden ? 'eye' : 'eye-off',
+
+
+      description: hidden
+        ? 'Shows this folder in the navigation pane again on this device.'
+        : 'Hides this folder from the navigation pane on this device; neither the folder nor its games are deleted, and the eye toggle shows hidden items again.',
       onClick: () => {
         if (hidden) unhideItem('folder', ctx.folderId);
         else hideItem('folder', ctx.folderId);
@@ -875,6 +938,11 @@ function buildTagMenuEntries(ctx: TagMenuContext, redraw: () => void): ContextMe
       key: 'hide-tag',
       label: hidden ? 'Unhide tag' : 'Hide tag',
       icon: hidden ? 'eye' : 'eye-off',
+
+
+      description: hidden
+        ? 'Shows this tag in the tag list again on this device.'
+        : 'Hides this tag from the tag list on this device; the games keep the tag, and the eye toggle shows hidden items again.',
       onClick: () => {
         if (hidden) unhideItem('tag', ctx.tagName);
         else hideItem('tag', ctx.tagName);
@@ -885,6 +953,10 @@ function buildTagMenuEntries(ctx: TagMenuContext, redraw: () => void): ContextMe
       key: 'rename-tag',
       label: 'Rename tag',
       icon: 'pencil',
+
+
+
+      description: 'Renames this tag on every game that carries it, not just the games shown here.',
       onClick: () => {
         const next = prompt('Rename tag:', ctx.tagName)?.trim();
         if (!next || next === ctx.tagName) return;
