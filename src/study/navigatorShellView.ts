@@ -73,6 +73,9 @@ import {
 import type { StudyItem } from './types';
 import { PaneResizeController } from './paneResize';
 import { applyNavigatorSettings } from './navigatorSettings';
+
+
+import { setTagMutationHandlers } from './navigatorContextMenu';
 import { requestAdvancedAppearance } from '../appearance/entryPoints';
 import { navIcon, type NavIconName, type NavIconNameOrAlias } from './navIcons';
 import {
@@ -1880,6 +1883,31 @@ export function renderNavigatorShell(
   // `document.body.style.setProperty` calls), so re-running it on every redraw — including the
   // very first, i.e. "mount" — is simpler and safer than tracking a separate one-shot mount flag.
   applyNavigatorSettings();
+
+
+
+
+
+
+
+  setTagMutationHandlers({
+    // Rename keeps the SAME underlying item set — only the tag's name changed — so the selection
+    // follows the rename and the D09 bulk-selection id set is deliberately NOT cleared.
+    onTagRenamed: (oldName, newName) => {
+      if (_selection?.kind === 'tag' && _selection.tagName === oldName) {
+        _selection = { kind: 'tag', tagName: newName };
+      }
+    },
+
+
+
+    onTagDeleted: name => {
+      if (_selection?.kind === 'tag' && _selection.tagName === name) {
+        _selection = defaultSelection();
+        clearSelection();
+      }
+    },
+  });
 
   if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen);
 

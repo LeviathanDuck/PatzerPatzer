@@ -736,6 +736,27 @@ export interface TagMenuContext {
   tagName: string;
 }
 
+
+
+
+
+
+
+
+
+
+export interface TagMutationHandlers {
+  onTagRenamed?: (oldName: string, newName: string) => void;
+  onTagDeleted?: (name: string) => void;
+}
+
+let _tagMutationHandlers: TagMutationHandlers = {};
+
+/** Idempotent: the shell re-registers on every render (same pattern as `applyNavigatorSettings`). */
+export function setTagMutationHandlers(handlers: TagMutationHandlers): void {
+  _tagMutationHandlers = handlers;
+}
+
 /** Renames a tag GLOBALLY across every study that carries it — mirrors `buildGameMenuEntries`'s own
  * existing bulk tag-remove loop shape (this file's "3. Tag ops" block above), but iterating
  * `allStudies()` (every currently-loaded study) rather than one menu's resolved selection, since a
@@ -743,9 +764,27 @@ export interface TagMenuContext {
 function renameTagEverywhere(oldName: string, nextName: string, redraw: () => void): void {
   for (const item of allStudies()) {
     if (item.tags.includes(oldName)) {
-      void updateStudy({ id: item.id, tags: item.tags.map(t => (t === oldName ? nextName : t)) }).then(redraw);
+
+
+
+
+
+
+      const remapped = item.tags.map(t => (t === oldName ? nextName : t));
+      void updateStudy({ id: item.id, tags: [...new Set(remapped)] }).then(redraw);
     }
   }
+
+
+
+  if (isHidden('tag', oldName)) {
+    unhideItem('tag', oldName);
+    hideItem('tag', nextName);
+  }
+
+
+
+  _tagMutationHandlers.onTagRenamed?.(oldName, nextName);
 }
 
 /** Deletes a tag GLOBALLY — same loop shape as `renameTagEverywhere` above, filtering the tag out
@@ -757,6 +796,12 @@ function deleteTagEverywhere(tagName: string, redraw: () => void): void {
       void updateStudy({ id: item.id, tags: item.tags.filter(t => t !== tagName) }).then(redraw);
     }
   }
+
+
+  if (isHidden('tag', tagName)) unhideItem('tag', tagName);
+
+
+  _tagMutationHandlers.onTagDeleted?.(tagName);
 }
 
 function buildTagMenuEntries(ctx: TagMenuContext, redraw: () => void): ContextMenuEntry[] {

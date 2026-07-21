@@ -1201,8 +1201,17 @@ export interface TagCount {
 export function nonInternalTagCounts(allItems: readonly StudyItem[]): TagCount[] {
   const counts = new Map<string, number>();
   for (const item of allItems) {
+
+
+
+
+
+
+    const seenOnItem = new Set<string>();
     for (const tag of item.tags) {
       if (isInternalTag(tag)) continue;
+      if (seenOnItem.has(tag)) continue;
+      seenOnItem.add(tag);
       counts.set(tag, (counts.get(tag) ?? 0) + 1);
     }
   }
