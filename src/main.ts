@@ -206,6 +206,7 @@ import {
   type ImportedGame, restoreGameIdCounter,
 } from './import/types';
 import { enqueueImportEnrichment, enqueueOpponentDeltaBackfill } from './import/enrichment';
+import { createImportDurabilityCoordinator, dedupeImportedGames } from './import/importDurability';
 import {
   ANALYSIS_VERSION, backfillOpenings, buildAnalysisNodes, clearAnalysisFromIdb,
   isStoredAnalysisLoadable, listAnalysisLibraryClassificationFromIdb, listGameSummaries,
@@ -405,49 +406,17 @@ const PUBLIC_LICENSE_URL = `${PUBLIC_SOURCE_URL}/blob/main/LICENSE`;
 const PLATFORM_DISCLAIMER = 'Chess Patzer is not affiliated with or endorsed by Chess.com or Lichess.';
 const NAV_STATE_SAVE_MS = 500;
 
-/** True when the game id is a canonical platform game id (set by the import adapters). */
-function hasPlatformGameId(game: ImportedGame): boolean {
-  return game.id.startsWith('lichess:') || game.id.startsWith('chesscom:');
-}
 
-/**
- * Composite fallback key for games without a platform id (PGN paste, or
- * adapter games whose game URL failed to parse).
- * Avoids holding full PGN strings in the dedup Set (anti-pattern AP-6).
- * Format: "white:black:date:result" — compact (~40 chars vs ~10 KB per PGN).
- */
-function gameCompositeKey(game: ImportedGame): string {
-  return `${game.white ?? ''}:${game.black ?? ''}:${game.date ?? ''}:${game.result ?? ''}`;
-}
 
-/**
- * Dedupe by canonical game id: platform ids are globally unique, so re-imports
- * and overlapping batches drop out by construction, while distinct same-day
- * games against the same opponent both survive. Games without a platform id
- * fall back to the composite key so pasting the same PGN twice still dedupes.
- */
-function dedupeImportedGames(existing: ImportedGame[], incoming: ImportedGame[]): ImportedGame[] {
-  const seenIds = new Set(existing.map(g => g.id));
-  const seenKeys = new Set(existing.filter(g => !hasPlatformGameId(g)).map(gameCompositeKey));
-  const deduped: ImportedGame[] = [];
-  const importedAt = Date.now();
-  for (const game of incoming) {
-    if (seenIds.has(game.id)) continue;
-    if (!hasPlatformGameId(game)) {
-      const key = gameCompositeKey(game);
-      if (seenKeys.has(key)) continue;
-      seenKeys.add(key);
-    }
-    seenIds.add(game.id);
-    deduped.push({ ...game, importedAt });
-  }
-  return deduped;
-}
+
+
+
+const importDurability = createImportDurabilityCoordinator(saveGamesToIdb);
 
 // Callbacks injected into import adapters so they can mutate app state
 // without creating a circular import on main.ts.
 const importCallbacks = {
-  addGames(games: ImportedGame[], _first: ImportedGame): void {
+  async addGames(games: ImportedGame[], _first: ImportedGame): Promise<boolean> {
     const dedupedGames = dedupeImportedGames(importedGames, games);
     const chesscomIncomingCount = games.filter(game => game.source === 'chesscom').length;
     if (chesscomIncomingCount > 0) {
@@ -472,22 +441,48 @@ const importCallbacks = {
     const first = dedupedGames[0];
     if (!first) {
       redraw();
-      return;
+
+
+
+
+
+      return importDurability.ensureIncomingDurable(games, () => importedGames);
     }
+
+
+    importDurability.markOptimisticAddition(dedupedGames);
     setImportedGames([...importedGames, ...dedupedGames]);
 
 
 
     flushPendingGamePersist();
     selectedGameId = first.id;
-    performance.mark('import-batch-start');
-    void saveGamesToIdb(importedGames).finally(() => {
-      performance.mark('import-batch-end');
-    });
     refreshRegisteredAccounts(); // adapters may have registered a new account
 
     enqueueImportEnrichment(dedupedGames, { onGameEnriched: applyEnrichmentPatch });
-    loadGame(first.pgn); // calls redraw
+    loadGame(first.pgn); // calls redraw — the board/library update above is synchronous and is
+    // never blocked on the durable write awaited below (import UI stays responsive).
+    performance.mark('import-batch-start');
+
+
+
+
+
+
+    const persisted = await importDurability.ensureIncomingDurable(dedupedGames, () => importedGames);
+    performance.mark('import-batch-end');
+    if (!persisted) {
+      recordDiagnostic({
+        kind: 'lifecycle',
+        severity: Severity.Warn,
+        source: 'main.importCallbacks',
+        sourceTag: 'import',
+        message: 'import-batch-persist-failed',
+        metadata: { batchSize: importedGames.length },
+        redactionClass: 'safe',
+      });
+    }
+    return persisted;
   },
   redraw(): void { redraw(); },
 };
@@ -1480,10 +1475,8 @@ function evalCacheFromStoredNodes(nodes: Record<string, StoredNodeEntry>): Map<s
 /**
  * Load a game into the analysis board by PGN.
  * Resets analysis state and re-evaluates if engine is on.
- * When called with source:'queue' the background review queue is driving the load —
- * skip the full reset so the queue state and eval cache are not destroyed.
  */
-function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; syntheticCreatedAt?: number }): void {
+function loadGame(pgn: string | null, opts?: { syntheticCreatedAt?: number }): void {
   performance.mark('game-load-start');
 
 
@@ -1519,13 +1512,6 @@ function loadGame(pgn: string | null, opts?: { source?: 'queue' | 'user'; synthe
   // not-yet-merged tree under the new gameId (which would clobber that game's stored edits).
   markUserTreeSaveBaseline();
   performance.mark('pgn-parse-end');
-
-  if (opts?.source === 'queue') {
-    // Background queue advance: rebuild ctrl only, do not reset review status or eval cache.
-    restoreGeneration++;
-    performance.mark('game-load-end');
-    return;
-  }
 
   clearEvalCache();
   resetCurrentEval();

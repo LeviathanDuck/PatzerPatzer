@@ -122,7 +122,24 @@ export interface ImportedGame {
 
 /** Callbacks injected by main.ts so adapters don't depend on application state. */
 export interface ImportCallbacks {
-  addGames: (games: ImportedGame[], first: ImportedGame) => void;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  addGames: (games: ImportedGame[], first: ImportedGame) => Promise<boolean>;
   redraw: () => void;
 }
 

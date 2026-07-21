@@ -31,6 +31,7 @@ import type { LessonDecision } from './material';
 import type { AuthoredLessonContent } from './lessonAuthoring';
 import { scheduleNext, positionKey, isDue } from './scheduler';
 import { getPositionProgress, savePositionProgress, saveDrillAttempt } from '../studyDb';
+import { invalidatePracticeData } from '../studyCtrl';
 import { renderBoard } from '../../board/index';
 import {
   mountWorkspace,
@@ -747,6 +748,17 @@ async function persistGrading(
   await savePositionProgress(updated).catch(e =>
     console.warn('[drillView] savePositionProgress failed', e),
   );
+
+
+
+
+
+
+
+
+
+
+  invalidatePracticeData();
 
   const attempt: DrillAttempt = {
     positionKey:          key,

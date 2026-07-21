@@ -63,6 +63,7 @@ import { evalWinChances, LOSS_THRESHOLDS } from '../engine/winchances';
 import { contextFromNodeList, type EnginePositionContext } from '../engine/positionContext';
 import { onBoardAnimationChange, puzzleBoardAnimationConfig } from '../board/animation';
 import { record, Severity } from '../diagnostics';
+import { loadGamePgn } from '../idb';
 import { replaceHashRoute, writeHashRoute } from '../router';
 import {
   defaultPuzzleRouteState,
@@ -819,6 +820,30 @@ export class PuzzleRoundCtrl {
         playedUci,
         expectedUci,
         matched: true,
+        quality: 'best',
+        fenBefore,
+      };
+      this.moveQualities.push(quality);
+      return quality;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    if (appliedPlayed.value.position.isCheckmate()) {
+      const quality: PuzzleMoveQuality = {
+        playedUci,
+        expectedUci,
+        matched: false,
         quality: 'best',
         fenBefore,
       };
@@ -2839,7 +2864,6 @@ async function openPuzzleRoundWithRuntimeHooks(
       // Fetch full game PGN in the background — available for post-solve tree exploration
       (hooks.dequeue ?? dequeueSessionPuzzle)(def.id);
       (hooks.loadPgn ?? loadPuzzlePgn)(def).then(pgn => {
-        console.log('[pgn] loadPuzzlePgn resolved', { pgn: !!pgn, defId: def.id, ctrlId: activeRoundCtrl?.definition.id });
         if (pgn && activeRoundCtrl?.definition.id === def.id) {
           activeRoundCtrl.gamePgn = pgn;
           activeRoundCtrl['_pgnHeaders'] = undefined; // invalidate lazy cache
@@ -4412,9 +4436,32 @@ function dequeueSessionPuzzle(id: string): void {
   saveQueueToStorage();
 }
 
-/** Get the PGN for the current puzzle round (fetches if needed). */
-export async function loadPuzzlePgn(def: PuzzleDefinition): Promise<string | undefined> {
-  if (def.sourceKind === 'user-library') return def.sourcePgn;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function loadPuzzlePgn(
+  def: PuzzleDefinition,
+  deps: { loadGamePgn?: (gameId: string) => Promise<string | undefined> } = {},
+): Promise<string | undefined> {
+  if (def.sourceKind === 'user-library') {
+    if (def.sourcePgn !== undefined) return def.sourcePgn;
+    if (def.sourceGameId) return (deps.loadGamePgn ?? loadGamePgn)(def.sourceGameId);
+    return undefined;
+  }
   if (!def.gameUrl) return undefined;
   return fetchGamePgn(def.gameUrl);
 }

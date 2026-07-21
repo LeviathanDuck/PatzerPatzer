@@ -225,16 +225,42 @@ export async function loadResearchGame(collectionId: string, gameId: string): Pr
   }
 }
 
-/** Delete a research collection by id. */
-export async function deleteCollection(id: string): Promise<void> {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type OpeningsDeleteOutcome = { ok: true } | { ok: false; error: unknown };
+
+/**
+ * Delete a research collection by id.
+ *
+ * Returns `{ ok: true }` only when the delete transaction actually committed. On failure the error
+ * is logged as before and returned to the caller instead of being swallowed — a swallowed failure
+ * previously let the controller drop the collection from the in-memory list and clear the
+ * collections-load error latch for a delete that never happened.
+ */
+export async function deleteCollection(id: string): Promise<OpeningsDeleteOutcome> {
   try {
     const db = await openDb();
     const tx = db.transaction('collections', 'readwrite');
     tx.objectStore('collections').delete(id);
     await txDone(tx, 'delete');
     enqueueOpeningsDelete('opening-collections', id);
+    return { ok: true };
   } catch (e) {
     console.warn('[openings-db] delete failed', e);
+    return { ok: false, error: e };
   }
 }
 

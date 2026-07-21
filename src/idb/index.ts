@@ -1588,13 +1588,21 @@ export function importedGameToRecord(game: ImportedGame): StoredGameRecord {
   };
 }
 
-/**
- * Save a batch of games to IDB.
- * Writes each game as an individual record to the `games` store (new path)
- * and also writes the full array to `game-library` (legacy path, backward compat).
- * Both writes share a single transaction per store.
- */
-export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+export async function saveGamesToIdb(games: ImportedGame[]): Promise<boolean> {
   try {
     const db = await openGameDb();
     const records = games.map(importedGameToRecord);
@@ -1620,8 +1628,10 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
       operation: 'upsert' as const,
     })));
     void captureStorageEstimate('post-idb-write');
+    return true;
   } catch (e) {
     console.warn('[idb] save failed', e);
+
 
 
 
@@ -1637,6 +1647,7 @@ export async function saveGamesToIdb(games: ImportedGame[]): Promise<void> {
       },
       redactionClass: 'safe',
     });
+    return false;
   }
 }
 

@@ -3912,7 +3912,9 @@ export function renderHeader(deps: HeaderDeps): VNode {
             description: 'Import the pasted PGN into Patzer.',
           }),
           on: { click: () => {
-            importPgn(importCallbacks);
+
+
+            void importPgn(importCallbacks);
             if (!pgnState.error) { showImportPanel = false; }
             redraw();
           }},

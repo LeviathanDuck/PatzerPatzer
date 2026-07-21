@@ -129,9 +129,54 @@ function renderFoot(ctrl: SaveFlowCtrl): VNode {
   ]);
 }
 
+
+
+
+
+
+
+
+
+
+
+let _escapeListener: ((e: KeyboardEvent) => void) | null = null;
+let _escapeCtrl: SaveFlowCtrl | null = null;
+
+function detachEscapeListener(): void {
+  if (!_escapeListener) return;
+  document.removeEventListener('keydown', _escapeListener, true);
+  _escapeListener = null;
+  _escapeCtrl = null;
+}
+
+function attachEscapeListener(ctrl: SaveFlowCtrl): void {
+  // Idempotent: consumers re-render this modal on every keystroke, so only rebind when the bound
+  // ctrl actually changed (or nothing is bound yet).
+  if (_escapeListener && _escapeCtrl === ctrl) return;
+  detachEscapeListener();
+  _escapeCtrl = ctrl;
+  _escapeListener = (e: KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    detachEscapeListener();
+    ctrl.cancel();
+  };
+  document.addEventListener('keydown', _escapeListener, true);
+}
+
 export default function renderSaveFlowModal(ctrl: SaveFlowCtrl): VNode {
   const fields = ctrl.itemType === 'puzzle' ? renderPuzzleFields(ctrl) : renderGameFields(ctrl);
-  return h('div.save-flow-modal', [
+  return h('div.save-flow-modal', {
+    hook: {
+      insert: () => attachEscapeListener(ctrl),
+      // Re-point at the current ctrl across redraws: consumers re-render this modal on every
+      // keystroke, and a consumer that closes one modal and opens another (new ctrl) must not
+      // leave Escape bound to the stale one.
+      update: () => attachEscapeListener(ctrl),
+      destroy: () => detachEscapeListener(),
+    },
+  }, [
     h('div.save-flow-modal__backdrop', {
       attrs: { 'aria-label': 'Cancel save', ...controlExplainerAttrs({ label: 'Cancel save' }) },
       on: { click: () => ctrl.cancel() },

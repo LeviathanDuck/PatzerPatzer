@@ -372,7 +372,13 @@ export async function executeResearchImport(redraw: () => void): Promise<void> {
       const account = await registerAccount(source, username, importCategory());
       const importedAt = Date.now();
       const shared = games.map(g => researchGameToImportedGame(g, source, username, account.id, importedAt));
-      await saveGamesToIdb(shared);
+      const persisted = await saveGamesToIdb(shared);
+      if (abort.signal.aborted) return; // cancelled during write — cancelImport cleaned up
+
+
+
+
+      if (!persisted) throw new Error('Could not save imported games. Please try again.');
       invalidateAccountRepertoireBuilds(accountRepertoireSourceId(account.id));
       await recordAccountSync(account.id, null, null);
       if (abort.signal.aborted) return; // cancelled during writes — cancelImport cleaned up

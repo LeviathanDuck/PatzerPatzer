@@ -114,6 +114,16 @@ export default class SaveFlowCtrl {
   primaryCategory: SaveFlowPuzzleCategory | null = null;
   tagsInput = '';
 
+
+
+
+
+
+  private readonly opener: HTMLElement | null =
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
   // Game-mode picks.
   destination: SaveFlowGameDestination | null = null;
   purposeInput = '';
@@ -211,7 +221,23 @@ export default class SaveFlowCtrl {
     this.cfg.onResolve(result);
   }
 
+
+
+
+
+
   cancel(): void {
     this.cfg.onCancel?.();
+    this.restoreOpenerFocus();
+  }
+
+  // Focus returns to the opener after cancel. Runs after onCancel so the consumer has already
+  // torn the modal down — refocusing while the modal is still mounted would be undone by the
+  // teardown. Silently no-ops when the opener is gone (route change, re-render).
+  private restoreOpenerFocus(): void {
+    const opener = this.opener;
+    if (!opener || typeof opener.focus !== 'function') return;
+    if (opener.isConnected === false) return;
+    opener.focus();
   }
 }

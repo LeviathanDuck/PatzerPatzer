@@ -19,6 +19,14 @@
 
 
 
+
+
+
+
+
+
+
+
 import type { Config as CgConfig } from '@lichess-org/chessground/config';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import type { Key } from '@lichess-org/chessground/types';
@@ -92,10 +100,10 @@ export interface PuzzleSolveBoardController {
   /** Render the pending promotion chooser (or null), for placement beside the puzzle board. */
   renderPromotion(): VNode | null;
 
-  // --- H05 hooks (wired in CCW-H05b; stubbed here). ---
-  /** Show the single green origin-square hint for the expected move (H05b). */
+  // --- Hint hooks (implemented below; called from the puzzle round in src/puzzles/ctrl.ts). ---
+  /** Show the single green origin-square hint for the expected move. */
   showHint(expectedUci: string): void;
-  /** Clear the hint (H05b). */
+  /** Clear the hint. */
   clearHint(): void;
 }
 
