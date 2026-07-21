@@ -187,6 +187,41 @@ function buildNode(pgnNode: ChildNode<PgnNodeData>, pos: Position, ply: number):
   };
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const QUESTIONNAIRE_HEADER_KEY = 'PatzerStudied';
+const QUESTIONNAIRE_SUMMARY_PREFIX = 'Patzer: ';
+
+function hasQuestionnaireHeaders(headers: Map<string, string>): boolean {
+  return !!headers.get(QUESTIONNAIRE_HEADER_KEY);
+}
+
 export function pgnGameToTree(game: Game<PgnNodeData>): TreeNode {
   const startPos = startingPosition(game.headers).unwrap();
   const startFen = makeFen(startPos.toSetup());
@@ -198,7 +233,29 @@ export function pgnGameToTree(game: Game<PgnNodeData>): TreeNode {
 
 
 
-  const { comments, clockCentis, moveTimeCentis, evaluation, shapes } = parseTreeComments(game.comments);
+  const {
+    comments: rootComments,
+    clockCentis,
+    moveTimeCentis,
+    evaluation,
+    shapes,
+  } = parseTreeComments(game.comments);
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const comments = hasQuestionnaireHeaders(game.headers)
+    ? rootComments.filter(c => c.id === LOCAL_COMMENT_ID || !c.text.startsWith(QUESTIONNAIRE_SUMMARY_PREFIX))
+    : rootComments;
 
   // Each top-level child gets a fresh clone of the starting position
   const children = game.moves.children

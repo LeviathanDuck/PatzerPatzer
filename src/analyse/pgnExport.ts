@@ -107,17 +107,6 @@ function renderShapeTokens(shapes: Shape[] | undefined): string {
   return converted.length > 0 ? makeComment({ shapes: converted }) : '';
 }
 
-
-
-
-
-
-
-
-function isQuestionnaireSummaryComment(text: string): boolean {
-  return text.trimStart().startsWith('Patzer: ');
-}
-
 /**
  * Comment block for a node. User comments and shapes are always emitted (they are
  * part of the game record / user content and must survive Save-to-Library, which
@@ -375,13 +364,31 @@ export function buildPgn(annotated: boolean): string {
 
 
 
-  const emitsFreshSummary = game?.questionnaire !== undefined;
-  const rootComments = emitsFreshSummary
-    ? (ctrl.root.comments ?? []).filter(c => !isQuestionnaireSummaryComment(c.text))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  const freshSummary = game?.questionnaire ? buildQuestionnaireSummaryComment(game.questionnaire) : undefined;
+  const freshSummaryText = freshSummary?.replace(/^\{\s*|\s*\}$/g, '');
+  const rootComments = freshSummaryText
+    ? (ctrl.root.comments ?? []).filter(c => c.text.trim() !== freshSummaryText)
     : (ctrl.root.comments ?? []);
   const rootComment = renderAnnotatedComment({ ...ctrl.root, comments: rootComments }, '', annotated);
   if (rootComment) parts.push(rootComment);
-  if (game?.questionnaire) parts.push(buildQuestionnaireSummaryComment(game.questionnaire));
+  if (freshSummary) parts.push(freshSummary);
   const firstNode = ctrl.root.children[0];
   if (firstNode) {
     parts.push(renderPgnLine(
