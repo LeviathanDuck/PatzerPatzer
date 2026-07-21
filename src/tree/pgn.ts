@@ -295,6 +295,27 @@ export function pgnToTree(pgn: string): TreeNode {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 export function stripPgnAnnotations(pgn: string): string | null {
   let games;
   try {
@@ -319,6 +340,15 @@ export function stripPgnAnnotations(pgn: string): string | null {
   ]);
   return games.map(game => {
     walk(game.moves as unknown as { children: { data: PgnNodeData; children: unknown[] }[] });
+
+
+
+
+
+
+
+
+    game.comments = [];
     for (const key of [...game.headers.keys()]) {
       if (!HEADER_WHITELIST.has(key)) game.headers.delete(key);
     }
