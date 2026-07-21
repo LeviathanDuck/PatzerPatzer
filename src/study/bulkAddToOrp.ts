@@ -155,6 +155,15 @@ interface BulkAddToOrpDialogState {
 
 let _dialog: BulkAddToOrpDialogState | null = null;
 let _escapeListener: ((e: KeyboardEvent) => void) | null = null;
+
+
+
+
+
+
+
+
+let _dialogOpener: HTMLElement | null = null;
 // Monotonic run identity (finding 3). Bumped on every open and every commit so a stale in-flight
 // run's async callbacks can prove they still own the current dialog before mutating it.
 let _runToken = 0;
@@ -201,6 +210,22 @@ function attachEscapeListener(redraw: () => void): void {
     // Escape routes through the shared dismiss guard: inert mid-run (live check), so a
     // partially-applied bulk add is never abandoned with an inconsistent summary.
     if (e.key !== 'Escape') return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    e.stopPropagation();
     attemptDismiss(redraw);
   };
   document.addEventListener('keydown', _escapeListener, true);
@@ -214,6 +239,13 @@ function attachEscapeListener(redraw: () => void): void {
  */
 export function openBulkAddToOrpDialog(ids: readonly string[], redraw: () => void): void {
   if (ids.length === 0) return;
+  // `typeof HTMLElement` is load-bearing, not belt-and-braces: under bare node (the focused test
+  // harnesses import this module directly) `HTMLElement` is UNDECLARED, so a bare `instanceof`
+  // throws ReferenceError rather than evaluating false.
+  _dialogOpener = typeof document !== 'undefined' && typeof HTMLElement !== 'undefined'
+    && document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
   _runToken++; // a fresh dialog supersedes any prior run's pending callbacks
   _dialog = { ids: [...ids], trainAs: 'white', phase: { kind: 'confirm' } };
   attachEscapeListener(redraw);
@@ -571,6 +603,19 @@ export function renderBulkAddToOrpDialog(redraw: () => void): VNode | null {
     attrs: { 'aria-label': 'Close Add-to-ORP dialog', ...controlExplainerAttrs({ label: 'Close Add-to-ORP dialog' }) },
     // Shared dismiss guard: backdrop dismiss is inert while running, even from a stale confirm-vnode.
     on: { click: () => attemptDismiss(redraw) },
+
+
+
+
+    key: 'bulk-add-orp-dialog',
+
+
+
+
+
+
+
+    hook: { destroy: () => { if (_dialog !== null) return; _dialogOpener?.focus(); _dialogOpener = null; } },
   }, [
     h('div.sentry-move-dialog', {
       attrs: { 'aria-label': 'Add to ORP dialog', ...controlExplainerAttrs({ label: 'Add to ORP dialog' }) },

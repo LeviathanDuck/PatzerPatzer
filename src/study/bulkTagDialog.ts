@@ -36,6 +36,13 @@ interface BulkTagDialogState {
 let _dialog: BulkTagDialogState | null = null;
 let _escapeListener: ((e: KeyboardEvent) => void) | null = null;
 
+
+
+
+
+
+let _dialogOpener: HTMLElement | null = null;
+
 function detachEscapeListener(): void {
   if (_escapeListener) {
     document.removeEventListener('keydown', _escapeListener, true);
@@ -52,6 +59,21 @@ function attachEscapeListener(redraw: () => void): void {
   detachEscapeListener();
   _escapeListener = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      e.stopPropagation();
       closeBulkTagDialog();
       redraw();
     }
@@ -65,6 +87,13 @@ function attachEscapeListener(redraw: () => void): void {
  */
 export function openBulkTagDialog(ids: readonly string[], redraw: () => void): void {
   if (ids.length === 0) return;
+  // `typeof HTMLElement` is load-bearing, not belt-and-braces: under bare node (the focused test
+  // harnesses import this module directly) `HTMLElement` is UNDECLARED, so a bare `instanceof`
+  // throws ReferenceError rather than evaluating false.
+  _dialogOpener = typeof document !== 'undefined' && typeof HTMLElement !== 'undefined'
+    && document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
   _dialog = { ids, inputValue: '' };
   attachEscapeListener(redraw);
   redraw();
@@ -112,6 +141,19 @@ export function renderBulkTagDialog(redraw: () => void): VNode | null {
   return h('div.sentry-move-dialog-overlay', {
     attrs: { 'aria-label': 'Close tag dialog', ...controlExplainerAttrs({ label: 'Close tag dialog' }) },
     on: { click: () => { closeBulkTagDialog(); redraw(); } },
+
+
+
+
+    key: 'bulk-tag-dialog',
+
+
+
+
+
+
+
+    hook: { destroy: () => { if (_dialog !== null) return; _dialogOpener?.focus(); _dialogOpener = null; } },
   }, [
     h('div.sentry-move-dialog', {
       attrs: { 'aria-label': 'Tag dialog', ...controlExplainerAttrs({ label: 'Tag dialog' }) },
