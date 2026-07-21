@@ -103,8 +103,10 @@ import {
 
 
 
-import { allStudies, bumpSelectionSurface } from './studyCtrl';
+import { allStudies, bumpSelectionSurface, studyLibraryRouteSnapshot } from './studyCtrl';
 import type { StudyItem } from './types';
+import { serializeStudyRouteState } from './routeState';
+import { listSmartTags, saveSmartTag, deleteSmartTag, type UserSmartTag } from './smartTags';
 import { writeHashRoute } from '../router';
 import {
   controlExplainerAttrs,
@@ -1290,6 +1292,130 @@ function smartTagItemCount(id: StudyLensId, allItems: readonly StudyItem[]): num
 
 
 
+
+
+
+
+function renderUserSmartTagRow(tag: UserSmartTag, redraw: () => void): VNode {
+  return h(
+    'div.nav-row',
+    {
+      key: `smarttag-${tag.id}`,
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        ...controlExplainerAttrs({
+          label: tag.name,
+          description: 'Applies this saved search to the Study list.',
+        }),
+      },
+      on: {
+        click: () => writeHashRoute(serializeStudyRouteState(tag.query)),
+        keydown: activateCustomControlOnKeydown,
+      },
+    },
+    [
+      navIcon('tag', { size: 16, className: 'nav-row__icon' }),
+      h('span.nav-row__label', tag.name),
+      h(
+        'span.nav-row__icon',
+        {
+          attrs: {
+            role: 'button',
+            tabindex: '0',
+            ...iconControlExplainerAttrs({
+              label: 'Delete smart tag',
+              description: 'Removes this saved smart tag.',
+            }),
+          },
+          on: {
+            click: (e: MouseEvent) => {
+              e.stopPropagation();
+              if (window.confirm(`Delete smart tag "${tag.name}"?`)) {
+                deleteSmartTag(tag.id);
+                redraw();
+              }
+            },
+            keydown: (e: KeyboardEvent) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();
+              e.stopPropagation();
+              (e.currentTarget as HTMLElement).click();
+            },
+          },
+        },
+        [navIcon('trash-2', { size: 14 })],
+      ),
+    ],
+  );
+}
+
+
+
+
+
+
+
+function renderSmartTagSaveRow(redraw: () => void): VNode {
+  return h(
+    'div.nav-row',
+    {
+      key: 'smarttag-save-action',
+      attrs: {
+        role: 'treeitem',
+        tabindex: '0',
+        ...controlExplainerAttrs({
+          label: 'Save current search as smart tag',
+          description: 'Saves the current Study search as a reusable smart tag.',
+        }),
+      },
+      on: {
+        click: () => {
+          const name = window.prompt('Name this smart tag');
+          if (name && name.trim()) {
+            saveSmartTag(name.trim(), studyLibraryRouteSnapshot());
+            redraw();
+          }
+        },
+        keydown: activateCustomControlOnKeydown,
+      },
+    },
+    [
+      navIcon('file-plus', { size: 16, className: 'nav-row__icon' }),
+      h('span.nav-row__label', 'Save current search as smart tag…'),
+    ],
+  );
+}
+
+/**
+ * The user-smart-tags group: one row per saved smart tag (below the real per-tag rows) followed by
+ * the single "Save current search…" action row. When there are zero saved smart tags, only the Save
+ * action row renders (no empty-state text — mirrors how a hidden folder disappears silently).
+ */
+function renderUserSmartTagsGroup(redraw: () => void): VNode[] {
+  const saved = listSmartTags();
+  return [
+    ...saved.map(tag => renderUserSmartTagRow(tag, redraw)),
+    renderSmartTagSaveRow(redraw),
+  ];
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VNode {
   const collapsed = isCollapsed(TAGS_COLLAPSE_KEY);
   const header = h(
@@ -1348,6 +1474,10 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
       header,
       ...smartTagRows,
       h('div.nav-row.--empty', { key: 'tags-empty' }, 'No tags yet'),
+
+
+
+      ...renderUserSmartTagsGroup(redraw),
     ]);
   }
 
@@ -1361,7 +1491,9 @@ function renderTagsBlock(allItems: readonly StudyItem[], redraw: () => void): VN
       'aria-label': 'Tags',
       ...controlExplainerAttrs({ label: 'Tags' }),
     },
-  }, [header, ...smartTagRows, ...rows]);
+
+
+  }, [header, ...smartTagRows, ...rows, ...renderUserSmartTagsGroup(redraw)]);
 }
 
 

@@ -97,6 +97,7 @@ import {
   bumpSelectionSurface,
   clearAdvancedSearch,
   createFolder,
+  cursorId,
   filterFav,
   folders,
   includeDescendants,
@@ -137,7 +138,7 @@ import {
   type StudyRouteVisibility,
 } from './routeState';
 import { current, replaceHashRoute, writeHashRoute } from '../router';
-import { bindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
+import { bindNavigatorKeyboard, unbindNavigatorKeyboard, setFocusedPane, type FocusedPane } from './navigatorKeyboard';
 import { deriveHomeFolderId } from './studyDb';
 import { openDrillCatalog } from './practice/drillCatalogView';
 
@@ -178,6 +179,21 @@ function selectionKey(selection: NavigatorSelection): string {
   if (selection.kind === 'section') return `section-${selection.sectionId}`;
   if (selection.kind === 'tag') return `tag-${selection.tagName}`;
   return `folder-${selection.sectionId}-${selection.folderId}`;
+}
+
+
+
+
+
+
+
+
+
+const NAV_ROW_DOM_ID_PREFIX = 'study-nav-row-';
+const LIST_ROW_DOM_ID_PREFIX = 'study-list-row-';
+function domRowId(prefix: string, raw: string): string {
+  const encoded = raw.replace(/[^A-Za-z0-9]/g, ch => `_${ch.codePointAt(0)!.toString(16)}_`);
+  return prefix + encoded;
 }
 
 
@@ -263,7 +279,10 @@ function wireSelectionHandlers(
         const data = node.data;
         const isActive = key === activeKey;
         data.class = { ...(data.class ?? {}), '--active': isActive };
-        data.attrs = { ...(data.attrs ?? {}), 'aria-selected': String(isActive), 'data-nav-key': key };
+
+
+
+        data.attrs = { ...(data.attrs ?? {}), 'aria-selected': String(isActive), 'data-nav-key': key, id: domRowId(NAV_ROW_DOM_ID_PREFIX, key) };
         const existingClick = data.on?.click as PlainClickHandler | PlainClickHandler[] | undefined;
         data.on = {
           ...(data.on ?? {}),
@@ -495,11 +514,25 @@ function resolveLensItems(lensId: StudyLensId, allItems: readonly StudyItem[]): 
 
 
 
-function collectItemRowOrder(root: VNode, knownIds: ReadonlySet<string>): string[] {
+
+function collectItemRowOrder(root: VNode, knownIds: ReadonlySet<string>, cursor: string | null): string[] {
   const order: string[] = [];
   const visit = (node: VNode): void => {
     const key = node.key;
-    if (typeof key === 'string' && knownIds.has(key)) order.push(key);
+    if (typeof key === 'string' && knownIds.has(key)) {
+      order.push(key);
+      if (!node.data) node.data = {};
+      const data = node.data;
+
+
+
+
+
+
+
+      data.attrs = { ...(data.attrs ?? {}), id: domRowId(LIST_ROW_DOM_ID_PREFIX, key) };
+      data.class = { ...(data.class ?? {}), 'sentry-row--cursor': key === cursor };
+    }
     node.children?.forEach(child => {
       if (child != null && typeof child !== 'string') visit(child);
     });
@@ -1913,7 +1946,8 @@ export function renderNavigatorShell(
   );
   // See collectItemRowOrder's own comment: capture the true pinned-first on-screen order rather
   // than assuming it is always a 1:1 copy of the shared query array.
-  const itemDisplayOrder = collectItemRowOrder(itemListPane, new Set(items.map(item => item.id)));
+  const listCursorId = cursorId();
+  const itemDisplayOrder = collectItemRowOrder(itemListPane, new Set(items.map(item => item.id)), listCursorId);
 
 
 
@@ -1933,9 +1967,34 @@ export function renderNavigatorShell(
     navIsExpandable: (key: string) => findNavRowElement(key)?.hasAttribute('aria-expanded') ?? false,
     navIsExpanded: (key: string) => findNavRowElement(key)?.getAttribute('aria-expanded') === 'true',
     toggleNavExpand: (key: string) => findNavRowElement(key)?.click(),
-    pageScroll: (pane: FocusedPane, direction: 1 | -1) => {
-      const el = document.querySelector<HTMLElement>(pane === 'navigation' ? '.lib-nav' : '.lib-items');
-      if (el) el.scrollBy({ top: direction * Math.round(el.clientHeight * 0.9) });
+    pageSize: (pane: FocusedPane) => {
+      // Finding #4: rows-per-page from the REAL overflow scroller (`.lib-nav__scroller` /
+      // `.sentry-list`, main.scss) viewport vs. the first row's height -- one page minus a row for
+      // visual continuity, like NN's own `getVisiblePageSize`. Sensible fallback when unmeasurable.
+      const scroller = document.querySelector<HTMLElement>(pane === 'navigation' ? '.lib-nav__scroller' : '.sentry-list');
+      if (!scroller) return 10;
+      const firstRow = scroller.querySelector<HTMLElement>(pane === 'navigation' ? '[data-nav-key]' : '.sentry-row');
+      const rowH = firstRow?.offsetHeight || 28;
+      return Math.max(1, Math.floor(scroller.clientHeight / rowH) - 1);
+    },
+    revealCurrent: (pane: FocusedPane) => {
+      // Finding #4: scroll the CURRENT row (nav selection / list cursor) into view after a page
+      // move so the moved selection is never stranded offscreen. `getElementById` on the stamped
+      // stable id needs no selector escaping for keys/ids that contain punctuation.
+      const rowId = pane === 'navigation'
+        ? (_selection ? domRowId(NAV_ROW_DOM_ID_PREFIX, selectionKey(_selection)) : null)
+        : (cursorId() !== null ? domRowId(LIST_ROW_DOM_ID_PREFIX, cursorId()!) : null);
+      const el = rowId ? document.getElementById(rowId) : null;
+      el?.scrollIntoView({ block: 'nearest' });
+    },
+    focusPane: (pane: FocusedPane) => {
+      // Finding #3: move REAL keyboard/AT focus to the destination pane's focusable container
+      // (the `.lib-nav-wrap` / `.lib-items-wrap` wrappers carry `tabindex="-1"`, added below), so
+      // `document.activeElement` actually crosses panes and the NN focus-containment gate keeps
+      // routing keys to the now-active pane. Focusable-container model per NN (roving-item focus is
+      // the heavier alternative the design doc allows skipping here).
+      const el = document.querySelector<HTMLElement>(pane === 'navigation' ? '.lib-nav-wrap' : '.lib-items-wrap');
+      el?.focus();
     },
     redraw,
   });
@@ -1947,15 +2006,41 @@ export function renderNavigatorShell(
 
 
 
+
+
+
+
+
+
+
+  const navActiveDescendant = navVisibleOrder.includes(activeKey)
+    ? domRowId(NAV_ROW_DOM_ID_PREFIX, activeKey)
+    : null;
+  const listActiveDescendant = listCursorId !== null && itemDisplayOrder.includes(listCursorId)
+    ? domRowId(LIST_ROW_DOM_ID_PREFIX, listCursorId)
+    : null;
+  void navActiveDescendant;
+  void listActiveDescendant;
+
+
+
+
+
+
   return h('div.lib-shell', {
     attrs: { style: _navDivider.styleDeclaration() },
+    // Finding #1 (NN attach/cleanup lifecycle): detach the document keydown listener and drop the
+    // retained deps when this State-1 shell unmounts (route leaves `#/study`, or the game-open
+    // shell -- a different root sel -- replaces it). A later render re-attaches via
+    // `bindNavigatorKeyboard` above.
+    hook: { destroy: () => unbindNavigatorKeyboard() },
   }, [
     renderRail({
       ...DEFAULT_RAIL_CONTEXT,
       onOpenDrillCatalog: () => { openDrillCatalog({ kind: 'global' }, redraw); redraw(); },
     }),
     h('div.lib-nav-wrap', {
-      attrs: { 'aria-label': 'Study navigation pane', ...controlExplainerAttrs({ label: 'Study navigation pane' }) },
+      attrs: { tabindex: '-1', 'aria-label': 'Study navigation pane', ...controlExplainerAttrs({ label: 'Study navigation pane' }) },
       on: {
         click: () => setFocusedPane('navigation'),
         focusin: () => setFocusedPane('navigation'),
@@ -1966,7 +2051,7 @@ export function renderNavigatorShell(
     ]),
     renderDivider(redraw),
     h('div.lib-items-wrap', {
-      attrs: { 'aria-label': 'Study item-list pane', ...controlExplainerAttrs({ label: 'Study item-list pane' }) },
+      attrs: { tabindex: '-1', 'aria-label': 'Study item-list pane', ...controlExplainerAttrs({ label: 'Study item-list pane' }) },
       on: {
         click: () => setFocusedPane('list'),
         focusin: () => setFocusedPane('list'),
