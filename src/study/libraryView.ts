@@ -14,7 +14,7 @@ import {
   setSortKey, setSortDir, setFilterFav, setFilterTag, setFilterSrc, setSearch,
   studyTags, updateStudy, deleteStudy, importPgnToLibrary,
   practiceLoaded, practiceError, dueCount, dueCountForStudy,
-  reviewSequences, learnSequences, loadPracticeData,
+  reviewSequences, learnSequences, loadPracticeData, retryPracticeData,
   hasMore, isLoadingMore, loadNextPage, loadedStudyPageCount,
   folders, foldersLoaded, activeFolderId, sidebarCollapsed,
   setActiveFolderId, toggleSidebar, loadFolders,
@@ -2349,7 +2349,24 @@ export function renderStudyLibrary(redraw: () => void): VNode {
 
       practiceError()
         ? h('div.study-practice-dashboard', [
-            h('div.study-orp-section__error', 'Could not load practice data.'),
+            h('div.study-orp-section__error', [
+              h('span', 'Could not load practice data.'),
+
+
+
+
+              h('button.study-btn.study-btn--retry-practice', {
+                attrs: {
+                  type: 'button',
+                  ...controlExplainerAttrs({
+                    label: 'Try again',
+                    description: 'Retries loading your practice dashboard after a storage error.',
+                    tier: 'essential',
+                  }),
+                },
+                on: { click: () => retryPracticeData(redraw) },
+              }, 'Try again'),
+            ]),
           ])
         : practiceLoaded() ? renderPracticeDashboard(redraw) : null,
 

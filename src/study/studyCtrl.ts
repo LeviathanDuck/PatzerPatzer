@@ -2269,6 +2269,24 @@ export function invalidatePracticeData(): void {
   _practiceLoadPending = false;
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+export function retryPracticeData(redraw: () => void): void {
+  _practiceError  = false;
+  _practiceLoaded = false;
+  loadPracticeData(redraw);
+}
+
 let _seeding = false;
 export function isSeeding(): boolean { return _seeding; }
 
