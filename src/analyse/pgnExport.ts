@@ -107,6 +107,17 @@ function renderShapeTokens(shapes: Shape[] | undefined): string {
   return converted.length > 0 ? makeComment({ shapes: converted }) : '';
 }
 
+
+
+
+
+
+
+
+function isQuestionnaireSummaryComment(text: string): boolean {
+  return text.trimStart().startsWith('Patzer: ');
+}
+
 /**
  * Comment block for a node. User comments and shapes are always emitted (they are
  * part of the game record / user content and must survive Save-to-Library, which
@@ -137,6 +148,16 @@ function renderAnnotatedComment(node: TreeNode, path: TreePath, annotated: boole
       const m   = Math.floor((total % 3600) / 60);
       const s   = total % 60;
       metadataParts.push(`[%clk ${hrs}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}]`);
+    }
+
+
+
+
+
+
+    if (node.moveTime !== undefined) {
+      const emtToken = makeComment({ emt: node.moveTime / 100 });
+      if (emtToken) metadataParts.push(emtToken);
     }
   }
 
@@ -342,6 +363,24 @@ export function buildPgn(annotated: boolean): string {
   // The human-readable { Patzer: ... } summary comment (T1 contract §3's dual-home copy) is
   // emitted immediately before move 1, ahead of the mainline's own move text.
   const parts: string[] = [];
+
+
+
+
+
+
+
+
+
+
+
+
+  const emitsFreshSummary = game?.questionnaire !== undefined;
+  const rootComments = emitsFreshSummary
+    ? (ctrl.root.comments ?? []).filter(c => !isQuestionnaireSummaryComment(c.text))
+    : (ctrl.root.comments ?? []);
+  const rootComment = renderAnnotatedComment({ ...ctrl.root, comments: rootComments }, '', annotated);
+  if (rootComment) parts.push(rootComment);
   if (game?.questionnaire) parts.push(buildQuestionnaireSummaryComment(game.questionnaire));
   const firstNode = ctrl.root.children[0];
   if (firstNode) {

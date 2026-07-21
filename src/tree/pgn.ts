@@ -193,7 +193,12 @@ export function pgnGameToTree(game: Game<PgnNodeData>): TreeNode {
   const setup = startPos.toSetup();
   const initialPly = (setup.fullmoves - 1) * 2 + (startPos.turn === 'white' ? 0 : 1);
   const timeControl = parseTimeControl(game.headers.get('TimeControl'));
-  const { comments } = parseTreeComments(game.comments);
+
+
+
+
+
+  const { comments, clockCentis, moveTimeCentis, evaluation, shapes } = parseTreeComments(game.comments);
 
   // Each top-level child gets a fresh clone of the starting position
   const children = game.moves.children
@@ -206,6 +211,10 @@ export function pgnGameToTree(game: Game<PgnNodeData>): TreeNode {
     fen: startFen,
     children,
     ...(comments.length ? { comments } : {}),
+    ...(clockCentis !== undefined ? { clock: clockCentis } : {}),
+    ...(moveTimeCentis !== undefined ? { moveTime: moveTimeCentis } : {}),
+    ...(evaluation !== undefined ? { importedEval: evaluation } : {}),
+    ...(shapes !== undefined ? { shapes } : {}),
     ...(timeControl ? { timeControl } : {}),
   };
 }
