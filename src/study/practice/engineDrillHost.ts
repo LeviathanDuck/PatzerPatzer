@@ -639,6 +639,17 @@ export function openDrillRecordOnBoard(record: EngineDrillRecord, opts?: { reado
   deps?.openPgnOnBoard?.(drillRecordPgn(record, opts?.atStart !== true));
 }
 
+
+
+
+
+
+export function openPgnOnAnalysisBoard(pgn: string): boolean {
+  if (deps?.openPgnOnBoard === undefined) return false;
+  deps.openPgnOnBoard(pgn);
+  return true;
+}
+
 /** Resume a partial drill from its persisted record (catalog resume rides D16; exported now so
  *  the persistence contract is honored end-to-end by the host). */
 export function resumePersistedEngineDrill(record: EngineDrillRecord): void {

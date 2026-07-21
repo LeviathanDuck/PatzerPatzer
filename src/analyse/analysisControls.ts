@@ -49,15 +49,15 @@ import {
 } from './workspaceCore';
 import { mountStudyPracticeWorkspace } from '../study/practice/workspaceModule';
 import { renderPracticePanel, type PracticePanelProps, type PracticePanelTab, type PanelDrillsSection, type ProgressTabData, type ProgressLessonOption } from '../study/practice/practiceView';
-import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode, openDrillRecordOnBoard } from '../study/practice/engineDrillHost';
+import { engineDrillActive, engineDrillFinished, engineDrillPanelVnode, openDrillRecordOnBoard, openPgnOnAnalysisBoard } from '../study/practice/engineDrillHost';
 import { openDrillCatalog } from '../study/practice/drillCatalogView';
-import { listRecentEngineDrills } from '../study/studyDb';
+import { listRecentEngineDrills, getStudy } from '../study/studyDb';
 import { loadGlobalPracticePanelData, listRecentProgressLessons, loadLessonProgress, type StudyPracticePanelData } from '../study/practice/practicePanelData';
 import { launchDueReview, resumeDueReview } from '../study/practice/dueReviewLaunch';
 import { isDrillActive, renderDrillView } from '../study/practice/drillView';
 import { launchGuidedLearn } from '../study/libraryView';
-import { buildAnalysisLearnTab } from '../study/practice/practiceView';
-import type { EngineDrillRecord } from '../study/types';
+import { buildAnalysisLearnTab, resolveAndOpenOrpSource, createOpenEpoch, reconcileLearnLaunchState } from '../study/practice/practiceView';
+import type { EngineDrillRecord, OrpSourceProvenance } from '../study/types';
 import type { TreeNode } from '../tree/types';
 
 // --- Action-menu open/close state ---
@@ -239,6 +239,9 @@ let _analysisProgressData: ProgressTabData | null = null;
 function refreshAnalysisPanelData(redraw: () => void): void {
   if (_analysisPanelLoading) return;
   _analysisPanelLoading = true;
+
+
+  bumpOrpSourceEpoch(true);
   const generation = ++_analysisPanelGeneration;
   void loadGlobalPracticePanelData().then(data => {
     if (generation !== _analysisPanelGeneration) return;
@@ -298,6 +301,57 @@ function analysisProgressTabData(redraw: () => void): ProgressTabData {
   };
 }
 
+
+
+
+
+
+
+
+
+
+let _orpSourceOpenInFlight = false;
+
+let _orpSourceOpenNotice: string | null = null;
+
+
+let _activeLearnProvenance: OrpSourceProvenance | null = null;
+
+
+
+let _learnLaunchInFlight = false;
+
+
+let _lastDrillActiveObserved = false;
+
+
+
+const _orpSourceEpoch = createOpenEpoch();
+
+
+
+
+
+function bumpOrpSourceEpoch(clearNotice: boolean): void {
+  _orpSourceEpoch.bump();
+  if (clearNotice) _orpSourceOpenNotice = null;
+}
+
+function openOrpSourceGame(provenance: OrpSourceProvenance, redraw: () => void): void {
+  // A fresh attempt clears any stale failure notice so the panel does not show an old error.
+  _orpSourceOpenNotice = null;
+  void resolveAndOpenOrpSource<number>(provenance, {
+    tryBeginOpen: () => { if (_orpSourceOpenInFlight) return false; _orpSourceOpenInFlight = true; return true; },
+    endOpen: () => { _orpSourceOpenInFlight = false; },
+    loadOriginalPgn: async id => { const original = await getStudy(id); return original?.pgn; },
+    openOnAnalysisBoard: pgn => openPgnOnAnalysisBoard(pgn),
+    captureContext: () => _orpSourceEpoch.capture(),
+    contextStillValid: token => _orpSourceEpoch.stillValid(token),
+    onFailure: reason => { _orpSourceOpenNotice = reason; redraw(); },
+    onOpened: () => { _orpSourceOpenNotice = null; },
+  });
+}
+
 /** Render the Analysis Practice panel, or null while the practice slot is not active. */
 export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   if (!isAnalysisPracticeSlotActive()) return null;
@@ -318,12 +372,39 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
   } else {
     review = data.review;
   }
+
+
+  const drillActive = isDrillActive();
+  if (_lastDrillActiveObserved && !drillActive) bumpOrpSourceEpoch(false);
+  _lastDrillActiveObserved = drillActive;
+
+
+
+  {
+    const next = reconcileLearnLaunchState({ provenance: _activeLearnProvenance, launchInFlight: _learnLaunchInFlight }, drillActive);
+    _activeLearnProvenance = next.provenance;
+    _learnLaunchInFlight = next.launchInFlight;
+  }
   const learn = buildAnalysisLearnTab({
-    learnSessionActive: isDrillActive(),
+    learnSessionActive: drillActive,
     engineDrillOwnsBoard: engineDrillActive() || engineDrillFinished(),
     data,
     liveBody: () => renderDrillView(redraw),
-    onLaunch: sequence => { void launchGuidedLearn([sequence], 0, redraw); },
+    onLaunch: sequence => {
+      // Remember this line's provenance so the mid-drill (non-actionable) source control can render
+      // for it; captured synchronously before the drill activates. Clear any stale failure notice.
+      _activeLearnProvenance = sequence.orpSourceProvenance ?? null;
+      _orpSourceOpenNotice = null;
+
+      bumpOrpSourceEpoch(false);
+
+
+      _learnLaunchInFlight = true;
+      void launchGuidedLearn([sequence], 0, redraw).finally(() => { _learnLaunchInFlight = false; });
+    },
+    onOpenSource: provenance => { openOrpSourceGame(provenance, redraw); },
+    ...(_activeLearnProvenance !== null ? { activeSourceProvenance: _activeLearnProvenance } : {}),
+    ...(_orpSourceOpenNotice !== null ? { openNotice: _orpSourceOpenNotice } : {}),
   });
   const props: PracticePanelProps = {
     activeTab: _analysisPracticeTab,
@@ -357,6 +438,10 @@ export function renderAnalysisPracticePanel(redraw: () => void): VNode | null {
 export function activateAnalysisPracticeSlot(): void {
   const deps = _practiceSlotDeps;
   if (!deps || _practiceSlotInstance) return;
+
+
+
+  bumpOrpSourceEpoch(false);
   _practiceSlotInstance = mountStudyPracticeWorkspace({
     hostId: 'analysis',
     getCursor: deps.getCursor,
@@ -375,6 +460,14 @@ export function activateAnalysisPracticeSlot(): void {
  * so restoring the fallback would clobber it — do NOT. No-op when Practice is not active.
  */
 export function deactivateAnalysisPracticeSlot(reason: string): void {
+
+
+
+
+
+  bumpOrpSourceEpoch(true);
+  _activeLearnProvenance = null;
+  _learnLaunchInFlight = false;
   const instance = _practiceSlotInstance;
   if (!instance) return;
   _practiceSlotInstance = null;

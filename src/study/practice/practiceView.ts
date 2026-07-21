@@ -20,7 +20,7 @@
 
 
 import { h, type VNode } from 'snabbdom';
-import { controlExplainerAttrs } from '../../ui/controlExplainer';
+import { controlExplainerAttrs, renderDisabledControlExplainer } from '../../ui/controlExplainer';
 import type {
   DueReviewSession,
   DueReviewScorecard,
@@ -28,6 +28,7 @@ import type {
   PracticeSelectedSession,
 } from './sessionBuilder';
 import type { SrsTraversalPlanEntry } from './srsTypes';
+import type { OrpSourceProvenance, TrainableSequence } from '../types';
 
 // --- The internal sub-tab set (NOT a StudyToolTabId — D12 consult §3) -------
 // Learn / Review / Practice / Progress are an INTERNAL sub-tab set inside the practice panel. They are
@@ -44,15 +45,49 @@ export interface LearnEntry {
   readonly id: string;
   readonly label: string;
   readonly onStart?: () => void;
+
+
+
+
+
+
+
+
+
+
+  readonly openSource?: OrpOpenSourceAction;
 }
 
-/** Learn tab: neutral guided-recall entry. When a Learn session is live the HOST hands us the already
- *  rendered drill body (`active`) — the view never imports `drillView` (host-neutral; keeps it pure). */
+
+export type OrpOpenSourceAction =
+  | { readonly kind: 'open'; readonly run: () => void }
+  | { readonly kind: 'unavailable'; readonly reason: string };
+
+
+
+
+
+
+
+
+
+
+function orpSourceMayOpen(provenance: OrpSourceProvenance): boolean {
+  const hasIdentity = typeof provenance.originalStudyItemId === 'string' && provenance.originalStudyItemId.trim().length > 0;
+  const hasSnapshot = typeof provenance.sourcePgn === 'string' && provenance.sourcePgn.trim().length > 0;
+  return hasIdentity || hasSnapshot;
+}
+
+
+
+
+
+
 export type LearnTabData =
   | { readonly status: 'loading' }
   | { readonly status: 'error'; readonly message: string }
-  | { readonly status: 'active'; readonly body: VNode }
-  | { readonly status: 'ready'; readonly entries: readonly LearnEntry[] };
+  | { readonly status: 'active'; readonly body: VNode; readonly source?: OrpOpenSourceAction; readonly notice?: string }
+  | { readonly status: 'ready'; readonly entries: readonly LearnEntry[]; readonly notice?: string };
 
 
 
@@ -61,24 +96,208 @@ export type LearnTabData =
 export function buildAnalysisLearnTab(input: {
   readonly learnSessionActive: boolean;
   readonly engineDrillOwnsBoard: boolean;
-  readonly data: { readonly learn?: readonly { readonly id: string; readonly label: string; readonly sequence: import('../types').TrainableSequence }[] } | null;
+  readonly data: { readonly learn?: readonly { readonly id: string; readonly label: string; readonly sequence: TrainableSequence }[] } | null;
   readonly liveBody: () => VNode;
-  readonly onLaunch: (sequence: import('../types').TrainableSequence) => void;
+  readonly onLaunch: (sequence: TrainableSequence) => void;
+
+
+
+
+
+  readonly onOpenSource?: (provenance: OrpSourceProvenance) => void;
+
+
+
+
+
+
+  readonly activeSourceProvenance?: OrpSourceProvenance;
+
+
+
+
+
+  readonly openNotice?: string;
 }): LearnTabData {
-  if (input.learnSessionActive) return { status: 'active', body: input.liveBody() };
+  if (input.learnSessionActive) {
+
+
+
+
+
+    const active = input.activeSourceProvenance;
+    const source: OrpOpenSourceAction | undefined =
+      active === undefined
+        ? undefined
+        : {
+            kind: 'unavailable',
+            reason: orpSourceMayOpen(active)
+              ? 'Finish or exit the drill to open the original game.'
+              : 'The original game is no longer available to open.',
+          };
+    return {
+      status: 'active',
+      body: input.liveBody(),
+      ...(source !== undefined ? { source } : {}),
+      ...(input.openNotice !== undefined ? { notice: input.openNotice } : {}),
+    };
+  }
   if (input.engineDrillOwnsBoard) {
     return { status: 'error', message: 'Finish or close the engine drill first — Learn opens when the board is free.' };
   }
   if (input.data === null) return { status: 'loading' };
   if (input.data.learn === undefined) return { status: 'error', message: 'Could not load your learnable lines.' };
+  const { onOpenSource } = input;
   return {
     status: 'ready',
-    entries: input.data.learn.map(entry => ({
-      id: entry.id,
-      label: entry.label,
-      onStart: () => { input.onLaunch(entry.sequence); },
-    })),
+    entries: input.data.learn.map(entry => {
+      const provenance = entry.sequence.orpSourceProvenance;
+      let openSource: OrpOpenSourceAction | undefined;
+      if (provenance !== undefined && onOpenSource !== undefined) {
+        openSource = orpSourceMayOpen(provenance)
+          ? { kind: 'open', run: () => { onOpenSource(provenance); } }
+          : { kind: 'unavailable', reason: 'The original game is no longer available to open.' };
+      }
+      return {
+        id: entry.id,
+        label: entry.label,
+        onStart: () => { input.onLaunch(entry.sequence); },
+        ...(openSource !== undefined ? { openSource } : {}),
+      };
+    }),
+    ...(input.openNotice !== undefined ? { notice: input.openNotice } : {}),
   };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+export type OrpSourceOpenResult = 'opened' | 'dropped' | 'reentrant' | 'failed';
+
+export interface OrpSourceOpenDeps<Ctx> {
+  /** Reentrancy gate: returns false when an open is already in flight (single-in-flight). */
+  readonly tryBeginOpen: () => boolean;
+  /** Always called to release the in-flight gate once an admitted attempt settles. */
+  readonly endOpen: () => void;
+  /** Identity-first read: the CURRENT PGN of the original Study item, or undefined when it is gone. */
+  readonly loadOriginalPgn: (originalStudyItemId: string) => Promise<string | undefined>;
+  /** Open a PGN on the Analysis board via the established seam. Returns the seam's success result. */
+  readonly openOnAnalysisBoard: (pgn: string) => boolean;
+  /** Snapshot the practice context (a monotonic open-epoch — see `createOpenEpoch`) before the await. */
+  readonly captureContext: () => Ctx;
+  /** True when the captured context still matches the live context after the await. */
+  readonly contextStillValid: (token: Ctx) => boolean;
+  /** Surface a visible, explained failure (never a silent no-op). */
+  readonly onFailure: (reason: string) => void;
+  /** Optional success hook (e.g. clear a stale failure notice). Navigation is done by the seam. */
+  readonly onOpened?: () => void;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+export async function resolveAndOpenOrpSource<Ctx>(
+  provenance: OrpSourceProvenance,
+  deps: OrpSourceOpenDeps<Ctx>,
+): Promise<OrpSourceOpenResult> {
+  if (!deps.tryBeginOpen()) return 'reentrant';
+  const token = deps.captureContext();
+  try {
+    let pgn: string | undefined;
+    const id = provenance.originalStudyItemId;
+    if (typeof id === 'string' && id.trim().length > 0) {
+      // Identity-first. A failed read is NOT fatal — fall through to the snapshot fallback.
+      try { pgn = await deps.loadOriginalPgn(id); }
+      catch { pgn = undefined; }
+    }
+    // Stale-drop: if the practice context moved while the lookup was pending, do not navigate.
+    if (!deps.contextStillValid(token)) return 'dropped';
+    if (pgn === undefined || pgn.trim().length === 0) {
+      const snapshot = provenance.sourcePgn;
+      pgn = typeof snapshot === 'string' && snapshot.trim().length > 0 ? snapshot : undefined;
+    }
+    if (pgn === undefined) {
+      deps.onFailure('The original game is no longer available to open.');
+      return 'failed';
+    }
+
+    let opened: boolean;
+    try { opened = deps.openOnAnalysisBoard(pgn); }
+    catch { opened = false; }
+    if (!opened) {
+      deps.onFailure('Could not open the Analysis board right now. Please try again.');
+      return 'failed';
+    }
+    deps.onOpened?.();
+    return 'opened';
+  } finally {
+    deps.endOpen();
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+export interface OpenEpoch {
+  /** Advance the epoch — called at every context-change site. */
+  bump(): void;
+  /** Read the current epoch to hold across an await. */
+  capture(): number;
+  /** True only when no `bump()` has happened since `token` was captured. */
+  stillValid(token: number): boolean;
+}
+
+export function createOpenEpoch(): OpenEpoch {
+  let epoch = 0;
+  return {
+    bump: () => { epoch += 1; },
+    capture: () => epoch,
+    stillValid: (token: number) => token === epoch,
+  };
+}
+
+
+
+
+
+
+
+
+
+
+export interface LearnLaunchState {
+  readonly provenance: OrpSourceProvenance | null;
+  readonly launchInFlight: boolean;
+}
+
+export function reconcileLearnLaunchState(prev: LearnLaunchState, drillActive: boolean): LearnLaunchState {
+  if (drillActive) return { provenance: prev.provenance, launchInFlight: false };
+  if (prev.launchInFlight) return prev; // pre-activation window: hold the provenance
+  return { provenance: null, launchInFlight: false };
 }
 
 
@@ -328,19 +547,68 @@ function renderEmpty(title: string, body: string): VNode {
 function renderLearnTab(data: LearnTabData): VNode {
   if (data.status === 'loading') return renderLoading('Loading lines…');
   if (data.status === 'error') return renderError(data.message);
-  if (data.status === 'active') return h('div.orp-practice__learn-active', [data.body]);
+  if (data.status === 'active') {
+
+
+
+    return h('div.orp-practice__learn-active', [
+      data.body,
+      data.source !== undefined ? renderLearnSourceControl(data.source) : null,
+      renderLearnSourceNotice(data.notice),
+    ]);
+  }
   if (data.entries.length === 0) return renderEmpty('No lines to learn', 'Every line here is already learned. Practice or review them instead.');
-  return h('ul.orp-practice__learn-list', { attrs: { 'aria-label': 'Lines to learn' } }, data.entries.map((entry) =>
-    h('li.orp-practice__learn-row', { key: entry.id }, [
-      h('span.orp-practice__learn-label', entry.label),
-      entry.onStart
-        ? h('button.orp-practice__learn-start', {
-            attrs: { type: 'button', ...controlExplainerAttrs({ label: `Learn ${entry.label}`, description: 'Starts a guided-recall session for this line.', tier: 'essential' }) },
-            on: { click: entry.onStart },
-          }, 'Learn')
-        : null,
-    ]),
-  ));
+  return h('div.orp-practice__learn', [
+    renderLearnSourceNotice(data.notice),
+    h('ul.orp-practice__learn-list', { attrs: { 'aria-label': 'Lines to learn' } }, data.entries.map((entry) =>
+      h('li.orp-practice__learn-row', { key: entry.id }, [
+        h('span.orp-practice__learn-label', entry.label),
+        renderLearnSourceControl(entry.openSource),
+        entry.onStart
+          ? h('button.orp-practice__learn-start', {
+              attrs: { type: 'button', ...controlExplainerAttrs({ label: `Learn ${entry.label}`, description: 'Starts a guided-recall session for this line.', tier: 'essential' }) },
+              on: { click: entry.onStart },
+            }, 'Learn')
+          : null,
+      ]),
+    )),
+  ]);
+}
+
+
+
+
+
+
+
+function renderLearnSourceControl(action: OrpOpenSourceAction | undefined): VNode | null {
+  if (action === undefined) return null;
+  if (action.kind === 'unavailable') {
+    return renderDisabledControlExplainer(
+      { label: 'Open original game (unavailable)', description: action.reason, tier: 'essential' },
+      h('button.orp-practice__learn-source.orp-practice__learn-source--disabled', {
+        attrs: { type: 'button', disabled: true },
+      }, 'Original game'),
+    );
+  }
+  return h('button.orp-practice__learn-source', {
+    attrs: {
+      type: 'button',
+      ...controlExplainerAttrs({
+        label: 'Open original game in Analysis',
+        description: 'Opens the full original game this line was saved from on the Analysis board.',
+        tier: 'essential',
+      }),
+    },
+    on: { click: action.run },
+  }, 'Original game');
+}
+
+
+
+function renderLearnSourceNotice(notice: string | undefined): VNode | null {
+  if (notice === undefined || notice.length === 0) return null;
+  return h('div.orp-practice__learn-source-notice', { attrs: { role: 'status', 'aria-live': 'polite' } }, notice);
 }
 
 // --- Review tab (SCHEDULE vocabulary ONLY) -----------------------------------
