@@ -24106,6 +24106,17 @@ move.bookmarked {
     }
   }
 
+
+
+
+
+
+  &.sentry-row--cursor {
+    outline: 2px solid #6ea8e6;
+    outline-offset: -2px;
+    border-radius: 6px;
+  }
+
   // Row content must paint above the selection pseudo-element.
   > .sentry-stack, > .sentry-rail, > .sentry-checkbox {
     position: relative;
@@ -24225,8 +24236,40 @@ move.bookmarked {
     }
   }
 
+
+
+
+  &--primary {
+    border-color: #3d6fa8;
+    background: #1a2a3d;
+    color: #9cc9f5;
+    font-weight: 650;
+
+    &:hover {
+      border-color: #4d84c2;
+      background: #223550;
+      color: #bcdcff;
+    }
+  }
+
   &--clear {
     color: #8d918b;
+  }
+}
+
+
+
+.sentry-bulk-add-orp__summary {
+  margin: 0 16px 8px;
+}
+
+.sentry-bulk-add-orp__summary-line {
+  font-size: 12px;
+  color: #b7bab3;
+  margin: 4px 0;
+
+  &--skip {
+    color: #d8b06a;
   }
 }
 

@@ -6,7 +6,7 @@ import { Chess } from 'chessops/chess';
 import { makeFen, parseFen } from 'chessops/fen';
 import { parseUci } from 'chessops/util';
 import { makeSan } from 'chessops/san';
-import { saveStudy, saveStudyStrict, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
+import { saveStudy, saveStudyStrict, createStudyStrict, getStudy, savePracticeLine, getPracticeLine } from './studyDb';
 import type {
   OrpSourceProvenance,
   SourceImportedProvenance,
@@ -274,6 +274,16 @@ function buildOrpTags(
 export interface OrpSaveResult {
   studyItem: StudyItem;
   sequence: TrainableSequence;
+
+
+
+
+
+
+
+
+
+  outcome?: 'created' | 'existed' | 'repaired';
 }
 
 export interface RepertoireOrpSaveResult extends OrpSaveResult {
@@ -293,6 +303,16 @@ interface OrpSaveOptions {
   extraTags?: readonly string[];
   mergeExistingTags?: boolean;
   sourceProvenance?: OrpSourceProvenance;
+
+
+
+
+
+
+
+
+
+  ifAbsent?: boolean;
 }
 
 
@@ -309,10 +329,16 @@ export interface OrpSaveDeps {
   readonly getStudy: typeof getStudy;
   readonly getPracticeLine: typeof getPracticeLine;
   readonly saveStudyStrict: typeof saveStudyStrict;
+
+
+
+
+
+  readonly createStudyStrict?: typeof createStudyStrict;
   readonly savePracticeLine: typeof savePracticeLine;
 }
 
-const REAL_ORP_SAVE_DEPS: OrpSaveDeps = { getStudy, getPracticeLine, saveStudyStrict, savePracticeLine };
+const REAL_ORP_SAVE_DEPS: OrpSaveDeps = { getStudy, getPracticeLine, saveStudyStrict, createStudyStrict, savePracticeLine };
 
 function mergeUniqueTags(existing: readonly string[], next: readonly string[]): string[] {
   const merged: string[] = [];
@@ -351,6 +377,14 @@ export async function saveOrpLineToLibrary(
   options: OrpSaveOptions = {},
   deps: OrpSaveDeps = REAL_ORP_SAVE_DEPS,
 ): Promise<OrpSaveResult | null> {
+
+
+
+
+  if (options.ifAbsent && !deps.createStudyStrict) {
+    throw new Error('saveOrpLineToLibrary: ifAbsent requires deps.createStudyStrict — refusing to fall back to real IndexedDB');
+  }
+
   // Guard: line too short to drill.
   if (ucis.length < 3) {
     recordOrpSaveFail('validation-error');
@@ -464,9 +498,40 @@ export async function saveOrpLineToLibrary(
 
 
 
+
+
+
+
+
+  let outcome: 'created' | 'existed' | 'repaired' | undefined;
   try {
-    await deps.saveStudyStrict(studyItem);
-    await deps.savePracticeLine(sequence);
+    if (options.ifAbsent) {
+      // The entry guard above guarantees `createStudyStrict` is present in ifAbsent mode.
+      const created = await deps.createStudyStrict!(studyItem);
+      if (!created.duplicate) {
+        await deps.savePracticeLine(sequence);
+        outcome = 'created';
+      } else {
+
+
+
+
+
+        const freshSeq = await deps.getPracticeLine(sequenceId);
+        if (!freshSeq) {
+          // Orphan (item persisted before its sequence on a prior interrupted write) — repair by
+          // writing only the missing sequence; the existing item is left intact (no overwrite).
+          await deps.savePracticeLine(sequence);
+          outcome = 'repaired';
+        } else {
+          // Complete record already present — write nothing (no title/provenance overwrite).
+          outcome = 'existed';
+        }
+      }
+    } else {
+      await deps.saveStudyStrict(studyItem);
+      await deps.savePracticeLine(sequence);
+    }
   } catch (e) {
     recordOrpSaveFail(classifyOrpError(e));
     throw e;
@@ -481,7 +546,12 @@ export async function saveOrpLineToLibrary(
     throw new Error('idb-write-error');
   }
 
-  return { studyItem, sequence };
+  // The default upsert path returns the freshly-built literals (unchanged). The ifAbsent path
+  // returns the ACTUAL persisted records plus the outcome, so an `existed` result reflects the
+  // record that survived rather than the discarded would-be overwrite.
+  return outcome
+    ? { studyItem: persistedStudy, sequence: persistedSequence, outcome }
+    : { studyItem, sequence };
 }
 
 

@@ -142,6 +142,7 @@ import {
 } from './navigatorDragDrop';
 import { openMoveAliasDialog, renderMoveAliasDialog } from './moveAliasDialog';
 import { openBulkTagDialog, renderBulkTagDialog } from './bulkTagDialog';
+import { openBulkAddToOrpDialog, renderBulkAddToOrpDialog } from './bulkAddToOrp';
 import { isHidden, showHiddenItems } from './hiddenItems';
 
 export type ItemListDensity = 'compact' | 'full';
@@ -549,6 +550,18 @@ function resolveHomeFolderName(homeId: string | null): string {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 export interface BulkActionBarAction {
   key: string;
   /** Singular/plural label, D09/A4 precedent (see navigatorContextMenu.ts's own `isMulti` labels). */
@@ -556,6 +569,9 @@ export interface BulkActionBarAction {
   icon: NavIconNameOrAlias;
   /** Delete-style warning treatment. */
   danger?: boolean;
+  /** Accent/primary treatment (Add-to-ORP, A-sel-c's designated primary action). Mutually exclusive
+   * with `danger` in practice; the bar applies `--primary` styling. */
+  primary?: boolean;
   run: (ids: readonly string[]) => void | Promise<void>;
 }
 
@@ -563,6 +579,15 @@ let _bulkBarRedraw: (() => void) | null = null;
 let _bulkBarFolderContext: string | null = null;
 
 const LIBRARY_BULK_ACTIONS: readonly BulkActionBarAction[] = [
+  {
+    key: 'add-to-orp',
+    label: count => `Add ${count} to ORP`,
+    icon: 'git-branch',
+    primary: true,
+    run: ids => {
+      if (_bulkBarRedraw) openBulkAddToOrpDialog(ids, _bulkBarRedraw);
+    },
+  },
   {
     key: 'move',
     label: count => `Move ${count} game${count === 1 ? '' : 's'}…`,
@@ -612,7 +637,10 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
     h('span.sentry-bulk-bar__count', `${count} selected`),
     h('div.sentry-bulk-bar__actions', LIBRARY_BULK_ACTIONS.map(action => h('button.sentry-bulk-bar__btn', {
       key: action.key,
-      class: { 'sentry-bulk-bar__btn--danger': Boolean(action.danger) },
+      class: {
+        'sentry-bulk-bar__btn--danger': Boolean(action.danger),
+        'sentry-bulk-bar__btn--primary': Boolean(action.primary),
+      },
       attrs: { type: 'button', ...controlExplainerAttrs({
         label: action.label(count),
         description: action.key === 'delete'
@@ -621,7 +649,9 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
             ? 'Opens the folder picker to move or alias the selected games.'
             : action.key === 'tag'
               ? 'Opens the tag dialog for every selected game.'
-              : 'Adds every selected game to Favorites.',
+              : action.key === 'add-to-orp'
+                ? 'Adds each selected game’s mainline to Opening Repetition Practice.'
+                : 'Adds every selected game to Favorites.',
       }) },
       on: { click: () => runAction(action) },
     }, [
@@ -1123,5 +1153,6 @@ export function renderItemListPane(
     renderGameContextMenu(redraw),
     renderMoveAliasDialog(redraw),
     renderBulkTagDialog(redraw),
+    renderBulkAddToOrpDialog(redraw),
   ]);
 }
