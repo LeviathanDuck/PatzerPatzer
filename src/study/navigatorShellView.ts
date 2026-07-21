@@ -57,6 +57,7 @@ import {
   collapseAllSections,
   expandAllSections,
   hasAnyExpanded,
+  isFolderRowRenderable,
   nonInternalTagCounts,
   renderNavigationPane,
   revealFolderRow,
@@ -72,7 +73,7 @@ import {
   type StudySectionId,
 } from './navigationIndexProvider';
 import type { StudyItem } from './types';
-import { PaneResizeController } from './paneResize';
+import { DRAGGING_CLASS, PaneResizeController } from './paneResize';
 import { applyNavigatorSettings } from './navigatorSettings';
 
 
@@ -299,12 +300,29 @@ function locateFolderRows(tree: StudyNavigationTree, folderId: string): FolderRo
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function navigateToFolderRow(
   tree: StudyNavigationTree,
   folderId: string,
   onSelect: (selection: NavigatorSelection) => void,
 ): boolean {
-  const found = locateFolderRows(tree, folderId);
+  if (_reorderMode) return false;
+  const found = locateFolderRows(tree, folderId)
+    .filter(row => isFolderRowRenderable(row.selection.folderId, row.ancestorFolderIds));
   if (found.length === 0) return false;
   const browsedSectionId = _selection ? selectionSectionId(_selection) : null;
   const target = found.find(row => row.selection.sectionId === browsedSectionId) ?? found[0]!;
@@ -318,11 +336,43 @@ function navigateToFolderRow(
 
 
 
-
 let _folderNavigationToken = 0;
 
-function releaseFolderNavigation(token: number): void {
-  if (token === _folderNavigationToken) setNavigatorFolderNavigation(null);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+interface FolderNavigationRegistration {
+  install: () => void;
+  release: () => void;
+}
+
+function createFolderNavigationRegistration(
+  tree: StudyNavigationTree,
+  onSelect: (selection: NavigatorSelection) => void,
+): FolderNavigationRegistration {
+  let token: number | null = null;
+  return {
+    install: () => {
+      const claimed = ++_folderNavigationToken;
+      token = claimed;
+      setNavigatorFolderNavigation(folderId =>
+        claimed === _folderNavigationToken && navigateToFolderRow(tree, folderId, onSelect));
+    },
+    release: () => {
+      if (token !== null && token === _folderNavigationToken) setNavigatorFolderNavigation(null);
+    },
+  };
 }
 
 
@@ -659,6 +709,28 @@ const _navDivider = new PaneResizeController({
 
 
 
+
+
+
+
+interface DividerSpec {
+  controller: PaneResizeController;
+  label: string;
+  description: string;
+}
+
+const NAV_DIVIDER: DividerSpec = {
+  controller: _navDivider,
+  label: 'Resize navigation pane',
+  description: 'Drag or press the arrow keys to change the width of the navigation pane.',
+};
+
+
+
+
+
+
+
 const ITEM_LIST_PANE_STORAGE_KEY = 'patzer.studyItemListPaneWidth';
 const ITEM_LIST_PANE_DEFAULT_WIDTH = 280;
 const ITEM_LIST_PANE_MIN_WIDTH = 220;
@@ -674,17 +746,53 @@ const _itemListDivider = new PaneResizeController({
   bodyClassDuringDrag: 'study-nav-resizing',
 });
 
-function renderDivider(redraw: () => void, controller: PaneResizeController = _navDivider): VNode {
+const ITEM_LIST_DIVIDER: DividerSpec = {
+  controller: _itemListDivider,
+  label: 'Resize game list pane',
+  description: 'Drag or press the arrow keys to change the width of the game list pane.',
+};
+
+/** The divider element carrying its own window-resize listener (removed on destroy). */
+type DividerElement = HTMLElement & { _paneResizeListener?: () => void };
+
+function renderDivider(redraw: () => void, divider: DividerSpec = NAV_DIVIDER): VNode {
+  const { controller, label, description } = divider;
   return h('div.lib-divider', {
-    class: { '--dragging': controller.isDragging() },
+    class: { [DRAGGING_CLASS]: controller.isDragging() },
     attrs: {
       role: 'separator',
       'aria-orientation': 'vertical',
-      'aria-label': 'Resize navigation pane',
-      ...controlExplainerAttrs({ label: 'Resize navigation pane', description: 'Drag to change the width of the adjacent Study pane.' }),
+      'aria-label': label,
+
+
+
+      tabindex: '0',
+      'aria-valuenow': String(Math.round(controller.size())),
+      'aria-valuemin': String(Math.round(controller.minSize())),
+      'aria-valuemax': String(Math.round(controller.maxSize())),
+      ...controlExplainerAttrs({ label, description, tier: 'essential' }),
     },
     on: {
       pointerdown: (event: PointerEvent) => controller.startDrag(event, redraw),
+      keydown: (event: KeyboardEvent) => controller.handleKeydown(event, redraw),
+    },
+    hook: {
+      // The max-clamp is viewport-relative, so a window resize can change the effective size (and
+      // `aria-valuemax`) with no other trigger to redraw. One listener per mounted divider,
+      // removed with the element — cheap, and it keeps the persisted "intent" size intact while
+      // the rendered size follows the window (see PaneResizeController.size()).
+      insert: (vnode: VNode) => {
+        const onResize = () => redraw();
+        (vnode.elm as DividerElement)._paneResizeListener = onResize;
+        window.addEventListener('resize', onResize);
+      },
+      destroy: (vnode: VNode) => {
+        const elm = vnode.elm as DividerElement | undefined;
+        if (elm?._paneResizeListener) {
+          window.removeEventListener('resize', elm._paneResizeListener);
+          delete elm._paneResizeListener;
+        }
+      },
     },
   }, [
     h('span.divider-badge'),
@@ -1834,6 +1942,9 @@ function renderGameOpenShell(
   redraw: () => void,
   onImportPgnClick: () => void,
   opts: GameOpenShellOptions,
+
+
+  folderNavigation: FolderNavigationRegistration,
 ): VNode {
   const scope = resolveGameOpenScope(tree, allItems, opts.openItemId);
 
@@ -1930,11 +2041,13 @@ function renderGameOpenShell(
 
 
 
-
-  const navigationToken = _folderNavigationToken;
   return h('div.lib-shell.lib-shell--game-open', {
     attrs: { style: _itemListDivider.styleDeclaration() },
-    hook: { destroy: () => releaseFolderNavigation(navigationToken) },
+    hook: {
+      insert: () => folderNavigation.install(),
+      update: () => folderNavigation.install(),
+      destroy: () => folderNavigation.release(),
+    },
   }, [
     renderRail(railContext),
     h('div.lib-items-wrap', {
@@ -1945,7 +2058,7 @@ function renderGameOpenShell(
         focusin: () => setFocusedPane('list'),
       },
     }, itemListWrapChildren),
-    renderDivider(redraw, _itemListDivider),
+    renderDivider(redraw, ITEM_LIST_DIVIDER),
     h('div.lib-main-region', [opts.mainContent]),
   ]);
 }
@@ -2045,11 +2158,14 @@ export function renderNavigatorShell(
 
 
 
-  const navigationToken = ++_folderNavigationToken;
-  setNavigatorFolderNavigation(folderId =>
-    navigationToken === _folderNavigationToken && navigateToFolderRow(tree, folderId, onSelect));
 
-  if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen);
+
+
+
+
+  const folderNavigation = createFolderNavigationRegistration(tree, onSelect);
+
+  if (gameOpen) return renderGameOpenShell(tree, allItems, redraw, onImportPgnClick, gameOpen, folderNavigation);
 
   if (_selection === null) _selection = defaultSelection();
 
@@ -2224,7 +2340,13 @@ export function renderNavigatorShell(
 
 
 
-    hook: { destroy: () => { unbindNavigatorKeyboard(); releaseFolderNavigation(navigationToken); } },
+
+
+    hook: {
+      insert: () => folderNavigation.install(),
+      update: () => folderNavigation.install(),
+      destroy: () => { unbindNavigatorKeyboard(); folderNavigation.release(); },
+    },
   }, [
     renderRail({
       ...DEFAULT_RAIL_CONTEXT,

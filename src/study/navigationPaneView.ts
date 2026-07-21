@@ -265,6 +265,24 @@ export function revealFolderRow(sectionId: StudySectionId, ancestorFolderIds: re
   for (const ancestorId of ancestorFolderIds) _collapsedIds.delete(folderCollapseKey(sectionId, ancestorId));
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+export function isFolderRowRenderable(folderId: string, ancestorFolderIds: readonly string[]): boolean {
+  if (showHiddenItems()) return true;
+  if (isHidden('folder', folderId)) return false;
+  return !ancestorFolderIds.some(ancestorId => isHidden('folder', ancestorId));
+}
+
 /** Collapses every section/folder in the CURRENT tree. */
 export function collapseAllSections(tree: StudyNavigationTree): void {
   for (const id of collectCollapsibleIds(tree)) _collapsedIds.add(id);
