@@ -135,6 +135,12 @@ const _expandedRows = new Set<string>();
 let _showImportModal = false;
 let _importPgnText   = '';
 let _importStatus: string | null = null;
+
+
+
+
+
+let _importModalOpener: HTMLElement | null = null;
 let _repertoireSourceStatus: string | null = null;
 let _repertoireSourceBusy = false;
 let _openRepertoireMenuId: string | null = null;
@@ -2133,6 +2139,18 @@ function renderSortControls(redraw: () => void): VNode {
 
 // --- Import PGN modal ---
 
+
+
+
+export function __renderImportModalForTest(redraw: () => void): VNode {
+  return renderImportModal(redraw);
+}
+
+/** Test-only inspector: whether an opener is currently retained (must be null after destroy). */
+export function __importModalOpenerForTest(): HTMLElement | null {
+  return _importModalOpener;
+}
+
 function renderImportModal(redraw: () => void): VNode {
   const close = () => { _showImportModal = false; _importStatus = null; redraw(); };
 
@@ -2149,7 +2167,43 @@ function renderImportModal(redraw: () => void): VNode {
   };
 
   return h('div.study-modal-backdrop', { attrs: { 'aria-label': 'Close PGN import dialog', ...controlExplainerAttrs({ label: 'Close PGN import dialog' }) }, on: { click: close } }, [
-    h('div.study-modal', { attrs: { 'aria-label': 'PGN import dialog', ...controlExplainerAttrs({ label: 'PGN import dialog' }) }, on: { click: (e: Event) => e.stopPropagation() } }, [
+
+
+
+
+    h('div.study-modal', {
+      attrs: {
+        role: 'dialog', 'aria-modal': 'true', tabindex: '-1',
+        'aria-label': 'PGN import dialog', ...controlExplainerAttrs({ label: 'PGN import dialog' }),
+      },
+      hook: {
+        insert: (vnode) => {
+          _importModalOpener = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
+          (vnode.elm as HTMLElement | undefined)?.focus();
+        },
+        destroy: () => {
+          _importModalOpener?.focus();
+          _importModalOpener = null;
+        },
+      },
+      on: {
+        click: (e: Event) => e.stopPropagation(),
+        keydown: (e: KeyboardEvent) => {
+          if (e.key !== 'Escape') return;
+          e.preventDefault();
+          // The modal consumes its own Escape. Without this, the event keeps bubbling to the
+          // document-level `armGameOpenEscape` listener (navigatorShellView.ts:1616) -- which is
+          // route-gated to `study-detail`, where this same dialog also renders -- and a single
+          // Escape would BOTH close this dialog and step the shell back out of the open game,
+          // destroying the opener and defeating the focus restore. The dialog root (not a text
+          // input) holds focus here, so that listener's text-entry bail-out does not apply.
+          e.stopPropagation();
+          close();
+        },
+      },
+    }, [
       h('div.study-modal__header', [
         h('h2', 'Import PGN'),
         h('button.study-modal__close', {
