@@ -261,7 +261,17 @@ export function renderCompactGameRow(
 
   const acctColor  = importedAccountColor(game);
   const acctChip   = acctColor ? h('span.color-chip.--' + acctColor) : null;
-  const acctName   = game.importedUsername?.trim() || null;
+
+
+
+
+
+
+
+  const acctUsername = game.importedUsername?.trim() || null;
+  const acctName   = userColor === 'white' ? (game.white ?? acctUsername)
+    : userColor === 'black' ? (game.black ?? acctUsername)
+    : acctUsername;
   const acctRating = acctColor === 'white' ? game.whiteRating : acctColor === 'black' ? game.blackRating : undefined;
   const acctDelta  = userColor === 'white' ? deltas.white : userColor === 'black' ? deltas.black : null;
   const acctAccNode = accuracy?.user !== null && accuracy?.user !== undefined
@@ -287,7 +297,7 @@ export function renderCompactGameRow(
       h('span.grr__vs-pill', 'vs'),
       h('span.grl__player.--account', [
         h('span.grl__dot.--' + acctDotCls),
-        h('span.grl__name.--account', acctName ?? game.id),
+        h('span.grl__name.--account', acctName ?? '–'),
         acctRating !== undefined ? h('span.grl__rating', String(acctRating)) : null,
         renderDelta(acctDelta),
         acctChip,

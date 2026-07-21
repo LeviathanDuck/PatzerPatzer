@@ -39,16 +39,24 @@ function loadShortcuts(): ShortcutEntry[] {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     const entries: ShortcutEntry[] = [];
+    const seen = new Set<string>();
     for (const candidate of parsed) {
       if (
         candidate !== null && typeof candidate === 'object'
         && isShortcutKind((candidate as Record<string, unknown>).kind)
         && typeof (candidate as Record<string, unknown>).id === 'string'
       ) {
-        entries.push({
-          kind: (candidate as Record<string, unknown>).kind as ShortcutKind,
-          id: (candidate as Record<string, unknown>).id as string,
-        });
+        const kind = (candidate as Record<string, unknown>).kind as ShortcutKind;
+        const id = (candidate as Record<string, unknown>).id as string;
+
+
+
+
+
+        const dedupeKey = `${kind}:${id}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        entries.push({ kind, id });
       }
       // Malformed entries (missing/wrong-typed fields) are silently dropped -- same graceful-
       // degradation posture as loadPinnedIds' own corrupt-localStorage fallback.
