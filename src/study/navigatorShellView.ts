@@ -96,6 +96,7 @@ import {
   advVisibility,
   bumpSelectionSurface,
   clearAdvancedSearch,
+  clearSelection,
   createFolder,
   cursorId,
   filterFav,
@@ -104,6 +105,7 @@ import {
   navigatorFolderId,
   queryStudyItems,
   searchQuery,
+  selectionCount,
   setActiveFolderId,
   setAdvAddedFrom,
   setAdvAddedTo,
@@ -849,7 +851,10 @@ function renderHiddenItemsToggleButton(redraw: () => void): VNode {
       ...iconControlExplainerAttrs({ label, description: `${active ? 'Hides' : 'Shows'} hidden Study folders, tags, notes, and games.` }),
     },
     on: {
-      click: () => { toggleShowHidden(); redraw(); },
+
+
+
+      click: () => { toggleShowHidden(); clearSelectionOnDisplaySetChange(); redraw(); },
     },
   }, [navIcon('eye', { size: 16 })]);
 }
@@ -917,6 +922,9 @@ async function commitNewFolder(selection: NavigatorSelection, redraw: () => void
     _selection = { kind: 'folder', sectionId, folderId: created.id };
     setActiveFolderId(created.id);
     setNavigatorFolderId(created.id);
+
+
+    clearSelection();
   }
   redraw();
 }
@@ -1016,10 +1024,10 @@ function renderSearchInputRow(redraw: () => void, withAdvancedToggle: boolean): 
       attrs: { type: 'text', placeholder: 'Search games…', value: searchQuery(), 'aria-label': 'Search Study games', ...controlExplainerAttrs({ label: 'Search Study games', description: 'Filters the current Study list as you type.' }) },
       hook: { insert: vn => (vn.elm as HTMLInputElement).focus() },
       on: {
-        input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); writeLibraryRouteState(); redraw(); },
+        input: (e: Event) => { setSearch((e.target as HTMLInputElement).value); clearSelectionOnDisplaySetChange(); writeLibraryRouteState(); redraw(); },
         keydown: (e: KeyboardEvent) => {
           // Escape closes the search row; also close the advanced panel whose toggle lives here.
-          if (e.key === 'Escape') { _itemSearchOpen = false; _advancedSearchOpen = false; setSearch(''); writeLibraryRouteState(); redraw(); }
+          if (e.key === 'Escape') { _itemSearchOpen = false; _advancedSearchOpen = false; setSearch(''); clearSelectionOnDisplaySetChange(); writeLibraryRouteState(); redraw(); }
         },
       },
     }),
@@ -1041,7 +1049,7 @@ function renderDescendantsButton(redraw: () => void): VNode {
       'aria-pressed': String(active),
       ...iconControlExplainerAttrs({ label: 'Show games from subfolders', description: `${active ? 'Stops including' : 'Includes'} games from descendant folders in this list.` }),
     },
-    on: { click: () => { setIncludeDescendants(!active); redraw(); } },
+    on: { click: () => { setIncludeDescendants(!active); clearSelectionOnDisplaySetChange(); redraw(); } },
   }, [navIcon('layers', { size: 16 })]);
 }
 
@@ -1291,7 +1299,18 @@ function advancedFilterActive(): boolean {
 }
 
 /** Shared post-mutation commit — mirrors the q/sort controls exactly (the setter already ran). */
+
+
+
+
+
+
+function clearSelectionOnDisplaySetChange(): void {
+  if (selectionCount() > 0) clearSelection();
+}
+
 function commitAdvancedEdit(redraw: () => void): void {
+  clearSelectionOnDisplaySetChange();
   writeLibraryRouteState();
   redraw();
 }
@@ -1744,6 +1763,12 @@ function renderGameOpenShell(
 
   const exitPlain = () => {
     bumpSelectionSurface();
+
+
+
+
+
+    clearSelectionOnDisplaySetChange();
     writeHashRoute(serializeStudyRouteState(studyLibraryRouteSnapshot()));
   };
   const exitToFolder = () => {
@@ -1863,10 +1888,20 @@ export function renderNavigatorShell(
   const keyIndex = buildSelectionIndex(tree, allItems);
   const activeKey = selectionKey(_selection);
   const onSelect = (selection: NavigatorSelection): void => {
+
+
+
+
+
+
+
+
+    const scopeChanged = JSON.stringify(selection) !== JSON.stringify(_selection);
     _selection = selection;
     const folderId = selection.kind === 'folder' ? selection.folderId : null;
     setActiveFolderId(folderId);
     setNavigatorFolderId(folderId);
+    if (scopeChanged) clearSelection();
     redraw();
   };
 

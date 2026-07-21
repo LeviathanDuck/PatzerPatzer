@@ -24184,6 +24184,10 @@ move.bookmarked {
 
 
 
+
+
+
+
 .sentry-bulk-bar {
   display: flex;
   align-items: center;
@@ -24194,6 +24198,24 @@ move.bookmarked {
   border: 1px solid #3d6fa8;
   border-radius: 6px;
   flex-wrap: wrap;
+}
+
+
+
+
+
+
+
+.sentry-bulk-bar--dock {
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid #3d6fa8;
+  border-radius: 0;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
 }
 
 .sentry-bulk-bar__count {

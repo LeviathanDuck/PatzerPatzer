@@ -633,7 +633,7 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
     void Promise.resolve(action.run(ids)).then(redraw);
   };
 
-  return h('div.sentry-bulk-bar', [
+  return h('div.sentry-bulk-bar.sentry-bulk-bar--dock', [
     h('span.sentry-bulk-bar__count', `${count} selected`),
     h('div.sentry-bulk-bar__actions', LIBRARY_BULK_ACTIONS.map(action => h('button.sentry-bulk-bar__btn', {
       key: action.key,
@@ -643,6 +643,11 @@ function renderBulkActionBar(redraw: () => void, currentFolderId: string | null)
       },
       attrs: { type: 'button', ...controlExplainerAttrs({
         label: action.label(count),
+
+
+
+
+        ...(action.danger ? { tier: 'essential' as const } : {}),
         description: action.key === 'delete'
           ? 'Permanently deletes the selected games after confirmation.'
           : action.key === 'move'
@@ -849,7 +854,15 @@ function renderItemRow(
     attrs: {
       draggable: 'true',
       style: hidden ? 'opacity:0.5' : '',
-      role: 'button',
+
+
+
+
+
+
+
+
+
       tabindex: '0',
       ...controlExplainerAttrs({ label: `${selected ? 'Deselect' : 'Select'} ${item.title || 'Untitled'}`, description: 'Changes this game selection for Study bulk actions.' }),
     },
@@ -1139,9 +1152,13 @@ export function renderItemListPane(
   const restItems = visibleItems.filter(i => !pinnedSet.has(i.id));
 
   return h('div.lib-items', [
+
+
+
+
+
     renderSelectAllPageControl(redraw, displayedIds),
     renderSelectAllScopeBanner(redraw, folderContext, displayedIds, resolvedQueryOptions),
-    renderBulkActionBar(redraw, folderContext),
     h('div.sentry-list', { attrs: { 'data-pane': 'items' } }, [
       pinnedItems.length > 0
         ? renderPinnedGroup(pinnedItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)
@@ -1150,6 +1167,7 @@ export function renderItemListPane(
         ? [renderEmptyState()]
         : renderGroupedRows(restItems, density, onOpenItem, redraw, displayedIds, itemsById, folderContext)),
     ]),
+    renderBulkActionBar(redraw, folderContext),
     renderGameContextMenu(redraw),
     renderMoveAliasDialog(redraw),
     renderBulkTagDialog(redraw),
